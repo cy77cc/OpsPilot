@@ -1,6 +1,7 @@
 package host
 
 import (
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/middleware"
 	"github.com/cy77cc/k8s-manage/internal/service/host/handler"
 	"github.com/cy77cc/k8s-manage/internal/svc"
@@ -12,7 +13,7 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	g := v1.Group("/hosts", middleware.JWTAuth())
 	{
 		g.GET("/sources", func(c *gin.Context) {
-			c.JSON(200, gin.H{"code": 1000, "msg": "ok", "data": []string{"manual_ssh", "cloud_import", "kvm_provision"}})
+			httpx.OK(c, []string{"manual_ssh", "cloud_import", "kvm_provision"})
 		})
 		g.GET("/cloud/accounts", h.ListCloudAccounts)
 		g.POST("/cloud/accounts", h.CreateCloudAccount)

@@ -1,12 +1,13 @@
 package notification
 
 import (
-	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
 	"github.com/cy77cc/k8s-manage/internal/svc"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -23,7 +24,7 @@ func NewNotificationService(svcCtx *svc.ServiceContext) *NotificationService {
 func (s *NotificationService) ListNotifications(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -57,13 +58,9 @@ func (s *NotificationService) ListNotifications(c *gin.Context) {
 	query.Count(&total)
 	query.Order("user_notifications.id DESC").Offset(offset).Limit(pageSize).Find(&userNotifs)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 1000,
-		"msg":  "ok",
-		"data": gin.H{
-			"list":  userNotifs,
-			"total": total,
-		},
+	httpx.OK(c, gin.H{
+		"list":  userNotifs,
+		"total": total,
 	})
 }
 
@@ -71,7 +68,7 @@ func (s *NotificationService) ListNotifications(c *gin.Context) {
 func (s *NotificationService) UnreadCount(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -116,14 +113,10 @@ func (s *NotificationService) UnreadCount(c *gin.Context) {
 		bySeverity[sc.Severity] = sc.Count
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 1000,
-		"msg":  "ok",
-		"data": gin.H{
-			"total":        total,
-			"by_type":      byType,
-			"by_severity":  bySeverity,
-		},
+	httpx.OK(c, gin.H{
+		"total":       total,
+		"by_type":     byType,
+		"by_severity": bySeverity,
 	})
 }
 
@@ -131,7 +124,7 @@ func (s *NotificationService) UnreadCount(c *gin.Context) {
 func (s *NotificationService) MarkAsRead(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -143,22 +136,22 @@ func (s *NotificationService) MarkAsRead(c *gin.Context) {
 		Update("read_at", now)
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 3000, "msg": result.Error.Error()})
+		httpx.Fail(c, xcode.ServerError, result.Error.Error())
 		return
 	}
 	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"code": 4004, "msg": "通知不存在"})
+		httpx.Fail(c, xcode.NotFound, "通知不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok"})
+	httpx.OK(c, nil)
 }
 
 // Dismiss 忽略通知
 func (s *NotificationService) Dismiss(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -170,22 +163,22 @@ func (s *NotificationService) Dismiss(c *gin.Context) {
 		Update("dismissed_at", now)
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 3000, "msg": result.Error.Error()})
+		httpx.Fail(c, xcode.ServerError, result.Error.Error())
 		return
 	}
 	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"code": 4004, "msg": "通知不存在"})
+		httpx.Fail(c, xcode.NotFound, "通知不存在")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok"})
+	httpx.OK(c, nil)
 }
 
 // Confirm 确认告警
 func (s *NotificationService) Confirm(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -201,11 +194,11 @@ func (s *NotificationService) Confirm(c *gin.Context) {
 		})
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 3000, "msg": result.Error.Error()})
+		httpx.Fail(c, xcode.ServerError, result.Error.Error())
 		return
 	}
 	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"code": 4004, "msg": "通知不存在"})
+		httpx.Fail(c, xcode.NotFound, "通知不存在")
 		return
 	}
 
@@ -219,14 +212,14 @@ func (s *NotificationService) Confirm(c *gin.Context) {
 			Update("status", "confirmed")
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok"})
+	httpx.OK(c, nil)
 }
 
 // MarkAllAsRead 全部已读
 func (s *NotificationService) MarkAllAsRead(c *gin.Context) {
 	userID := getUserID(c)
 	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 4001, "msg": "未授权"})
+		httpx.Fail(c, xcode.Unauthorized, "未授权")
 		return
 	}
 
@@ -236,7 +229,7 @@ func (s *NotificationService) MarkAllAsRead(c *gin.Context) {
 		Where("user_id = ? AND read_at IS NULL AND dismissed_at IS NULL", userID).
 		Update("read_at", now)
 
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok"})
+	httpx.OK(c, nil)
 }
 
 // CreateNotification 创建通知（内部使用）

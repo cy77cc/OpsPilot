@@ -3,12 +3,13 @@ package ai
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -16,80 +17,80 @@ import (
 func (h *handler) listSessions(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	scene := c.Query("scene")
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.store.listSessions(uid, scene)})
+	httpx.OK(c, h.store.listSessions(uid, scene))
 }
 
 func (h *handler) currentSession(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	scene := c.Query("scene")
 	session, found := h.store.currentSession(uid, scene)
 	if !found {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": nil})
+		httpx.OK(c, nil)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": session})
+	httpx.OK(c, session)
 }
 
 func (h *handler) getSession(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	session, found := h.store.getSession(uid, c.Param("id"))
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "session not found"}})
+		httpx.Fail(c, xcode.NotFound, "session not found")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": session})
+	httpx.OK(c, session)
 }
 
 func (h *handler) deleteSession(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	h.store.deleteSession(uid, c.Param("id"))
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *handler) updateSessionTitle(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
 		Title string `json:"title"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	title := normalizeSessionTitle(req.Title)
 	if title == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "title is required"}})
+		httpx.Fail(c, xcode.ParamError, "title is required")
 		return
 	}
 	session, err := h.store.updateSessionTitle(uid, c.Param("id"), title)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "session not found"}})
+			httpx.Fail(c, xcode.NotFound, "session not found")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": session})
+	httpx.OK(c, session)
 }
 
 func (h *handler) analyze(c *gin.Context) {
@@ -104,20 +105,20 @@ func (h *handler) analyze(c *gin.Context) {
 			summary = msg.Content
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+	httpx.OK(c, gin.H{
 		"id":        "ana-" + strconvFormatInt(time.Now().UnixNano()),
 		"type":      "generic",
 		"title":     "AI 分析结果",
 		"summary":   summary,
 		"details":   req,
 		"createdAt": time.Now(),
-	}})
+	})
 }
 
 func (h *handler) recommendations(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -158,14 +159,14 @@ func (h *handler) recommendations(c *gin.Context) {
 			"relevance":       r.Relevance,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": out})
+	httpx.OK(c, out)
 }
 
 func (h *handler) k8sAnalyze(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+	httpx.OK(c, gin.H{
 		"insights": []string{"建议优先检查异常 Pod 的重启次数和事件。"},
 		"risks":    []string{"高峰时段直接变更副本可能引发抖动。"},
-	}})
+	})
 }
 
 func (h *handler) actionPreview(c *gin.Context) {
@@ -174,13 +175,13 @@ func (h *handler) actionPreview(c *gin.Context) {
 		Params map[string]any `json:"params"`
 	}
 	_ = c.ShouldBindJSON(&req)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+	httpx.OK(c, gin.H{
 		"approval_token": "approve-" + strconvFormatInt(time.Now().UnixNano()),
 		"intent":         req.Action,
 		"risk":           "medium",
 		"params":         req.Params,
 		"previewDiff":    "MVP preview",
-	}})
+	})
 }
 
 func (h *handler) actionExecute(c *gin.Context) {
@@ -188,10 +189,10 @@ func (h *handler) actionExecute(c *gin.Context) {
 		ApprovalToken string `json:"approval_token"`
 	}
 	_ = c.ShouldBindJSON(&req)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+	httpx.OK(c, gin.H{
 		"approval_token": req.ApprovalToken,
 		"status":         "executed",
-	}})
+	})
 }
 
 func (h *handler) refreshSuggestions(uid uint64, scene, answer string) []recommendationRecord {

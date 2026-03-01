@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"net/http"
 	"path"
 	"strings"
 	"unicode/utf8"
 
 	sshclient "github.com/cy77cc/k8s-manage/internal/client/ssh"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/sftp"
 )
@@ -76,11 +77,11 @@ func (h *Handler) ListFiles(c *gin.Context) {
 				"updated_at": item.ModTime(),
 			})
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target, "list": list, "total": len(list)}})
+		httpx.OK(c, gin.H{"path": target, "list": list, "total": len(list)})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -101,19 +102,19 @@ func (h *Handler) ReadFileContent(c *gin.Context) {
 			return err
 		}
 		if buf.Len() > maxInlineReadBytes {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "file too large for inline preview"}})
+			httpx.Fail(c, xcode.ParamError, "file too large for inline preview")
 			return nil
 		}
 		raw := buf.Bytes()
 		if !utf8.Valid(raw) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "binary file is not supported for inline edit"}})
+			httpx.Fail(c, xcode.ParamError, "binary file is not supported for inline edit")
 			return nil
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target, "content": string(raw)}})
+		httpx.OK(c, gin.H{"path": target, "content": string(raw)})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -127,7 +128,7 @@ func (h *Handler) WriteFileContent(c *gin.Context) {
 		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	target := normalizeRemotePath(req.Path)
@@ -140,11 +141,11 @@ func (h *Handler) WriteFileContent(c *gin.Context) {
 		if _, err := f.Write([]byte(req.Content)); err != nil {
 			return err
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target, "size": len(req.Content)}})
+		httpx.OK(c, gin.H{"path": target, "size": len(req.Content)})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -156,12 +157,12 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	dirPath := normalizeRemotePath(c.Query("path"))
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "file is required"}})
+		httpx.Fail(c, xcode.ParamError, "file is required")
 		return
 	}
 	src, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
 	defer src.Close()
@@ -175,11 +176,11 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		if _, err := io.Copy(dst, src); err != nil {
 			return err
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target}})
+		httpx.OK(c, gin.H{"path": target})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -202,7 +203,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -215,7 +216,7 @@ func (h *Handler) MakeDir(c *gin.Context) {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	target := normalizeRemotePath(req.Path)
@@ -223,11 +224,11 @@ func (h *Handler) MakeDir(c *gin.Context) {
 		if err := cli.MkdirAll(target); err != nil {
 			return err
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target}})
+		httpx.OK(c, gin.H{"path": target})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -241,7 +242,7 @@ func (h *Handler) RenamePath(c *gin.Context) {
 		NewPath string `json:"new_path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	oldPath := normalizeRemotePath(req.OldPath)
@@ -250,11 +251,11 @@ func (h *Handler) RenamePath(c *gin.Context) {
 		if err := cli.Rename(oldPath, newPath); err != nil {
 			return err
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"old_path": oldPath, "new_path": newPath}})
+		httpx.OK(c, gin.H{"old_path": oldPath, "new_path": newPath})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }
 
@@ -278,10 +279,10 @@ func (h *Handler) DeletePath(c *gin.Context) {
 				return err
 			}
 		}
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"path": target}})
+		httpx.OK(c, gin.H{"path": target})
 		return nil
 	})
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 	}
 }

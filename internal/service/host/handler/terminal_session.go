@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	sshclient "github.com/cy77cc/k8s-manage/internal/client/ssh"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/websocket"
@@ -78,12 +79,12 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	}
 	node, err := h.hostService.Get(c.Request.Context(), hostID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "host not found"}})
+		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
 	privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
 	password := strings.TrimSpace(node.SSHPassword)
@@ -92,13 +93,13 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	}
 	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 	sess, err := cli.NewSession()
 	if err != nil {
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 
@@ -106,21 +107,21 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	if err != nil {
 		_ = sess.Close()
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 	stdout, err := sess.StdoutPipe()
 	if err != nil {
 		_ = sess.Close()
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 	stderr, err := sess.StderrPipe()
 	if err != nil {
 		_ = sess.Close()
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 
@@ -132,13 +133,13 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	if err := sess.RequestPty("xterm-256color", 40, 120, modes); err != nil {
 		_ = sess.Close()
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 	if err := sess.Shell(); err != nil {
 		_ = sess.Close()
 		_ = cli.Close()
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}
 
@@ -159,16 +160,12 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	}
 	hostTerminalSessions.set(ts)
 
-	c.JSON(200, gin.H{
-		"code": 1000,
-		"msg":  "ok",
-		"data": gin.H{
-			"session_id": sessionID,
-			"status":     ts.Status,
-			"ws_path":    fmt.Sprintf("/api/v1/hosts/%d/terminal/sessions/%s/ws", hostID, sessionID),
-			"created_at": ts.CreatedAt,
-			"expires_at": ts.CreatedAt.Add(30 * time.Minute),
-		},
+	httpx.OK(c, gin.H{
+		"session_id": sessionID,
+		"status":     ts.Status,
+		"ws_path":    fmt.Sprintf("/api/v1/hosts/%d/terminal/sessions/%s/ws", hostID, sessionID),
+		"created_at": ts.CreatedAt,
+		"expires_at": ts.CreatedAt.Add(30 * time.Minute),
 	})
 }
 
@@ -179,25 +176,21 @@ func (h *Handler) GetTerminalSession(c *gin.Context) {
 	}
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
-		c.JSON(400, gin.H{"success": false, "error": gin.H{"message": "session_id is required"}})
+		httpx.Fail(c, xcode.ParamError, "session_id is required")
 		return
 	}
 	ts, found := hostTerminalSessions.get(sessionID)
 	if !found || ts.HostID != hostID {
-		c.JSON(404, gin.H{"success": false, "error": gin.H{"message": "terminal session not found"}})
+		httpx.Fail(c, xcode.NotFound, "terminal session not found")
 		return
 	}
-	c.JSON(200, gin.H{
-		"code": 1000,
-		"msg":  "ok",
-		"data": gin.H{
-			"session_id": ts.ID,
-			"host_id":    ts.HostID,
-			"user_id":    ts.UserID,
-			"status":     ts.Status,
-			"created_at": ts.CreatedAt,
-			"updated_at": ts.UpdatedAt,
-		},
+	httpx.OK(c, gin.H{
+		"session_id": ts.ID,
+		"host_id":    ts.HostID,
+		"user_id":    ts.UserID,
+		"status":     ts.Status,
+		"created_at": ts.CreatedAt,
+		"updated_at": ts.UpdatedAt,
 	})
 }
 
@@ -209,12 +202,12 @@ func (h *Handler) DeleteTerminalSession(c *gin.Context) {
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	ts, found := hostTerminalSessions.get(sessionID)
 	if !found || ts.HostID != hostID {
-		c.JSON(404, gin.H{"success": false, "error": gin.H{"message": "terminal session not found"}})
+		httpx.Fail(c, xcode.NotFound, "terminal session not found")
 		return
 	}
 	ts.close()
 	hostTerminalSessions.remove(sessionID)
-	c.JSON(200, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"session_id": sessionID, "status": "closed"}})
+	httpx.OK(c, gin.H{"session_id": sessionID, "status": "closed"})
 }
 
 func (h *Handler) TerminalWebsocket(c *gin.Context) {
@@ -225,7 +218,7 @@ func (h *Handler) TerminalWebsocket(c *gin.Context) {
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	ts, found := hostTerminalSessions.get(sessionID)
 	if !found || ts.HostID != hostID {
-		c.JSON(404, gin.H{"success": false, "error": gin.H{"message": "terminal session not found"}})
+		httpx.Fail(c, xcode.NotFound, "terminal session not found")
 		return
 	}
 	websocket.Handler(func(ws *websocket.Conn) {

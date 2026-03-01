@@ -1,46 +1,46 @@
 package handler
 
 import (
-	"net/http"
 	"strings"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	hostlogic "github.com/cy77cc/k8s-manage/internal/service/host/logic"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) Probe(c *gin.Context) {
 	var req hostlogic.ProbeReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}, "error_code": "validation_error"})
+		httpx.BindErr(c, err)
 		return
 	}
 	resp, err := h.hostService.Probe(c.Request.Context(), getUID(c), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) Create(c *gin.Context) {
 	var req hostlogic.CreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	uid := getUID(c)
-	node, err := h.hostService.CreateWithProbe(c.Request.Context(), uid, isAdminByUserID(h.svcCtx, uid), req)
+	node, err := h.hostService.CreateWithProbe(c.Request.Context(), uid, httpx.IsAdmin(h.svcCtx.DB, uid), req)
 	if err != nil {
-		errorCode := "validation_error"
-		if strings.Contains(err.Error(), "probe_expired") {
-			errorCode = "probe_expired"
-		} else if strings.Contains(err.Error(), "probe_not_found") {
-			errorCode = "probe_not_found"
+		msg := err.Error()
+		if strings.Contains(msg, "probe_expired") || strings.Contains(msg, "probe_not_found") {
+			httpx.Fail(c, xcode.ParamError, msg)
+		} else {
+			httpx.Fail(c, xcode.ParamError, msg)
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}, "error_code": errorCode})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": node})
+	httpx.OK(c, node)
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -50,15 +50,15 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	var req map[string]any
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	node, err := h.hostService.Update(c.Request.Context(), id, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": node})
+	httpx.OK(c, node)
 }
 
 func (h *Handler) Delete(c *gin.Context) {
@@ -67,10 +67,10 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.hostService.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) Action(c *gin.Context) {
@@ -83,10 +83,10 @@ func (h *Handler) Action(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 	if err := h.hostService.UpdateStatus(c.Request.Context(), id, req.Action); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"id": id, "action": req.Action}})
+	httpx.OK(c, gin.H{"id": id, "action": req.Action})
 }
 
 func (h *Handler) Batch(c *gin.Context) {
@@ -96,14 +96,14 @@ func (h *Handler) Batch(c *gin.Context) {
 		Tags    []string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	if err := h.hostService.BatchUpdateStatus(c.Request.Context(), req.HostIDs, req.Action); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) AddTag(c *gin.Context) {
@@ -115,22 +115,22 @@ func (h *Handler) AddTag(c *gin.Context) {
 		Tag string `json:"tag" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	node, err := h.hostService.Get(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "host not found"}})
+		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
 	labels := hostlogic.ParseLabels(node.Labels)
 	labels = append(labels, req.Tag)
 	_, err = h.hostService.Update(c.Request.Context(), id, map[string]any{"labels": hostlogic.EncodeLabels(labels)})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) RemoveTag(c *gin.Context) {
@@ -141,7 +141,7 @@ func (h *Handler) RemoveTag(c *gin.Context) {
 	tag := c.Param("tag")
 	node, err := h.hostService.Get(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "host not found"}})
+		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
 	labels := hostlogic.ParseLabels(node.Labels)
@@ -153,10 +153,10 @@ func (h *Handler) RemoveTag(c *gin.Context) {
 	}
 	_, err = h.hostService.Update(c.Request.Context(), id, map[string]any{"labels": hostlogic.EncodeLabels(filtered)})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) UpdateCredentials(c *gin.Context) {
@@ -166,13 +166,13 @@ func (h *Handler) UpdateCredentials(c *gin.Context) {
 	}
 	var req hostlogic.UpdateCredentialsReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}, "error_code": "validation_error"})
+		httpx.BindErr(c, err)
 		return
 	}
 	node, probeResp, err := h.hostService.UpdateCredentials(c.Request.Context(), id, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}, "error_code": "auth_error", "data": gin.H{"probe": probeResp, "node": node}})
+		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"node": node, "probe": probeResp}})
+	httpx.OK(c, gin.H{"node": node, "probe": probeResp})
 }

@@ -13,6 +13,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -121,21 +123,21 @@ func resolveStreamState(fatalErr *streamErrorPayload, summary toolSummary) strin
 func (h *handler) chat(c *gin.Context) {
 	var req chatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	msg := strings.TrimSpace(req.Message)
 	if msg == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "message is required"}})
+		httpx.Fail(c, xcode.ParamError, "message is required")
 		return
 	}
 	if h.svcCtx.AI == nil || h.svcCtx.AI.Runnable == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": gin.H{"message": "ai agent not initialized"}})
+		httpx.Fail(c, xcode.ServerError, "ai agent not initialized")
 		return
 	}
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 
@@ -147,7 +149,7 @@ func (h *handler) chat(c *gin.Context) {
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": "streaming not supported"}})
+		httpx.Fail(c, xcode.ServerError, "streaming not supported")
 		return
 	}
 	turnID := fmt.Sprintf("turn-%d", time.Now().UnixNano())

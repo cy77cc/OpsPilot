@@ -1,101 +1,98 @@
 package deployment
 
 import (
-	"net/http"
 	"strings"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) StartEnvironmentBootstrap(c *gin.Context) {
-	if !h.authorize(c, "deploy:target:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:target:write") {
 		return
 	}
 	var req EnvironmentBootstrapReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	if !h.authorizeRuntime(c, req.RuntimeType, "apply") {
 		return
 	}
-	uid, _ := c.Get("uid")
-	resp, err := h.logic.StartEnvironmentBootstrap(c.Request.Context(), toUint(uid), req)
+	resp, err := h.logic.StartEnvironmentBootstrap(c.Request.Context(), httpx.UIDFromCtx(c), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) GetEnvironmentBootstrapJob(c *gin.Context) {
-	if !h.authorize(c, "deploy:target:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:target:read") {
 		return
 	}
 	job, err := h.logic.GetEnvironmentBootstrapJob(c.Request.Context(), strings.TrimSpace(c.Param("job_id")))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": job})
+	httpx.OK(c, job)
 }
 
 func (h *Handler) RegisterPlatformCredential(c *gin.Context) {
-	if !h.authorize(c, "deploy:credential:write", "deploy:target:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:write", "deploy:target:write") {
 		return
 	}
 	var req PlatformCredentialRegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
-	uid, _ := c.Get("uid")
-	resp, err := h.logic.RegisterPlatformCredential(c.Request.Context(), toUint(uid), req)
+	resp, err := h.logic.RegisterPlatformCredential(c.Request.Context(), httpx.UIDFromCtx(c), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) ImportExternalCredential(c *gin.Context) {
-	if !h.authorize(c, "deploy:credential:write", "deploy:target:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:write", "deploy:target:write") {
 		return
 	}
 	var req ClusterCredentialImportReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
-	uid, _ := c.Get("uid")
-	resp, err := h.logic.ImportExternalCredential(c.Request.Context(), toUint(uid), req)
+	resp, err := h.logic.ImportExternalCredential(c.Request.Context(), httpx.UIDFromCtx(c), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) TestCredential(c *gin.Context) {
-	if !h.authorize(c, "deploy:credential:read", "deploy:target:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:read", "deploy:target:read") {
 		return
 	}
-	resp, err := h.logic.TestCredentialConnectivity(c.Request.Context(), uintFromParam(c, "id"))
+	resp, err := h.logic.TestCredentialConnectivity(c.Request.Context(), httpx.UintFromParam(c, "id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) ListCredentials(c *gin.Context) {
-	if !h.authorize(c, "deploy:credential:read", "deploy:target:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:read", "deploy:target:read") {
 		return
 	}
 	list, err := h.logic.ListCredentials(c.Request.Context(), strings.TrimSpace(c.Query("runtime_type")))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": list, "total": len(list)}})
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
 }

@@ -2,14 +2,15 @@ package handler
 
 import (
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
 	projectlogic "github.com/cy77cc/k8s-manage/internal/service/project/logic"
 	"github.com/cy77cc/k8s-manage/internal/svc"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -23,19 +24,19 @@ type Handler struct{ svcCtx *svc.ServiceContext }
 func NewHandler(svcCtx *svc.ServiceContext) *Handler { return &Handler{svcCtx: svcCtx} }
 
 func (h *Handler) List(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	var list []model.Cluster
 	if err := h.svcCtx.DB.Find(&list).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": list, "total": len(list)})
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
 }
 
 func (h *Handler) Create(c *gin.Context) {
-	if !h.authorize(c, "k8s:write", "kubernetes:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:write", "kubernetes:write") {
 		return
 	}
 	var req struct {
@@ -45,30 +46,30 @@ func (h *Handler) Create(c *gin.Context) {
 		Description string `json:"description"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	cluster := model.Cluster{Name: req.Name, Description: req.Description, Endpoint: req.Server, KubeConfig: req.Kubeconfig, Status: "created", Type: "kubernetes", AuthMethod: "kubeconfig", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := h.svcCtx.DB.Create(&cluster).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": cluster})
+	httpx.OK(c, cluster)
 }
 
 func (h *Handler) Get(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": cluster})
+	httpx.OK(c, cluster)
 }
 
 func (h *Handler) Nodes(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -77,12 +78,12 @@ func (h *Handler) Nodes(c *gin.Context) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "total": 0, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "total": 0, "data_source": dataSource})
 		return
 	}
 	nodes, err := cli.CoreV1().Nodes().List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	data := make([]gin.H, 0, len(nodes.Items))
@@ -90,7 +91,7 @@ func (h *Handler) Nodes(c *gin.Context) {
 		role := n.Labels["kubernetes.io/role"]
 		data = append(data, gin.H{"id": n.Name, "name": n.Name, "role": role, "status": nodeReadyStatus(&n), "cpu_cores": n.Status.Capacity.Cpu().Value(), "memory": n.Status.Capacity.Memory().Value() / 1024 / 1024, "labels": n.Labels, "ip": nodeInternalIP(&n), "pods": 0})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": data, "total": len(data), "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": data, "total": len(data), "data_source": dataSource})
 }
 
 func (h *Handler) Deployments(c *gin.Context) {
@@ -98,7 +99,7 @@ func (h *Handler) Deployments(c *gin.Context) {
 }
 
 func (h *Handler) Pods(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -107,7 +108,7 @@ func (h *Handler) Pods(c *gin.Context) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "data_source": dataSource})
 		return
 	}
 	ns := c.Query("namespace")
@@ -119,18 +120,18 @@ func (h *Handler) Pods(c *gin.Context) {
 	}
 	items, err := cli.CoreV1().Pods(ns).List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(items.Items))
 	for _, p := range items.Items {
 		out = append(out, gin.H{"id": p.UID, "name": p.Name, "namespace": p.Namespace, "status": string(p.Status.Phase), "phase": string(p.Status.Phase), "node": p.Spec.NodeName, "restarts": totalRestarts(p.Status.ContainerStatuses), "createdAt": p.CreationTimestamp.Time, "startTime": p.Status.StartTime})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out, "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": out, "data_source": dataSource})
 }
 
 func (h *Handler) Services(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -139,7 +140,7 @@ func (h *Handler) Services(c *gin.Context) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "data_source": dataSource})
 		return
 	}
 	ns := c.Query("namespace")
@@ -151,7 +152,7 @@ func (h *Handler) Services(c *gin.Context) {
 	}
 	items, err := cli.CoreV1().Services(ns).List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(items.Items))
@@ -162,11 +163,11 @@ func (h *Handler) Services(c *gin.Context) {
 		}
 		out = append(out, gin.H{"id": s.UID, "name": s.Name, "namespace": s.Namespace, "type": string(s.Spec.Type), "cluster_ip": s.Spec.ClusterIP, "ports": ports})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out, "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": out, "data_source": dataSource})
 }
 
 func (h *Handler) Ingresses(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -175,7 +176,7 @@ func (h *Handler) Ingresses(c *gin.Context) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "data_source": dataSource})
 		return
 	}
 	ns := c.Query("namespace")
@@ -187,18 +188,18 @@ func (h *Handler) Ingresses(c *gin.Context) {
 	}
 	items, err := cli.NetworkingV1().Ingresses(ns).List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	out := make([]gin.H, 0)
 	for _, ing := range items.Items {
 		out = append(out, mapIngress(ing)...)
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out, "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": out, "data_source": dataSource})
 }
 
 func (h *Handler) Events(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -207,7 +208,7 @@ func (h *Handler) Events(c *gin.Context) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "data_source": dataSource})
 		return
 	}
 	ns := c.Query("namespace")
@@ -219,18 +220,18 @@ func (h *Handler) Events(c *gin.Context) {
 	}
 	items, err := cli.CoreV1().Events(ns).List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(items.Items))
 	for _, e := range items.Items {
 		out = append(out, gin.H{"type": e.Type, "reason": e.Reason, "message": e.Message, "time": e.LastTimestamp})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out, "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": out, "data_source": dataSource})
 }
 
 func (h *Handler) Logs(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -239,7 +240,7 @@ func (h *Handler) Logs(c *gin.Context) {
 	}
 	cli, _, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"logs": "cluster client unavailable"}})
+		httpx.OK(c, gin.H{"logs": "cluster client unavailable"})
 		return
 	}
 	ns := c.Query("namespace")
@@ -251,20 +252,20 @@ func (h *Handler) Logs(c *gin.Context) {
 	}
 	pod := c.Query("pod")
 	if pod == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "pod required"}})
+		httpx.Fail(c, xcode.ParamError, "pod required")
 		return
 	}
 	req := cli.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{Container: c.Query("container"), TailLines: int64Ptr(200)})
 	buf, err := req.DoRaw(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"logs": string(buf)}})
+	httpx.OK(c, gin.H{"logs": string(buf)})
 }
 
 func (h *Handler) ConnectTest(c *gin.Context) {
-	if !h.authorize(c, "k8s:read", "kubernetes:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -274,19 +275,19 @@ func (h *Handler) ConnectTest(c *gin.Context) {
 	start := time.Now()
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"connected": false, "message": err.Error(), "data_source": dataSource}})
+		httpx.OK(c, gin.H{"connected": false, "message": err.Error(), "data_source": dataSource})
 		return
 	}
 	_, err = cli.Discovery().ServerVersion()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"connected": false, "message": err.Error(), "data_source": dataSource}})
+		httpx.OK(c, gin.H{"connected": false, "message": err.Error(), "data_source": dataSource})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"connected": true, "latency_ms": time.Since(start).Milliseconds(), "data_source": dataSource}})
+	httpx.OK(c, gin.H{"connected": true, "latency_ms": time.Since(start).Milliseconds(), "data_source": dataSource})
 }
 
 func (h *Handler) DeployPreview(c *gin.Context) {
-	if !h.authorize(c, "k8s:deploy", "kubernetes:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:deploy", "kubernetes:write") {
 		return
 	}
 	var req struct {
@@ -296,7 +297,7 @@ func (h *Handler) DeployPreview(c *gin.Context) {
 		Replicas  int32  `json:"replicas"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	if req.Replicas <= 0 {
@@ -309,11 +310,11 @@ func (h *Handler) DeployPreview(c *gin.Context) {
 	if !h.namespaceWritable(c, cluster.ID, req.Namespace) {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"summary": "preview only", "manifest": gin.H{"namespace": req.Namespace, "name": req.Name, "image": req.Image, "replicas": req.Replicas}}})
+	httpx.OK(c, gin.H{"summary": "preview only", "manifest": gin.H{"namespace": req.Namespace, "name": req.Name, "image": req.Image, "replicas": req.Replicas}})
 }
 
 func (h *Handler) DeployApply(c *gin.Context) {
-	if !h.authorize(c, "k8s:deploy", "kubernetes:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:deploy", "kubernetes:write") {
 		return
 	}
 	cluster, ok := h.mustCluster(c)
@@ -328,7 +329,7 @@ func (h *Handler) DeployApply(c *gin.Context) {
 		ApprovalToken string `json:"approval_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	if req.Replicas <= 0 {
@@ -361,22 +362,22 @@ spec:
         image: %s
 `, req.Name, req.Namespace, req.Replicas, req.Name, req.Name, req.Name, req.Image)
 	if err := projectlogic.DeployToCluster(c.Request.Context(), cluster, yaml); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
-	h.createAudit(cluster.ID, req.Namespace, "deploy.apply", "deployment", req.Name, "success", "legacy deployment applied", h.uidFromContext(c))
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"applied": true}})
+	h.createAudit(cluster.ID, req.Namespace, "deploy.apply", "deployment", req.Name, "success", "legacy deployment applied", uint(httpx.UIDFromCtx(c)))
+	httpx.OK(c, gin.H{"applied": true})
 }
 
 func (h *Handler) mustCluster(c *gin.Context) (*model.Cluster, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return nil, false
 	}
 	var cluster model.Cluster
 	if err := h.svcCtx.DB.First(&cluster, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "cluster not found"}})
+		httpx.Fail(c, xcode.NotFound, "cluster not found")
 		return nil, false
 	}
 	return &cluster, true
@@ -459,7 +460,7 @@ func (h *Handler) listDeployLike(c *gin.Context, _ string) {
 	}
 	cli, dataSource, err := h.getClient(cluster)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}, "data_source": dataSource})
+		httpx.OK(c, gin.H{"list": []any{}, "data_source": dataSource})
 		return
 	}
 	ns := c.Query("namespace")
@@ -468,7 +469,7 @@ func (h *Handler) listDeployLike(c *gin.Context, _ string) {
 	}
 	items, err := cli.AppsV1().Deployments(ns).List(c.Request.Context(), metav1.ListOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.ServerErr(c, err)
 		return
 	}
 	out := make([]gin.H, 0, len(items.Items))
@@ -486,5 +487,5 @@ func (h *Handler) listDeployLike(c *gin.Context, _ string) {
 		}
 		out = append(out, gin.H{"id": d.UID, "namespace": d.Namespace, "name": d.Name, "image": image, "replicas": d.Status.ReadyReplicas, "status": status})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out, "data_source": dataSource})
+	httpx.OK(c, gin.H{"list": out, "data_source": dataSource})
 }

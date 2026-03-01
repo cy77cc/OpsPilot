@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,8 +13,10 @@ import (
 	"time"
 
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
 	"github.com/cy77cc/k8s-manage/internal/service/cicd"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -319,25 +320,25 @@ func (h *handler) buildCommandContext(command, scene string, params map[string]a
 func (h *handler) previewCommand(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req commandPreviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	cc, err := h.buildCommandContext(req.Command, req.Scene, req.Params)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
 	if !h.hasPermission(uid, cc.Action.Permission) {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "permission denied"}})
+		httpx.Fail(c, xcode.Forbidden, "permission denied")
 		return
 	}
 	if err := h.store.saveCommandRecord(uid, cc, "previewed", nil, nil, ""); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	result := commandResult{
@@ -369,47 +370,47 @@ func (h *handler) previewCommand(c *gin.Context) {
 	result.Artifacts["command_id"] = cc.CommandID
 	result.Artifacts["intent"] = cc.Intent
 	result.Artifacts["plan_hash"] = cc.PlanHash
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+	httpx.OK(c, result)
 }
 
 func (h *handler) executeCommand(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req commandExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	if !req.Confirm {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "confirm=true is required"}})
+		httpx.Fail(c, xcode.ParamError, "confirm=true is required")
 		return
 	}
 	cc, err := h.loadOrBuildCommandContext(uid, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
 	if !h.hasPermission(uid, cc.Action.Permission) {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "permission denied"}})
+		httpx.Fail(c, xcode.Forbidden, "permission denied")
 		return
 	}
 	if len(cc.Missing) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "missing required params"}, "data": gin.H{"missing": cc.Missing, "prompts": cc.Prompts}})
+		httpx.Fail(c, xcode.ParamError, "missing required params")
 		return
 	}
 	approvalContext := map[string]any{}
 	if cc.Risk == commandRiskHigh {
 		token := strings.TrimSpace(req.ApprovalToken)
 		if token == "" {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "approval token required"}})
+			httpx.Fail(c, xcode.Forbidden, "approval token required")
 			return
 		}
 		ticket, ok := h.store.getApproval(token)
 		if !ok || ticket.Status != "approved" {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "approval not approved"}})
+			httpx.Fail(c, xcode.Forbidden, "approval not approved")
 			return
 		}
 		approvalContext["approval_token"] = token
@@ -439,7 +440,7 @@ func (h *handler) executeCommand(c *gin.Context) {
 		result.Artifacts["error"] = err.Error()
 	}
 	_ = h.store.saveCommandRecord(uid, cc, result.Status, result.Artifacts, approvalContext, result.Summary)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+	httpx.OK(c, result)
 }
 
 func (h *handler) loadOrBuildCommandContext(uid uint64, req commandExecuteRequest) (commandContext, error) {
@@ -689,7 +690,7 @@ func executeAggregate(ctx context.Context, h *handler, _ uint64, cc commandConte
 func (h *handler) listCommandHistory(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	limit := 20
@@ -700,25 +701,25 @@ func (h *handler) listCommandHistory(c *gin.Context) {
 	}
 	list, err := h.store.listCommandRecords(uid, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	out := make([]commandHistoryItem, 0, len(list))
 	for i := range list {
 		out = append(out, toCommandHistoryItem(&list[i]))
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"list": out, "total": len(out)}})
+	httpx.OK(c, gin.H{"list": out, "total": len(out)})
 }
 
 func (h *handler) getCommandHistory(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	rec, err := h.store.getCommandRecord(uid, c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "record not found"}})
+		httpx.Fail(c, xcode.NotFound, "record not found")
 		return
 	}
 	item := toCommandHistoryItem(rec)
@@ -726,7 +727,7 @@ func (h *handler) getCommandHistory(c *gin.Context) {
 	if h.svcCtx.DB != nil {
 		_ = h.svcCtx.DB.WithContext(c.Request.Context()).Where("trace_id = ? OR command_id = ?", rec.TraceID, rec.ID).Order("id DESC").Limit(50).Find(&audits).Error
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"record": item, "audit_events": audits}})
+	httpx.OK(c, gin.H{"record": item, "audit_events": audits})
 }
 
 func (h *handler) commandSuggestions(c *gin.Context) {
@@ -736,7 +737,7 @@ func (h *handler) commandSuggestions(c *gin.Context) {
 		{"command": "deployment.rollback release_id=18 target_version=v1.2.2", "hint": "高风险回滚，需审批"},
 		{"command": "monitor.alerts status=firing limit=20", "hint": "查看当前告警"},
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": examples})
+	httpx.OK(c, examples)
 }
 
 func toCommandHistoryItem(rec *model.AICommandExecution) commandHistoryItem {

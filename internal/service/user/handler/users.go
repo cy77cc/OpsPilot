@@ -3,8 +3,8 @@ package handler
 import (
 	"strconv"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
-	"github.com/cy77cc/k8s-manage/internal/response"
 	userLogic "github.com/cy77cc/k8s-manage/internal/service/user/logic"
 	"github.com/cy77cc/k8s-manage/internal/svc"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
@@ -21,30 +21,21 @@ func NewUserHandler(svcCtx *svc.ServiceContext) *UserHandler {
 	}
 }
 
-// Get 获取用户信息
-// @Summary 获取用户信息
-// @Description 获取用户信息
-// @BasePath /api/v1
-// @Tags User
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Resp "登录成功"
-// @Router /user/:id [get]
+// GetUserInfo 获取用户信息
 func (u *UserHandler) GetUserInfo(c *gin.Context) {
 	idStr := c.Param("id")
 	var id model.UserID
 
 	if idInt, err := strconv.Atoi(idStr); err != nil {
-		response.Response(c, nil, xcode.FromError(err))
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	} else {
 		id = model.UserID(idInt)
 	}
 	resp, err := userLogic.NewUserLogic(u.svcCtx).GetUser(c.Request.Context(), id)
 	if err != nil {
-		response.Response(c, nil, xcode.FromError(err))
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-
-	response.Response(c, resp, nil)
+	httpx.OK(c, resp)
 }

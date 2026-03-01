@@ -3,9 +3,6 @@ package xcode
 import (
 	"fmt"
 	"net/http"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Xcode uint32
@@ -134,67 +131,15 @@ func NewErrCodeMsg(code Xcode, msg string) error {
 	return &CodeError{Code: code, Msg: msg}
 }
 
-// FromError converts an error to CodeError
+// FromError converts an error to CodeError.
 func FromError(err error) *CodeError {
 	if err == nil {
 		return nil
 	}
-
-	// Check if it's already a CodeError
 	if e, ok := err.(*CodeError); ok {
 		return e
 	}
-
-	// Check if it's a gRPC error
-	if s, ok := status.FromError(err); ok {
-		code := Xcode(s.Code())
-		// If code is one of standard gRPC codes (0-16), map to our codes
-		if code < 100 {
-			code = mapGrpcCode(s.Code())
-		}
-		return &CodeError{Code: code, Msg: s.Message()}
-	}
-
-	// Default to ServerError
 	return &CodeError{Code: ServerError, Msg: err.Error()}
-}
-
-// ToGrpcError converts CodeError to gRPC error
-func ToGrpcError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if e, ok := err.(*CodeError); ok {
-		return status.Error(codes.Code(e.Code), e.Msg)
-	}
-
-	return status.Error(codes.Unknown, err.Error())
-}
-
-func mapGrpcCode(code codes.Code) Xcode {
-	switch code {
-	case codes.OK:
-		return Success
-	case codes.InvalidArgument:
-		return ParamError
-	case codes.NotFound:
-		return NotFound
-	case codes.AlreadyExists:
-		return UserAlreadyExist // Or generic AlreadyExist
-	case codes.PermissionDenied:
-		return Forbidden
-	case codes.Unauthenticated:
-		return Unauthorized
-	case codes.DeadlineExceeded:
-		return TimeoutError
-	case codes.Internal:
-		return ServerError
-	case codes.Unavailable:
-		return ServerError
-	default:
-		return ServerError
-	}
 }
 
 // HttpStatus converts Xcode to HTTP status code
@@ -221,10 +166,3 @@ func (c Xcode) HttpStatus() int {
 	}
 }
 
-// CodeFromGrpcError extracts Xcode from gRPC error
-func CodeFromGrpcError(err error) Xcode {
-	if s, ok := status.FromError(err); ok {
-		return Xcode(s.Code())
-	}
-	return ServerError
-}

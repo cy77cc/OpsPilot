@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -61,7 +60,7 @@ func TestCasbinAuth_Forbidden(t *testing.T) {
 	if got := w.Body.String(); got == "" {
 		t.Fatal("expected response body for forbidden")
 	}
-	if !containsAll(w.Body.String(), []string{"\"code\":2004", "无权限访问该资源"}) {
+	if !containsAll(w.Body.String(), []string{"\"code\":2004", "无权限"}) {
 		t.Fatalf("unexpected forbidden body: %s", w.Body.String())
 	}
 }
@@ -152,7 +151,7 @@ func TestCasbinAuth_UnauthorizedWhenUIDMissing(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d (%s)", w.Code, w.Body.String())
 	}
-	if !containsAll(w.Body.String(), []string{"\"code\":2003", fmt.Sprintf("%s", "未登录或Token无效")}) {
+	if !containsAll(w.Body.String(), []string{"\"code\":2003", "未认证"}) {
 		t.Fatalf("unexpected unauthorized body: %s", w.Body.String())
 	}
 }

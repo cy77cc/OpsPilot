@@ -1,13 +1,14 @@
 package monitoring
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
 	"github.com/cy77cc/k8s-manage/internal/svc"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,7 +26,7 @@ func (h *Handler) StartCollector() {
 }
 
 func (h *Handler) ListAlerts(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	alerts, total, err := h.logic.ListAlerts(
@@ -36,26 +37,26 @@ func (h *Handler) ListAlerts(c *gin.Context) {
 		intFromQuery(c, "page_size", 20),
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": alerts, "total": total}})
+	httpx.OK(c, gin.H{"list": alerts, "total": total})
 }
 
 func (h *Handler) ListRules(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	rules, total, err := h.logic.ListRules(c.Request.Context(), intFromQuery(c, "page", 1), intFromQuery(c, "page_size", 50))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": rules, "total": total}})
+	httpx.OK(c, gin.H{"list": rules, "total": total})
 }
 
 func (h *Handler) CreateRule(c *gin.Context) {
-	if !h.authorize(c, "monitoring:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
 	var req struct {
@@ -70,7 +71,7 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		DimensionsJSON string  `json:"dimensions_json"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	rule, err := h.logic.CreateRule(c.Request.Context(), model.AlertRule{
@@ -87,14 +88,14 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		Scope:          "global",
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": rule})
+	httpx.OK(c, rule)
 }
 
 func (h *Handler) UpdateRule(c *gin.Context) {
-	if !h.authorize(c, "monitoring:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -109,7 +110,7 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		DimensionsJSON *string `json:"dimensions_json"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	payload := map[string]any{}
@@ -139,10 +140,10 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	}
 	rule, err := h.logic.UpdateRule(c.Request.Context(), uint(id), payload)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": rule})
+	httpx.OK(c, rule)
 }
 
 func (h *Handler) EnableRule(c *gin.Context) {
@@ -154,48 +155,48 @@ func (h *Handler) DisableRule(c *gin.Context) {
 }
 
 func (h *Handler) setRuleEnabled(c *gin.Context, enabled bool) {
-	if !h.authorize(c, "monitoring:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
 	rule, err := h.logic.SetRuleEnabled(c.Request.Context(), uint(id), enabled)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": rule})
+	httpx.OK(c, rule)
 }
 
 func (h *Handler) ListRuleEvaluations(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
 	items, total, err := h.logic.ListRuleEvaluations(c.Request.Context(), uint(id), intFromQuery(c, "page", 1), intFromQuery(c, "page_size", 50))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": items, "total": total}})
+	httpx.OK(c, gin.H{"list": items, "total": total})
 }
 
 func (h *Handler) GetMetrics(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	metric := strings.TrimSpace(c.Query("metric"))
 	if metric == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": "metric is required"})
+		httpx.Fail(c, xcode.ParamError, "metric is required")
 		return
 	}
 	start, err := parseTime(defaultIfEmpty(c.Query("start_time"), time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": "invalid start_time"})
+		httpx.Fail(c, xcode.ParamError, "invalid start_time")
 		return
 	}
 	end, err := parseTime(defaultIfEmpty(c.Query("end_time"), time.Now().Format(time.RFC3339)))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": "invalid end_time"})
+		httpx.Fail(c, xcode.ParamError, "invalid end_time")
 		return
 	}
 	out, err := h.logic.GetMetrics(c.Request.Context(), MetricQuery{
@@ -206,26 +207,26 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 		Source:         strings.TrimSpace(c.Query("source")),
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out})
+	httpx.OK(c, out)
 }
 
 func (h *Handler) ListChannels(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	items, err := h.logic.ListChannels(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": items, "total": len(items)}})
+	httpx.OK(c, gin.H{"list": items, "total": len(items)})
 }
 
 func (h *Handler) CreateChannel(c *gin.Context) {
-	if !h.authorize(c, "monitoring:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
 	var req struct {
@@ -237,7 +238,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 		Enabled    *bool  `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	item, err := h.logic.CreateChannel(c.Request.Context(), model.AlertNotificationChannel{
@@ -249,14 +250,14 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 		Enabled:    req.Enabled == nil || *req.Enabled,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": item})
+	httpx.OK(c, item)
 }
 
 func (h *Handler) UpdateChannel(c *gin.Context) {
-	if !h.authorize(c, "monitoring:write") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -269,7 +270,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		Enabled    *bool   `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 2000, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	payload := map[string]any{}
@@ -293,14 +294,14 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	}
 	item, err := h.logic.UpdateChannel(c.Request.Context(), uint(id), payload)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": item})
+	httpx.OK(c, item)
 }
 
 func (h *Handler) ListDeliveries(c *gin.Context) {
-	if !h.authorize(c, "monitoring:read") {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
 		return
 	}
 	alertID := uint(intFromQuery(c, "alert_id", 0))
@@ -313,62 +314,10 @@ func (h *Handler) ListDeliveries(c *gin.Context) {
 		intFromQuery(c, "page_size", 20),
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 3000, "msg": err.Error()})
+		httpx.ServerErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": items, "total": total}})
-}
-
-func (h *Handler) authorize(c *gin.Context, code string) bool {
-	uid, ok := c.Get("uid")
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
-		return false
-	}
-	var user model.User
-	if err := h.svcCtx.DB.Select("id,username").Where("id = ?", toUint(uid)).First(&user).Error; err == nil && strings.EqualFold(user.Username, "admin") {
-		return true
-	}
-	var rows []struct {
-		Code string `gorm:"column:code"`
-	}
-	if err := h.svcCtx.DB.Table("permissions").
-		Select("permissions.code").
-		Joins("JOIN role_permissions ON role_permissions.permission_id = permissions.id").
-		Joins("JOIN user_roles ON user_roles.role_id = role_permissions.role_id").
-		Where("user_roles.user_id = ?", toUint(uid)).
-		Scan(&rows).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "forbidden"})
-		return false
-	}
-	for _, r := range rows {
-		if r.Code == code || r.Code == "monitoring:*" || r.Code == "*:*" {
-			return true
-		}
-	}
-	c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "forbidden"})
-	return false
-}
-
-func toUint(v any) uint64 {
-	switch x := v.(type) {
-	case uint64:
-		return x
-	case uint:
-		return uint64(x)
-	case int:
-		if x < 0 {
-			return 0
-		}
-		return uint64(x)
-	case int64:
-		if x < 0 {
-			return 0
-		}
-		return uint64(x)
-	default:
-		return 0
-	}
+	httpx.OK(c, gin.H{"list": items, "total": total})
 }
 
 func parseTime(raw string) (time.Time, error) {

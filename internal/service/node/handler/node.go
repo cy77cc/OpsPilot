@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	v1 "github.com/cy77cc/k8s-manage/api/node/v1"
-	"github.com/cy77cc/k8s-manage/internal/response"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	hostlogic "github.com/cy77cc/k8s-manage/internal/service/host/logic"
 	"github.com/cy77cc/k8s-manage/internal/svc"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
@@ -22,11 +22,10 @@ func NewNodeHandler(svcCtx *svc.ServiceContext) *NodeHandler {
 	}
 }
 
-// Add 添加一个节点
 func (n *NodeHandler) Add(c *gin.Context) {
 	var req v1.CreateNodeReq
 	if err := c.BindJSON(&req); err != nil {
-		response.Response(c, nil, xcode.NewErrCode(xcode.ErrInvalidParam))
+		httpx.BindErr(c, err)
 		return
 	}
 	createReq := hostlogic.CreateReq{
@@ -60,7 +59,7 @@ func (n *NodeHandler) Add(c *gin.Context) {
 	}
 	probeResp, err := hostSvc.Probe(c.Request.Context(), 0, probeReq)
 	if err != nil {
-		response.Response(c, nil, xcode.FromError(err))
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	if probeResp == nil || !probeResp.Reachable {
@@ -68,13 +67,13 @@ func (n *NodeHandler) Add(c *gin.Context) {
 		if probeResp != nil && strings.TrimSpace(probeResp.Message) != "" {
 			msg = probeResp.Message
 		}
-		response.Response(c, nil, xcode.FromError(errors.New(msg)))
+		httpx.Fail(c, xcode.ServerError, msg)
 		return
 	}
 	createReq.ProbeToken = probeResp.ProbeToken
 	node, err := hostSvc.CreateWithProbe(c.Request.Context(), 0, true, createReq)
 	if err != nil {
-		response.Response(c, nil, xcode.FromError(err))
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	resp := v1.NodeResp{
@@ -99,9 +98,9 @@ func (n *NodeHandler) Add(c *gin.Context) {
 		CreatedAt:   node.CreatedAt,
 		UpdatedAt:   node.UpdatedAt,
 	}
-	response.Response(c, resp, nil)
+	httpx.OK(c, resp)
 }
 
 func (n *NodeHandler) Get(c *gin.Context) {
-	response.Response(c, nil, xcode.FromError(errors.New("not implemented")))
+	httpx.Fail(c, xcode.ServerError, errors.New("not implemented").Error())
 }

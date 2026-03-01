@@ -2,22 +2,23 @@ package ai
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *handler) capabilities(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	if h.svcCtx.AI == nil {
-		c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": []any{}})
+		httpx.OK(c, []any{})
 		return
 	}
 	all := h.svcCtx.AI.ToolMetas()
@@ -27,13 +28,13 @@ func (h *handler) capabilities(c *gin.Context) {
 			out = append(out, item)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out})
+	httpx.OK(c, out)
 }
 
 func (h *handler) previewTool(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -41,21 +42,21 @@ func (h *handler) previewTool(c *gin.Context) {
 		Params map[string]any `json:"params"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	meta, ok := h.findMeta(req.Tool)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "tool not found"})
+		httpx.Fail(c, xcode.NotFound, "tool not found")
 		return
 	}
 	req.Tool = meta.Name
 	if h.svcCtx.AI == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "msg": "ai agent not initialized"})
+		httpx.Fail(c, xcode.ServerError, "ai agent not initialized")
 		return
 	}
 	if !h.hasPermission(uid, meta.Permission) {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "permission denied"})
+		httpx.Fail(c, xcode.Forbidden, "permission denied")
 		return
 	}
 	data := gin.H{
@@ -77,13 +78,13 @@ func (h *handler) previewTool(c *gin.Context) {
 		data["expiresAt"] = t.ExpiresAt
 		data["previewDiff"] = "Mutating operation requires approval."
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": data})
+	httpx.OK(c, data)
 }
 
 func (h *handler) executeTool(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -92,12 +93,12 @@ func (h *handler) executeTool(c *gin.Context) {
 		ApprovalToken string         `json:"approval_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	meta, ok := h.findMeta(req.Tool)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "tool not found"})
+		httpx.Fail(c, xcode.NotFound, "tool not found")
 		return
 	}
 	req.Tool = meta.Name
@@ -134,26 +135,26 @@ func (h *handler) executeTool(c *gin.Context) {
 		rec.Result.LatencyMS = time.Since(start).Milliseconds()
 	}
 	h.store.saveExecution(rec)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": rec})
+	httpx.OK(c, rec)
 }
 
 func (h *handler) getExecution(c *gin.Context) {
 	if _, ok := uidFromContext(c); !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	rec, ok := h.store.getExecution(c.Param("id"))
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "execution not found"})
+		httpx.Fail(c, xcode.NotFound, "execution not found")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": rec})
+	httpx.OK(c, rec)
 }
 
 func (h *handler) createApproval(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -161,17 +162,17 @@ func (h *handler) createApproval(c *gin.Context) {
 		Params map[string]any `json:"params"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	meta, ok := h.findMeta(req.Tool)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "tool not found"})
+		httpx.Fail(c, xcode.NotFound, "tool not found")
 		return
 	}
 	req.Tool = meta.Name
 	if meta.Mode == tools.ToolModeReadonly {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "readonly tool does not require approval"})
+		httpx.Fail(c, xcode.ParamError, "readonly tool does not require approval")
 		return
 	}
 	t := h.store.newApproval(uid, approvalTicket{
@@ -181,35 +182,35 @@ func (h *handler) createApproval(c *gin.Context) {
 		Mode:   meta.Mode,
 		Meta:   meta,
 	})
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": t})
+	httpx.OK(c, t)
 }
 
 func (h *handler) confirmApproval(c *gin.Context) {
 	uid, ok := uidFromContext(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "unauthorized"})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	if !h.hasPermission(uid, "ai:approval:review") {
-		c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "permission denied"})
+		httpx.Fail(c, xcode.Forbidden, "permission denied")
 		return
 	}
 	var req struct {
 		Approve bool `json:"approve"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": err.Error()})
+		httpx.BindErr(c, err)
 		return
 	}
 	id := c.Param("id")
 	t, ok := h.store.getApproval(id)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "approval not found"})
+		httpx.Fail(c, xcode.NotFound, "approval not found")
 		return
 	}
 	if time.Now().After(t.ExpiresAt) {
 		_, _ = h.store.setApprovalStatus(id, "expired", uid)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "approval expired"})
+		httpx.Fail(c, xcode.ParamError, "approval expired")
 		return
 	}
 	status := "rejected"
@@ -217,7 +218,7 @@ func (h *handler) confirmApproval(c *gin.Context) {
 		status = "approved"
 	}
 	out, _ := h.store.setApprovalStatus(id, status, uid)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": out})
+	httpx.OK(c, out)
 }
 
 func (h *handler) findMeta(name string) (tools.ToolMeta, bool) {

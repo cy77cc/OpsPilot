@@ -3,6 +3,7 @@ package deployment
 import (
 	"testing"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/svc"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -26,14 +27,14 @@ func TestHasPermissionRuntimeAware(t *testing.T) {
 			t.Fatalf("exec %q: %v", s, err)
 		}
 	}
-	h := NewHandler(&svc.ServiceContext{DB: db})
-	if !h.hasPermission(99, "deploy:k8s:read") {
+	_ = NewHandler(&svc.ServiceContext{DB: db})
+	if !httpx.HasAnyPermission(db, 99, "deploy:k8s:read") {
 		t.Fatalf("expected k8s read permission")
 	}
-	if !h.hasPermission(99, "deploy:compose:apply") {
+	if !httpx.HasAnyPermission(db, 99, "deploy:compose:apply") {
 		t.Fatalf("expected compose apply permission")
 	}
-	if h.hasPermission(99, "deploy:k8s:rollback") {
+	if httpx.HasAnyPermission(db, 99, "deploy:k8s:rollback") {
 		t.Fatalf("unexpected rollback permission")
 	}
 }

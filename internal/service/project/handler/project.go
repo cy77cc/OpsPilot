@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"net/http"
-
 	v1 "github.com/cy77cc/k8s-manage/api/project/v1"
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/service/project/logic"
 	"github.com/cy77cc/k8s-manage/internal/svc"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,35 +20,35 @@ func NewProjectHandler(svcCtx *svc.ServiceContext) *ProjectHandler {
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	var req v1.CreateProjectReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	resp, err := h.logic.CreateProject(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp})
+	httpx.OK(c, resp)
 }
 
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	resp, err := h.logic.ListProjects(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": resp, "total": len(resp)})
+	httpx.OK(c, gin.H{"data": resp, "total": len(resp)})
 }
 
 func (h *ProjectHandler) DeployProject(c *gin.Context) {
 	var req v1.DeployProjectReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	if err := h.logic.DeployProject(c.Request.Context(), req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "Project deployed successfully", "data": nil})
+	httpx.OK(c, nil)
 }

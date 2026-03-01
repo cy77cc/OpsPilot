@@ -4,14 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/model"
 	"github.com/cy77cc/k8s-manage/internal/svc"
 	"github.com/cy77cc/k8s-manage/internal/utils"
+	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -32,38 +33,38 @@ func (e *codeValidationError) Error() string {
 func (h *Handler) MyPermissions(c *gin.Context) {
 	uid, ok := c.Get("uid")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	userID := toUint64(uid)
+	userID := httpx.ToUint64(uid)
 	perms, _ := h.fetchPermissionsByUserID(userID)
-	if h.isAdminUser(userID) {
+	if httpx.IsAdmin(h.svcCtx.DB, userID) {
 		perms = mergePermissions(perms, adminPermissionSet()...)
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": perms})
+	httpx.OK(c, perms)
 }
 
 func (h *Handler) Check(c *gin.Context) {
 	var req struct{ Resource, Action string }
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	code := req.Resource + ":" + req.Action
 	uid, _ := c.Get("uid")
-	userID := toUint64(uid)
+	userID := httpx.ToUint64(uid)
 	perms, _ := h.fetchPermissionsByUserID(userID)
-	if h.isAdminUser(userID) {
+	if httpx.IsAdmin(h.svcCtx.DB, userID) {
 		perms = mergePermissions(perms, adminPermissionSet()...)
 	}
 	has := hasPermission(perms, code, req.Resource)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"hasPermission": has}})
+	httpx.OK(c, gin.H{"hasPermission": has})
 }
 
 func (h *Handler) ListUsers(c *gin.Context) {
 	var users []model.User
 	if err := h.svcCtx.DB.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	list := make([]gin.H, 0, len(users))
@@ -80,22 +81,22 @@ func (h *Handler) ListUsers(c *gin.Context) {
 			"updatedAt": time.Unix(u.UpdateTime, 0),
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": list, "total": len(list)}})
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
 }
 
 func (h *Handler) GetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	var u model.User
 	if err := h.svcCtx.DB.First(&u, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "user not found"}})
+		httpx.Fail(c, xcode.NotFound, "user not found")
 		return
 	}
 	roles, _ := h.getRoleCodesByUserID(id)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{
+	httpx.OK(c, gin.H{
 		"id":        u.ID,
 		"username":  u.Username,
 		"name":      u.Username,
@@ -104,7 +105,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 		"status":    toStatusText(u.Status),
 		"createdAt": time.Unix(u.CreateTime, 0),
 		"updatedAt": time.Unix(u.UpdateTime, 0),
-	}})
+	})
 }
 
 func (h *Handler) CreateUser(c *gin.Context) {
@@ -117,13 +118,13 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		Status   string   `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 
 	hashed, err := utils.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": "hash password failed"}})
+		httpx.Fail(c, xcode.ServerError, "hash password failed")
 		return
 	}
 
@@ -135,11 +136,11 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		}
 		return h.syncUserRolesTx(tx, uint64(u.ID), req.Roles)
 	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	roles, _ := h.getRoleCodesByUserID(uint64(u.ID))
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{
+	httpx.OK(c, gin.H{
 		"id":        u.ID,
 		"username":  u.Username,
 		"name":      u.Username,
@@ -148,13 +149,13 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		"status":    toStatusText(u.Status),
 		"createdAt": time.Unix(u.CreateTime, 0),
 		"updatedAt": time.Unix(u.UpdateTime, 0),
-	}})
+	})
 }
 
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	var req struct {
@@ -165,7 +166,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		Status   *string  `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 
@@ -196,22 +197,22 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}); err != nil {
 		var validationErr *codeValidationError
 		if errors.As(err, &validationErr) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": validationErr.Error()}})
+			httpx.Fail(c, xcode.ParamError, validationErr.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 
 	uid, _ := c.Get("uid")
-	log.Printf("rbac update user actor=%d target=%d timestamp=%s", toUint64(uid), id, time.Now().UTC().Format(time.RFC3339))
+	log.Printf("rbac update user actor=%d target=%d timestamp=%s", httpx.ToUint64(uid), id, time.Now().UTC().Format(time.RFC3339))
 	h.GetUser(c)
 }
 
 func (h *Handler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
@@ -223,16 +224,16 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		}
 		return nil
 	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) ListRoles(c *gin.Context) {
 	var roles []model.Role
 	if err := h.svcCtx.DB.Find(&roles).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	list := make([]gin.H, 0, len(roles))
@@ -240,22 +241,22 @@ func (h *Handler) ListRoles(c *gin.Context) {
 		permissions, _ := h.getPermissionCodesByRoleID(uint64(r.ID))
 		list = append(list, gin.H{"id": r.ID, "name": r.Name, "code": r.Code, "description": r.Description, "permissions": permissions, "createdAt": time.Unix(r.CreateTime, 0), "updatedAt": time.Unix(r.UpdateTime, 0)})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": list, "total": len(list)}})
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
 }
 
 func (h *Handler) GetRole(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	var r model.Role
 	if err := h.svcCtx.DB.First(&r, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "role not found"}})
+		httpx.Fail(c, xcode.NotFound, "role not found")
 		return
 	}
 	permissions, _ := h.getPermissionCodesByRoleID(id)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"id": r.ID, "name": r.Name, "code": r.Code, "description": r.Description, "permissions": permissions, "createdAt": time.Unix(r.CreateTime, 0), "updatedAt": time.Unix(r.UpdateTime, 0)}})
+	httpx.OK(c, gin.H{"id": r.ID, "name": r.Name, "code": r.Code, "description": r.Description, "permissions": permissions, "createdAt": time.Unix(r.CreateTime, 0), "updatedAt": time.Unix(r.UpdateTime, 0)})
 }
 
 func (h *Handler) CreateRole(c *gin.Context) {
@@ -265,7 +266,7 @@ func (h *Handler) CreateRole(c *gin.Context) {
 		Permissions []string `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 	now := time.Now().Unix()
@@ -277,17 +278,17 @@ func (h *Handler) CreateRole(c *gin.Context) {
 		}
 		return h.syncRolePermissionsTx(tx, uint64(r.ID), req.Permissions)
 	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	permissions, _ := h.getPermissionCodesByRoleID(uint64(r.ID))
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"id": r.ID, "name": r.Name, "code": r.Code, "description": r.Description, "permissions": permissions, "createdAt": time.Unix(r.CreateTime, 0), "updatedAt": time.Unix(r.UpdateTime, 0)}})
+	httpx.OK(c, gin.H{"id": r.ID, "name": r.Name, "code": r.Code, "description": r.Description, "permissions": permissions, "createdAt": time.Unix(r.CreateTime, 0), "updatedAt": time.Unix(r.UpdateTime, 0)})
 }
 
 func (h *Handler) UpdateRole(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	var req struct {
@@ -296,7 +297,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		Permissions []string `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 
@@ -321,22 +322,22 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 	}); err != nil {
 		var validationErr *codeValidationError
 		if errors.As(err, &validationErr) {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": validationErr.Error()}})
+			httpx.Fail(c, xcode.ParamError, validationErr.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 
 	uid, _ := c.Get("uid")
-	log.Printf("rbac update role actor=%d target=%d timestamp=%s", toUint64(uid), id, time.Now().UTC().Format(time.RFC3339))
+	log.Printf("rbac update role actor=%d target=%d timestamp=%s", httpx.ToUint64(uid), id, time.Now().UTC().Format(time.RFC3339))
 	h.GetRole(c)
 }
 
 func (h *Handler) DeleteRole(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
@@ -348,43 +349,43 @@ func (h *Handler) DeleteRole(c *gin.Context) {
 		}
 		return tx.Delete(&model.Role{}, id).Error
 	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": nil})
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) ListPermissions(c *gin.Context) {
 	var permissions []model.Permission
 	if err := h.svcCtx.DB.Find(&permissions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	list := make([]gin.H, 0, len(permissions))
 	for _, p := range permissions {
 		list = append(list, gin.H{"id": p.ID, "name": p.Name, "code": p.Code, "description": p.Description, "category": p.Resource, "createdAt": time.Unix(p.CreateTime, 0)})
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"list": list, "total": len(list)}})
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
 }
 
 func (h *Handler) GetPermission(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "invalid id"}})
+		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
 	var p model.Permission
 	if err := h.svcCtx.DB.First(&p, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "permission not found"}})
+		httpx.Fail(c, xcode.NotFound, "permission not found")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"id": p.ID, "name": p.Name, "code": p.Code, "description": p.Description, "category": p.Resource, "createdAt": time.Unix(p.CreateTime, 0)}})
+	httpx.OK(c, gin.H{"id": p.ID, "name": p.Name, "code": p.Code, "description": p.Description, "category": p.Resource, "createdAt": time.Unix(p.CreateTime, 0)})
 }
 
 func (h *Handler) RecordMigrationEvent(c *gin.Context) {
 	uid, ok := c.Get("uid")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "unauthorized"}})
+		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
 	var req struct {
@@ -396,11 +397,11 @@ func (h *Handler) RecordMigrationEvent(c *gin.Context) {
 		DurationMs int64  `json:"durationMs"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		httpx.BindErr(c, err)
 		return
 	}
 
-	userID := toUint64(uid)
+	userID := httpx.ToUint64(uid)
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	log.Printf("rbac migration event=%s actor=%d from=%s to=%s action=%s status=%s duration_ms=%d timestamp=%s",
 		strings.TrimSpace(req.EventType),
@@ -412,7 +413,7 @@ func (h *Handler) RecordMigrationEvent(c *gin.Context) {
 		req.DurationMs,
 		timestamp,
 	)
-	c.JSON(http.StatusOK, gin.H{"code": 1000, "msg": "ok", "data": gin.H{"accepted": true}})
+	httpx.OK(c, gin.H{"accepted": true})
 }
 
 func (h *Handler) fetchPermissionsByUserID(userID uint64) ([]string, error) {
@@ -429,55 +430,6 @@ func (h *Handler) fetchPermissionsByUserID(userID uint64) ([]string, error) {
 		out = append(out, r.Code)
 	}
 	return out, nil
-}
-
-func toUint64(v any) uint64 {
-	switch x := v.(type) {
-	case uint:
-		return uint64(x)
-	case uint64:
-		return x
-	case int:
-		return uint64(x)
-	case int64:
-		return uint64(x)
-	case float64:
-		return uint64(x)
-	default:
-		return 0
-	}
-}
-
-func (h *Handler) isAdminUser(userID uint64) bool {
-	if userID == 0 {
-		return false
-	}
-
-	var u model.User
-	if err := h.svcCtx.DB.Select("id", "username").Where("id = ?", userID).First(&u).Error; err == nil {
-		if strings.EqualFold(strings.TrimSpace(u.Username), "admin") {
-			return true
-		}
-	}
-
-	type roleRow struct {
-		Code string `gorm:"column:code"`
-	}
-	var rows []roleRow
-	err := h.svcCtx.DB.Table("roles").
-		Select("roles.code").
-		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ?", userID).
-		Scan(&rows).Error
-	if err != nil {
-		return false
-	}
-	for _, row := range rows {
-		if strings.EqualFold(strings.TrimSpace(row.Code), "admin") {
-			return true
-		}
-	}
-	return false
 }
 
 func hasPermission(perms []string, code string, resource string) bool {
