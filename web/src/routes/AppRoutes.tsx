@@ -23,6 +23,7 @@ const CredentialListPage = lazy(() => import('../pages/Deployment/Infrastructure
 const ClusterListPage = lazy(() => import('../pages/Deployment/Infrastructure/ClusterListPage'));
 const ClusterDetailPage = lazy(() => import('../pages/Deployment/Infrastructure/ClusterDetailPage'));
 const ClusterBootstrapWizard = lazy(() => import('../pages/Deployment/Infrastructure/ClusterBootstrapWizard'));
+const ClusterImportWizard = lazy(() => import('../pages/Deployment/Infrastructure/ClusterImportWizard'));
 
 // 部署管理 - 部署目标
 const DeploymentTargetListPage = lazy(() => import('../pages/Deployment/Targets/DeploymentTargetListPage'));
@@ -192,6 +193,16 @@ const AppRoutes: React.FC = () => {
           <AppLayout>
             <LazyPage>
               <ClusterBootstrapWizard />
+            </LazyPage>
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/deployment/infrastructure/clusters/import"
+        element={
+          <AppLayout>
+            <LazyPage>
+              <ClusterImportWizard />
             </LazyPage>
           </AppLayout>
         }

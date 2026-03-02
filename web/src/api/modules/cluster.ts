@@ -485,11 +485,20 @@ export const clusterApi = {
     return apiService.post('/clusters/import', data);
   },
 
-  validateImport(data: { kubeconfig: string }): Promise<ApiResponse<{
+  validateImport(data: {
+    kubeconfig?: string;
+    endpoint?: string;
+    ca_cert?: string;
+    cert?: string;
+    key?: string;
+    token?: string;
+    skip_tls_verify?: boolean;
+  }): Promise<ApiResponse<{
     valid: boolean;
     message: string;
     endpoint?: string;
     version?: string;
+    auth_method?: string;
   }>> {
     return apiService.post('/clusters/import/validate', data);
   },
