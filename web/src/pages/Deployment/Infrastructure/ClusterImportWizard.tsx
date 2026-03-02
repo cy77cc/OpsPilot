@@ -64,6 +64,13 @@ const ClusterImportWizard: React.FC = () => {
   const [authMethod, setAuthMethod] = useState<AuthMethod>('kubeconfig');
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [importedCluster, setImportedCluster] = useState<Cluster | null>(null);
+  const watchedName = Form.useWatch('name', form);
+  const watchedKubeconfig = Form.useWatch('kubeconfig', form);
+  const watchedEndpoint = Form.useWatch('endpoint', form);
+  const watchedCaCert = Form.useWatch('ca_cert', form);
+  const watchedCert = Form.useWatch('cert', form);
+  const watchedKey = Form.useWatch('key', form);
+  const watchedToken = Form.useWatch('token', form);
 
   const handleFileUpload = (file: File, field: string) => {
     const reader = new FileReader();
@@ -80,8 +87,9 @@ const ClusterImportWizard: React.FC = () => {
   };
 
   const buildValidatePayload = () => {
-    const values = form.getFieldsValue();
+    const values = form.getFieldsValue(true);
     const payload: Record<string, string | boolean | undefined> = {};
+    payload.name = values.name;
 
     switch (authMethod) {
       case 'kubeconfig':
@@ -553,20 +561,19 @@ const ClusterImportWizard: React.FC = () => {
   ];
 
   const canProceed = () => {
-    const values = form.getFieldsValue();
     switch (currentStep) {
       case 0:
-        return !!values.name;
+        return !!watchedName;
       case 2:
         // 连接配置步骤，检查必填字段
         if (authMethod === 'kubeconfig') {
-          return !!values.kubeconfig;
+          return !!watchedKubeconfig;
         }
         if (authMethod === 'certificate') {
-          return !!values.endpoint && !!values.ca_cert && !!values.cert && !!values.key;
+          return !!watchedEndpoint && !!watchedCaCert && !!watchedCert && !!watchedKey;
         }
         if (authMethod === 'token') {
-          return !!values.endpoint && !!values.token;
+          return !!watchedEndpoint && !!watchedToken;
         }
         return false;
       case 3:

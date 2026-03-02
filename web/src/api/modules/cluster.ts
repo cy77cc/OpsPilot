@@ -486,6 +486,7 @@ export const clusterApi = {
   },
 
   validateImport(data: {
+    name?: string;
     kubeconfig?: string;
     endpoint?: string;
     ca_cert?: string;

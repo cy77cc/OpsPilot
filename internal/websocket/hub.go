@@ -74,7 +74,12 @@ func GetHub() *Hub {
 // Run 启动 Hub
 func (h *Hub) Run() {
 	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	defer func ()  {
+		if err := recover(); err != nil {
+			log.Println("[websocket] hub panic:", err)
+		}
+		ticker.Stop()
+	}()
 
 	for {
 		select {
@@ -203,6 +208,9 @@ func (h *Hub) PushUpdate(userID uint64, notifID uint, readAt, dismissedAt, confi
 // ReadPump 读取消息
 func (c *Client) ReadPump() {
 	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("WebSocket: 读取消息失败: %v", err)
+		}
 		c.Hub.Unregister(c)
 		c.Conn.Close()
 	}()
@@ -226,6 +234,9 @@ func (c *Client) ReadPump() {
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
+		if err := recover(); err != nil {
+			log.Println("WritePump error:", err)
+		}
 		ticker.Stop()
 		c.Conn.Close()
 	}()
