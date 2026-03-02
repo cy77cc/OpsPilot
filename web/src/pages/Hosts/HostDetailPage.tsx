@@ -195,12 +195,12 @@ const HostDetailPage: React.FC = () => {
 
       <Card
         loading={loading}
-        title={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/hosts')}>返回</Button><span>{host?.name || '主机详情'}</span></Space>}
+        title={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts')}>返回</Button><span>{host?.name || '主机详情'}</span></Space>}
         extra={(
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
             <Button icon={<EditOutlined />} onClick={openEditModal}>编辑主机</Button>
-            <Button onClick={() => navigate(`/hosts/terminal/${id}`)}>终端</Button>
+            <Button onClick={() => navigate(`/deployment/infrastructure/hosts/${id}/terminal`)}>终端</Button>
             <Button onClick={() => runAction('check')}>巡检</Button>
             <Button onClick={() => runAction('restart', true)}>重启</Button>
             <Button danger onClick={() => runAction('shutdown', true)}>关机</Button>

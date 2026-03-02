@@ -290,8 +290,8 @@ const HostTerminalPage: React.FC = () => {
   return (
     <div className="fade-in host-terminal-page" style={{ height: pageHeight, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <Breadcrumb className="mb-4">
-        <Breadcrumb.Item><Link to="/hosts">主机管理</Link></Breadcrumb.Item>
-        <Breadcrumb.Item><Link to={`/hosts/detail/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
+        <Breadcrumb.Item><Link to="/deployment/infrastructure/hosts">主机管理</Link></Breadcrumb.Item>
+        <Breadcrumb.Item><Link to={`/deployment/infrastructure/hosts/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
         <Breadcrumb.Item>终端与文件</Breadcrumb.Item>
       </Breadcrumb>
 
@@ -300,7 +300,7 @@ const HostTerminalPage: React.FC = () => {
         styles={{ body: { minHeight: 0, height: '100%' } }}
         title={
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/hosts/detail/${id}`)}>返回</Button>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/hosts/${id}`)}>返回</Button>
             <Text strong>{host?.name || `Host #${id}`}</Text>
             <Text type="secondary">{host?.ip || '-'}</Text>
             <Tag color={status === 'connected' ? 'success' : status === 'connecting' ? 'processing' : status === 'error' ? 'error' : 'default'}>

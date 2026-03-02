@@ -184,7 +184,7 @@ const HostListPage: React.FC = () => {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <a
-                  onClick={() => navigate(`/hosts/detail/${host.id}`)}
+                  onClick={() => navigate(`/deployment/infrastructure/hosts/${host.id}`)}
                   className="text-lg font-semibold text-gray-900 hover:text-primary-600"
                 >
                   {host.name}
@@ -246,7 +246,7 @@ const HostListPage: React.FC = () => {
                     width: 720,
                   });
                 } else if (key === 'terminal') {
-                  navigate(`/hosts/terminal/${host.id}`);
+                  navigate(`/deployment/infrastructure/hosts/${host.id}/terminal`);
                 } else if (key === 'maintenance') {
                   await quickAction(host.id, 'maintenance');
                 }
