@@ -19,8 +19,11 @@ export interface DeployTarget {
   project_id: number;
   team_id: number;
   env: string;
+  environment?: string; // 环境类型：development, staging, production
   status: string;
   readiness_status?: string;
+  cluster_name?: string;
+  namespace?: string;
   nodes?: Array<{
     host_id: number;
     name: string;
@@ -42,11 +45,39 @@ export interface DeployRelease {
   strategy: string;
   revision_id: number;
   status: string;
+  state?: string; // 发布状态：pending_approval, applied, failed, rejected, rolled_back
   lifecycle_state?: string;
   diagnostics_json?: string;
   verification_json?: string;
   source_release_id?: number;
   target_revision?: string;
+  service_name?: string;
+  target_name?: string;
+  phase?: string;
+  progress?: number;
+  pods?: Array<{
+    name: string;
+    status: string;
+    ready: boolean;
+  }>;
+  health_probes?: Array<{
+    name: string;
+    type: string;
+    status: string;
+  }>;
+  logs?: string[];
+  approval_info?: {
+    ticket_id?: string;
+    requester?: string;
+    requester_email?: string;
+    reason?: string;
+    created_at: string;
+    approved_by?: string;
+    approved_at?: string;
+    rejected_by?: string;
+    rejected_at?: string;
+    comment?: string;
+  };
   created_at: string;
 }
 
@@ -117,6 +148,15 @@ export const deploymentApi = {
   getTargets(): Promise<ApiResponse<PaginatedResponse<DeployTarget>>> {
     return apiService.get('/deploy/targets');
   },
+  listTargets(params?: { environment?: string; runtime_type?: string }): Promise<ApiResponse<PaginatedResponse<DeployTarget>>> {
+    return apiService.get('/deploy/targets', { params });
+  },
+  getTargetDetail(id: number): Promise<ApiResponse<DeployTarget>> {
+    return apiService.get(`/deploy/targets/${id}`);
+  },
+  listClusters(): Promise<ApiResponse<PaginatedResponse<any>>> {
+    return apiService.get('/deploy/clusters');
+  },
   createTarget(payload: {
     name: string;
     target_type: 'k8s' | 'compose';
@@ -127,6 +167,7 @@ export const deploymentApi = {
     project_id?: number;
     team_id?: number;
     env?: string;
+    environment?: string;
     nodes?: DeployTargetNode[];
   }): Promise<ApiResponse<DeployTarget>> {
     return apiService.post('/deploy/targets', payload);
@@ -141,6 +182,7 @@ export const deploymentApi = {
     project_id: number;
     team_id: number;
     env: string;
+    environment: string;
     nodes: DeployTargetNode[];
   }>): Promise<ApiResponse<DeployTarget>> {
     return apiService.put(`/deploy/targets/${id}`, payload);

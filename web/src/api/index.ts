@@ -56,6 +56,13 @@ import { notificationApi } from './modules/notification';
 
 // 统一导出所有API
 export const Api = {
+  cluster: {
+    getList: () => apiService.get<{ list: any[]; total: number }>("/clusters"),
+    getDetail: (id: number) => apiService.get<any>(`/clusters/${id}`),
+    getClusters: () => apiService.get<{ list: any[]; total: number }>("/clusters"),
+    getClusterDetail: (id: number) => apiService.get<any>(`/clusters/${id}`),
+    getClusterNodes: (id: number) => apiService.get<{ list: any[]; total: number }>(`/clusters/${id}/nodes`),
+  },
   // 基础服务
   service: apiService,
 

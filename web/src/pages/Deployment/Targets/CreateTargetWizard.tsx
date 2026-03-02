@@ -3,7 +3,7 @@ import { Steps, Form, Input, Select, Button, Card, Space, message, Radio, Alert 
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 
-const { Step } = Steps;
+
 
 interface TargetFormData {
   name: string;
@@ -73,12 +73,10 @@ const CreateTargetWizard: React.FC = () => {
 
       const res = await Api.deployment.createTarget({
         name: finalData.name,
+        target_type: finalData.runtime_type,
         environment: finalData.environment,
-        runtime_type: finalData.runtime_type,
         credential_id: finalData.credential_id,
         cluster_id: finalData.cluster_id,
-        namespace: finalData.namespace,
-        host_ids: finalData.host_ids,
       });
 
       message.success('部署目标创建成功');
@@ -87,6 +85,7 @@ const CreateTargetWizard: React.FC = () => {
       if (finalData.auto_bootstrap && res.data.id) {
         try {
           const bootstrapRes = await Api.deployment.startEnvironmentBootstrap({
+            name: `bootstrap-${res.data.id}-${Date.now()}`,
             target_id: res.data.id,
             runtime_type: finalData.runtime_type,
             package_version: 'latest',
@@ -299,13 +298,7 @@ const CreateTargetWizard: React.FC = () => {
         <p className="text-sm text-gray-500 mt-1">配置应用部署的目标环境</p>
       </div>
 
-      <Steps current={currentStep}>
-        {steps.map((item) => (
-          <Step key={item.title} title={item.title} />
-        ))}
-      </Steps>
-
-      <div className="mt-6">{steps[currentStep].content}</div>
+      <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />
 
       <div className="flex justify-between">
         <Button onClick={() => navigate('/deployment/targets')}>取消</Button>

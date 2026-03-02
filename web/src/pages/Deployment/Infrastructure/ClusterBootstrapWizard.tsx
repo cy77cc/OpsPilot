@@ -3,7 +3,7 @@ import { Steps, Form, Input, Select, Button, Card, Space, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 
-const { Step } = Steps;
+
 
 interface BootstrapFormData {
   name: string;
@@ -21,7 +21,7 @@ const ClusterBootstrapWizard: React.FC = () => {
     name: '',
     cni: 'calico',
   });
-  const [hosts, setHosts] = useState<Array<{ id: number; name: string; ip: string }>>([]);
+  const [hosts, setHosts] = useState<Array<{ id: string; name: string; ip: string }>>([]);
 
   React.useEffect(() => {
     loadHosts();
@@ -29,7 +29,7 @@ const ClusterBootstrapWizard: React.FC = () => {
 
   const loadHosts = async () => {
     try {
-      const res = await Api.host.getHosts();
+      const res = await Api.hosts.getHostList();
       setHosts(res.data.list || []);
     } catch (err) {
       message.error('加载主机列表失败');
@@ -191,13 +191,7 @@ const ClusterBootstrapWizard: React.FC = () => {
         <p className="text-sm text-gray-500 mt-1">通过自动化 Bootstrap 创建新集群</p>
       </div>
 
-      <Steps current={currentStep}>
-        {steps.map((item) => (
-          <Step key={item.title} title={item.title} />
-        ))}
-      </Steps>
-
-      <div className="mt-6">{steps[currentStep].content}</div>
+      <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />
 
       <div className="flex justify-between">
         <Button onClick={() => navigate('/deployment/infrastructure/clusters')}>

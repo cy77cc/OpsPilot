@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Steps, Timeline, Alert, Button, Space, Tag } from 'antd';
-import { CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined, SyncOutlined } from '@ant-design/icons';
-
-const { Step } = Steps;
+import { CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined, SyncOutlined, ClockCircleOutlined } from '@ant-design/icons';
 
 interface BootstrapPhase {
   name: string;
@@ -36,7 +34,7 @@ const BootstrapProgressTracker: React.FC<BootstrapProgressTrackerProps> = ({
       case 'failed':
         return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
       default:
-        return null;
+        return <ClockCircleOutlined style={{ color: '#d9d9d9' }} />;
     }
   };
 
@@ -61,6 +59,12 @@ const BootstrapProgressTracker: React.FC<BootstrapProgressTrackerProps> = ({
     return 0;
   };
 
+  const items = phases.map((phase) => ({
+    title: phase.name,
+    status: getPhaseStatus(phase.status),
+    icon: getPhaseIcon(phase.status),
+  }));
+
   return (
     <div className="space-y-6">
       <Card>
@@ -81,16 +85,7 @@ const BootstrapProgressTracker: React.FC<BootstrapProgressTrackerProps> = ({
           </Space>
         </div>
 
-        <Steps current={getCurrentStep()}>
-          {phases.map((phase, index) => (
-            <Step
-              key={index}
-              title={phase.name}
-              status={getPhaseStatus(phase.status)}
-              icon={getPhaseIcon(phase.status)}
-            />
-          ))}
-        </Steps>
+        <Steps current={getCurrentStep()} items={items} />
       </Card>
 
       {phases.map((phase, index) => (

@@ -8,8 +8,6 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 
-const { Step } = Steps;
-
 interface ReleaseStateFlowProps {
   currentState: string;
   states?: string[];
@@ -42,21 +40,18 @@ const ReleaseStateFlow: React.FC<ReleaseStateFlowProps> = ({
     return stateIndex < currentIndex ? 'finish' : 'wait';
   };
 
+  const items = states.map((state) => {
+    const config = stateConfig[state] || { icon: null, color: 'default', text: state };
+    return {
+      title: config.text,
+      status: getStepStatus(state),
+      icon: state === currentState ? config.icon : undefined,
+    };
+  });
+
   return (
     <Card title="发布状态流程">
-      <Steps current={getCurrentStep()}>
-        {states.map((state) => {
-          const config = stateConfig[state] || { icon: null, color: 'default', text: state };
-          return (
-            <Step
-              key={state}
-              title={config.text}
-              status={getStepStatus(state)}
-              icon={state === currentState ? config.icon : undefined}
-            />
-          );
-        })}
-      </Steps>
+      <Steps current={getCurrentStep()} items={items} />
     </Card>
   );
 };

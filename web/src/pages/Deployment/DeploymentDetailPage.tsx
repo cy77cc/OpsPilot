@@ -295,12 +295,12 @@ const DeploymentDetailPage: React.FC = () => {
             <DeploymentProgressBar
               phase={release.phase}
               progress={release.progress}
-              pods={release.pods}
+              pods={release.pods as any}
               runtimeType={release.runtime_type as 'k8s' | 'compose'}
             />
           </Col>
           <Col xs={24} lg={12}>
-            <HealthCheckStatus probes={release.health_probes || []} />
+            <HealthCheckStatus probes={release.health_probes as any || []} />
           </Col>
         </Row>
       )}

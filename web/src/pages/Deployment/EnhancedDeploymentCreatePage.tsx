@@ -25,7 +25,7 @@ import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
 import type { DeployTarget } from '../../api/modules/deployment';
 
-const { Step } = Steps;
+
 
 const EnhancedDeploymentCreatePage: React.FC = () => {
   const navigate = useNavigate();
@@ -385,11 +385,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
         </div>
       </div>
 
-      <Steps current={currentStep}>
-        {steps.map((item) => (
-          <Step key={item.title} title={item.title} />
-        ))}
-      </Steps>
+      <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />
 
       <div className="mt-6">{steps[currentStep].content}</div>
 

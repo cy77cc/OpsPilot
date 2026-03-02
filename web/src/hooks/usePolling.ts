@@ -56,7 +56,7 @@ export function usePolling(
     onStop,
   } = options;
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
   const callbackRef = useRef(callback);
   const shouldStopRef = useRef(shouldStop);

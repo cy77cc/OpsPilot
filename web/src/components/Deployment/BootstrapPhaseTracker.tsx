@@ -2,8 +2,6 @@ import React from 'react';
 import { Card, Steps, Tag, Space } from 'antd';
 import { CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 
-const { Step } = Steps;
-
 interface BootstrapPhase {
   name: string;
   status: 'pending' | 'running' | 'success' | 'failed';
@@ -48,40 +46,42 @@ const BootstrapPhaseTracker: React.FC<BootstrapPhaseTrackerProps> = ({ phases, c
   const getCurrentStep = () => {
     const runningIndex = phases.findIndex((p) => p.status === 'running');
     if (runningIndex !== -1) return runningIndex;
-    const lastSuccessIndex = phases.findLastIndex((p) => p.status === 'success');
+    // Find last success index manually
+    let lastSuccessIndex = -1;
+    for (let i = phases.length - 1; i >= 0; i--) {
+      if (phases[i].status === 'success') {
+        lastSuccessIndex = i;
+        break;
+      }
+    }
     if (lastSuccessIndex !== -1) return lastSuccessIndex + 1;
     return 0;
   };
 
+  const items = phases.map((phase, index) => ({
+    title: (
+      <Space>
+        <span>{phase.name}</span>
+        {phase.status !== 'pending' && (
+          <Tag color={phase.status === 'success' ? 'success' : phase.status === 'failed' ? 'error' : 'processing'}>
+            {phase.status}
+          </Tag>
+        )}
+      </Space>
+    ),
+    status: getPhaseStatus(phase.status),
+    icon: getPhaseIcon(phase.status),
+    description: phase.status !== 'pending' && (
+      <div className="text-xs text-gray-500">
+        {phase.startTime && `开始: ${new Date(phase.startTime).toLocaleString()}`}
+        {phase.endTime && ` | 结束: ${new Date(phase.endTime).toLocaleString()}`}
+      </div>
+    ),
+  }));
+
   return (
     <Card title="初始化阶段">
-      <Steps current={getCurrentStep()} direction="vertical">
-        {phases.map((phase, index) => (
-          <Step
-            key={index}
-            title={
-              <Space>
-                <span>{phase.name}</span>
-                {phase.status !== 'pending' && (
-                  <Tag color={phase.status === 'success' ? 'success' : phase.status === 'failed' ? 'error' : 'processing'}>
-                    {phase.status}
-                  </Tag>
-                )}
-              </Space>
-            }
-            status={getPhaseStatus(phase.status)}
-            icon={getPhaseIcon(phase.status)}
-            description={
-              phase.status !== 'pending' && (
-                <div className="text-xs text-gray-500">
-                  {phase.startTime && `开始: ${new Date(phase.startTime).toLocaleString()}`}
-                  {phase.endTime && ` | 结束: ${new Date(phase.endTime).toLocaleString()}`}
-                </div>
-              )
-            }
-          />
-        ))}
-      </Steps>
+      <Steps current={getCurrentStep()} direction="vertical" items={items} />
     </Card>
   );
 };

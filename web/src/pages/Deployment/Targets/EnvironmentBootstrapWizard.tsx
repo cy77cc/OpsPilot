@@ -67,6 +67,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
       setLoading(true);
 
       const res = await Api.deployment.startEnvironmentBootstrap({
+        name: `bootstrap-${targetId}-${Date.now()}`,
         target_id: Number(targetId),
         runtime_type: target.runtime_type,
         package_version: values.package_version || 'latest',
