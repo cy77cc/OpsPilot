@@ -22,12 +22,16 @@
 .ai-assistant-layout {
   contain: layout;
   opacity: 1;
-  transition: opacity 0.2s ease-out;
+  transform: translate3d(0, 0, 0);
+  will-change: opacity, transform;
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
 }
 
 /* 关闭时的淡出效果 */
 .ai-assistant-layout.is-closing {
   opacity: 0;
+  transform: translate3d(8px, 0, 0);
+  pointer-events: none;
 }
 
 /* 优化 Drawer 遮罩动画 */
@@ -39,6 +43,10 @@
 /* 优化 Drawer 内容淡出 */
 .ai-assistant-drawer .ant-drawer-content {
   will-change: transform;
+}
+
+.ai-assistant-drawer.ai-assistant-drawer-closing .ant-drawer-content {
+  box-shadow: none;
 }
 
 @media (max-width: 1366px), (max-height: 820px) {

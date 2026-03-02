@@ -40,6 +40,7 @@ const sceneFromPath = (pathname: string): string => {
 
 const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = false }) => {
   const [open, setOpen] = React.useState(false);
+  const [isClosing, setIsClosing] = React.useState(false);
   const [scope, setScope] = React.useState<'scene' | 'global'>('scene');
   const [tabKey, setTabKey] = React.useState<'chat' | 'command'>('chat');
   const [viewportWidth, setViewportWidth] = React.useState(() => window.innerWidth);
@@ -55,6 +56,7 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
   const pageScene = React.useMemo(() => sceneFromPath(location.pathname), [location.pathname]);
   const currentScene = scope === 'global' ? 'global' : pageScene;
   const resizingRef = React.useRef<{ startX: number; startWidth: number } | null>(null);
+  const closeRafRef = React.useRef<number | null>(null);
 
   // 记住最后一次的 scene，避免切换时重新加载
   const lastSceneRef = React.useRef<string>(currentScene);
@@ -81,6 +83,12 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  React.useEffect(() => () => {
+    if (closeRafRef.current !== null) {
+      cancelAnimationFrame(closeRafRef.current);
+    }
   }, []);
 
   const handleResizeStart = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -141,9 +149,19 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
 
   // 打开时更新 scene
   const handleOpen = () => {
+    setIsClosing(false);
     setActiveScene(currentScene);
     lastSceneRef.current = currentScene;
     setOpen(true);
+  };
+
+  const handleClose = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    closeRafRef.current = requestAnimationFrame(() => {
+      setOpen(false);
+      closeRafRef.current = null;
+    });
   };
 
   return (
@@ -159,10 +177,17 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
         {inlineTrigger ? 'AI助手' : null}
       </Button>
       <Drawer
-        rootClassName="ai-assistant-drawer"
+        rootClassName={`ai-assistant-drawer${isClosing ? ' ai-assistant-drawer-closing' : ''}`}
         title={<Space><MessageOutlined /><Text>AI 助手</Text></Space>}
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={handleClose}
+        afterOpenChange={(nextOpen) => {
+          if (nextOpen) {
+            setIsClosing(false);
+            return;
+          }
+          setIsClosing(false);
+        }}
         width={isMobile ? '100vw' : drawerWidthRef.current}
         styles={{
           body: {
@@ -199,7 +224,7 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
             aria-label="调整 AI 助手宽度"
           />
         ) : null}
-        <div className="ai-assistant-layout">
+        <div className={`ai-assistant-layout${isClosing ? ' is-closing' : ''}`}>
           <div className="ai-assistant-hero">
             <Text className="ai-assistant-hero-title">智能运维助手</Text>
             <Text type="secondary" className="ai-assistant-hero-subtitle">
