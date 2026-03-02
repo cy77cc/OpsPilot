@@ -59,11 +59,7 @@ func TestListNotifications(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	// 注册路由
-	svc := &NotificationService{svcCtx: nil}
-	svc.svcCtx = &struct {
-		DB *gorm.DB
-	}{DB: db}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.GET("", svc.ListNotifications)
@@ -101,12 +97,9 @@ func TestUnreadCount(t *testing.T) {
 		NotificationID: notif2.ID,
 		ReadAt:         &readAt,
 	}
-	db.Create(&userNotif1)
 	db.Create(&userNotif2)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.GET("/unread-count", svc.UnreadCount)
@@ -141,9 +134,7 @@ func TestMarkAsRead(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/read", svc.MarkAsRead)
@@ -176,9 +167,7 @@ func TestDismiss(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/dismiss", svc.Dismiss)
@@ -218,9 +207,7 @@ func TestConfirm(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/confirm", svc.Confirm)
@@ -253,9 +240,7 @@ func TestMarkAllAsRead(t *testing.T) {
 		db.Create(&model.UserNotification{UserID: 1, NotificationID: notif.ID})
 	}
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/read-all", svc.MarkAllAsRead)
@@ -281,9 +266,7 @@ func TestUnauthorized(t *testing.T) {
 	r := gin.New()
 	// 不设置 user_id
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := newTestService(db)
 
 	notifications := r.Group("/notifications")
 	notifications.GET("", svc.ListNotifications)
@@ -325,7 +308,7 @@ func TestListNotificationsAcceptsUIDContextKey(t *testing.T) {
 		NotificationID: notif.ID,
 	})
 
-	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
+	svc := newTestService(db)
 	notifications := router.Group("/notifications")
 	notifications.GET("", svc.ListNotifications)
 

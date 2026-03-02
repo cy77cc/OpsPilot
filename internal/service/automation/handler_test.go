@@ -88,12 +88,14 @@ func TestAutomationRunLifecycleAPI(t *testing.T) {
 		t.Fatalf("get logs status=%d body=%s", w.Code, w.Body.String())
 	}
 	var logsResp struct {
-		Total int `json:"total"`
+		Data struct {
+			Total int `json:"total"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &logsResp); err != nil {
 		t.Fatalf("decode logs: %v", err)
 	}
-	if logsResp.Total < 1 {
-		t.Fatalf("expected logs")
+	if logsResp.Data.Total < 1 {
+		t.Fatalf("expected logs, got total=%d, body=%s", logsResp.Data.Total, w.Body.String())
 	}
 }

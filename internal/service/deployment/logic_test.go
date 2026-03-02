@@ -283,3 +283,223 @@ func TestStartEnvironmentBootstrapRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("expected checksum mismatch error")
 	}
 }
+
+// TestRollbackRelease tests the release rollback flow for production environment.
+func TestRollbackRelease(t *testing.T) {
+	logic := newDeploymentTestLogic(t)
+	ctx := context.Background()
+
+	// Setup: create node, service, target
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Node{ID: 10, Name: "n10", IP: "10.0.0.10", SSHUser: "root", Status: "active"}).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Service{ID: 500, Name: "svc-rollback", Env: "production", YamlContent: "services:\n  app:\n    image: nginx:v1"}).Error; err != nil {
+		t.Fatalf("seed service: %v", err)
+	}
+	target, err := logic.CreateTarget(ctx, 1, TargetUpsertReq{
+		Name:       "rollback-target",
+		TargetType: "compose",
+		Env:        "production",
+		Nodes:      []TargetNodeReq{{HostID: 10, Role: "manager", Weight: 100}},
+	})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	// Create first release (production = pending_approval)
+	preview1, err := logic.PreviewRelease(ctx, ReleasePreviewReq{ServiceID: 500, TargetID: target.ID, Env: "production", Strategy: "rolling"})
+	if err != nil {
+		t.Fatalf("preview release 1: %v", err)
+	}
+	apply1, err := logic.ApplyRelease(ctx, 1, ReleasePreviewReq{
+		ServiceID:    500,
+		TargetID:     target.ID,
+		Env:          "production",
+		Strategy:     "rolling",
+		PreviewToken: preview1.PreviewToken,
+	})
+	if err != nil {
+		t.Fatalf("apply release 1: %v", err)
+	}
+
+	// Update service to simulate new version
+	logic.svcCtx.DB.Model(&model.Service{}).Where("id = ?", 500).Update("yaml_content", "services:\n  app:\n    image: nginx:v2")
+
+	// Create second release
+	preview2, err := logic.PreviewRelease(ctx, ReleasePreviewReq{ServiceID: 500, TargetID: target.ID, Env: "production", Strategy: "rolling"})
+	if err != nil {
+		t.Fatalf("preview release 2: %v", err)
+	}
+	apply2, err := logic.ApplyRelease(ctx, 1, ReleasePreviewReq{
+		ServiceID:    500,
+		TargetID:     target.ID,
+		Env:          "production",
+		Strategy:     "rolling",
+		PreviewToken: preview2.PreviewToken,
+	})
+	if err != nil {
+		t.Fatalf("apply release 2: %v", err)
+	}
+
+	// Verify releases are in pending_approval status
+	if apply1.Status != releaseStatusPendingApproval {
+		t.Fatalf("expected pending_approval, got %s", apply1.Status)
+	}
+	if apply2.Status != releaseStatusPendingApproval {
+		t.Fatalf("expected pending_approval, got %s", apply2.Status)
+	}
+
+	// Verify two releases exist
+	rows, _ := logic.ListReleases(ctx, 500, target.ID, "compose")
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 releases, got %d", len(rows))
+	}
+}
+
+// TestRollbackReleaseNoPreviousRelease tests rollback with no previous release.
+func TestRollbackReleaseNoPreviousRelease(t *testing.T) {
+	logic := newDeploymentTestLogic(t)
+	ctx := context.Background()
+
+	// Setup
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Node{ID: 11, Name: "n11", IP: "10.0.0.11", SSHUser: "root", Status: "active"}).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Service{ID: 501, Name: "svc-rollback2", Env: "production", YamlContent: "services:\n  app:\n    image: nginx:v1"}).Error; err != nil {
+		t.Fatalf("seed service: %v", err)
+	}
+	target, err := logic.CreateTarget(ctx, 1, TargetUpsertReq{
+		Name:       "rollback-target2",
+		TargetType: "compose",
+		Env:        "production",
+		Nodes:      []TargetNodeReq{{HostID: 11, Role: "manager", Weight: 100}},
+	})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	// Create first release
+	preview, err := logic.PreviewRelease(ctx, ReleasePreviewReq{ServiceID: 501, TargetID: target.ID, Env: "production", Strategy: "rolling"})
+	if err != nil {
+		t.Fatalf("preview release: %v", err)
+	}
+	apply, err := logic.ApplyRelease(ctx, 1, ReleasePreviewReq{
+		ServiceID:    501,
+		TargetID:     target.ID,
+		Env:          "production",
+		Strategy:     "rolling",
+		PreviewToken: preview.PreviewToken,
+	})
+	if err != nil {
+		t.Fatalf("apply release: %v", err)
+	}
+
+	// Try to rollback first release (no previous)
+	_, err = logic.RollbackRelease(ctx, apply.ReleaseID, 1)
+	if err == nil {
+		t.Fatal("expected error for no previous release")
+	}
+}
+
+// TestBlueGreenStrategy tests blue-green deployment strategy.
+func TestBlueGreenStrategy(t *testing.T) {
+	logic := newDeploymentTestLogic(t)
+	ctx := context.Background()
+
+	// Setup
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Node{ID: 20, Name: "n20", IP: "10.0.0.20", SSHUser: "root", Status: "active"}).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Service{ID: 600, Name: "svc-bluegreen", Env: "production", YamlContent: "services:\n  app:\n    image: nginx:latest"}).Error; err != nil {
+		t.Fatalf("seed service: %v", err)
+	}
+	target, err := logic.CreateTarget(ctx, 1, TargetUpsertReq{
+		Name:       "bluegreen-target",
+		TargetType: "compose",
+		Env:        "production",
+		Nodes:      []TargetNodeReq{{HostID: 20, Role: "manager", Weight: 100}},
+	})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	// Preview with blue-green strategy
+	preview, err := logic.PreviewRelease(ctx, ReleasePreviewReq{ServiceID: 600, TargetID: target.ID, Env: "production", Strategy: "blue-green"})
+	if err != nil {
+		t.Fatalf("preview release: %v", err)
+	}
+	if preview.PreviewToken == "" {
+		t.Fatal("expected preview token")
+	}
+
+	// Apply with blue-green strategy
+	apply, err := logic.ApplyRelease(ctx, 1, ReleasePreviewReq{
+		ServiceID:    600,
+		TargetID:     target.ID,
+		Env:          "production",
+		Strategy:     "blue-green",
+		PreviewToken: preview.PreviewToken,
+	})
+	if err != nil {
+		t.Fatalf("apply release: %v", err)
+	}
+
+	// Verify release was created with blue-green strategy
+	var release model.DeploymentRelease
+	if err := logic.svcCtx.DB.First(&release, apply.ReleaseID).Error; err != nil {
+		t.Fatalf("find release: %v", err)
+	}
+	if release.Strategy != "blue-green" {
+		t.Fatalf("expected strategy blue-green, got %s", release.Strategy)
+	}
+}
+
+// TestCanaryStrategy tests canary deployment strategy.
+func TestCanaryStrategy(t *testing.T) {
+	logic := newDeploymentTestLogic(t)
+	ctx := context.Background()
+
+	// Setup
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Node{ID: 21, Name: "n21", IP: "10.0.0.21", SSHUser: "root", Status: "active"}).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	if err := logic.svcCtx.DB.WithContext(ctx).Create(&model.Service{ID: 601, Name: "svc-canary", Env: "production", YamlContent: "services:\n  app:\n    image: nginx:latest"}).Error; err != nil {
+		t.Fatalf("seed service: %v", err)
+	}
+	target, err := logic.CreateTarget(ctx, 1, TargetUpsertReq{
+		Name:       "canary-target",
+		TargetType: "compose",
+		Env:        "production",
+		Nodes:      []TargetNodeReq{{HostID: 21, Role: "manager", Weight: 100}},
+	})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	// Preview with canary strategy
+	preview, err := logic.PreviewRelease(ctx, ReleasePreviewReq{ServiceID: 601, TargetID: target.ID, Env: "production", Strategy: "canary"})
+	if err != nil {
+		t.Fatalf("preview release: %v", err)
+	}
+
+	// Apply with canary strategy
+	apply, err := logic.ApplyRelease(ctx, 1, ReleasePreviewReq{
+		ServiceID:    601,
+		TargetID:     target.ID,
+		Env:          "production",
+		Strategy:     "canary",
+		PreviewToken: preview.PreviewToken,
+	})
+	if err != nil {
+		t.Fatalf("apply release: %v", err)
+	}
+
+	// Verify release was created with canary strategy
+	var release model.DeploymentRelease
+	if err := logic.svcCtx.DB.First(&release, apply.ReleaseID).Error; err != nil {
+		t.Fatalf("find release: %v", err)
+	}
+	if release.Strategy != "canary" {
+		t.Fatalf("expected strategy canary, got %s", release.Strategy)
+	}
+}

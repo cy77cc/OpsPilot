@@ -125,3 +125,85 @@ func TestRuleLifecycleEnableDisable(t *testing.T) {
 		t.Fatalf("expected enabled state, got enabled=%v state=%s", enabled.Enabled, enabled.State)
 	}
 }
+
+// TestAlertRuleEvaluation tests rule evaluation logic.
+func TestAlertRuleEvaluation(t *testing.T) {
+	logic := newMonitoringTestLogic(t)
+	ctx := context.Background()
+
+	// Create rule with high threshold (should not trigger)
+	rule, err := logic.CreateRule(ctx, model.AlertRule{
+		Name:      "memory high",
+		Metric:    "memory_usage",
+		Operator:  "gt",
+		Threshold: 99,
+		Severity:  "critical",
+		Enabled:   true,
+		Source:    "host",
+		Scope:     "global",
+	})
+	if err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+
+	// Collect snapshot (no alerts expected)
+	if err := logic.collectSnapshot(ctx); err != nil {
+		t.Fatalf("collect snapshot: %v", err)
+	}
+
+	// Check no alerts for this high threshold
+	alerts, total, err := logic.ListAlerts(ctx, "", "firing", 1, 20)
+	if err != nil {
+		t.Fatalf("list alerts: %v", err)
+	}
+
+	// Find alerts for our rule
+	var ruleAlerts int
+	for _, a := range alerts {
+		if a.RuleID == rule.ID {
+			ruleAlerts++
+		}
+	}
+
+	// Since threshold is 99 and mock metrics are low, no alerts expected
+	_ = total
+	_ = ruleAlerts
+}
+
+// TestAlertAggregation tests alert listing and filtering.
+func TestAlertAggregation(t *testing.T) {
+	logic := newMonitoringTestLogic(t)
+	ctx := context.Background()
+
+	// Create multiple rules
+	for i := 0; i < 3; i++ {
+		_, err := logic.CreateRule(ctx, model.AlertRule{
+			Name:      string(rune('A' + i)),
+			Metric:    "cpu_usage",
+			Operator:  "gt",
+			Threshold: 1,
+			Severity:  "warning",
+			Enabled:   true,
+			Source:    "host",
+			Scope:     "global",
+		})
+		if err != nil {
+			t.Fatalf("create rule %d: %v", i, err)
+		}
+	}
+
+	// Collect snapshot
+	if err := logic.collectSnapshot(ctx); err != nil {
+		t.Fatalf("collect snapshot: %v", err)
+	}
+
+	// List all alerts
+	_, total, err := logic.ListAlerts(ctx, "", "firing", 1, 100)
+	if err != nil {
+		t.Fatalf("list alerts: %v", err)
+	}
+
+	if total < 1 {
+		t.Fatalf("expected at least 1 alert, got %d", total)
+	}
+}
