@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterRoutes registers cluster routes
-func RegisterRoutes(r *gin.RouterGroup, svcCtx *svc.ServiceContext) {
+func RegisterClusterHandlers(r *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	handler := NewHandler(svcCtx)
 
 	clusterGroup := r.Group("/clusters")
