@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/k8s-manage/internal/model"
+	svcctx "github.com/cy77cc/k8s-manage/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -64,9 +65,7 @@ func TestListNotifications(t *testing.T) {
 
 	// 注册路由
 	svc := &NotificationService{svcCtx: nil}
-	svc.svcCtx = &struct {
-		DB *gorm.DB
-	}{DB: db}
+	svc.svcCtx = &svcctx.ServiceContext{DB: db}
 
 	notifications := router.Group("/notifications")
 	notifications.GET("", svc.ListNotifications)
@@ -125,9 +124,7 @@ func TestUnreadCount(t *testing.T) {
 	db.Create(&userNotif1)
 	db.Create(&userNotif2)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := router.Group("/notifications")
 	notifications.GET("/unread-count", svc.UnreadCount)
@@ -169,9 +166,7 @@ func TestMarkAsRead(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/read", svc.MarkAsRead)
@@ -210,9 +205,7 @@ func TestDismiss(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/dismiss", svc.Dismiss)
@@ -252,9 +245,7 @@ func TestConfirm(t *testing.T) {
 	}
 	db.Create(&userNotif)
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/:id/confirm", svc.Confirm)
@@ -298,9 +289,7 @@ func TestMarkAllAsRead(t *testing.T) {
 		db.Create(&userNotif)
 	}
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := router.Group("/notifications")
 	notifications.POST("/read-all", svc.MarkAllAsRead)
@@ -327,9 +316,7 @@ func TestUnauthorized(t *testing.T) {
 	r := gin.New()
 	// 不设置 user_id
 
-	svc := &NotificationService{svcCtx: &struct {
-		DB *gorm.DB
-	}{DB: db}}
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
 
 	notifications := r.Group("/notifications")
 	notifications.GET("", svc.ListNotifications)
@@ -340,5 +327,41 @@ func TestUnauthorized(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", w.Code)
+	}
+}
+
+func TestListNotificationsAcceptsUIDContextKey(t *testing.T) {
+	db := setupTestDB(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("uid", uint64(1))
+		c.Next()
+	})
+
+	notif := model.Notification{
+		Type:     "alert",
+		Title:    "Test Alert",
+		Content:  "Test content",
+		Severity: "critical",
+		Source:   "test",
+		SourceID: "1",
+	}
+	db.Create(&notif)
+	db.Create(&model.UserNotification{
+		UserID:         1,
+		NotificationID: notif.ID,
+	})
+
+	svc := &NotificationService{svcCtx: &svcctx.ServiceContext{DB: db}}
+	notifications := router.Group("/notifications")
+	notifications.GET("", svc.ListNotifications)
+
+	req, _ := http.NewRequest("GET", "/notifications?page=1&page_size=10", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", w.Code, w.Body.String())
 	}
 }

@@ -184,20 +184,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  // 只在 sessionId 变化时加载，scene 变化不自动重新加载
   useEffect(() => {
     loadSession(true);
-  }, [sessionId]);
-
-  // 首次挂载时加载会话列表
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      loadSession();
-      void loadSessions();
-    }
-  }, []);
+    void loadSessions();
+  }, [sessionId, scene]);
 
   useEffect(() => {
     const key = `ai:pinned:sessions:${scene}`;

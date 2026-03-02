@@ -24,20 +24,20 @@ type AlertRule struct {
 func (AlertRule) TableName() string { return "alert_rules" }
 
 type AlertEvent struct {
-	ID          uint      `gorm:"primaryKey;column:id" json:"id"`
-	RuleID      uint      `gorm:"column:rule_id;index" json:"rule_id"`
-	Title       string    `gorm:"column:title;type:varchar(255);not null" json:"title"`
-	Message     string    `gorm:"column:message;type:text" json:"message"`
-	Metric      string    `gorm:"column:metric;type:varchar(64);index" json:"metric"`
-	Value       float64   `gorm:"column:value;type:decimal(14,4);default:0" json:"value"`
-	Threshold   float64   `gorm:"column:threshold;type:decimal(14,4);default:0" json:"threshold"`
-	Severity    string    `gorm:"column:severity;type:varchar(16);default:'warning'" json:"severity"`
-	Source      string    `gorm:"column:source;type:varchar(128);index" json:"source"`
-	Status      string    `gorm:"column:status;type:varchar(16);default:'firing';index" json:"status"`
-	TriggeredAt time.Time `gorm:"column:triggered_at;index" json:"triggered_at"`
-	ResolvedAt  time.Time `gorm:"column:resolved_at" json:"resolved_at"`
-	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID          uint       `gorm:"primaryKey;column:id" json:"id"`
+	RuleID      uint       `gorm:"column:rule_id;index" json:"rule_id"`
+	Title       string     `gorm:"column:title;type:varchar(255);not null" json:"title"`
+	Message     string     `gorm:"column:message;type:text" json:"message"`
+	Metric      string     `gorm:"column:metric;type:varchar(64);index" json:"metric"`
+	Value       float64    `gorm:"column:value;type:decimal(14,4);default:0" json:"value"`
+	Threshold   float64    `gorm:"column:threshold;type:decimal(14,4);default:0" json:"threshold"`
+	Severity    string     `gorm:"column:severity;type:varchar(16);default:'warning'" json:"severity"`
+	Source      string     `gorm:"column:source;type:varchar(128);index" json:"source"`
+	Status      string     `gorm:"column:status;type:varchar(16);default:'firing';index" json:"status"`
+	TriggeredAt time.Time  `gorm:"column:triggered_at;index" json:"triggered_at"`
+	ResolvedAt  *time.Time `gorm:"column:resolved_at" json:"resolved_at,omitempty"`
+	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (AlertEvent) TableName() string { return "alerts" }

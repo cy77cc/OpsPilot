@@ -72,6 +72,9 @@ func TestAlertTriggerAndDeliveryAudit(t *testing.T) {
 	if total < 1 || len(alerts) < 1 {
 		t.Fatalf("expected firing alert, total=%d len=%d", total, len(alerts))
 	}
+	if alerts[0].ResolvedAt != nil {
+		t.Fatalf("expected resolved_at to be nil for firing alert")
+	}
 
 	evals, evalTotal, err := logic.ListRuleEvaluations(ctx, alerts[0].RuleID, 1, 20)
 	if err != nil {
