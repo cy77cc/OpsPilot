@@ -67,6 +67,7 @@ func autoMigrateAll(db *gorm.DB) error {
 		&model.HostVirtualizationTask{},
 		&model.Cluster{},
 		&model.ClusterCredential{},
+		&model.ClusterNode{},
 
 		// Deployment
 		&model.DeploymentTarget{},

@@ -50,3 +50,34 @@ web-test-coverage:
 
 test-all: test web-test
 	@echo "All tests passed!"
+
+# Performance testing commands
+perf-test:
+	@echo "Running k6 performance tests..."
+	k6 run e2e/performance/api_benchmark_test.js
+
+perf-test-smoke:
+	@echo "Running k6 smoke test..."
+	k6 run --scenario smoke e2e/performance/cluster_import_test.js
+
+perf-test-load:
+	@echo "Running k6 load test..."
+	k6 run --scenario load e2e/performance/cluster_import_test.js
+
+perf-test-stress:
+	@echo "Running k6 stress test..."
+	k6 run --scenario stress e2e/performance/cluster_import_test.js
+
+# Run specific package tests
+test-cluster:
+	go test ./internal/service/cluster/... -v
+
+test-deployment:
+	go test ./internal/service/deployment/... -v
+
+test-ai:
+	go test ./internal/service/ai/... -v
+
+test-notification:
+	go test ./internal/service/notification/... -v
+
