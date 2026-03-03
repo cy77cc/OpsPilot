@@ -64,6 +64,11 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		clusterGroup.POST("/:id/upgrade", h.UpgradeCluster)
 
 		// Bootstrap (self-hosted cluster creation)
+		clusterGroup.GET("/bootstrap/versions", h.GetBootstrapVersions)
+		clusterGroup.GET("/bootstrap/profiles", h.ListBootstrapProfiles)
+		clusterGroup.POST("/bootstrap/profiles", h.CreateBootstrapProfile)
+		clusterGroup.PUT("/bootstrap/profiles/:id", h.UpdateBootstrapProfile)
+		clusterGroup.DELETE("/bootstrap/profiles/:id", h.DeleteBootstrapProfile)
 		clusterGroup.POST("/bootstrap/preview", h.PreviewBootstrap)
 		clusterGroup.POST("/bootstrap/apply", h.ApplyBootstrap)
 		clusterGroup.GET("/bootstrap/:task_id", h.GetBootstrapTask)

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Environment runtime bootstrap via SSH
 The system MUST provide environment bootstrap workflows that execute runtime installation through remote SSH for both Kubernetes and Compose targets, and MUST support mirror repository mode for weak-offline enterprise environments.

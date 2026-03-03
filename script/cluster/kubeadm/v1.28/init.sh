@@ -10,6 +10,8 @@ CONTROL_PLANE_ENDPOINT="${CONTROL_PLANE_ENDPOINT:-}"
 ADVERTISE_ADDRESS="${ADVERTISE_ADDRESS:-}"
 CRI_SOCKET="${CRI_SOCKET:-/run/containerd/containerd.sock}"
 KUBECONFIG_OUTPUT="${KUBECONFIG_OUTPUT:-/etc/kubernetes/admin.conf}"
+BOOTSTRAP_INIT_MODE="${BOOTSTRAP_INIT_MODE:-legacy}"
+KUBEADM_CONFIG_B64="${KUBEADM_CONFIG_B64:-}"
 
 # 颜色
 RED='\033[0;31m'
@@ -99,16 +101,44 @@ run_kubeadm_init() {
     log_info "  Pod CIDR: ${POD_CIDR}"
     log_info "  Service CIDR: ${SERVICE_CIDR}"
 
-    local args=$(build_init_args)
-    log_info "命令: kubeadm init ${args}"
-
-    # 执行初始化
-    kubeadm init ${args} 2>&1 | tee /var/log/kubeadm-init.log
+    if [[ "$BOOTSTRAP_INIT_MODE" == "config" && -n "$KUBEADM_CONFIG_B64" ]]; then
+        local cfg_file="/tmp/kubeadm-init-config.yaml"
+        echo "$KUBEADM_CONFIG_B64" | base64 -d > "$cfg_file"
+        prepare_external_etcd_materials
+        log_info "命令: kubeadm init --config ${cfg_file}"
+        kubeadm init --config "${cfg_file}" --upload-certs 2>&1 | tee /var/log/kubeadm-init.log
+    else
+        local args=$(build_init_args)
+        log_info "命令: kubeadm init ${args}"
+        kubeadm init ${args} 2>&1 | tee /var/log/kubeadm-init.log
+    fi
 
     if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
         log_error "kubeadm init 失败"
         cat /var/log/kubeadm-init.log
         exit 1
+    fi
+}
+
+prepare_external_etcd_materials() {
+    if [[ "${ETCD_MODE:-stacked}" != "external" ]]; then
+        return
+    fi
+    if [[ -z "${EXTERNAL_ETCD_JSON:-}" ]]; then
+        return
+    fi
+    mkdir -p /etc/kubernetes/pki/external-etcd
+
+    local ca cert key
+    ca=$(echo "$EXTERNAL_ETCD_JSON" | sed -n 's/.*"ca_cert":"\([^"]*\)".*/\1/p')
+    cert=$(echo "$EXTERNAL_ETCD_JSON" | sed -n 's/.*"cert":"\([^"]*\)".*/\1/p')
+    key=$(echo "$EXTERNAL_ETCD_JSON" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+
+    if [[ -n "$ca" && -n "$cert" && -n "$key" ]]; then
+        printf '%s' "$ca" | sed 's/\\n/\n/g' > /etc/kubernetes/pki/external-etcd/ca.crt
+        printf '%s' "$cert" | sed 's/\\n/\n/g' > /etc/kubernetes/pki/external-etcd/client.crt
+        printf '%s' "$key" | sed 's/\\n/\n/g' > /etc/kubernetes/pki/external-etcd/client.key
+        chmod 600 /etc/kubernetes/pki/external-etcd/client.key
     fi
 }
 

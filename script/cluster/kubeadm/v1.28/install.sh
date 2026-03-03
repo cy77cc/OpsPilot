@@ -6,6 +6,8 @@ set -euo pipefail
 # 版本配置
 KUBERNETES_VERSION="${KUBERNETES_VERSION:-1.28.0}"
 KUBERNETES_PACKAGE_VERSION="${KUBERNETES_PACKAGE_VERSION:-}"
+REPO_MODE="${REPO_MODE:-online}"
+REPO_URL="${REPO_URL:-}"
 
 # 颜色
 RED='\033[0;31m'
@@ -93,6 +95,14 @@ add_kubernetes_repo() {
 
     case "$OS" in
         ubuntu|debian)
+            if [[ "$REPO_MODE" == "mirror" && -n "$REPO_URL" ]]; then
+                log_info "使用 mirror 模式包仓: $REPO_URL"
+                cat > /etc/apt/sources.list.d/kubernetes.list <<EOF
+deb ${REPO_URL} /
+EOF
+                apt-get update
+                return
+            fi
             # 创建 keyrings 目录
             install -m 0755 -d /etc/apt/keyrings
 
@@ -110,6 +120,17 @@ add_kubernetes_repo() {
             ;;
 
         centos|rhel|rocky|almalinux)
+            if [[ "$REPO_MODE" == "mirror" && -n "$REPO_URL" ]]; then
+                log_info "使用 mirror 模式包仓: $REPO_URL"
+                cat > /etc/yum.repos.d/kubernetes.repo <<EOF
+[kubernetes]
+name=Kubernetes
+baseurl=${REPO_URL}
+enabled=1
+gpgcheck=0
+EOF
+                return
+            fi
             cat > /etc/yum.repos.d/kubernetes.repo <<EOF
 [kubernetes]
 name=Kubernetes
@@ -121,6 +142,17 @@ EOF
             ;;
 
         fedora)
+            if [[ "$REPO_MODE" == "mirror" && -n "$REPO_URL" ]]; then
+                log_info "使用 mirror 模式包仓: $REPO_URL"
+                cat > /etc/yum.repos.d/kubernetes.repo <<EOF
+[kubernetes]
+name=Kubernetes
+baseurl=${REPO_URL}
+enabled=1
+gpgcheck=0
+EOF
+                return
+            fi
             cat > /etc/yum.repos.d/kubernetes.repo <<EOF
 [kubernetes]
 name=Kubernetes

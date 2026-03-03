@@ -63,12 +63,65 @@ export interface NodeCondition {
 
 export interface BootstrapPreviewReq {
   name: string;
+  profile_id?: number;
   control_plane_host_id: number;
   worker_host_ids?: number[];
   k8s_version?: string;
+  version_channel?: string;
   cni?: string;
   pod_cidr?: string;
   service_cidr?: string;
+  repo_mode?: 'online' | 'mirror';
+  repo_url?: string;
+  image_repository?: string;
+  endpoint_mode?: 'nodeIP' | 'vip' | 'lbDNS';
+  control_plane_endpoint?: string;
+  vip_provider?: 'kube-vip' | 'keepalived';
+  etcd_mode?: 'stacked' | 'external';
+  external_etcd?: {
+    endpoints?: string[];
+    ca_cert?: string;
+    cert?: string;
+    key?: string;
+  };
+}
+
+export interface BootstrapValidationIssue {
+  field: string;
+  code: string;
+  domain?: string;
+  message: string;
+  remediation?: string;
+}
+
+export interface BootstrapProfile {
+  id: number;
+  name: string;
+  description?: string;
+  version_channel: string;
+  k8s_version: string;
+  repo_mode: 'online' | 'mirror';
+  repo_url?: string;
+  image_repository?: string;
+  endpoint_mode: 'nodeIP' | 'vip' | 'lbDNS';
+  control_plane_endpoint?: string;
+  vip_provider?: 'kube-vip' | 'keepalived';
+  etcd_mode: 'stacked' | 'external';
+  external_etcd?: {
+    endpoints?: string[];
+    ca_cert?: string;
+    cert?: string;
+    key?: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BootstrapVersionItem {
+  version: string;
+  channel: string;
+  status: 'supported' | 'blocked';
+  reason?: string;
 }
 
 export interface BootstrapPreviewResp {
@@ -76,11 +129,22 @@ export interface BootstrapPreviewResp {
   control_plane_host_id: number;
   worker_host_ids: number[];
   k8s_version: string;
+  version_channel: string;
   cni: string;
   pod_cidr: string;
   service_cidr: string;
+  repo_mode: string;
+  repo_url: string;
+  image_repository: string;
+  endpoint_mode: string;
+  control_plane_endpoint: string;
+  vip_provider: string;
+  etcd_mode: string;
   steps: string[];
   expected_endpoint: string;
+  warnings?: string[];
+  validation_issues?: BootstrapValidationIssue[];
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface BootstrapTask {
@@ -88,6 +152,14 @@ export interface BootstrapTask {
   name: string;
   cluster_id?: number;
   k8s_version: string;
+  version_channel: string;
+  repo_mode: string;
+  repo_url: string;
+  image_repository: string;
+  endpoint_mode: string;
+  control_plane_endpoint: string;
+  vip_provider: string;
+  etcd_mode: string;
   cni: string;
   pod_cidr: string;
   service_cidr: string;
@@ -95,6 +167,8 @@ export interface BootstrapTask {
   steps: BootstrapStepStatus[];
   current_step: number;
   error_message?: string;
+  resolved_config_json?: string;
+  diagnostics_json?: string;
   created_at: string;
   updated_at: string;
 }
@@ -469,6 +543,26 @@ export const clusterApi = {
   },
 
   // Bootstrap (self-hosted cluster)
+  getBootstrapVersions(): Promise<ApiResponse<{ default_channel: string; list: BootstrapVersionItem[] }>> {
+    return apiService.get('/clusters/bootstrap/versions');
+  },
+
+  getBootstrapProfiles(): Promise<ApiResponse<{ list: BootstrapProfile[]; total: number }>> {
+    return apiService.get('/clusters/bootstrap/profiles');
+  },
+
+  createBootstrapProfile(data: Omit<BootstrapProfile, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<BootstrapProfile>> {
+    return apiService.post('/clusters/bootstrap/profiles', data);
+  },
+
+  updateBootstrapProfile(id: number, data: Partial<Omit<BootstrapProfile, 'id' | 'name' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<BootstrapProfile>> {
+    return apiService.put(`/clusters/bootstrap/profiles/${id}`, data);
+  },
+
+  deleteBootstrapProfile(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {
+    return apiService.delete(`/clusters/bootstrap/profiles/${id}`);
+  },
+
   previewBootstrap(data: BootstrapPreviewReq): Promise<ApiResponse<BootstrapPreviewResp>> {
     return apiService.post('/clusters/bootstrap/preview', data);
   },

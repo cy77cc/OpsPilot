@@ -106,10 +106,21 @@ type ClusterBootstrapTask struct {
 	ControlPlaneID uint      `gorm:"column:control_plane_host_id;index" json:"control_plane_host_id"`
 	WorkerIDsJSON  string    `gorm:"column:worker_ids_json;type:longtext" json:"worker_ids_json"`
 	K8sVersion     string    `gorm:"column:k8s_version;type:varchar(32)" json:"k8s_version"`
+	VersionChannel string    `gorm:"column:version_channel;type:varchar(32)" json:"version_channel"`
+	RepoMode       string    `gorm:"column:repo_mode;type:varchar(16);default:'online'" json:"repo_mode"`
+	RepoURL        string    `gorm:"column:repo_url;type:varchar(512)" json:"repo_url"`
+	ImageRepository string   `gorm:"column:image_repository;type:varchar(256)" json:"image_repository"`
+	EndpointMode   string    `gorm:"column:endpoint_mode;type:varchar(16);default:'nodeIP'" json:"endpoint_mode"`
+	ControlPlaneEndpoint string `gorm:"column:control_plane_endpoint;type:varchar(256)" json:"control_plane_endpoint"`
+	VIPProvider    string    `gorm:"column:vip_provider;type:varchar(32)" json:"vip_provider"`
+	EtcdMode       string    `gorm:"column:etcd_mode;type:varchar(16);default:'stacked'" json:"etcd_mode"`
+	ExternalEtcdJSON string  `gorm:"column:external_etcd_json;type:longtext" json:"external_etcd_json"`
 	CNI            string    `gorm:"column:cni;type:varchar(32);default:'flannel'" json:"cni"`
 	PodCIDR        string    `gorm:"column:pod_cidr;type:varchar(32)" json:"pod_cidr"`
 	ServiceCIDR    string    `gorm:"column:service_cidr;type:varchar(32)" json:"service_cidr"`
 	StepsJSON      string    `gorm:"column:steps_json;type:longtext" json:"steps_json"`
+	ResolvedConfigJSON string `gorm:"column:resolved_config_json;type:longtext" json:"resolved_config_json"`
+	DiagnosticsJSON string    `gorm:"column:diagnostics_json;type:longtext" json:"diagnostics_json"`
 	Status         string    `gorm:"column:status;type:varchar(32);index" json:"status"`
 	ResultJSON     string    `gorm:"column:result_json;type:longtext" json:"result_json"`
 	ErrorMessage   string    `gorm:"column:error_message;type:text" json:"error_message"`

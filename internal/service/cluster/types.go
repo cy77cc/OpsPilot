@@ -103,17 +103,81 @@ type BootstrapStepStatus struct {
 
 // BootstrapTaskDetail represents detailed bootstrap task information
 type BootstrapTaskDetail struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	ClusterID    *uint                 `json:"cluster_id"`
-	K8sVersion   string                `json:"k8s_version"`
-	CNI          string                `json:"cni"`
-	PodCIDR      string                `json:"pod_cidr"`
-	ServiceCIDR  string                `json:"service_cidr"`
-	Status       string                `json:"status"`
-	Steps        []BootstrapStepStatus `json:"steps"`
-	CurrentStep  int                   `json:"current_step"`
-	ErrorMessage string                `json:"error_message,omitempty"`
-	CreatedAt    time.Time             `json:"created_at"`
-	UpdatedAt    time.Time             `json:"updated_at"`
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	ClusterID            *uint                 `json:"cluster_id"`
+	K8sVersion           string                `json:"k8s_version"`
+	VersionChannel       string                `json:"version_channel"`
+	RepoMode             string                `json:"repo_mode"`
+	RepoURL              string                `json:"repo_url"`
+	ImageRepository      string                `json:"image_repository"`
+	EndpointMode         string                `json:"endpoint_mode"`
+	ControlPlaneEndpoint string                `json:"control_plane_endpoint"`
+	VIPProvider          string                `json:"vip_provider"`
+	EtcdMode             string                `json:"etcd_mode"`
+	CNI                  string                `json:"cni"`
+	PodCIDR              string                `json:"pod_cidr"`
+	ServiceCIDR          string                `json:"service_cidr"`
+	Status               string                `json:"status"`
+	Steps                []BootstrapStepStatus `json:"steps"`
+	CurrentStep          int                   `json:"current_step"`
+	ErrorMessage         string                `json:"error_message,omitempty"`
+	ResolvedConfigJSON   string                `json:"resolved_config_json,omitempty"`
+	DiagnosticsJSON      string                `json:"diagnostics_json,omitempty"`
+	CreatedAt            time.Time             `json:"created_at"`
+	UpdatedAt            time.Time             `json:"updated_at"`
+}
+
+type BootstrapProfileExternalEtcd struct {
+	Endpoints []string `json:"endpoints"`
+	CACert    string   `json:"ca_cert"`
+	Cert      string   `json:"cert"`
+	Key       string   `json:"key"`
+}
+
+type BootstrapProfileCreateReq struct {
+	Name                 string                        `json:"name" binding:"required"`
+	Description          string                        `json:"description"`
+	VersionChannel       string                        `json:"version_channel"`
+	K8sVersion           string                        `json:"k8s_version"`
+	RepoMode             string                        `json:"repo_mode"`
+	RepoURL              string                        `json:"repo_url"`
+	ImageRepository      string                        `json:"image_repository"`
+	EndpointMode         string                        `json:"endpoint_mode"`
+	ControlPlaneEndpoint string                        `json:"control_plane_endpoint"`
+	VIPProvider          string                        `json:"vip_provider"`
+	EtcdMode             string                        `json:"etcd_mode"`
+	ExternalEtcd         *BootstrapProfileExternalEtcd `json:"external_etcd"`
+}
+
+type BootstrapProfileUpdateReq struct {
+	Description          string                        `json:"description"`
+	VersionChannel       string                        `json:"version_channel"`
+	K8sVersion           string                        `json:"k8s_version"`
+	RepoMode             string                        `json:"repo_mode"`
+	RepoURL              string                        `json:"repo_url"`
+	ImageRepository      string                        `json:"image_repository"`
+	EndpointMode         string                        `json:"endpoint_mode"`
+	ControlPlaneEndpoint string                        `json:"control_plane_endpoint"`
+	VIPProvider          string                        `json:"vip_provider"`
+	EtcdMode             string                        `json:"etcd_mode"`
+	ExternalEtcd         *BootstrapProfileExternalEtcd `json:"external_etcd"`
+}
+
+type BootstrapProfileItem struct {
+	ID                   uint        `json:"id"`
+	Name                 string      `json:"name"`
+	Description          string      `json:"description"`
+	VersionChannel       string      `json:"version_channel"`
+	K8sVersion           string      `json:"k8s_version"`
+	RepoMode             string      `json:"repo_mode"`
+	RepoURL              string      `json:"repo_url"`
+	ImageRepository      string      `json:"image_repository"`
+	EndpointMode         string      `json:"endpoint_mode"`
+	ControlPlaneEndpoint string      `json:"control_plane_endpoint"`
+	VIPProvider          string      `json:"vip_provider"`
+	EtcdMode             string      `json:"etcd_mode"`
+	ExternalEtcd         interface{} `json:"external_etcd,omitempty"`
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
 }

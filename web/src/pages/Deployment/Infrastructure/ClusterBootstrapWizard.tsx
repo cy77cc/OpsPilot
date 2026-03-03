@@ -3,19 +3,34 @@ import { Steps, Form, Input, Select, Button, Card, Space, message, Spin, Result,
 import { ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
-import type { BootstrapTask, BootstrapStepStatus } from '../../../api/modules/cluster';
+import type { BootstrapProfile, BootstrapTask, BootstrapVersionItem, BootstrapValidationIssue } from '../../../api/modules/cluster';
 import type { Host } from '../../../api/modules/hosts';
 
 const { TextArea } = Input;
 
 interface BootstrapFormData {
   name: string;
+  profile_id?: number;
   control_plane_host_id?: number;
   worker_host_ids?: number[];
   k8s_version?: string;
+  version_channel?: string;
   cni?: string;
   pod_cidr?: string;
   service_cidr?: string;
+  repo_mode?: 'online' | 'mirror';
+  repo_url?: string;
+  image_repository?: string;
+  endpoint_mode?: 'nodeIP' | 'vip' | 'lbDNS';
+  control_plane_endpoint?: string;
+  vip_provider?: 'kube-vip' | 'keepalived';
+  etcd_mode?: 'stacked' | 'external';
+  external_etcd?: {
+    endpoints?: string[];
+    ca_cert?: string;
+    cert?: string;
+    key?: string;
+  };
 }
 
 interface HostOption {
@@ -34,13 +49,24 @@ const ClusterBootstrapWizard: React.FC = () => {
     name: '',
     cni: 'calico',
     k8s_version: '1.28.0',
+    version_channel: 'stable-1',
     pod_cidr: '10.244.0.0/16',
     service_cidr: '10.96.0.0/12',
+    repo_mode: 'online',
+    endpoint_mode: 'nodeIP',
+    etcd_mode: 'stacked',
   });
+  const [versionOptions, setVersionOptions] = useState<BootstrapVersionItem[]>([
+    { version: '1.28.0', channel: 'local-supported', status: 'supported' },
+  ]);
+  const [profiles, setProfiles] = useState<BootstrapProfile[]>([]);
   const [hosts, setHosts] = useState<HostOption[]>([]);
   const [previewData, setPreviewData] = useState<{
     steps: string[];
     expected_endpoint: string;
+    warnings?: string[];
+    validation_issues?: BootstrapValidationIssue[];
+    diagnostics?: Record<string, unknown>;
   } | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<BootstrapTask | null>(null);
@@ -54,6 +80,8 @@ const ClusterBootstrapWizard: React.FC = () => {
 
   useEffect(() => {
     loadHosts();
+    loadBootstrapVersions();
+    loadBootstrapProfiles();
   }, []);
 
   // Poll task status when taskId is set
@@ -95,6 +123,58 @@ const ClusterBootstrapWizard: React.FC = () => {
     }
   };
 
+  const loadBootstrapVersions = async () => {
+    try {
+      const res = await Api.cluster.getBootstrapVersions();
+      const list = res.data.list || [];
+      if (list.length > 0) {
+        setVersionOptions(list);
+        const supported = list.find((v) => v.status === 'supported');
+        if (supported) {
+          form.setFieldsValue({ k8s_version: supported.version, version_channel: res.data.default_channel || 'stable-1' });
+          setFormData((prev) => ({ ...prev, k8s_version: supported.version, version_channel: res.data.default_channel || 'stable-1' }));
+        }
+      }
+    } catch {
+      // keep local fallback
+    }
+  };
+
+  const loadBootstrapProfiles = async () => {
+    try {
+      const res = await Api.cluster.getBootstrapProfiles();
+      setProfiles(res.data.list || []);
+    } catch {
+      setProfiles([]);
+    }
+  };
+
+  const handleProfileChange = (profileId?: number) => {
+    if (!profileId) {
+      return;
+    }
+    const profile = profiles.find((p) => p.id === profileId);
+    if (!profile) {
+      return;
+    }
+    form.setFieldsValue({
+      profile_id: profile.id,
+      version_channel: profile.version_channel,
+      k8s_version: profile.k8s_version || form.getFieldValue('k8s_version'),
+      repo_mode: profile.repo_mode,
+      repo_url: profile.repo_url,
+      image_repository: profile.image_repository,
+      endpoint_mode: profile.endpoint_mode,
+      control_plane_endpoint: profile.control_plane_endpoint,
+      vip_provider: profile.vip_provider,
+      etcd_mode: profile.etcd_mode,
+      external_etcd_endpoints: profile.external_etcd?.endpoints?.join(','),
+      external_etcd_ca_cert: profile.external_etcd?.ca_cert,
+      external_etcd_cert: profile.external_etcd?.cert,
+      external_etcd_key: profile.external_etcd?.key,
+    });
+  };
+
   const handleNext = async () => {
     try {
       await form.validateFields();
@@ -121,20 +201,39 @@ const ClusterBootstrapWizard: React.FC = () => {
     try {
       const values = form.getFieldsValue();
       const finalData = { ...formData, ...values };
+      const externalEtcd = {
+        endpoints: (values.external_etcd_endpoints || '').split(',').map((x: string) => x.trim()).filter(Boolean),
+        ca_cert: values.external_etcd_ca_cert,
+        cert: values.external_etcd_cert,
+        key: values.external_etcd_key,
+      };
 
       const res = await Api.cluster.previewBootstrap({
         name: finalData.name,
+        profile_id: finalData.profile_id,
         control_plane_host_id: finalData.control_plane_host_id!,
         worker_host_ids: finalData.worker_host_ids || [],
         k8s_version: finalData.k8s_version,
+        version_channel: finalData.version_channel,
         cni: finalData.cni,
         pod_cidr: finalData.pod_cidr,
         service_cidr: finalData.service_cidr,
+        repo_mode: finalData.repo_mode,
+        repo_url: finalData.repo_url,
+        image_repository: finalData.image_repository,
+        endpoint_mode: finalData.endpoint_mode,
+        control_plane_endpoint: finalData.control_plane_endpoint,
+        vip_provider: finalData.vip_provider,
+        etcd_mode: finalData.etcd_mode,
+        external_etcd: externalEtcd,
       });
 
       setPreviewData({
         steps: res.data.steps,
         expected_endpoint: res.data.expected_endpoint,
+        warnings: res.data.warnings,
+        validation_issues: res.data.validation_issues,
+        diagnostics: res.data.diagnostics,
       });
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载预览失败');
@@ -147,16 +246,33 @@ const ClusterBootstrapWizard: React.FC = () => {
     try {
       setLoading(true);
       const values = form.getFieldsValue();
+      const externalEtcd = {
+        endpoints: (values.external_etcd_endpoints || '').split(',').map((x: string) => x.trim()).filter(Boolean),
+        ca_cert: values.external_etcd_ca_cert,
+        cert: values.external_etcd_cert,
+        key: values.external_etcd_key,
+      };
       const finalData = { ...formData, ...values };
+      finalData.external_etcd = externalEtcd;
 
       const res = await Api.cluster.applyBootstrap({
         name: finalData.name,
+        profile_id: finalData.profile_id,
         control_plane_host_id: finalData.control_plane_host_id!,
         worker_host_ids: finalData.worker_host_ids || [],
         k8s_version: finalData.k8s_version,
+        version_channel: finalData.version_channel,
         cni: finalData.cni,
         pod_cidr: finalData.pod_cidr,
         service_cidr: finalData.service_cidr,
+        repo_mode: finalData.repo_mode,
+        repo_url: finalData.repo_url,
+        image_repository: finalData.image_repository,
+        endpoint_mode: finalData.endpoint_mode,
+        control_plane_endpoint: finalData.control_plane_endpoint,
+        vip_provider: finalData.vip_provider,
+        etcd_mode: finalData.etcd_mode,
+        external_etcd: externalEtcd,
       });
 
       setTaskId(res.data.task_id);
@@ -265,6 +381,14 @@ const ClusterBootstrapWizard: React.FC = () => {
   const renderStep3 = () => (
     <Card title="网络配置">
       <Form form={form} layout="vertical">
+        <Form.Item name="profile_id" label="Bootstrap Profile（可选）" initialValue={formData.profile_id}>
+          <Select
+            allowClear
+            placeholder="选择已有 profile 自动填充高级参数"
+            options={profiles.map((p) => ({ label: `${p.name} (${p.repo_mode}/${p.endpoint_mode}/${p.etcd_mode})`, value: p.id }))}
+            onChange={handleProfileChange}
+          />
+        </Form.Item>
         <Form.Item
           name="k8s_version"
           label="Kubernetes 版本"
@@ -272,11 +396,22 @@ const ClusterBootstrapWizard: React.FC = () => {
           initialValue={formData.k8s_version}
         >
           <Select
+            options={versionOptions.map((v) => ({
+              label: `${v.version}${v.status === 'supported' ? ' (支持)' : ' (阻止)'}`,
+              value: v.version,
+              disabled: v.status !== 'supported',
+            }))}
+          />
+        </Form.Item>
+        <Form.Item
+          name="version_channel"
+          label="版本通道"
+          initialValue={formData.version_channel}
+        >
+          <Select
             options={[
-              { label: '1.28.0 (推荐)', value: '1.28.0' },
-              { label: '1.27.0', value: '1.27.0' },
-              { label: '1.26.0', value: '1.26.0' },
-              { label: '1.25.0', value: '1.25.0' },
+              { label: 'stable-1 (默认)', value: 'stable-1' },
+              { label: 'stable', value: 'stable' },
             ]}
           />
         </Form.Item>
@@ -311,6 +446,67 @@ const ClusterBootstrapWizard: React.FC = () => {
           <Input placeholder="10.96.0.0/12" />
         </Form.Item>
         <Alert
+          className="mb-4"
+          type="info"
+          message="高级配置"
+          description="可按需配置弱离线镜像/仓库、VIP 入口和 etcd 模式。"
+          showIcon
+        />
+        <Form.Item name="repo_mode" label="安装源模式" initialValue={formData.repo_mode}>
+          <Select
+            options={[
+              { label: '在线 (online)', value: 'online' },
+              { label: '内网镜像 (mirror)', value: 'mirror' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="repo_url" label="内网包仓地址（mirror 时建议）" initialValue={formData.repo_url}>
+          <Input placeholder="例如: https://apt-mirror.local/kubernetes" />
+        </Form.Item>
+        <Form.Item name="image_repository" label="镜像仓库" initialValue={formData.image_repository}>
+          <Input placeholder="例如: registry.aliyuncs.com/google_containers 或 registry.local/k8s" />
+        </Form.Item>
+        <Form.Item name="endpoint_mode" label="控制平面入口模式" initialValue={formData.endpoint_mode}>
+          <Select
+            options={[
+              { label: 'nodeIP', value: 'nodeIP' },
+              { label: 'vip', value: 'vip' },
+              { label: 'lbDNS', value: 'lbDNS' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="control_plane_endpoint" label="Control Plane Endpoint" initialValue={formData.control_plane_endpoint}>
+          <Input placeholder="例如: 10.0.0.10:6443 或 k8s-api.example.com:6443" />
+        </Form.Item>
+        <Form.Item name="vip_provider" label="VIP Provider" initialValue={formData.vip_provider}>
+          <Select
+            options={[
+              { label: 'kube-vip', value: 'kube-vip' },
+              { label: 'keepalived', value: 'keepalived' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="etcd_mode" label="etcd 模式" initialValue={formData.etcd_mode}>
+          <Select
+            options={[
+              { label: 'stacked', value: 'stacked' },
+              { label: 'external', value: 'external' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="external_etcd_endpoints" label="external etcd endpoints（逗号分隔）">
+          <Input placeholder="https://10.0.0.21:2379,https://10.0.0.22:2379" />
+        </Form.Item>
+        <Form.Item name="external_etcd_ca_cert" label="external etcd CA cert (PEM)">
+          <TextArea rows={2} />
+        </Form.Item>
+        <Form.Item name="external_etcd_cert" label="external etcd client cert (PEM)">
+          <TextArea rows={2} />
+        </Form.Item>
+        <Form.Item name="external_etcd_key" label="external etcd client key (PEM)">
+          <TextArea rows={2} />
+        </Form.Item>
+        <Alert
           type="info"
           message="网络配置说明"
           description={
@@ -330,6 +526,13 @@ const ClusterBootstrapWizard: React.FC = () => {
       <Descriptions column={2} bordered size="small">
         <Descriptions.Item label="集群名称">{formData.name}</Descriptions.Item>
         <Descriptions.Item label="K8s 版本">{formData.k8s_version}</Descriptions.Item>
+        <Descriptions.Item label="版本通道">{formData.version_channel || '-'}</Descriptions.Item>
+        <Descriptions.Item label="Repo 模式">{formData.repo_mode || '-'}</Descriptions.Item>
+        <Descriptions.Item label="镜像仓库">{formData.image_repository || '-'}</Descriptions.Item>
+        <Descriptions.Item label="入口模式">{formData.endpoint_mode || '-'}</Descriptions.Item>
+        <Descriptions.Item label="控制平面入口">{formData.control_plane_endpoint || '-'}</Descriptions.Item>
+        <Descriptions.Item label="VIP Provider">{formData.vip_provider || '-'}</Descriptions.Item>
+        <Descriptions.Item label="etcd 模式">{formData.etcd_mode || '-'}</Descriptions.Item>
         <Descriptions.Item label="CNI 插件">
           <Tag color="blue">{formData.cni}</Tag>
         </Descriptions.Item>
@@ -347,6 +550,38 @@ const ClusterBootstrapWizard: React.FC = () => {
             ))}
           </ol>
         </div>
+      )}
+      {(previewData?.warnings || []).length > 0 && (
+        <Alert
+          className="mt-4"
+          type="warning"
+          showIcon
+          message="预检告警"
+          description={
+            <ul className="list-disc pl-4">
+              {(previewData?.warnings || []).map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          }
+        />
+      )}
+      {(previewData?.validation_issues || []).length > 0 && (
+        <Alert
+          className="mt-4"
+          type="error"
+          showIcon
+          message="参数校验问题"
+          description={
+            <ul className="list-disc pl-4">
+              {(previewData?.validation_issues || []).map((i) => (
+                <li key={`${i.field}-${i.code}`}>
+                  [{i.domain || 'general'}] {i.field}: {i.message} {i.remediation ? `（建议: ${i.remediation}）` : ''}
+                </li>
+              ))}
+            </ul>
+          }
+        />
       )}
 
       <Alert
@@ -402,6 +637,17 @@ const ClusterBootstrapWizard: React.FC = () => {
               );
             })}
           </div>
+
+          {(taskStatus.resolved_config_json || taskStatus.diagnostics_json) && (
+            <Card size="small" title="有效参数与诊断摘要">
+              {taskStatus.resolved_config_json && (
+                <pre className="text-xs overflow-auto bg-gray-50 p-2 rounded">{taskStatus.resolved_config_json}</pre>
+              )}
+              {taskStatus.diagnostics_json && (
+                <pre className="text-xs overflow-auto bg-gray-50 p-2 rounded mt-2">{taskStatus.diagnostics_json}</pre>
+              )}
+            </Card>
+          )}
 
           {taskStatus.error_message && (
             <Alert type="error" message="错误信息" description={taskStatus.error_message} />
