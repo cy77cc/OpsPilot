@@ -45,6 +45,12 @@ const ClusterBootstrapWizard: React.FC = () => {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<BootstrapTask | null>(null);
   const [clusterId, setClusterId] = useState<number | null>(null);
+  const watchedName = Form.useWatch('name', form);
+  const watchedControlPlaneHostId = Form.useWatch('control_plane_host_id', form);
+  const watchedK8sVersion = Form.useWatch('k8s_version', form);
+  const watchedCni = Form.useWatch('cni', form);
+  const watchedPodCidr = Form.useWatch('pod_cidr', form);
+  const watchedServiceCidr = Form.useWatch('service_cidr', form);
 
   useEffect(() => {
     loadHosts();
@@ -452,14 +458,23 @@ const ClusterBootstrapWizard: React.FC = () => {
   ];
 
   const canProceed = () => {
+    const isFilled = (value: unknown) => {
+      if (typeof value === 'string') {
+        return value.trim().length > 0;
+      }
+      return value !== undefined && value !== null;
+    };
+
     switch (currentStep) {
       case 0:
-        return !!form.getFieldValue('name');
+        return isFilled(watchedName);
       case 1:
-        return !!form.getFieldValue('control_plane_host_id');
+        return isFilled(watchedControlPlaneHostId);
       case 3:
-        return !!form.getFieldValue('k8s_version') && !!form.getFieldValue('cni') &&
-               !!form.getFieldValue('pod_cidr') && !!form.getFieldValue('service_cidr');
+        return isFilled(watchedK8sVersion) &&
+               isFilled(watchedCni) &&
+               isFilled(watchedPodCidr) &&
+               isFilled(watchedServiceCidr);
       default:
         return true;
     }
