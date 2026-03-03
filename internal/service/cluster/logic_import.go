@@ -80,6 +80,7 @@ func (h *Handler) ImportCluster(ctx context.Context, uid uint64, req ClusterCrea
 		K8sVersion:  version,
 		Status:      "active",
 		AuthMethod:  authMethod,
+		Nodes:       "[]", // 空JSON数组，避免MySQL JSON类型字段报错
 		CreatedBy:   fmt.Sprintf("%d", uid),
 	}
 
