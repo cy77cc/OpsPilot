@@ -2,9 +2,13 @@ package experts
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 type Orchestrator struct {
@@ -62,6 +66,67 @@ func (o *Orchestrator) Execute(ctx context.Context, req *ExecuteRequest) (*Execu
 			"source":   req.Decision.Source,
 		},
 	}, err
+}
+
+func (o *Orchestrator) StreamExecute(ctx context.Context, req *ExecuteRequest) (*schema.StreamReader[*schema.Message], error) {
+	if req == nil || req.Decision == nil {
+		return nil, fmt.Errorf("route decision is required")
+	}
+	if o == nil || o.executor == nil {
+		return nil, fmt.Errorf("executor is nil")
+	}
+	runCtx := ctx
+	if timeoutMS, ok := runtimeTimeout(req.RuntimeContext); ok {
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, timeoutMS)
+		defer cancel()
+	}
+	plan := o.buildPlan(req.Decision)
+	if plan == nil || len(plan.Steps) == 0 {
+		return nil, fmt.Errorf("execution plan is empty")
+	}
+
+	sr, sw := schema.Pipe[*schema.Message](64)
+	go func() {
+		defer sw.Close()
+		results := make([]ExpertResult, 0, len(plan.Steps))
+		for i := range plan.Steps {
+			step := plan.Steps[i]
+			stream, err := o.executor.StreamStep(runCtx, &step, results, req.Message)
+			if err != nil {
+				sw.Send(schema.AssistantMessage(fmt.Sprintf("专家 %s 执行失败: %v", step.ExpertName, err), nil), nil)
+				return
+			}
+			var content string
+			for {
+				msg, recvErr := stream.Recv()
+				if errors.Is(recvErr, io.EOF) {
+					break
+				}
+				if recvErr != nil {
+					sw.Send(schema.AssistantMessage(fmt.Sprintf("专家 %s 流式读取失败: %v", step.ExpertName, recvErr), nil), nil)
+					break
+				}
+				if msg == nil {
+					continue
+				}
+				content += msg.Content
+				sw.Send(msg, nil)
+			}
+			stream.Close()
+			results = append(results, ExpertResult{
+				ExpertName: step.ExpertName,
+				Output:     content,
+			})
+		}
+		if len(results) > 1 {
+			merged, err := o.aggregateResults(runCtx, results, req)
+			if err == nil && merged != "" {
+				sw.Send(schema.AssistantMessage("\n\n---\n综合分析:\n"+merged, nil), nil)
+			}
+		}
+	}()
+	return sr, nil
 }
 
 func (o *Orchestrator) buildPlan(decision *RouteDecision) *ExecutionPlan {

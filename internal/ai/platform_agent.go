@@ -121,14 +121,15 @@ func (p *PlatformAgent) Stream(ctx context.Context, messages []*schema.Message) 
 		if exp, ok := p.registry.GetExpert(req.Decision.PrimaryExpert); ok && exp != nil && exp.Agent != nil {
 			return exp.Agent.Stream(ctx, messages)
 		}
+		return p.Runnable.Stream(ctx, messages)
 	}
-	result, err := p.orchestrator.Execute(ctx, req)
-	if err != nil {
-		return nil, err
+	if p.orchestrator != nil {
+		stream, err := p.orchestrator.StreamExecute(ctx, req)
+		if err == nil && stream != nil {
+			return stream, nil
+		}
 	}
-	return schema.StreamReaderFromArray([]*schema.Message{
-		schema.AssistantMessage(result.Response, nil),
-	}), nil
+	return p.Runnable.Stream(ctx, messages)
 }
 
 func (p *PlatformAgent) Generate(ctx context.Context, messages []*schema.Message) (*schema.Message, error) {

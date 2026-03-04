@@ -58,6 +58,28 @@ func (e *ExpertExecutor) ExecuteStep(ctx context.Context, step *ExecutionStep, p
 	}, nil
 }
 
+func (e *ExpertExecutor) StreamStep(ctx context.Context, step *ExecutionStep, priorResults []ExpertResult, baseMessage string) (*schema.StreamReader[*schema.Message], error) {
+	if step == nil {
+		return nil, fmt.Errorf("execution step is nil")
+	}
+	if e == nil || e.registry == nil {
+		return nil, fmt.Errorf("expert registry is nil")
+	}
+	exp, ok := e.registry.GetExpert(step.ExpertName)
+	if !ok || exp == nil {
+		return nil, fmt.Errorf("expert not found: %s", step.ExpertName)
+	}
+	msg := e.buildExpertMessage(step, priorResults, baseMessage)
+	if exp.Agent == nil {
+		return schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("专家模型未初始化，返回静态诊断建议："+msg, nil),
+		}), nil
+	}
+	return exp.Agent.Stream(ctx, []*schema.Message{
+		schema.UserMessage(msg),
+	})
+}
+
 func (e *ExpertExecutor) buildExpertMessage(step *ExecutionStep, priorResults []ExpertResult, baseMessage string) string {
 	var b strings.Builder
 	base := strings.TrimSpace(baseMessage)
