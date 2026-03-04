@@ -18,7 +18,6 @@ import {
   CloudServerOutlined,
   FileTextOutlined,
   MenuOutlined,
-  AppstoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Auth/AuthContext';
@@ -86,8 +85,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const baseMenuItems: MenuItem[] = [
     { key: '/', icon: <DashboardOutlined />, label: t('menu.dashboard') },
-    { key: '/services', icon: <CloudServerOutlined />, label: t('menu.services') },
-    { key: '/catalog', icon: <AppstoreOutlined />, label: '服务目录' },
+    {
+      key: '/services',
+      icon: <CloudServerOutlined />,
+      label: t('menu.services'),
+      children: [
+        { key: '/services', label: '全部服务' },
+        { key: '/services?service_kind=middleware', label: '中间件服务' },
+        { key: '/services?service_kind=business', label: '业务服务' },
+      ],
+    },
     { key: '/cmdb', icon: <CloudServerOutlined />, label: t('menu.cmdb') },
     { key: '/automation', icon: <ToolOutlined />, label: t('menu.automation') },
     { key: '/cicd', icon: <ToolOutlined />, label: 'CI/CD' },
@@ -176,7 +183,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     if (location.pathname.startsWith('/hosts')) return '/deployment/infrastructure/hosts';
     // 帮助中心
     if (location.pathname.startsWith('/help')) return '/help';
-    if (location.pathname.startsWith('/catalog')) return '/catalog';
+    if (location.pathname.startsWith('/services')) return '/services';
     // 访问治理子菜单
     if (location.pathname.startsWith('/governance/users')) return '/governance/users';
     if (location.pathname.startsWith('/governance/roles')) return '/governance/roles';

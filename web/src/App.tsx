@@ -45,14 +45,8 @@ import PermissionsPage from './pages/Settings/PermissionsPage';
 import ServiceListPage from './pages/Services/ServiceListPage';
 import ServiceDetailPage from './pages/Services/ServiceDetailPage';
 import ServiceProvisionPage from './pages/Services/ServiceProvisionPage';
-import CatalogListPage from './pages/Catalog/CatalogListPage';
-import CatalogDetailPage from './pages/Catalog/CatalogDetailPage';
-import CatalogDeployPage from './pages/Catalog/CatalogDeployPage';
-import TemplateListPage from './pages/Catalog/TemplateListPage';
-import TemplateCreatePage from './pages/Catalog/TemplateCreatePage';
-import TemplateEditPage from './pages/Catalog/TemplateEditPage';
-import ReviewListPage from './pages/Catalog/ReviewListPage';
-import CategoryManagePage from './pages/Catalog/CategoryManagePage';
+import ServiceDeployPage from './pages/Services/ServiceDeployPage';
+import ServiceVisibilityPage from './pages/Services/ServiceVisibilityPage';
 import CMDBPage from './pages/CMDB/CMDBPage';
 import AutomationPage from './pages/Automation/AutomationPage';
 import CICDPage from './pages/CICD/CICDPage';
@@ -186,14 +180,8 @@ const ProtectedApp: React.FC = () => {
             <Route path="/services" element={withAuth('service', 'read', <ServiceListPage />)} />
             <Route path="/services/provision" element={withAuth('service', 'write', <ServiceProvisionPage />)} />
             <Route path="/services/:id" element={withAuth('service', 'read', <ServiceDetailPage />)} />
-            <Route path="/catalog" element={withAuth('catalog', 'read', <CatalogListPage />)} />
-            <Route path="/catalog/:id" element={withAuth('catalog', 'read', <CatalogDetailPage />)} />
-            <Route path="/catalog/:id/deploy" element={withAuth('catalog', 'write', <CatalogDeployPage />)} />
-            <Route path="/catalog/my-templates" element={withAuth('catalog', 'write', <TemplateListPage />)} />
-            <Route path="/catalog/templates/create" element={withAuth('catalog', 'write', <TemplateCreatePage />)} />
-            <Route path="/catalog/templates/:id/edit" element={withAuth('catalog', 'write', <TemplateEditPage />)} />
-            <Route path="/catalog/reviews" element={withAuth('catalog', 'approve', <ReviewListPage />)} />
-            <Route path="/catalog/categories" element={withAuth('catalog', 'manage', <CategoryManagePage />)} />
+            <Route path="/services/:id/deploy" element={withAuth('service', 'deploy', <ServiceDeployPage />)} />
+            <Route path="/services/:id/visibility" element={withAuth('service', 'write', <ServiceVisibilityPage />)} />
             <Route path="/cmdb" element={withAuth('cmdb', 'read', <CMDBPage />)} />
             <Route path="/automation" element={withAuth('automation', 'read', <AutomationPage />)} />
             <Route path="/cicd" element={withAuth('cicd', 'read', <CICDPage />)} />

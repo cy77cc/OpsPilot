@@ -157,6 +157,9 @@ const ServiceProvisionPage: React.FC = () => {
         runtime_type: values.runtime_type,
         config_mode: values.config_mode,
         service_kind: values.service_kind,
+        visibility: values.visibility,
+        icon: values.icon,
+        tags: values.tags || [],
         service_type: values.service_type,
         render_target: values.render_target,
         labels: toLabels(values.labels || []),
@@ -203,7 +206,8 @@ const ServiceProvisionPage: React.FC = () => {
             owner: 'system',
             runtime_type: 'k8s',
             config_mode: 'standard',
-            service_kind: 'web',
+            service_kind: 'business',
+            visibility: 'team',
             service_type: 'stateless',
             render_target: 'k8s',
             replicas: 1,
@@ -254,8 +258,13 @@ const ServiceProvisionPage: React.FC = () => {
                   <Col span={8}><Form.Item label="类型" name="service_type"><Select options={[{ value: 'stateless' }, { value: 'stateful' }]} /></Form.Item></Col>
                 </Row>
                 <Row gutter={10}>
-                  <Col span={12}><Form.Item label="服务分类" name="service_kind"><Input placeholder="web/backend/job" /></Form.Item></Col>
-                  <Col span={12}><Form.Item label="标签(key=value)" name="labels"><Select mode="tags" placeholder="app=user,tier=backend" /></Form.Item></Col>
+                  <Col span={6}><Form.Item label="服务分类" name="service_kind"><Select options={[{ value: 'middleware', label: '中间件' }, { value: 'business', label: '业务服务' }]} /></Form.Item></Col>
+                  <Col span={6}><Form.Item label="可见性" name="visibility"><Select options={[{ value: 'private' }, { value: 'team' }, { value: 'team-granted' }, { value: 'public' }]} /></Form.Item></Col>
+                  <Col span={6}><Form.Item label="图标" name="icon"><Input placeholder="图标URL/名称" /></Form.Item></Col>
+                  <Col span={6}><Form.Item label="服务标签" name="tags"><Select mode="tags" placeholder="mysql,database" /></Form.Item></Col>
+                </Row>
+                <Row gutter={10}>
+                  <Col span={24}><Form.Item label="标签(key=value)" name="labels"><Select mode="tags" placeholder="app=user,tier=backend" /></Form.Item></Col>
                 </Row>
 
                 {mode === 'standard' ? (

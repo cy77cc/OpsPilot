@@ -18,6 +18,8 @@ func RegisterServiceHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/:id", h.Get)
 		g.PUT("/:id", h.Update)
 		g.DELETE("/:id", h.Delete)
+		g.PUT("/:id/visibility", h.UpdateVisibility)
+		g.PUT("/:id/grant-teams", h.UpdateGrantedTeams)
 		g.GET("/:id/variables/schema", h.GetVariableSchema)
 		g.GET("/:id/variables/values", h.GetVariableValues)
 		g.PUT("/:id/variables/values", h.UpsertVariableValues)

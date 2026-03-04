@@ -38,7 +38,7 @@
 
 | 功能 | README 描述 | 实现状态 | 证据 | 差距说明 |
 |------|-------------|----------|------|----------|
-| **服务目录 (Service Catalog)** | 预置常用的中间件（DB, Message Queue）模板，点击即部署 | ❌ 未实现 | - | **完全缺失** - README 核心承诺 |
+| **服务管理可见性与中间件能力** | 在统一服务入口中管理中间件/业务服务并支持可见性授权 | ⚠️ In Progress | `internal/service/service/` + `web/src/pages/Services/` | 正在将 catalog 合并到 services |
 | 日志与链路追踪 | 统一收集 stdout 日志，集成 OpenTelemetry 进行链路追踪（Tracing） | ❌ 未实现 | - | 无 EFK/Loki 集成，无 Tracing 可视化 |
 | Web 终端 | 允许开发者直接通过浏览器进入容器控制台（使用 Gorilla WebSocket 实现） | ✅ Done | `web/src/pages/Hosts/HostTerminalPage.tsx` | 已实现，使用 WebSocket |
 | API 网关/服务网格 | 自动注入 Sidecar（如 Istio），实现服务间流量加密和负载均衡 | ❌ 未实现 | - | 完全缺失 |
@@ -90,7 +90,7 @@
 - ✅ Web Shell：通过 WebSocket 实现浏览器终端
 
 ### 开发者门户
-- ❌ 服务目录 (Marketplace)：预置 MySQL、Redis、Kafka 等中间件，用户一键申请
+- ⚠️ 中间件服务入口：通过服务管理统一提供中间件创建与部署能力
 - ⚠️ 域名/网关管理：自动配置 Ingress，管理 SSL 证书
 - ❌ API 开放平台：允许外部系统通过 API 调用平台功能
 
@@ -102,7 +102,7 @@
 
 | # | 功能 | 影响 | 建议 |
 |---|------|------|------|
-| 1 | 服务目录/应用市场 | README 承诺的"点击即部署"中间件能力完全缺失 | **优先讨论** |
+| 1 | 服务管理统一入口 | 目录与服务双入口带来认知和维护成本 | **进行中：并入 services** |
 | 2 | 日志中心 | 运维排查问题的核心能力，完全缺失 | 需要 EFK/Loki 集成 |
 | 3 | 真实通知推送 | 告警系统只有骨架，无法真正通知用户 | 补充钉钉/Slack/邮件 Provider |
 

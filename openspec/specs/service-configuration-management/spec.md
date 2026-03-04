@@ -58,3 +58,28 @@ The system SHALL navigate to service detail configuration tab when editing from 
 - **WHEN** user navigates directly to `/services/:id?tab=config`
 - **THEN** the system MUST load the service detail page
 - **AND** automatically activate the "配置" tab
+
+### Requirement: Service Kind And Visibility Fields
+The system SHALL support service kind and visibility metadata in service create/edit flows.
+
+#### Scenario: Set service kind and visibility on create
+- **WHEN** user creates a service in the provision page
+- **THEN** the system MUST allow selecting `service_kind` (`middleware` or `business`)
+- **AND** allow selecting `visibility` (`private`, `team`, `team-granted`, `public`)
+- **AND** persist icon, tags, and granted teams metadata
+
+#### Scenario: Default visibility by service kind
+- **WHEN** user does not explicitly provide visibility
+- **THEN** the system MUST default to `public` for `middleware`
+- **AND** default to `team` for `business`
+
+### Requirement: Service Visibility Management API
+The system SHALL provide APIs to manage visibility and granted teams from service domain.
+
+#### Scenario: Update visibility via service API
+- **WHEN** user calls `PUT /api/v1/services/:id/visibility`
+- **THEN** the system MUST update visibility for that service
+
+#### Scenario: Update granted teams via service API
+- **WHEN** user calls `PUT /api/v1/services/:id/grant-teams`
+- **THEN** the system MUST update granted team IDs for that service

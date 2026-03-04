@@ -26,6 +26,10 @@ func (l *Logic) Create(ctx context.Context, uid uint64, req ServiceCreateReq) (S
 		RuntimeType:           normalized.RuntimeType,
 		ConfigMode:            normalized.ConfigMode,
 		ServiceKind:           normalized.ServiceKind,
+		Visibility:            normalized.Visibility,
+		GrantedTeams:          marshalUintSlice(normalized.GrantedTeams),
+		Icon:                  normalized.Icon,
+		Tags:                  marshalStringSlice(normalized.Tags),
 		RenderTarget:          normalized.RenderTarget,
 		LabelsJSON:            string(labelsJSON),
 		StandardJSON:          string(standardJSON),
@@ -84,6 +88,21 @@ func (l *Logic) Update(ctx context.Context, id uint, req ServiceCreateReq) (Serv
 	if strings.TrimSpace(req.RenderTarget) == "" {
 		req.RenderTarget = existing.RenderTarget
 	}
+	if strings.TrimSpace(req.ServiceKind) == "" {
+		req.ServiceKind = existing.ServiceKind
+	}
+	if strings.TrimSpace(req.Visibility) == "" {
+		req.Visibility = existing.Visibility
+	}
+	if req.GrantedTeams == nil {
+		_ = json.Unmarshal([]byte(existing.GrantedTeams), &req.GrantedTeams)
+	}
+	if strings.TrimSpace(req.Icon) == "" {
+		req.Icon = existing.Icon
+	}
+	if req.Tags == nil {
+		_ = json.Unmarshal([]byte(existing.Tags), &req.Tags)
+	}
 	if req.StandardConfig == nil && existing.StandardJSON != "" {
 		var c StandardServiceConfig
 		if err := json.Unmarshal([]byte(existing.StandardJSON), &c); err == nil {
@@ -109,6 +128,10 @@ func (l *Logic) Update(ctx context.Context, id uint, req ServiceCreateReq) (Serv
 	existing.RuntimeType = normalized.RuntimeType
 	existing.ConfigMode = normalized.ConfigMode
 	existing.ServiceKind = normalized.ServiceKind
+	existing.Visibility = normalized.Visibility
+	existing.GrantedTeams = marshalUintSlice(normalized.GrantedTeams)
+	existing.Icon = normalized.Icon
+	existing.Tags = marshalStringSlice(normalized.Tags)
 	existing.RenderTarget = normalized.RenderTarget
 	existing.LabelsJSON = string(labelsJSON)
 	existing.StandardJSON = string(standardJSON)
@@ -145,6 +168,12 @@ func (l *Logic) List(ctx context.Context, filters map[string]string) ([]ServiceL
 	if v := strings.TrimSpace(filters["runtime_type"]); v != "" {
 		query = query.Where("runtime_type = ?", v)
 	}
+	if v := strings.TrimSpace(filters["service_kind"]); v != "" {
+		query = query.Where("service_kind = ?", v)
+	}
+	if v := strings.TrimSpace(filters["visibility"]); v != "" {
+		query = query.Where("visibility = ?", v)
+	}
 	if v := strings.TrimSpace(filters["env"]); v != "" {
 		query = query.Where("env = ?", v)
 	}
@@ -162,19 +191,21 @@ func (l *Logic) List(ctx context.Context, filters map[string]string) ([]ServiceL
 		}
 	}
 
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
 	var list []model.Service
 	if err := query.Order("updated_at DESC").Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
+	uid := parseUint64(filters["viewer_uid"])
+	teamID := uint(parseUint64(filters["viewer_team_id"]))
+	isAdmin := strings.EqualFold(strings.TrimSpace(filters["viewer_is_admin"]), "true")
 	out := make([]ServiceListItem, 0, len(list))
 	for i := range list {
+		if !l.CheckViewPermission(&list[i], uid, teamID, isAdmin) {
+			continue
+		}
 		out = append(out, toServiceListItem(&list[i]))
 	}
-	return out, total, nil
+	return out, int64(len(out)), nil
 }
 
 func (l *Logic) Get(ctx context.Context, id uint) (ServiceListItem, error) {
@@ -189,6 +220,73 @@ func (l *Logic) Delete(ctx context.Context, id uint) error {
 	return l.svcCtx.DB.WithContext(ctx).Delete(&model.Service{}, id).Error
 }
 
+func (l *Logic) UpdateVisibility(ctx context.Context, id uint, req VisibilityUpdateReq) (ServiceListItem, error) {
+	var service model.Service
+	if err := l.svcCtx.DB.WithContext(ctx).First(&service, id).Error; err != nil {
+		return ServiceListItem{}, err
+	}
+	visibility := normalizeVisibility(req.Visibility)
+	if err := l.svcCtx.DB.WithContext(ctx).Model(&model.Service{}).Where("id = ?", id).Update("visibility", visibility).Error; err != nil {
+		return ServiceListItem{}, err
+	}
+	service.Visibility = visibility
+	return toServiceListItem(&service), nil
+}
+
+func (l *Logic) UpdateGrantedTeams(ctx context.Context, id uint, req GrantTeamsReq) (ServiceListItem, error) {
+	var service model.Service
+	if err := l.svcCtx.DB.WithContext(ctx).First(&service, id).Error; err != nil {
+		return ServiceListItem{}, err
+	}
+	if err := l.svcCtx.DB.WithContext(ctx).Model(&model.Service{}).Where("id = ?", id).Update("granted_teams", marshalUintSlice(req.GrantedTeams)).Error; err != nil {
+		return ServiceListItem{}, err
+	}
+	service.GrantedTeams = marshalUintSlice(req.GrantedTeams)
+	return toServiceListItem(&service), nil
+}
+
+func (l *Logic) CheckViewPermission(s *model.Service, uid uint64, viewerTeamID uint, isAdmin bool) bool {
+	if s == nil {
+		return false
+	}
+	if isAdmin {
+		return true
+	}
+	if uint(uid) == s.OwnerUserID {
+		return true
+	}
+	visibility := normalizeVisibility(defaultIfEmpty(s.Visibility, "team"))
+	switch visibility {
+	case "private":
+		return false
+	case "team":
+		return viewerTeamID > 0 && viewerTeamID == s.TeamID
+	case "team-granted":
+		if viewerTeamID > 0 && viewerTeamID == s.TeamID {
+			return true
+		}
+		teams := parseUintSlice(s.GrantedTeams)
+		for _, teamID := range teams {
+			if teamID == viewerTeamID {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+func (l *Logic) CheckEditPermission(s *model.Service, uid uint64, viewerTeamID uint, isAdmin bool) bool {
+	if s == nil {
+		return false
+	}
+	if isAdmin || uint(uid) == s.OwnerUserID {
+		return true
+	}
+	return viewerTeamID > 0 && viewerTeamID == s.TeamID
+}
+
 func toServiceListItem(s *model.Service) ServiceListItem {
 	out := ServiceListItem{
 		ID:                    s.ID,
@@ -200,6 +298,9 @@ func toServiceListItem(s *model.Service) ServiceListItem {
 		RuntimeType:           s.RuntimeType,
 		ConfigMode:            s.ConfigMode,
 		ServiceKind:           s.ServiceKind,
+		Visibility:            s.Visibility,
+		Icon:                  s.Icon,
+		DeployCount:           s.DeployCount,
 		Status:                s.Status,
 		LastRevisionID:        s.LastRevisionID,
 		DefaultTargetID:       s.DefaultTargetID,
@@ -218,6 +319,12 @@ func toServiceListItem(s *model.Service) ServiceListItem {
 			out.StandardConfig = &cfg
 		}
 	}
+	if strings.TrimSpace(s.GrantedTeams) != "" {
+		_ = json.Unmarshal([]byte(s.GrantedTeams), &out.GrantedTeams)
+	}
+	if strings.TrimSpace(s.Tags) != "" {
+		_ = json.Unmarshal([]byte(s.Tags), &out.Tags)
+	}
 	return out
 }
 
@@ -230,8 +337,14 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 	r.Owner = defaultIfEmpty(r.Owner, "system")
 	r.RuntimeType = defaultIfEmpty(r.RuntimeType, "k8s")
 	r.ConfigMode = defaultIfEmpty(r.ConfigMode, "standard")
+	r.ServiceKind = defaultIfEmpty(r.ServiceKind, "business")
+	r.Visibility = normalizeVisibility(defaultIfEmpty(r.Visibility, defaultVisibilityByKind(r.ServiceKind)))
 	r.RenderTarget = defaultIfEmpty(r.RenderTarget, r.RuntimeType)
 	r.ServiceType = defaultIfEmpty(r.ServiceType, "stateless")
+	r.Icon = strings.TrimSpace(r.Icon)
+	if r.Tags == nil {
+		r.Tags = make([]string, 0)
+	}
 	if r.Name == "" {
 		r.Name = "service"
 	}
@@ -275,4 +388,56 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 	}
 	r.CustomYAML = resp.RenderedYAML
 	return r, resp.RenderedYAML, nil
+}
+
+func marshalUintSlice(list []uint) string {
+	if list == nil {
+		list = make([]uint, 0)
+	}
+	b, _ := json.Marshal(list)
+	return string(b)
+}
+
+func marshalStringSlice(list []string) string {
+	if list == nil {
+		list = make([]string, 0)
+	}
+	b, _ := json.Marshal(list)
+	return string(b)
+}
+
+func parseUintSlice(raw string) []uint {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []uint
+	_ = json.Unmarshal([]byte(raw), &out)
+	return out
+}
+
+func parseUint64(v string) uint64 {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	var n uint64
+	_, _ = fmt.Sscanf(v, "%d", &n)
+	return n
+}
+
+func normalizeVisibility(v string) string {
+	s := strings.ToLower(strings.TrimSpace(v))
+	switch s {
+	case "private", "team", "team-granted", "public":
+		return s
+	default:
+		return "team"
+	}
+}
+
+func defaultVisibilityByKind(kind string) string {
+	if strings.EqualFold(strings.TrimSpace(kind), "middleware") {
+		return "public"
+	}
+	return "team"
 }

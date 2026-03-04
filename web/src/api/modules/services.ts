@@ -3,6 +3,8 @@ import type { ApiResponse, PaginatedResponse } from '../api';
 
 export type ServiceRuntimeType = 'k8s' | 'compose' | 'helm';
 export type ServiceConfigMode = 'standard' | 'custom';
+export type ServiceVisibility = 'private' | 'team' | 'team-granted' | 'public';
+export type ServiceKind = 'middleware' | 'business' | string;
 
 export interface LabelKV {
   key: string;
@@ -37,6 +39,11 @@ export interface ServiceItem {
   env: string;
   owner: string;
   runtimeType: ServiceRuntimeType;
+  visibility?: ServiceVisibility;
+  grantedTeams?: number[];
+  icon?: string;
+  tags?: string[];
+  deployCount?: number;
   renderTarget?: 'k8s' | 'compose' | 'helm';
   configMode: ServiceConfigMode;
   serviceKind: string;
@@ -132,6 +139,8 @@ export interface ServiceMgmtListParams {
   env?: string;
   labelSelector?: string;
   q?: string;
+  serviceKind?: ServiceKind | 'all';
+  visibility?: ServiceVisibility | 'all';
 }
 
 export interface ServiceCreateParams {
@@ -143,6 +152,10 @@ export interface ServiceCreateParams {
   runtime_type: ServiceRuntimeType;
   config_mode: ServiceConfigMode;
   service_kind: string;
+  visibility?: ServiceVisibility;
+  granted_teams?: number[];
+  icon?: string;
+  tags?: string[];
   service_type: 'stateless' | 'stateful';
   render_target: 'k8s' | 'compose';
   labels?: LabelKV[];
@@ -183,7 +196,12 @@ const mapService = (item: any): ServiceItem => ({
   runtimeType: (item.runtime_type || 'k8s') as ServiceRuntimeType,
   renderTarget: (item.render_target || item.runtime_type || 'k8s') as 'k8s' | 'compose' | 'helm',
   configMode: (item.config_mode || 'standard') as ServiceConfigMode,
-  serviceKind: item.service_kind || 'web',
+  serviceKind: item.service_kind || 'business',
+  visibility: (item.visibility || 'team') as ServiceVisibility,
+  grantedTeams: Array.isArray(item.granted_teams) ? item.granted_teams.map((x: any) => Number(x)) : [],
+  icon: item.icon || '',
+  tags: Array.isArray(item.tags) ? item.tags.map((x: any) => String(x)) : [],
+  deployCount: Number(item.deploy_count || 0),
   serviceType: (item.service_type || 'stateless') as 'stateless' | 'stateful',
   status: item.status || 'draft',
   labels: Array.isArray(item.labels) ? item.labels.map((x: any) => ({ key: x.key || '', value: x.value || '' })) : [],
@@ -217,6 +235,8 @@ export const serviceApi = {
         env: params?.env && params.env !== 'all' ? params.env : undefined,
         label_selector: params?.labelSelector,
         q: params?.q,
+        service_kind: params?.serviceKind && params.serviceKind !== 'all' ? params.serviceKind : undefined,
+        visibility: params?.visibility && params.visibility !== 'all' ? params.visibility : undefined,
       },
     });
     const payload = response.data || {};
@@ -256,6 +276,16 @@ export const serviceApi = {
 
   async deploy(id: string, payload?: { deploy_target?: ServiceRuntimeType; cluster_id?: number; namespace?: string; env?: string; variables?: Record<string, string>; approval_token?: string }): Promise<ApiResponse<{ release_record_id: number; unified_release_id?: number; trigger_source?: string }>> {
     return apiService.post(`/services/${id}/deploy`, payload || {});
+  },
+
+  async updateVisibility(id: string, visibility: ServiceVisibility): Promise<ApiResponse<ServiceItem>> {
+    const response = await apiService.put<any>(`/services/${id}/visibility`, { visibility });
+    return { ...response, data: mapService(response.data) };
+  },
+
+  async updateGrantedTeams(id: string, grantedTeams: number[]): Promise<ApiResponse<ServiceItem>> {
+    const response = await apiService.put<any>(`/services/${id}/grant-teams`, { granted_teams: grantedTeams });
+    return { ...response, data: mapService(response.data) };
   },
 
   async deployPreview(id: string, payload: { env?: string; cluster_id?: number; namespace?: string; deploy_target?: ServiceRuntimeType; variables?: Record<string, string> }): Promise<ApiResponse<{ resolved_yaml: string; checks: Array<{ level: string; code: string; message: string }>; warnings: Array<{ level: string; code: string; message: string }>; target: ServiceDeployTarget; target_id?: number; preview_token?: string; preview_expires_at?: string }>> {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/k8s-manage/internal/httpx"
+	"github.com/cy77cc/k8s-manage/internal/model"
 	"github.com/cy77cc/k8s-manage/internal/svc"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
@@ -84,6 +85,9 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
+	if !h.checkEditPermission(c, uint(id)) {
+		return
+	}
 	var req ServiceCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -106,12 +110,17 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	filters := map[string]string{
-		"project_id":     c.Query("project_id"),
-		"team_id":        c.Query("team_id"),
-		"runtime_type":   c.Query("runtime_type"),
-		"env":            c.Query("env"),
-		"label_selector": c.Query("label_selector"),
-		"q":              c.Query("q"),
+		"project_id":      c.Query("project_id"),
+		"team_id":         c.Query("team_id"),
+		"runtime_type":    c.Query("runtime_type"),
+		"service_kind":    c.Query("service_kind"),
+		"visibility":      c.Query("visibility"),
+		"env":             c.Query("env"),
+		"label_selector":  c.Query("label_selector"),
+		"q":               c.Query("q"),
+		"viewer_uid":      strconv.FormatUint(httpx.UIDFromCtx(c), 10),
+		"viewer_is_admin": strconv.FormatBool(httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c))),
+		"viewer_team_id":  strings.TrimSpace(c.GetHeader("X-Team-ID")),
 	}
 	if !httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c)) {
 		if hp := strings.TrimSpace(c.GetHeader("X-Project-ID")); hp != "" {
@@ -138,6 +147,9 @@ func (h *Handler) Get(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
+	if !h.checkViewPermission(c, uint(id)) {
+		return
+	}
 	resp, err := h.logic.Get(c.Request.Context(), uint(id))
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
@@ -155,11 +167,64 @@ func (h *Handler) Delete(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
+	if !h.checkEditPermission(c, uint(id)) {
+		return
+	}
 	if err := h.logic.Delete(c.Request.Context(), uint(id)); err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
 	httpx.OK(c, nil)
+}
+
+func (h *Handler) UpdateVisibility(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, "invalid id")
+		return
+	}
+	if !h.checkEditPermission(c, uint(id)) {
+		return
+	}
+	var req VisibilityUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	resp, err := h.logic.UpdateVisibility(c.Request.Context(), uint(id), req)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, resp)
+}
+
+func (h *Handler) UpdateGrantedTeams(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, "invalid id")
+		return
+	}
+	if !h.checkEditPermission(c, uint(id)) {
+		return
+	}
+	var req GrantTeamsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	resp, err := h.logic.UpdateGrantedTeams(c.Request.Context(), uint(id), req)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, resp)
 }
 
 func (h *Handler) Deploy(c *gin.Context) {
@@ -487,4 +552,48 @@ func (h *Handler) fillOwnershipFromHeaders(c *gin.Context, req *ServiceCreateReq
 			}
 		}
 	}
+}
+
+func (h *Handler) checkViewPermission(c *gin.Context, serviceID uint) bool {
+	if httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c)) {
+		return true
+	}
+	var svc model.Service
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Select("id", "owner_user_id", "team_id", "visibility", "granted_teams").First(&svc, serviceID).Error; err != nil {
+		httpx.Fail(c, xcode.NotFound, "service not found")
+		return false
+	}
+	viewerTeamID := uint(0)
+	if ht := strings.TrimSpace(c.GetHeader("X-Team-ID")); ht != "" {
+		if t, err := strconv.ParseUint(ht, 10, 64); err == nil {
+			viewerTeamID = uint(t)
+		}
+	}
+	if !h.logic.CheckViewPermission(&svc, httpx.UIDFromCtx(c), viewerTeamID, false) {
+		httpx.Fail(c, xcode.Forbidden, "无权限查看该服务")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) checkEditPermission(c *gin.Context, serviceID uint) bool {
+	if httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c)) {
+		return true
+	}
+	var svc model.Service
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Select("id", "owner_user_id", "team_id").First(&svc, serviceID).Error; err != nil {
+		httpx.Fail(c, xcode.NotFound, "service not found")
+		return false
+	}
+	viewerTeamID := uint(0)
+	if ht := strings.TrimSpace(c.GetHeader("X-Team-ID")); ht != "" {
+		if t, err := strconv.ParseUint(ht, 10, 64); err == nil {
+			viewerTeamID = uint(t)
+		}
+	}
+	if !h.logic.CheckEditPermission(&svc, httpx.UIDFromCtx(c), viewerTeamID, false) {
+		httpx.Fail(c, xcode.Forbidden, "无权限编辑该服务")
+		return false
+	}
+	return true
 }

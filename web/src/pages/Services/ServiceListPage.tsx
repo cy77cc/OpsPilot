@@ -34,7 +34,7 @@ import {
   AppstoreOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
 import { StaggerList, StaggerItem } from '../../components/Motion';
@@ -44,11 +44,13 @@ const AUTO_SWITCH_THRESHOLD = 8;
 
 const ServiceListPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<ServiceItem[]>([]);
   const [query, setQuery] = useState('');
   const [env, setEnv] = useState<string>('all');
   const [runtime, setRuntime] = useState<string>('all');
+  const [serviceKind, setServiceKind] = useState<string>(() => searchParams.get('service_kind') || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [labelSelector, setLabelSelector] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -68,6 +70,7 @@ const ServiceListPage: React.FC = () => {
         pageSize: 100,
         env: env === 'all' ? undefined : env,
         runtimeType: runtime === 'all' ? undefined : (runtime as any),
+        serviceKind: serviceKind === 'all' ? undefined : (serviceKind as any),
         labelSelector,
         q: query,
       });
@@ -77,7 +80,12 @@ const ServiceListPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [env, runtime, labelSelector, query]);
+  }, [env, runtime, serviceKind, labelSelector, query]);
+
+  useEffect(() => {
+    const fromURL = searchParams.get('service_kind') || 'all';
+    setServiceKind(fromURL);
+  }, [searchParams]);
 
   useEffect(() => {
     void load();
@@ -175,6 +183,8 @@ const ServiceListPage: React.FC = () => {
               <div className="flex flex-wrap gap-2 text-sm text-gray-600">
                 <span>环境: <Tag>{service.env}</Tag></span>
                 <span>运行时: <Tag color="blue">{service.runtimeType}</Tag></span>
+                <span>分类: <Tag color="gold">{service.serviceKind || 'business'}</Tag></span>
+                {service.visibility && <span>可见性: <Tag color="purple">{service.visibility}</Tag></span>}
                 {service.owner && <span>负责人: {service.owner}</span>}
               </div>
             </div>
@@ -213,6 +223,16 @@ const ServiceListPage: React.FC = () => {
               {service.labels.length > 4 && (
                 <Tag className="text-xs">+{service.labels.length - 4}</Tag>
               )}
+            </Space>
+          </div>
+        )}
+        {service.tags && service.tags.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="text-xs text-gray-500 mb-2">标签</div>
+            <Space size={[4, 4]} wrap>
+              {service.tags.map((tag) => (
+                <Tag key={tag} color="blue">{tag}</Tag>
+              ))}
             </Space>
           </div>
         )}
@@ -257,6 +277,20 @@ const ServiceListPage: React.FC = () => {
       key: 'runtimeType',
       width: 100,
       render: (runtime: string) => <Tag color="blue">{runtime}</Tag>,
+    },
+    {
+      title: '分类',
+      dataIndex: 'serviceKind',
+      key: 'serviceKind',
+      width: 110,
+      render: (kind: string) => <Tag color="gold">{kind || 'business'}</Tag>,
+    },
+    {
+      title: '可见性',
+      dataIndex: 'visibility',
+      key: 'visibility',
+      width: 120,
+      render: (v: string) => <Tag color="purple">{v || 'team'}</Tag>,
     },
     {
       title: '负责人',
@@ -418,6 +452,16 @@ const ServiceListPage: React.FC = () => {
                 { value: 'helm', label: 'Helm' },
               ]}
               onChange={setRuntime}
+            />
+            <Select
+              value={serviceKind}
+              style={{ width: 140 }}
+              options={[
+                { value: 'all', label: '全部分类' },
+                { value: 'middleware', label: '中间件' },
+                { value: 'business', label: '业务服务' },
+              ]}
+              onChange={setServiceKind}
             />
             <Select
               value={statusFilter}

@@ -88,6 +88,10 @@ type ServiceCreateReq struct {
 	Env             string                 `json:"env"`
 	Owner           string                 `json:"owner"`
 	ServiceKind     string                 `json:"service_kind"`
+	Visibility      string                 `json:"visibility"`
+	GrantedTeams    []uint                 `json:"granted_teams"`
+	Icon            string                 `json:"icon"`
+	Tags            []string               `json:"tags"`
 	ServiceType     string                 `json:"service_type"`
 	RuntimeType     string                 `json:"runtime_type"`
 	ConfigMode      string                 `json:"config_mode"`
@@ -134,6 +138,14 @@ type DeployReq struct {
 	Variables     map[string]string `json:"variables"`
 	DeployTarget  string            `json:"deploy_target"` // k8s/compose/helm
 	ApprovalToken string            `json:"approval_token"`
+}
+
+type VisibilityUpdateReq struct {
+	Visibility string `json:"visibility"`
+}
+
+type GrantTeamsReq struct {
+	GrantedTeams []uint `json:"granted_teams"`
 }
 
 type VariableExtractReq struct {
@@ -194,6 +206,11 @@ type ServiceListItem struct {
 	RuntimeType           string                 `json:"runtime_type"`
 	ConfigMode            string                 `json:"config_mode"`
 	ServiceKind           string                 `json:"service_kind"`
+	Visibility            string                 `json:"visibility"`
+	GrantedTeams          []uint                 `json:"granted_teams,omitempty"`
+	Icon                  string                 `json:"icon,omitempty"`
+	Tags                  []string               `json:"tags,omitempty"`
+	DeployCount           int                    `json:"deploy_count"`
 	Status                string                 `json:"status"`
 	Labels                []LabelKV              `json:"labels"`
 	StandardConfig        *StandardServiceConfig `json:"standard_config,omitempty"`

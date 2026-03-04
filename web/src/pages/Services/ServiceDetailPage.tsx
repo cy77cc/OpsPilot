@@ -542,9 +542,13 @@ const ServiceDetailPage: React.FC = () => {
           <Button icon={<SaveOutlined />} onClick={createRevision}>
             创建 Revision
           </Button>
-          <Button icon={<CloudUploadOutlined />} type="primary" loading={deploying} onClick={deploy}>
-            部署
+          <Button icon={<CloudUploadOutlined />} onClick={() => navigate(`/services/${id}/deploy`)}>
+            部署向导
           </Button>
+          <Button icon={<SettingOutlined />} onClick={() => navigate(`/services/${id}/visibility`)}>
+            可见性设置
+          </Button>
+          <Button type="primary" loading={deploying} onClick={deploy}>快速部署</Button>
         </Space>
       </div>
 
@@ -641,7 +645,9 @@ const ServiceDetailPage: React.FC = () => {
                         <Descriptions.Item label="项目 ID">{service.projectId || '-'}</Descriptions.Item>
                         <Descriptions.Item label="团队 ID">{service.teamId || '-'}</Descriptions.Item>
                         <Descriptions.Item label="服务分类">{service.serviceKind || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="可见性">{service.visibility || 'team'}</Descriptions.Item>
                         <Descriptions.Item label="服务类型">{service.serviceType || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="部署次数">{service.deployCount || 0}</Descriptions.Item>
                         <Descriptions.Item label="模板引擎">{service.templateEngineVersion || 'v1'}</Descriptions.Item>
                         <Descriptions.Item label="最新 Revision">{service.lastRevisionId || '-'}</Descriptions.Item>
                         <Descriptions.Item label="标签" span={2}>
@@ -656,6 +662,9 @@ const ServiceDetailPage: React.FC = () => {
                           ) : (
                             '-'
                           )}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="服务标签" span={2}>
+                          {service.tags && service.tags.length > 0 ? service.tags.map((t) => <Tag key={t}>{t}</Tag>) : '-'}
                         </Descriptions.Item>
                       </Descriptions>
                     )}

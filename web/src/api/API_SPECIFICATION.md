@@ -1583,90 +1583,41 @@ GET /api/v1/dashboard/overview
 }
 ```
 
-## 4. 服务目录 API
 
-### 4.1 分类管理
+## 4. 服务可见性 API
 
-- `GET /api/v1/catalog/categories` 获取分类列表
-- `POST /api/v1/catalog/categories` 创建分类（管理员）
-- `PUT /api/v1/catalog/categories/{id}` 更新分类
-- `DELETE /api/v1/catalog/categories/{id}` 删除分类（非系统分类）
+### 4.1 服务列表筛选扩展
 
-分类对象示例：
+`GET /api/v1/services` 新增查询参数：
+
+- `service_kind`: `middleware` / `business`
+- `visibility`: `private` / `team` / `team-granted` / `public`
+
+服务对象新增字段：
+
+- `visibility`
+- `granted_teams`
+- `icon`
+- `tags`
+- `deploy_count`
+
+### 4.2 可见性管理
+
+- `PUT /api/v1/services/{id}/visibility` 更新可见性
+- `PUT /api/v1/services/{id}/grant-teams` 更新授权团队列表
+
+可见性更新请求示例：
 
 ```json
 {
-  "id": 1,
-  "name": "database",
-  "display_name": "数据库",
-  "icon": "DatabaseOutlined",
-  "description": "数据库相关模板",
-  "sort_order": 10,
-  "is_system": true
+  "visibility": "team-granted"
 }
 ```
 
-### 4.2 模板管理
-
-- `GET /api/v1/catalog/templates` 获取模板列表（支持 `category_id`、`status`、`visibility`、`q`、`mine=true`）
-- `GET /api/v1/catalog/templates/{id}` 获取模板详情
-- `POST /api/v1/catalog/templates` 创建模板
-- `PUT /api/v1/catalog/templates/{id}` 更新模板
-- `DELETE /api/v1/catalog/templates/{id}` 删除模板
-- `POST /api/v1/catalog/templates/{id}/submit` 提交审核
-- `POST /api/v1/catalog/templates/{id}/publish` 审核发布（管理员）
-- `POST /api/v1/catalog/templates/{id}/reject` 审核驳回（管理员）
-
-模板对象示例：
+授权团队更新请求示例：
 
 ```json
 {
-  "id": 11,
-  "name": "mysql-single",
-  "display_name": "MySQL 单实例",
-  "category_id": 1,
-  "status": "published",
-  "visibility": "public",
-  "variables_schema": [
-    {
-      "name": "root_password",
-      "type": "password",
-      "required": true,
-      "description": "root 密码"
-    }
-  ],
-  "deploy_count": 24
-}
-```
-
-### 4.3 部署与预览
-
-- `POST /api/v1/catalog/preview` 预览渲染后的 YAML
-- `POST /api/v1/catalog/deploy` 从模板创建并部署服务
-
-预览请求示例：
-
-```json
-{
-  "template_id": 11,
-  "target": "k8s",
-  "variables": {
-    "root_password": "secret"
-  }
-}
-```
-
-部署请求示例：
-
-```json
-{
-  "template_id": 11,
-  "target": "k8s",
-  "project_id": 1,
-  "service_name": "mysql-prod",
-  "environment": "production",
-  "variables": {
-    "root_password": "secret"
-  }
+  "granted_teams": [2, 3, 5]
 }
 ```
