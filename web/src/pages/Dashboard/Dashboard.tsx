@@ -88,10 +88,10 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
-          <TimeseriesChart title="CPU 使用率" data={overview.metrics.cpu_usage} loading={loading} />
+          <TimeseriesChart title="CPU 使用率" series={overview.metrics.cpu_usage} loading={loading} />
         </Col>
         <Col xs={24} xl={12}>
-          <TimeseriesChart title="内存使用率" data={overview.metrics.memory_usage} loading={loading} />
+          <TimeseriesChart title="内存使用率" series={overview.metrics.memory_usage} loading={loading} />
         </Col>
       </Row>
 

@@ -31,6 +31,12 @@ export interface MetricPoint {
   value: number;
 }
 
+export interface MetricSeries {
+  hostId: number;
+  hostName: string;
+  data: MetricPoint[];
+}
+
 export interface OverviewResponse {
   hosts: HealthStats;
   clusters: HealthStats;
@@ -41,8 +47,8 @@ export interface OverviewResponse {
   };
   events: EventItem[];
   metrics: {
-    cpu_usage: MetricPoint[];
-    memory_usage: MetricPoint[];
+    cpu_usage: MetricSeries[];
+    memory_usage: MetricSeries[];
   };
 }
 
@@ -74,6 +80,12 @@ const normalizeMetricPoint = (item: any): MetricPoint => ({
   value: Number(item?.value || 0),
 });
 
+const normalizeMetricSeries = (item: any): MetricSeries => ({
+  hostId: Number(item?.hostId || 0),
+  hostName: String(item?.hostName || ''),
+  data: Array.isArray(item?.data) ? item.data.map(normalizeMetricPoint) : [],
+});
+
 export const dashboardApi = {
   async getOverview(timeRange: TimeRange = '1h'): Promise<ApiResponse<OverviewResponse>> {
     const response = await apiService.get<any>('/dashboard/overview', {
@@ -93,8 +105,8 @@ export const dashboardApi = {
         },
         events: Array.isArray(raw?.events) ? raw.events.map(normalizeEventItem) : [],
         metrics: {
-          cpu_usage: Array.isArray(raw?.metrics?.cpu_usage) ? raw.metrics.cpu_usage.map(normalizeMetricPoint) : [],
-          memory_usage: Array.isArray(raw?.metrics?.memory_usage) ? raw.metrics.memory_usage.map(normalizeMetricPoint) : [],
+          cpu_usage: Array.isArray(raw?.metrics?.cpu_usage) ? raw.metrics.cpu_usage.map(normalizeMetricSeries) : [],
+          memory_usage: Array.isArray(raw?.metrics?.memory_usage) ? raw.metrics.memory_usage.map(normalizeMetricSeries) : [],
         },
       },
     };

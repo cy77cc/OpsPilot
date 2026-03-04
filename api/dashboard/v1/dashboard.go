@@ -39,16 +39,23 @@ type MetricPoint struct {
 	Value     float64   `json:"value"`
 }
 
+// MetricSeries represents a single host's metric series.
+type MetricSeries struct {
+	HostID   uint64        `json:"hostId"`
+	HostName string        `json:"hostName"`
+	Data     []MetricPoint `json:"data"`
+}
+
 // AlertSummary includes firing count and recent alert list.
 type AlertSummary struct {
 	Firing int         `json:"firing"`
 	Recent []AlertItem `json:"recent"`
 }
 
-// MetricsSeries includes cpu/memory trend lines.
+// MetricsSeries includes cpu/memory trend lines per host.
 type MetricsSeries struct {
-	CPUUsage    []MetricPoint `json:"cpu_usage"`
-	MemoryUsage []MetricPoint `json:"memory_usage"`
+	CPUUsage    []MetricSeries `json:"cpu_usage"`
+	MemoryUsage []MetricSeries `json:"memory_usage"`
 }
 
 // OverviewResponse is the response of dashboard overview API.

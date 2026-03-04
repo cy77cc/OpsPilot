@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -286,43 +287,93 @@ func (l *Logic) getRecentEvents(ctx context.Context) ([]dashboardv1.EventItem, e
 }
 
 func (l *Logic) getMetricsSeries(ctx context.Context, since, now time.Time) (dashboardv1.MetricsSeries, error) {
-	cpuRows, err := l.listMetricPoints(ctx, "cpu_usage", since, now)
+	// Calculate appropriate limit per host based on time range
+	duration := now.Sub(since)
+	limit := 60
+	switch {
+	case duration <= 2*time.Hour:
+		limit = 60
+	case duration <= 6*time.Hour:
+		limit = 180
+	default:
+		limit = 288
+	}
+
+	cpuSeries, err := l.listMetricPointsGrouped(ctx, "cpu_usage", since, now, limit)
 	if err != nil {
 		return dashboardv1.MetricsSeries{}, err
 	}
-	memoryRows, err := l.listMetricPoints(ctx, "memory_usage", since, now)
+	memorySeries, err := l.listMetricPointsGrouped(ctx, "memory_usage", since, now, limit)
 	if err != nil {
 		return dashboardv1.MetricsSeries{}, err
 	}
 	return dashboardv1.MetricsSeries{
-		CPUUsage:    cpuRows,
-		MemoryUsage: memoryRows,
+		CPUUsage:    cpuSeries,
+		MemoryUsage: memorySeries,
 	}, nil
 }
 
-func (l *Logic) listMetricPoints(ctx context.Context, metric string, since, now time.Time) ([]dashboardv1.MetricPoint, error) {
-	rows := make([]model.MetricPoint, 0, 128)
+func (l *Logic) listMetricPointsGrouped(ctx context.Context, metric string, since, now time.Time, limitPerHost int) ([]dashboardv1.MetricSeries, error) {
+	// Query all metric points for the time range
+	rows := make([]model.MetricPoint, 0, 500)
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("metric = ? AND collected_at >= ? AND collected_at <= ?", metric, since, now).
-		Order("collected_at DESC").
-		Limit(60).
+		Order("collected_at ASC").
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	// Query uses DESC for cheap limit; convert to ASC for chart display.
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].Collected.Before(rows[j].Collected)
-	})
+	// Group by host
+	type hostKey struct {
+		id   uint64
+		name string
+	}
+	groups := make(map[hostKey][]dashboardv1.MetricPoint)
 
-	out := make([]dashboardv1.MetricPoint, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, dashboardv1.MetricPoint{
+		// Parse dimensions_json to extract host_id and host_name
+		var dims struct {
+			HostID   uint64 `json:"host_id"`
+			HostName string `json:"host_name"`
+		}
+		if row.DimensionsJSON != "" {
+			_ = json.Unmarshal([]byte(row.DimensionsJSON), &dims)
+		}
+		if dims.HostID == 0 {
+			continue // Skip global metrics
+		}
+
+		key := hostKey{id: dims.HostID, name: dims.HostName}
+		groups[key] = append(groups[key], dashboardv1.MetricPoint{
 			Timestamp: row.Collected,
 			Value:     row.Value,
 		})
 	}
-	return out, nil
+
+	// Convert to slice and limit per host
+	result := make([]dashboardv1.MetricSeries, 0, len(groups))
+	for key, points := range groups {
+		// Sort by timestamp (already sorted from query, but ensure)
+		sort.Slice(points, func(i, j int) bool {
+			return points[i].Timestamp.Before(points[j].Timestamp)
+		})
+		// Limit points per host
+		if len(points) > limitPerHost {
+			points = points[len(points)-limitPerHost:]
+		}
+		result = append(result, dashboardv1.MetricSeries{
+			HostID:   key.id,
+			HostName: key.name,
+			Data:     points,
+		})
+	}
+
+	// Sort by host name for consistent display
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].HostName < result[j].HostName
+	})
+
+	return result, nil
 }
 
 func parseTimeRange(now time.Time, timeRange string) (time.Time, error) {

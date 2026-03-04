@@ -121,8 +121,8 @@ func TestGetOverviewMergesEventsAndMetricsLimit(t *testing.T) {
 	for i := 0; i < 70; i++ {
 		at := now.Add(-time.Duration(70-i) * time.Minute)
 		metricRows = append(metricRows,
-			model.MetricPoint{Metric: "cpu_usage", Source: "global", Value: float64(i), Collected: at},
-			model.MetricPoint{Metric: "memory_usage", Source: "global", Value: float64(i) + 10, Collected: at},
+			model.MetricPoint{Metric: "cpu_usage", Source: "host", DimensionsJSON: `{"host_id":1,"host_name":"host-1"}`, Value: float64(i), Collected: at},
+			model.MetricPoint{Metric: "memory_usage", Source: "host", DimensionsJSON: `{"host_id":1,"host_name":"host-1"}`, Value: float64(i) + 10, Collected: at},
 		)
 	}
 	if err := logic.svcCtx.DB.WithContext(ctx).Create(&metricRows).Error; err != nil {
@@ -140,11 +140,16 @@ func TestGetOverviewMergesEventsAndMetricsLimit(t *testing.T) {
 	if len(resp.Events) != 4 {
 		t.Fatalf("unexpected events len: %d", len(resp.Events))
 	}
-	if len(resp.Metrics.CPUUsage) != 60 || len(resp.Metrics.MemoryUsage) != 60 {
-		t.Fatalf("unexpected metric size: cpu=%d mem=%d", len(resp.Metrics.CPUUsage), len(resp.Metrics.MemoryUsage))
+	// Metrics are now grouped by host
+	if len(resp.Metrics.CPUUsage) != 1 || len(resp.Metrics.MemoryUsage) != 1 {
+		t.Fatalf("unexpected metric series count: cpu=%d mem=%d", len(resp.Metrics.CPUUsage), len(resp.Metrics.MemoryUsage))
 	}
-	if len(resp.Metrics.CPUUsage) >= 2 {
-		if !resp.Metrics.CPUUsage[0].Timestamp.Before(resp.Metrics.CPUUsage[len(resp.Metrics.CPUUsage)-1].Timestamp) {
+	// 24h range has limitPerHost=288, but we only have 70 points
+	if len(resp.Metrics.CPUUsage[0].Data) != 70 || len(resp.Metrics.MemoryUsage[0].Data) != 70 {
+		t.Fatalf("unexpected metric data size: cpu=%d mem=%d", len(resp.Metrics.CPUUsage[0].Data), len(resp.Metrics.MemoryUsage[0].Data))
+	}
+	if len(resp.Metrics.CPUUsage[0].Data) >= 2 {
+		if !resp.Metrics.CPUUsage[0].Data[0].Timestamp.Before(resp.Metrics.CPUUsage[0].Data[len(resp.Metrics.CPUUsage[0].Data)-1].Timestamp) {
 			t.Fatalf("cpu series should be ascending by timestamp")
 		}
 	}

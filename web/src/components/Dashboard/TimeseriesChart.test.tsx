@@ -8,7 +8,7 @@ vi.mock('@ant-design/charts', () => ({
 
 describe('TimeseriesChart', () => {
   it('shows empty state when no data', () => {
-    render(<TimeseriesChart title="CPU 使用率" data={[]} loading={false} />);
+    render(<TimeseriesChart title="CPU 使用率" series={[]} loading={false} />);
     expect(screen.getByText('暂无数据')).toBeInTheDocument();
   });
 
@@ -16,9 +16,15 @@ describe('TimeseriesChart', () => {
     render(
       <TimeseriesChart
         title="内存使用率"
-        data={[
-          { timestamp: '2026-03-04T00:00:00Z', value: 33 },
-          { timestamp: '2026-03-04T00:01:00Z', value: 35 },
+        series={[
+          {
+            hostId: 1,
+            hostName: 'host-1',
+            data: [
+              { timestamp: '2026-03-04T00:00:00Z', value: 33 },
+              { timestamp: '2026-03-04T00:01:00Z', value: 35 },
+            ],
+          },
         ]}
         loading={false}
       />,
