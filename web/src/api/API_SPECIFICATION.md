@@ -1508,3 +1508,77 @@ Content-Type: application/json
   "message": "操作失败"
 }
 ```
+### 3.20 主控台概览 API
+
+#### 3.20.1 获取主控台概览
+
+```http
+GET /api/v1/dashboard/overview
+```
+
+**请求参数**:
+
+| 参数名 | 类型 | 位置 | 描述 | 必填 | 示例 |
+|--------|------|------|------|------|------|
+| time_range | string | query | 时间范围，可选 `1h` / `6h` / `24h`，默认 `1h` | 否 | 6h |
+
+**响应结构**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "hosts": {
+      "total": 15,
+      "healthy": 12,
+      "degraded": 2,
+      "offline": 1
+    },
+    "clusters": {
+      "total": 5,
+      "healthy": 4,
+      "unhealthy": 1
+    },
+    "services": {
+      "total": 32,
+      "healthy": 28,
+      "degraded": 2,
+      "unhealthy": 2
+    },
+    "alerts": {
+      "firing": 3,
+      "recent": [
+        {
+          "id": "101",
+          "title": "CPU 超过 85%",
+          "severity": "warning",
+          "source": "node-01",
+          "createdAt": "2026-03-04T02:10:00Z"
+        }
+      ]
+    },
+    "events": [
+      {
+        "id": "node-201",
+        "type": "host_online",
+        "message": "node-05 上线",
+        "createdAt": "2026-03-04T02:08:00Z"
+      }
+    ],
+    "metrics": {
+      "cpu_usage": [
+        {
+          "timestamp": "2026-03-04T01:10:00Z",
+          "value": 42.3
+        }
+      ],
+      "memory_usage": [
+        {
+          "timestamp": "2026-03-04T01:10:00Z",
+          "value": 63.8
+        }
+      ]
+    }
+  }
+}
+```

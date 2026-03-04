@@ -12,6 +12,7 @@ import (
 	"github.com/cy77cc/k8s-manage/internal/service/cicd"
 	"github.com/cy77cc/k8s-manage/internal/service/cluster"
 	"github.com/cy77cc/k8s-manage/internal/service/cmdb"
+	"github.com/cy77cc/k8s-manage/internal/service/dashboard"
 	"github.com/cy77cc/k8s-manage/internal/service/deployment"
 	"github.com/cy77cc/k8s-manage/internal/service/host"
 	"github.com/cy77cc/k8s-manage/internal/service/jobs"
@@ -46,6 +47,7 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 	cluster.RegisterClusterHandlers(v1, serverCtx)
 	deployment.RegisterDeploymentHandlers(v1, serverCtx)
 	monitoring.RegisterMonitoringHandlers(v1, serverCtx)
+	dashboard.RegisterDashboardHandlers(v1, serverCtx)
 	cmdb.RegisterCMDBHandlers(v1, serverCtx)
 	topology.RegisterTopologyHandlers(v1, serverCtx)
 	rbac.RegisterRBACHandlers(v1, serverCtx)

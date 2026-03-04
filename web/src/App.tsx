@@ -151,6 +151,7 @@ const ProtectedApp: React.FC = () => {
             <Route path="/monitor/dashboard" element={withAuth('monitoring', 'read', <MonitorPage />)} />
             <Route path="/monitor/alerts" element={withAuth('monitoring', 'read', <MonitorPage />)} />
             <Route path="/monitor/rules" element={withAuth('monitoring', 'read', <MonitorPage />)} />
+            <Route path="/monitoring/alerts" element={withAuth('monitoring', 'read', <MonitorPage />)} />
             <Route path="/tools" element={<ToolsPage />} />
             <Route path="/tools/nightingale" element={<ToolsPage />} />
             <Route path="/tools/jenkins" element={<ToolsPage />} />
