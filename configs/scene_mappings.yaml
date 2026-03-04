@@ -1,0 +1,164 @@
+version: "1.0"
+
+mappings:
+  deployment:clusters:
+    primary_expert: k8s_expert
+    helper_experts: [monitor_expert]
+    strategy: sequential
+    context_hints: [cluster_id]
+    description: "集群管理场景"
+    keywords: ["cluster", "k8s", "集群"]
+    tools: ["cluster_list_inventory", "k8s_list_resources", "k8s_get_events", "deployment_bootstrap_status"]
+
+  deployment:credentials:
+    primary_expert: security_expert
+    helper_experts: [audit_expert]
+    strategy: sequential
+    context_hints: [credential_id]
+    description: "凭证管理场景"
+    keywords: ["credential", "凭证"]
+    tools: ["credential_list", "credential_test"]
+
+  deployment:hosts:
+    primary_expert: host_expert
+    helper_experts: [os_expert]
+    strategy: sequential
+    context_hints: [host_id]
+    description: "主机管理场景"
+    keywords: ["host", "ssh", "主机"]
+    tools: ["host_list_inventory", "host_ssh_exec_readonly", "host_batch_exec_preview"]
+
+  deployment:targets:
+    primary_expert: deploy_expert
+    helper_experts: [k8s_expert]
+    strategy: sequential
+    context_hints: [target_id, env]
+    description: "部署目标场景"
+    keywords: ["target", "部署目标"]
+    tools: ["deployment_target_list", "deployment_target_detail", "deployment_bootstrap_status"]
+
+  deployment:releases:
+    primary_expert: deploy_expert
+    helper_experts: [cicd_expert]
+    strategy: sequential
+    context_hints: [service_id, cluster_id, env]
+    description: "发布管理场景"
+    keywords: ["release", "发布"]
+    tools: ["service_deploy_preview", "service_deploy_apply", "cicd_pipeline_trigger"]
+
+  deployment:approvals:
+    primary_expert: audit_expert
+    helper_experts: [security_expert]
+    strategy: sequential
+    context_hints: [release_id]
+    description: "审批场景"
+    keywords: ["approval", "审批"]
+    tools: ["cicd_pipeline_status", "audit_log_search"]
+
+  deployment:topology:
+    primary_expert: topology_expert
+    helper_experts: [service_expert]
+    strategy: single
+    context_hints: [service_id]
+    description: "拓扑场景"
+    keywords: ["topology", "拓扑"]
+    tools: ["topology_get", "service_get_detail"]
+
+  deployment:metrics:
+    primary_expert: monitor_expert
+    helper_experts: [k8s_expert]
+    strategy: sequential
+    context_hints: [service_id]
+    description: "指标场景"
+    keywords: ["metric", "指标"]
+    tools: ["monitor_metric_query", "monitor_alert_active", "monitor_alert_rule_list"]
+
+  deployment:audit:
+    primary_expert: audit_expert
+    helper_experts: [security_expert]
+    strategy: single
+    context_hints: [user_id]
+    description: "审计场景"
+    keywords: ["audit", "审计"]
+    tools: ["audit_log_search"]
+
+  deployment:aiops:
+    primary_expert: monitor_expert
+    helper_experts: [k8s_expert, service_expert]
+    strategy: sequential
+    context_hints: [cluster_id, service_id]
+    description: "智能运维场景"
+    keywords: ["aiops", "智能运维"]
+    tools: ["monitor_alert_active", "monitor_metric_query", "ops_aggregate_status"]
+
+  services:list:
+    primary_expert: service_expert
+    helper_experts: [topology_expert]
+    strategy: single
+    context_hints: [service_id]
+    description: "服务列表场景"
+    keywords: ["service", "服务"]
+    tools: ["service_list_inventory", "service_catalog_list", "service_category_tree"]
+
+  services:detail:
+    primary_expert: service_expert
+    helper_experts: [k8s_workload_expert, topology_expert]
+    strategy: sequential
+    context_hints: [service_id]
+    description: "服务详情场景"
+    keywords: ["service", "详情"]
+    tools: ["service_get_detail", "service_visibility_check", "service_deploy_preview"]
+
+  services:provision:
+    primary_expert: service_expert
+    helper_experts: [deploy_expert]
+    strategy: sequential
+    context_hints: [project_id]
+    description: "服务创建场景"
+    keywords: ["provision", "创建服务"]
+    tools: ["service_category_tree", "service_catalog_list"]
+
+  services:deploy:
+    primary_expert: deploy_expert
+    helper_experts: [k8s_expert, cicd_expert]
+    strategy: sequential
+    context_hints: [service_id, target_id]
+    description: "服务部署场景"
+    keywords: ["deploy", "部署"]
+    tools: ["service_deploy_preview", "service_deploy_apply", "deployment_target_list"]
+
+  services:catalog:
+    primary_expert: service_expert
+    helper_experts: [topology_expert]
+    strategy: single
+    context_hints: [category_id]
+    description: "服务目录场景"
+    keywords: ["catalog", "目录"]
+    tools: ["service_catalog_list", "service_category_tree", "service_visibility_check"]
+
+  governance:users:
+    primary_expert: security_expert
+    helper_experts: [audit_expert]
+    strategy: sequential
+    context_hints: [user_id]
+    description: "用户治理场景"
+    keywords: ["user", "用户"]
+    tools: ["user_list", "permission_check"]
+
+  governance:roles:
+    primary_expert: security_expert
+    helper_experts: [audit_expert]
+    strategy: sequential
+    context_hints: [role_id]
+    description: "角色治理场景"
+    keywords: ["role", "角色"]
+    tools: ["role_list", "permission_check"]
+
+  governance:permissions:
+    primary_expert: security_expert
+    helper_experts: [audit_expert]
+    strategy: sequential
+    context_hints: [user_id, resource, action]
+    description: "权限治理场景"
+    keywords: ["permission", "权限"]
+    tools: ["permission_check", "audit_log_search"]

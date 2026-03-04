@@ -1,0 +1,149 @@
+version: "1.0"
+
+experts:
+  - name: host_expert
+    display_name: "主机运维专家"
+    persona: |
+      你是主机运维专家，专注主机资产、SSH执行和系统状态诊断。
+      对高风险动作先给出影响说明和只读替代方案。
+    tool_patterns: ["host_*", "credential_*"]
+    domains:
+      - name: host_management
+        weight: 0.95
+      - name: ssh_operations
+        weight: 0.90
+    keywords: ["host", "ssh", "主机", "服务器", "远程执行"]
+    capabilities: ["主机资产管理", "SSH诊断", "批量主机操作"]
+    risk_level: medium
+
+  - name: os_expert
+    display_name: "系统诊断专家"
+    persona: |
+      你是系统诊断专家，专注 CPU/内存/磁盘/网络/进程排障。
+    tool_patterns: ["os_*"]
+    domains:
+      - name: os_diagnostics
+        weight: 0.95
+    keywords: ["cpu", "memory", "disk", "network", "系统", "负载"]
+    capabilities: ["系统指标分析", "进程排障", "日志诊断"]
+    risk_level: low
+
+  - name: k8s_expert
+    display_name: "Kubernetes专家"
+    persona: |
+      你是 Kubernetes 专家，专注集群健康、事件和工作负载诊断。
+    tool_patterns: ["k8s_*", "cluster_*"]
+    domains:
+      - name: kubernetes
+        weight: 0.97
+    keywords: ["k8s", "kubernetes", "pod", "cluster", "集群"]
+    capabilities: ["集群巡检", "事件分析", "工作负载诊断"]
+    risk_level: low
+
+  - name: k8s_workload_expert
+    display_name: "K8s工作负载专家"
+    persona: |
+      你是 K8s 工作负载专家，专注 deployment、pod 日志和发布问题。
+    tool_patterns: ["k8s_*", "deployment_*", "service_deploy_*"]
+    domains:
+      - name: workload_management
+        weight: 0.93
+    keywords: ["deployment", "rollout", "pod日志", "发布失败"]
+    capabilities: ["部署故障定位", "工作负载回滚建议"]
+    risk_level: low
+
+  - name: service_expert
+    display_name: "服务管理专家"
+    persona: |
+      你是服务管理专家，专注服务目录、详情、可见性与生命周期管理。
+    tool_patterns: ["service_*", "catalog_*", "config_*"]
+    domains:
+      - name: service_management
+        weight: 0.95
+    keywords: ["service", "服务", "catalog", "目录"]
+    capabilities: ["服务发现", "服务详情诊断", "配置管理"]
+    risk_level: low
+
+  - name: deploy_expert
+    display_name: "发布部署专家"
+    persona: |
+      你是发布部署专家，专注发布前检查、变更执行和回滚策略。
+    tool_patterns: ["deployment_*", "service_deploy_*", "cluster_*"]
+    domains:
+      - name: deployment_operations
+        weight: 0.96
+    keywords: ["deploy", "release", "发布", "回滚"]
+    capabilities: ["发布预检", "发布执行", "回滚建议"]
+    risk_level: high
+
+  - name: topology_expert
+    display_name: "拓扑关系专家"
+    persona: |
+      你是拓扑关系专家，专注服务依赖关系和上下游影响分析。
+    tool_patterns: ["topology_*", "service_*"]
+    domains:
+      - name: service_topology
+        weight: 0.90
+    keywords: ["topology", "拓扑", "依赖", "上下游"]
+    capabilities: ["依赖拓扑分析", "影响面识别"]
+    risk_level: low
+
+  - name: cicd_expert
+    display_name: "CI/CD专家"
+    persona: |
+      你是 CI/CD 专家，专注流水线状态、失败原因和修复建议。
+    tool_patterns: ["cicd_*", "pipeline_*"]
+    domains:
+      - name: cicd
+        weight: 0.92
+    keywords: ["pipeline", "cicd", "流水线", "构建"]
+    capabilities: ["流水线排障", "发布流水线分析"]
+    risk_level: medium
+
+  - name: job_expert
+    display_name: "任务调度专家"
+    persona: |
+      你是任务调度专家，专注作业任务状态、重试、补偿策略。
+    tool_patterns: ["job_*"]
+    domains:
+      - name: job_scheduling
+        weight: 0.90
+    keywords: ["job", "cron", "任务", "调度"]
+    capabilities: ["任务状态排查", "失败重试建议"]
+    risk_level: medium
+
+  - name: monitor_expert
+    display_name: "可观测性专家"
+    persona: |
+      你是可观测性专家，专注告警、指标、趋势和 SLO 诊断。
+    tool_patterns: ["monitor_*", "metric_*", "alert_*"]
+    domains:
+      - name: observability
+        weight: 0.95
+    keywords: ["monitor", "alert", "metric", "告警", "指标"]
+    capabilities: ["指标分析", "告警定位", "容量趋势分析"]
+    risk_level: low
+
+  - name: audit_expert
+    display_name: "审计合规专家"
+    persona: |
+      你是审计合规专家，专注审计日志、操作追踪与合规分析。
+    tool_patterns: ["audit_*"]
+    domains:
+      - name: audit_compliance
+        weight: 0.93
+    keywords: ["audit", "审计", "合规", "追踪"]
+    capabilities: ["审计检索", "操作归因分析"]
+    risk_level: low
+
+  - name: security_expert
+    display_name: "权限安全专家"
+    persona: |
+      你是权限安全专家，专注 RBAC、最小权限和访问风险分析。
+    tool_patterns: ["permission_*", "role_*", "user_*"]
+    domains:
+      - name: security_governance
+        weight: 0.94
+    keywords: ["rbac", "permission", "role", "权限", "角色"]
+    capabilities: ["权限诊断", "角色治理", "访问风险评估"]
+    risk_level: low

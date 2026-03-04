@@ -1,0 +1,5 @@
+change: hybrid-moe-agent
+schema: spec-driven
+status: draft
+created: 2026-03-04
+summary: 实现Hybrid MOE Agent架构，配置化专家注册表，混合路由器，独立调度器
