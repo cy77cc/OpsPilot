@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/casbin/casbin/v2 v2.135.0
-	github.com/cloudwego/eino v0.7.36
+	github.com/cloudwego/eino v0.7.37
 	github.com/cloudwego/eino-ext/components/model/ollama v0.1.8
 	github.com/cloudwego/eino-ext/components/model/qwen v0.1.5
 	github.com/gin-gonic/gin v1.11.0

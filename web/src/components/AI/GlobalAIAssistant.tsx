@@ -314,12 +314,12 @@ const GlobalAIAssistant: React.FC<GlobalAIAssistantProps> = ({ inlineTrigger = f
           />
         ) : null}
         <div className={`ai-assistant-layout${isClosing ? ' is-closing' : ''}`}>
-          <div className="ai-assistant-hero">
+          {/* <div className="ai-assistant-hero">
             <Text className="ai-assistant-hero-title">智能运维助手</Text>
             <Text type="secondary" className="ai-assistant-hero-subtitle">
               对话诊断、命令预览、确认执行与历史回放
             </Text>
-          </div>
+          </div> */}
           <div className="ai-assistant-chat-wrap">
             <Tabs
               className="ai-assistant-tabs"
