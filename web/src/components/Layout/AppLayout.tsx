@@ -23,6 +23,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Auth/AuthContext';
 import ProjectSwitcher from '../Project/ProjectSwitcher';
 import { NotificationBell } from '../Notification';
+import { AIAssistantButton } from '../AI';
 import '../Notification/notification.css';
 import { useI18n } from '../../i18n';
 import { usePermission } from '../RBAC';
@@ -97,7 +98,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { key: '/cmdb', icon: <CloudServerOutlined />, label: t('menu.cmdb') },
     { key: '/automation', icon: <ToolOutlined />, label: t('menu.automation') },
     { key: '/cicd', icon: <ToolOutlined />, label: 'CI/CD' },
-    { key: '/ai', icon: <ToolOutlined />, label: 'AI命令中心' },
     { key: '/help', icon: <FileTextOutlined />, label: '帮助中心' },
     { key: '/config', icon: <SettingOutlined />, label: t('menu.config') },
     { key: '/tasks', icon: <ClockCircleOutlined />, label: t('menu.tasks') },
@@ -400,6 +400,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             {/* 通知 */}
             <NotificationBell onViewAll={() => navigate('/monitor')} />
+
+            {/* AI 助手 */}
+            <AIAssistantButton />
 
             {/* 用户菜单 */}
             <Dropdown

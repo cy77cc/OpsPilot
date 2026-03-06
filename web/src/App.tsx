@@ -1,13 +1,11 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { message } from 'antd';
 import { AuthProvider, useAuth } from './components/Auth/AuthContext';
-import { NotificationProvider } from './contexts/NotificationContext';
 import { PermissionProvider } from './components/RBAC/PermissionContext';
-import { usePermission } from './components/RBAC/PermissionContext';
 
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/Auth/RegisterPage'));
-const AIChatPage = lazy(() => import('./pages/AIChat/ChatPage'));
 const ProtectedApp = lazy(() => import('./ProtectedApp'));
 
 const RouteFallback: React.FC = () => (
@@ -29,29 +27,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }
   return children;
 };
 
-const AIProtectedRoute: React.FC = () => {
-  const { user } = useAuth();
-  const { hasPermission } = usePermission();
+/**
+ * 旧 /ai 路由重定向组件
+ * 显示提示后重定向到首页
+ */
+const AIRedirect: React.FC = () => {
+  React.useEffect(() => {
+    message.info('AI 助手已移至右上角，点击 "AI 助手" 按钮或按 Cmd+/ 打开');
+  }, []);
 
-  if (!hasPermission('ai', 'read')) {
-    return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f5f0e2,_#e4efe6_48%,_#f3f7f4_100%)] px-6 py-10 text-slate-900">
-        <div className="mx-auto max-w-3xl rounded-[32px] border border-black/5 bg-white/88 p-10 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
-          <div className="mb-4 text-xs uppercase tracking-[0.24em] text-slate-400">AI Workspace</div>
-          <h1 className="text-3xl font-semibold text-slate-900">没有访问 AI 工作台的权限</h1>
-          <p className="mt-4 text-base leading-7 text-slate-600">
-            当前账号 {user?.username ? `(${user.username})` : ''} 无法访问该页面。请联系管理员授予 `ai:read` 权限。
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <NotificationProvider userId={user?.id}>
-      <AIChatPage />
-    </NotificationProvider>
-  );
+  return <Navigate to="/" replace />;
 };
 
 const App: React.FC = () => {
@@ -62,12 +47,13 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            {/* 旧 /ai 路由重定向到首页 */}
             <Route
               path="/ai"
               element={
                 <ProtectedRoute>
                   <PermissionProvider>
-                    <AIProtectedRoute />
+                    <AIRedirect />
                   </PermissionProvider>
                 </ProtectedRoute>
               }

@@ -15,6 +15,7 @@
     "@ant-design/charts": "^2.6.7",
     "@ant-design/icons": "^6.1.0",
     "@ant-design/x": "^2.3.0",
+    "@ant-design/x-markdown": "^2.3.0",
     "@faker-js/faker": "^10.3.0",
     "@monaco-editor/react": "^4.7.0",
     "@types/react-window": "^1.8.8",
