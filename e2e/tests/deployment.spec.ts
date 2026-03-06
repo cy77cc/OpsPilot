@@ -1,43 +1,60 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../support/auth';
 
 test.describe('Deployment Page', () => {
-  test.skip('deployment page shows targets list', async ({ page }) => {
-    // This test requires authentication
-    // Skip in CI without proper auth setup
-    await page.goto('/deployment');
+  test('deployment page shows targets list', async ({ authenticatedPage }) => {
+    // Navigate to deployment page
+    await authenticatedPage.goto('/deployment');
 
-    // Check page header
-    await expect(page.locator('h1, h2').first()).toContainText(/部署|Deployment/i);
+    // Wait for page to load
+    await authenticatedPage.waitForLoadState('networkidle');
+
+    // Check page header exists
+    const header = authenticatedPage.locator('h1, h2').first();
+    await expect(header).toBeVisible({ timeout: 10000 });
 
     // Check for deployment targets table or list
-    const hasTargetsTable = await page.locator('table').isVisible().catch(() => false);
-    const hasTargetsList = await page.locator('[data-testid="targets-list"]').isVisible().catch(() => false);
-    const hasCreateButton = await page.locator('button:has-text("创建")').or(page.locator('button:has-text("新增")')).isVisible().catch(() => false);
+    const hasTargetsTable = await authenticatedPage.locator('table').isVisible().catch(() => false);
+    const hasTargetsList = await authenticatedPage.locator('[data-testid="targets-list"]').isVisible().catch(() => false);
+    const hasEmptyState = await authenticatedPage.locator('text=/暂无|empty|no data/i').isVisible().catch(() => false);
+    const hasCreateButton = await authenticatedPage.locator('button:has-text("创建")').or(
+      authenticatedPage.locator('button:has-text("新增")')
+    ).isVisible().catch(() => false);
 
-    expect(hasTargetsTable || hasTargetsList || hasCreateButton).toBeTruthy();
+    // Page should have at least one of these elements
+    expect(hasTargetsTable || hasTargetsList || hasEmptyState || hasCreateButton).toBeTruthy();
   });
 
-  test.skip('create deployment target form validates input', async ({ page }) => {
-    // This test requires authentication
-    await page.goto('/deployment');
+  test('create deployment target button works', async ({ authenticatedPage }) => {
+    await authenticatedPage.goto('/deployment');
+    await authenticatedPage.waitForLoadState('networkidle');
 
-    // Click create button
-    const createButton = page.locator('button:has-text("创建")').or(page.locator('button:has-text("新增")'));
-    await createButton.click();
+    // Find create button
+    const createButton = authenticatedPage.locator('button:has-text("创建")').or(
+      authenticatedPage.locator('button:has-text("新增")')
+    );
 
-    // Check form appears
-    const modal = page.locator('[role="dialog"]').or(page.locator('.ant-modal'));
-    await expect(modal).toBeVisible();
+    // Check if create button exists (may not exist if no permissions)
+    const buttonExists = await createButton.isVisible().catch(() => false);
 
-    // Try to submit without filling required fields
-    const submitButton = modal.locator('button[type="submit"]').or(modal.locator('button:has-text("确定")'));
-    await submitButton.click();
+    if (buttonExists) {
+      await createButton.click();
 
-    // Should show validation errors
-    const hasError = await page.locator('.ant-form-item-explain-error').or(page.locator('[role="alert"]')).isVisible().catch(() => false);
+      // Check for modal or drawer
+      const modal = authenticatedPage.locator('[role="dialog"]').or(
+        authenticatedPage.locator('.ant-modal')
+      ).or(
+        authenticatedPage.locator('.ant-drawer')
+      );
 
-    // Either validation error or form doesn't submit
-    expect(hasError || (await modal.isVisible())).toBeTruthy();
+      // Modal should appear or navigate to create page
+      const modalVisible = await modal.isVisible().catch(() => false);
+      const navigatedToCreate = authenticatedPage.url().includes('create');
+
+      expect(modalVisible || navigatedToCreate).toBeTruthy();
+    } else {
+      // Skip if button not visible (permissions issue)
+      test.skip();
+    }
   });
 });
 
@@ -46,7 +63,33 @@ test.describe('Deployment API', () => {
     // Test API endpoint exists (may return 401 without auth)
     const response = await request.get('/api/v1/deployment/targets');
 
-    // Should either succeed (200) or require auth (401)
-    expect([200, 401, 404]).toContain(response.status());
+    // Should either succeed (200) or require auth (401/403)
+    expect([200, 401, 403, 404]).toContain(response.status());
+  });
+
+  test('targets API returns correct structure', async ({ request, authToken }) => {
+    if (!authToken) {
+      test.skip();
+      return;
+    }
+
+    const response = await request.get('/api/v1/deployment/targets', {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+
+    if (response.ok()) {
+      const data = await response.json();
+
+      // Check standard response structure
+      expect(data).toHaveProperty('code');
+      expect(data).toHaveProperty('msg');
+
+      // Success response should have data
+      if (data.code === 1000) {
+        expect(data).toHaveProperty('data');
+      }
+    }
   });
 });

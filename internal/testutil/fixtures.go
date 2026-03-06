@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"github.com/cy77cc/k8s-manage/internal/model"
+	"github.com/cy77cc/k8s-manage/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -39,6 +40,24 @@ func (b *UserBuilder) WithEmail(email string) *UserBuilder {
 // WithStatus sets the status.
 func (b *UserBuilder) WithStatus(status int8) *UserBuilder {
 	b.user.Status = status
+	return b
+}
+
+// WithPassword sets a hashed password from plaintext.
+func (b *UserBuilder) WithPassword(plaintext string) *UserBuilder {
+	hash, err := utils.HashPassword(plaintext)
+	if err != nil {
+		// In tests, use a fallback if hashing fails
+		b.user.PasswordHash = "$2a$10$invalidhash"
+		return b
+	}
+	b.user.PasswordHash = hash
+	return b
+}
+
+// WithPasswordHash sets the password hash directly.
+func (b *UserBuilder) WithPasswordHash(hash string) *UserBuilder {
+	b.user.PasswordHash = hash
 	return b
 }
 

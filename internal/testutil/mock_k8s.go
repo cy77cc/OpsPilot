@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -217,4 +218,107 @@ func (m *MockK8sClient) AssertPodCount(t *testing.T, expected int) {
 // Helper function for intstr
 func fromInt(val int32) intstr.IntOrString {
 	return intstr.IntOrString{Type: intstr.Int, IntVal: val}
+}
+
+// ============================================================================
+// Extended Methods (T2.1.2)
+// ============================================================================
+
+// ClusterInfo represents cluster information for testing.
+type ClusterInfo struct {
+	Name        string
+	Version     string
+	NodeCount   int
+	PodCount    int
+	Status      string
+}
+
+// ListNodeResult represents a node from ListNodes.
+type ListNodeResult struct {
+	Name        string
+	IP          string
+	Role        string
+	Status      string
+	KubeletVer  string
+	Labels      map[string]string
+}
+
+// ListNodes returns a list of nodes in the cluster.
+func (m *MockK8sClient) ListNodes(ctx context.Context) ([]ListNodeResult, error) {
+	// Return mock node data
+	return []ListNodeResult{
+		{
+			Name:       "control-plane-1",
+			IP:         "10.0.0.1",
+			Role:       "control-plane",
+			Status:     "ready",
+			KubeletVer: "v1.28.0",
+			Labels:     map[string]string{"node-role.kubernetes.io/control-plane": ""},
+		},
+		{
+			Name:       "worker-1",
+			IP:         "10.0.0.2",
+			Role:       "worker",
+			Status:     "ready",
+			KubeletVer: "v1.28.0",
+			Labels:     map[string]string{},
+		},
+	}, nil
+}
+
+// GetClusterInfo returns cluster information.
+func (m *MockK8sClient) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
+	return &ClusterInfo{
+		Name:      "test-cluster",
+		Version:   "v1.28.0",
+		NodeCount: 2,
+		PodCount:  5,
+		Status:    "healthy",
+	}, nil
+}
+
+// HealthCheck performs a health check on the cluster.
+func (m *MockK8sClient) HealthCheck(ctx context.Context) error {
+	// Always return healthy in mock
+	return nil
+}
+
+// CreateDeployment creates a deployment in the namespace.
+func (m *MockK8sClient) CreateDeployment(ctx context.Context, name, image string, replicas int32, overrides ...func(*appsv1.Deployment)) (*appsv1.Deployment, error) {
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: m.namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": name},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": name},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: name, Image: image},
+					},
+				},
+			},
+		},
+	}
+	for _, fn := range overrides {
+		fn(deploy)
+	}
+	return m.Clientset.AppsV1().Deployments(m.namespace).Create(ctx, deploy, metav1.CreateOptions{})
+}
+
+// GetDeployment retrieves a deployment by name.
+func (m *MockK8sClient) GetDeployment(name string) (*appsv1.Deployment, error) {
+	return m.Clientset.AppsV1().Deployments(m.namespace).Get(context.Background(), name, metav1.GetOptions{})
+}
+
+// ListDeployments lists all deployments in the namespace.
+func (m *MockK8sClient) ListDeployments() (*appsv1.DeploymentList, error) {
+	return m.Clientset.AppsV1().Deployments(m.namespace).List(context.Background(), metav1.ListOptions{})
 }
