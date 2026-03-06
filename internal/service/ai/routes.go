@@ -19,6 +19,7 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/executions/:id", h.getExecution)
 		g.POST("/approvals", h.createApproval)
 		g.POST("/approvals/:id/confirm", h.confirmApproval)
+		g.POST("/approval/respond", h.handleApprovalResponse)
 		g.POST("/adk/resume", h.resumeADKApproval)
 		g.POST("/confirmations/:id/confirm", h.confirmConfirmation)
 		g.GET("/sessions", h.listSessions)

@@ -418,12 +418,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const attachTraceToAssistant = (assistantID: string, turnID: string | undefined, trace: ToolTrace) => {
-    patchAssistantMessage(assistantID, turnID, (item) => ({
-      ...item,
-      turnId: turnID || item.turnId,
-      phase: item.phase === 'awaiting_first_token' ? 'streaming' : item.phase,
-      traces: [...(item.traces || []), trace],
-    }));
+    patchAssistantMessage(assistantID, turnID, (item) => {
+      const traces = [...(item.traces || [])];
+      const incomingCallID = String(trace.payload?.call_id || '');
+      const existingIndex = incomingCallID
+        ? traces.findIndex((candidate) => candidate.type === trace.type && String(candidate.payload?.call_id || '') === incomingCallID)
+        : -1;
+
+      if (existingIndex >= 0) {
+        traces[existingIndex] = {
+          ...traces[existingIndex],
+          payload: {
+            ...(traces[existingIndex]?.payload || {}),
+            ...(trace.payload || {}),
+          },
+          timestamp: trace.timestamp,
+        };
+      } else {
+        traces.push(trace);
+      }
+
+      return {
+        ...item,
+        turnId: turnID || item.turnId,
+        phase: item.phase === 'awaiting_first_token' ? 'streaming' : item.phase,
+        traces,
+      };
+    });
   };
 
   const sendMessage = async (messageText: string, extraContext?: Record<string, any>) => {
@@ -877,31 +898,70 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  const handleApprovalDecision = async (approvalToken: string, approve: boolean) => {
-    const token = (approvalToken || '').trim();
-    if (!token) return;
+  const handleApprovalDecision = async (approvalPayload: Record<string, any>, approve: boolean) => {
+    const token = String(approvalPayload?.approval_token || '').trim();
+    const checkpointID = String(approvalPayload?.checkpoint_id || approvalPayload?.sessionId || '').trim();
+    const interruptTargets = Array.isArray(approvalPayload?.interrupt_targets)
+      ? approvalPayload.interrupt_targets.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+      : [];
+
     try {
-      await Api.ai.confirmApproval(token, approve);
-      const nextStatus = approve ? 'approved' : 'rejected';
+      let approvalResp: { resumed?: boolean; interrupted?: boolean; content?: string; interrupt_targets?: string[]; [key: string]: any } | null = null;
+      if (checkpointID && interruptTargets.length > 0) {
+        const resp = await Api.ai.respondApproval({
+          checkpoint_id: checkpointID,
+          target: interruptTargets[0],
+          approved: approve,
+        });
+        approvalResp = (resp?.data || null) as typeof approvalResp;
+      } else if (token) {
+        await Api.ai.confirmApproval(token, approve);
+      } else {
+        return;
+      }
+      const interrupted = approvalResp?.interrupted === true;
+      const nextStatus = interrupted ? 'pending' : (approve ? 'approved' : 'rejected');
+      const nextTargets = Array.isArray(approvalResp?.interrupt_targets)
+        ? approvalResp!.interrupt_targets!.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : interruptTargets;
       setMessages((prev) => prev.map((item) => {
         if (item.role !== 'assistant' || !item.traces?.length) return item;
-        return {
-          ...item,
-          traces: item.traces.map((trace) => {
+        let matched = false;
+        const nextTraces = item.traces.map((trace) => {
             if (trace.type !== 'approval_required') return trace;
             const currentToken = (trace.payload?.approval_token || '').toString();
-            if (currentToken !== token) return trace;
+            const currentCheckpoint = (trace.payload?.checkpoint_id || trace.payload?.sessionId || '').toString();
+            const currentTargets = Array.isArray(trace.payload?.interrupt_targets)
+              ? trace.payload.interrupt_targets.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+              : [];
+            const sameInterrupt = checkpointID && currentCheckpoint === checkpointID && currentTargets[0] === interruptTargets[0];
+            const sameToken = token && currentToken === token;
+            if (!sameInterrupt && !sameToken) return trace;
+            matched = true;
             return {
               ...trace,
               payload: {
                 ...(trace.payload || {}),
+                ...(approvalResp || {}),
+                interrupt_targets: nextTargets,
                 status: nextStatus,
               },
             };
-          }),
+          });
+        return {
+          ...item,
+          content: matched && approvalResp?.content
+            ? `${item.content ? `${item.content}\n\n` : ''}${approvalResp.content}`.trim()
+            : item.content,
+          traces: nextTraces,
         };
       }));
-      window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token, status: nextStatus } }));
+      if (!interrupted && token) {
+        window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token, status: nextStatus } }));
+      }
+      if (approvalResp?.content) {
+        setStreamNotice('审批已提交，命令已继续执行。');
+      }
     } catch (error) {
       console.error('审批操作失败:', error);
     }
@@ -1240,14 +1300,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                               <Button
                                                 size="small"
                                                 type="primary"
-                                                onClick={() => void handleApprovalDecision((trace.payload?.approval_token || '').toString(), true)}
+                                                onClick={() => void handleApprovalDecision((trace.payload || {}) as Record<string, any>, true)}
                                               >
                                                 批准
                                               </Button>
                                               <Button
                                                 size="small"
                                                 danger
-                                                onClick={() => void handleApprovalDecision((trace.payload?.approval_token || '').toString(), false)}
+                                                onClick={() => void handleApprovalDecision((trace.payload || {}) as Record<string, any>, false)}
                                               >
                                                 驳回
                                               </Button>

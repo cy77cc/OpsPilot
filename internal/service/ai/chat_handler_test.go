@@ -1,6 +1,11 @@
 package ai
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+)
 
 func TestToolEventTrackerSummary(t *testing.T) {
 	tracker := newToolEventTracker()
@@ -61,6 +66,23 @@ func TestRecommendationPayload(t *testing.T) {
 	}
 }
 
+func TestDonePayloadIncludesTurnRecommendations(t *testing.T) {
+	session := &aiSession{ID: "sess-1"}
+	summary := toolSummary{Calls: 1, Results: 1}
+	recs := []recommendationRecord{
+		{ID: "1", Type: "suggestion", Title: "A", Content: "a", Relevance: 0.8, FollowupPrompt: "next a"},
+	}
+
+	out := buildDonePayload(session, "ok", summary, recs)
+	items, ok := out["turn_recommendations"].([]gin.H)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one turn recommendation, got %#v", out["turn_recommendations"])
+	}
+	if items[0]["title"] != "A" {
+		t.Fatalf("unexpected recommendation payload: %#v", items[0])
+	}
+}
+
 func TestDetectUnresolvedToolIntent(t *testing.T) {
 	tool := detectUnresolvedToolIntent("我将调用 host_list_inventory 查询主机", "")
 	if tool != "host_list_inventory" {
@@ -74,6 +96,9 @@ func TestDetectUnresolvedToolIntent(t *testing.T) {
 func TestBuildToolExecutionDirective(t *testing.T) {
 	if got := buildToolExecutionDirective("查看香港云服务器硬盘使用情况", "scene:hosts"); got == "" {
 		t.Fatalf("expected directive for host diagnostic query")
+	}
+	if got := buildToolExecutionDirective("向火山云服务器的 /tmp/test.txt 写入当前系统状态", "scene:hosts"); !strings.Contains(got, "host_batch_exec_apply") {
+		t.Fatalf("expected mutating host execution directive, got %q", got)
 	}
 	if got := buildToolExecutionDirective("帮我写一段周报", "scene:hosts"); got != "" {
 		t.Fatalf("expected empty directive for non-diagnostic query")
@@ -96,6 +121,20 @@ func TestComposePromptDirectives(t *testing.T) {
 	out := composePromptDirectives("A", "", "B")
 	if out != "A\n\nB" {
 		t.Fatalf("unexpected directive compose result: %q", out)
+	}
+}
+
+func TestBuildStrictToolUseDirective(t *testing.T) {
+	out := buildStrictToolUseDirective([]string{
+		"host_list_inventory",
+		"host_ssh_exec_readonly",
+		"service_deploy_apply",
+	})
+	if !strings.Contains(out, "只能调用以下真实存在的工具") {
+		t.Fatalf("expected strict tool wording, got %q", out)
+	}
+	if !strings.Contains(out, "host_list_inventory") || !strings.Contains(out, "service_deploy_apply") {
+		t.Fatalf("expected tool allowlist in directive, got %q", out)
 	}
 }
 

@@ -44,20 +44,20 @@ func (m *fakeToolCallingModel) WithTools(_ []*schema.ToolInfo) (modelcomponent.T
 	return m, nil
 }
 
-func newFakePlatformAgent(t *testing.T) *PlatformAgent {
+func newFakePlatformRunner(t *testing.T) *PlatformRunner {
 	t.Helper()
-	agent, err := NewPlatformAgent(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{})
+	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
-		t.Fatalf("new platform agent failed: %v", err)
+		t.Fatalf("new platform runner failed: %v", err)
 	}
 	if agent == nil {
-		t.Fatalf("expected non-nil platform agent")
+		t.Fatalf("expected non-nil platform runner")
 	}
 	return agent
 }
 
 func TestE2ESimpleQuery(t *testing.T) {
-	agent := newFakePlatformAgent(t)
+	agent := newFakePlatformRunner(t)
 	out, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("status")})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
@@ -68,7 +68,7 @@ func TestE2ESimpleQuery(t *testing.T) {
 }
 
 func TestE2EMultiStepTask(t *testing.T) {
-	agent := newFakePlatformAgent(t)
+	agent := newFakePlatformRunner(t)
 	out, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("step1 then step2")})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
@@ -79,7 +79,7 @@ func TestE2EMultiStepTask(t *testing.T) {
 }
 
 func TestE2EApprovalInterruptFlow(t *testing.T) {
-	agent := newFakePlatformAgent(t)
+	agent := newFakePlatformRunner(t)
 	metas := agent.ToolMetas()
 	found := false
 	for _, meta := range metas {
@@ -97,7 +97,7 @@ func TestE2EApprovalInterruptFlow(t *testing.T) {
 }
 
 func TestE2EErrorRecovery(t *testing.T) {
-	agent := newFakePlatformAgent(t)
+	agent := newFakePlatformRunner(t)
 	if _, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("trigger error")}); err == nil {
 		t.Fatalf("expected synthetic error")
 	}

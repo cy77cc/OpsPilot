@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,7 +129,7 @@ func (h *handler) chat(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "message is required")
 		return
 	}
-	if h.svcCtx.AI == nil || h.svcCtx.AI.ADKAgent == nil {
+	if h.svcCtx.AI == nil {
 		httpx.Fail(c, xcode.ServerError, "ai adk agent not initialized")
 		return
 	}
@@ -200,6 +201,18 @@ func buildToolExecutionDirective(message, scene string) string {
 	if msg == "" {
 		return ""
 	}
+	isHostAction := strings.Contains(msg, "写入") ||
+		strings.Contains(msg, "创建文件") ||
+		strings.Contains(msg, "写文件") ||
+		strings.Contains(msg, "执行命令") ||
+		strings.Contains(msg, "运行命令") ||
+		strings.Contains(msg, "修改") ||
+		strings.Contains(msg, "删除") ||
+		strings.Contains(msg, "重启") ||
+		strings.Contains(msg, "apply") ||
+		strings.Contains(msg, "cat >") ||
+		strings.Contains(msg, "echo >") ||
+		strings.Contains(msg, "tee ")
 	isInventoryOrDiag := strings.Contains(msg, "查看") ||
 		strings.Contains(msg, "查询") ||
 		strings.Contains(msg, "清单") ||
@@ -218,6 +231,14 @@ func buildToolExecutionDirective(message, scene string) string {
 	sceneLower := strings.ToLower(scene)
 	if sceneLower != "" && sceneLower != "global" && !strings.Contains(sceneLower, "host") && !strings.Contains(sceneLower, "scene:hosts") {
 		return ""
+	}
+	if isHostAction && (strings.Contains(msg, "主机") || strings.Contains(msg, "服务器") || strings.Contains(msg, "/tmp/") || strings.Contains(msg, "火山云服务器") || strings.Contains(msg, "香港云服务器")) {
+		return `执行要求（必须遵守）:
+1) 这是主机变更/写操作请求，不能只做口头说明，必须实际调用工具完成流程。
+2) 若用户提到主机名称而不是 host_id，必须先调用 host_list_inventory(keyword=<主机名关键词>) 获取准确主机 ID。
+3) 对命令执行类写操作，必须继续调用 host_batch_exec_preview 做预检查。
+4) 如果预检查未阻断，必须继续调用 host_batch_exec_apply 发起实际执行；该工具需要审批时，应触发审批，不要在审批前自行结束对话。
+5) 不允许只输出“应该使用 host_batch_exec_apply/preview”这类说明后停止。`
 	}
 	return `执行要求（必须遵守）:
 1) 这是资源查询/诊断请求，必须先调用至少一个只读工具，再给出结论。
@@ -241,6 +262,27 @@ func composePromptDirectives(directives ...string) string {
 		out = append(out, v)
 	}
 	return strings.Join(out, "\n\n")
+}
+
+func buildStrictToolUseDirective(toolNames []string) string {
+	if len(toolNames) == 0 {
+		return ""
+	}
+	names := append([]string(nil), toolNames...)
+	sort.Strings(names)
+	return "工具调用硬约束:\n1) 只能调用以下真实存在的工具，工具名必须逐字匹配，禁止改名、缩写、拼接或臆造新工具。\n2) 如果下列工具都不适用，就直接说明原因或继续提问，不要假装调用工具。\n3) 不要把工具原始返回直接原样贴给用户，先提炼结论再引用关键字段。\n\n可用工具:\n- " + strings.Join(names, "\n- ")
+}
+
+func toolNamesFromMetas(metas []tools.ToolMeta) []string {
+	out := make([]string, 0, len(metas))
+	for _, meta := range metas {
+		name := strings.TrimSpace(meta.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
 }
 
 func (h *handler) buildToolContext(ctx context.Context, uid uint64, approvalToken, scene, userMessage string, runtime map[string]any, emit func(event string, payload gin.H) bool, tracker *toolEventTracker) context.Context {

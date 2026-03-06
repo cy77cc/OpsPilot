@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"encoding/gob"
 	"errors"
+	"bytes"
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -78,5 +80,31 @@ func TestReviewableTool_FirstRunInterrupts(t *testing.T) {
 	}
 	if base.calls != 0 {
 		t.Fatalf("wrapped tool should not execute on first run")
+	}
+}
+
+func TestApprovalInfoPreviewSupportsGobSerialization(t *testing.T) {
+	var buf bytes.Buffer
+	payload := struct {
+		Value any
+	}{
+		Value: &ApprovalInfo{
+			ToolName:        "host_batch_exec_apply",
+			ArgumentsInJSON: `{"host_ids":[2]}`,
+			Risk:            ToolRiskHigh,
+			Preview: map[string]any{
+				"tool": "host_batch_exec_apply",
+				"arguments": map[string]any{
+					"host_ids": []any{2, 3},
+					"options": map[string]any{
+						"mode": "script",
+					},
+				},
+			},
+		},
+	}
+
+	if err := gob.NewEncoder(&buf).Encode(payload); err != nil {
+		t.Fatalf("expected approval payload to be gob encodable, got %v", err)
 	}
 }

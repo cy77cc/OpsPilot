@@ -173,9 +173,6 @@ func runWithPolicyAndEvent[T any](ctx context.Context, meta ToolMeta, input T, d
 
 				// 检查参数转换是否成功
 				if convErr == nil {
-					// 生成新的调用ID
-					callID = nextToolCallID()
-
 					// 发送重试的工具调用事件
 					EmitToolEvent(ctx, "tool_call", map[string]any{
 						"tool":             meta.Name,
@@ -235,7 +232,6 @@ func runWithPolicyAndEvent[T any](ctx context.Context, meta ToolMeta, input T, d
 	// 对可恢复错误执行一次智能重试
 	if err != nil && shouldRetryTool(meta, err) {
 		retried = true
-		callID = nextToolCallID()
 		EmitToolEvent(ctx, "tool_call", map[string]any{
 			"tool":             meta.Name,
 			"call_id":          callID,

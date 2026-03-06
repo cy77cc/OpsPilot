@@ -3,6 +3,7 @@ module github.com/cy77cc/k8s-manage
 go 1.25.5
 
 require (
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/cloudwego/eino v0.7.37
 	github.com/cloudwego/eino-ext/components/embedding/ollama v0.0.0-20260305011506-a75910204c1f
@@ -43,7 +44,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/alicebob/miniredis/v2 v2.37.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect

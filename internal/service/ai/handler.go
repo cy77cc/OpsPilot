@@ -11,13 +11,14 @@ import (
 	"time"
 
 	adkcore "github.com/cloudwego/eino/adk"
+	aitools "github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg string) {
-	if h.svcCtx.AI == nil || h.svcCtx.AI.ADKAgent == nil {
+	if h.svcCtx.AI == nil {
 		httpx.Fail(c, xcode.ServerError, "ai adk agent not initialized")
 		return
 	}
@@ -66,14 +67,26 @@ func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg s
 	if !emit("meta", gin.H{"sessionId": session.ID, "createdAt": session.CreatedAt}) {
 		return
 	}
+	emitWithSession := func(event string, payload gin.H) bool {
+		if payload == nil {
+			payload = gin.H{}
+		}
+		switch event {
+		case "approval_required", "review_required", "interrupt_required":
+			payload["sessionId"] = sid
+			payload["checkpoint_id"] = sid
+		}
+		return emit(event, payload)
+	}
 
 	approvalToken := strings.TrimSpace(toString(req.Context["approval_token"]))
 	tracker := newToolEventTracker()
 	h.store.rememberContext(uid, scene, extractResourceContext(req.Context, msg))
-	streamCtx := h.buildToolContext(c.Request.Context(), uid, approvalToken, scene, msg, req.Context, emit, tracker)
+	streamCtx := h.buildToolContext(c.Request.Context(), uid, approvalToken, scene, msg, req.Context, emitWithSession, tracker)
 
 	prompt := msg
 	directive := composePromptDirectives(
+		buildStrictToolUseDirective(toolNamesFromMetas(h.svcCtx.AI.ToolMetas())),
 		buildToolExecutionDirective(msg, scene),
 		buildHelpKnowledgeDirective(msg),
 	)
@@ -87,13 +100,7 @@ func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg s
 		}
 	}
 
-	runner := adkcore.NewRunner(streamCtx, adkcore.RunnerConfig{
-		EnableStreaming: true,
-		Agent:           h.svcCtx.AI.ADKAgent,
-		CheckPointStore: h.svcCtx.AICheckpoints,
-	})
-
-	iter := runner.Query(streamCtx, prompt, adkcore.WithCheckPointID(sid))
+	iter := h.svcCtx.AI.Query(streamCtx, sid, prompt)
 
 	var assistantContent strings.Builder
 	var reasoningContent strings.Builder
@@ -110,7 +117,7 @@ func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg s
 		if !ok {
 			break
 		}
-		if err := h.processADKEvent(emit, tracker, event, &assistantContent, &reasoningContent); err != nil {
+		if err := h.processADKEvent(emitWithSession, tracker, event, &assistantContent, &reasoningContent); err != nil {
 			if errors.Is(err, io.EOF) {
 				continue
 			}
@@ -143,6 +150,7 @@ func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg s
 	}
 
 	streamState := resolveStreamState(fatalErr, summary)
+	recs := h.refreshSuggestions(uid, scene, content)
 	if fatalErr != nil {
 		emitFinal("error", gin.H{
 			"code":         fatalErr.Code,
@@ -151,23 +159,14 @@ func (h *handler) chatWithADK(c *gin.Context, req chatRequest, uid uint64, msg s
 			"tool_summary": summary,
 		})
 	}
-	emitFinal("done", gin.H{
-		"session":      session,
-		"stream_state": streamState,
-		"tool_summary": summary,
-	})
+	emitFinal("done", buildDonePayload(session, streamState, summary, recs))
 }
 
 func (h *handler) resumeWithADK(ctx context.Context, checkpointID string, targets map[string]any) (*adkcore.AsyncIterator[*adkcore.AgentEvent], error) {
-	if h.svcCtx.AI == nil || h.svcCtx.AI.ADKAgent == nil {
+	if h.svcCtx.AI == nil {
 		return nil, fmt.Errorf("ai adk agent not initialized")
 	}
-	runner := adkcore.NewRunner(ctx, adkcore.RunnerConfig{
-		EnableStreaming: true,
-		Agent:           h.svcCtx.AI.ADKAgent,
-		CheckPointStore: h.svcCtx.AICheckpoints,
-	})
-	return runner.ResumeWithParams(ctx, checkpointID, &adkcore.ResumeParams{Targets: targets})
+	return h.svcCtx.AI.Resume(ctx, checkpointID, targets)
 }
 
 func (h *handler) resumeADKApproval(c *gin.Context) {
@@ -206,4 +205,115 @@ func (h *handler) resumeADKApproval(c *gin.Context) {
 		}
 	}
 	httpx.OK(c, gin.H{"resumed": true, "content": strings.TrimSpace(output.String())})
+}
+
+func (h *handler) handleApprovalResponse(c *gin.Context) {
+	var req struct {
+		CheckpointID string `json:"checkpoint_id"`
+		SessionID    string `json:"session_id"`
+		Target       string `json:"target"`
+		Approved     *bool  `json:"approved"`
+		Reason       string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+
+	checkpointID := strings.TrimSpace(req.CheckpointID)
+	if checkpointID == "" {
+		checkpointID = strings.TrimSpace(req.SessionID)
+	}
+	target := strings.TrimSpace(req.Target)
+	if checkpointID == "" || target == "" || req.Approved == nil {
+		httpx.Fail(c, xcode.ParamError, "checkpoint_id/session_id, target and approved are required")
+		return
+	}
+
+	var data any
+	if *req.Approved {
+		data = &aitools.ApprovalResult{Approved: true}
+	} else {
+		reason := strings.TrimSpace(req.Reason)
+		payload := &aitools.ApprovalResult{Approved: false}
+		if reason != "" {
+			payload.DisapproveReason = &reason
+		}
+		data = payload
+	}
+
+	iter, err := h.resumeWithADK(c.Request.Context(), checkpointID, map[string]any{target: data})
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+
+	var output strings.Builder
+	for {
+		ev, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if ev == nil {
+			continue
+		}
+		if ev.Err != nil {
+			var sig *adkcore.InterruptSignal
+			if errors.As(ev.Err, &sig) {
+				payload := interruptPayloadFromSignal(sig)
+				payload["resumed"] = false
+				payload["interrupted"] = true
+				payload["sessionId"] = checkpointID
+				httpx.OK(c, payload)
+				return
+			}
+			httpx.Fail(c, xcode.ServerError, ev.Err.Error())
+			return
+		}
+		if ev.Action != nil && ev.Action.Interrupted != nil {
+			payload := gin.H{
+				"resumed":            false,
+				"interrupted":        true,
+				"sessionId":          checkpointID,
+				"interrupt_targets":  interruptRootTargets(ev.Action.Interrupted.InterruptContexts),
+				"interrupt_contexts": ev.Action.Interrupted.InterruptContexts,
+			}
+			switch data := ev.Action.Interrupted.Data.(type) {
+			case *aitools.ApprovalInfo:
+				payload["tool"] = data.ToolName
+				payload["arguments"] = data.ArgumentsInJSON
+				payload["risk"] = data.Risk
+				payload["preview"] = data.Preview
+				payload["approval_required"] = true
+			case *aitools.ReviewEditInfo:
+				payload["tool"] = data.ToolName
+				payload["arguments"] = data.ArgumentsInJSON
+				payload["review_required"] = true
+			default:
+				if data != nil {
+					payload["message"] = fmt.Sprintf("interrupt: %v", data)
+				}
+			}
+			httpx.OK(c, payload)
+			return
+		}
+		if ev.Output != nil && ev.Output.MessageOutput != nil && ev.Output.MessageOutput.Message != nil {
+			output.WriteString(ev.Output.MessageOutput.Message.Content)
+		}
+	}
+
+	httpx.OK(c, gin.H{
+		"resumed":  true,
+		"content":  strings.TrimSpace(output.String()),
+		"sessionId": checkpointID,
+	})
+}
+
+func buildDonePayload(session *aiSession, streamState string, summary toolSummary, recs []recommendationRecord) gin.H {
+	return gin.H{
+		"session":              session,
+		"stream_state":         streamState,
+		"tool_summary":         summary,
+		"turn_recommendations": recommendationPayload(recs),
+	}
 }

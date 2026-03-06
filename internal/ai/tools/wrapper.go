@@ -41,6 +41,9 @@ func init() {
 	schema.Register[*ApprovalResult]()
 	schema.Register[*ReviewEditInfo]()
 	schema.Register[*ReviewEditResult]()
+	schema.Register[map[string]any]()
+	schema.Register[[]any]()
+	schema.Register[[]map[string]any]()
 }
 
 type ApprovalPreviewFn func(ctx context.Context, args string) (map[string]any, error)

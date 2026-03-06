@@ -85,23 +85,9 @@ func (h *handler) applyMessageChunk(
 		reasoningContent.WriteString(msg.ReasoningContent)
 		_ = emit("thinking_delta", gin.H{"contentChunk": msg.ReasoningContent})
 	}
-	if msg.Content != "" {
+	if msg.Role != schema.Tool && msg.Content != "" {
 		assistantContent.WriteString(msg.Content)
 		emitDeltaChunks(emit, msg.Content)
-	}
-	for _, tc := range msg.ToolCalls {
-		toolName := strings.TrimSpace(tc.Function.Name)
-		callID := strings.TrimSpace(tc.ID)
-		tracker.noteCall(callID, toolName)
-		_ = emit("tool_call", gin.H{
-			"tool":    toolName,
-			"call_id": callID,
-			"payload": tc,
-		})
-	}
-	if msg.Role == schema.Tool {
-		tracker.noteResult("", "")
-		_ = emit("tool_result", gin.H{"content": msg.Content})
 	}
 }
 
@@ -124,27 +110,105 @@ func (h *handler) handleInterrupt(emit func(event string, payload gin.H) bool, i
 	if info == nil {
 		return nil
 	}
+	contextPayload := gin.H{
+		"interrupt_contexts": info.InterruptContexts,
+		"interrupt_targets":  interruptRootTargets(info.InterruptContexts),
+	}
 	switch data := info.Data.(type) {
 	case *aitools.ApprovalInfo:
-		_ = emit("approval_required", gin.H{
+		payload := gin.H{
 			"tool":      data.ToolName,
 			"arguments": data.ArgumentsInJSON,
 			"risk":      data.Risk,
 			"preview":   data.Preview,
-		})
+		}
+		for k, v := range contextPayload {
+			payload[k] = v
+		}
+		_ = emit("approval_required", payload)
 	case *aitools.ReviewEditInfo:
-		_ = emit("review_required", gin.H{
+		payload := gin.H{
 			"tool":      data.ToolName,
 			"arguments": data.ArgumentsInJSON,
-		})
+		}
+		for k, v := range contextPayload {
+			payload[k] = v
+		}
+		_ = emit("review_required", payload)
 	default:
 		if len(info.InterruptContexts) > 0 {
-			_ = emit("interrupt_required", gin.H{"contexts": info.InterruptContexts})
+			_ = emit("interrupt_required", gin.H{"contexts": info.InterruptContexts, "interrupt_targets": interruptRootTargets(info.InterruptContexts)})
 		} else {
 			_ = emit("interrupt_required", gin.H{"message": fmt.Sprintf("interrupt: %v", data)})
 		}
 	}
 	return nil
+}
+
+func interruptRootTargets(contexts []*adkcore.InterruptCtx) []string {
+	out := make([]string, 0, len(contexts))
+	for _, item := range contexts {
+		if item == nil || !item.IsRootCause {
+			continue
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+func interruptRootTargetsFromSignal(sig *adkcore.InterruptSignal) []string {
+	if sig == nil {
+		return nil
+	}
+	var out []string
+	var walk func(*adkcore.InterruptSignal)
+	walk = func(node *adkcore.InterruptSignal) {
+		if node == nil {
+			return
+		}
+		if node.IsRootCause {
+			id := strings.TrimSpace(node.ID)
+			if id != "" {
+				out = append(out, id)
+			}
+		}
+		for _, sub := range node.Subs {
+			walk(sub)
+		}
+	}
+	walk(sig)
+	return out
+}
+
+func interruptPayloadFromSignal(sig *adkcore.InterruptSignal) gin.H {
+	if sig == nil {
+		return nil
+	}
+	payload := gin.H{
+		"interrupt_targets": interruptRootTargetsFromSignal(sig),
+		"interrupt_error":   sig.Error(),
+	}
+	switch data := sig.Info.(type) {
+	case *aitools.ApprovalInfo:
+		payload["tool"] = data.ToolName
+		payload["arguments"] = data.ArgumentsInJSON
+		payload["risk"] = data.Risk
+		payload["preview"] = data.Preview
+		payload["approval_required"] = true
+	case *aitools.ReviewEditInfo:
+		payload["tool"] = data.ToolName
+		payload["arguments"] = data.ArgumentsInJSON
+		payload["review_required"] = true
+	default:
+		if data != nil {
+			payload["message"] = fmt.Sprintf("interrupt: %v", data)
+		}
+	}
+	return payload
 }
 
 func (h *handler) handleAction(emit func(event string, payload gin.H) bool, action *adkcore.AgentAction) error {

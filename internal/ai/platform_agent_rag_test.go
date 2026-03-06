@@ -26,7 +26,7 @@ func (f fakeRAGRetriever) BuildAugmentedPrompt(query string, context *rag.RAGCon
 }
 
 func TestInjectRAGIntoMessages(t *testing.T) {
-	agent := &PlatformAgent{ragRetriever: fakeRAGRetriever{}}
+	agent := &PlatformRunner{ragRetriever: fakeRAGRetriever{}}
 	messages := []*schema.Message{
 		schema.SystemMessage("sys"),
 		schema.UserMessage("deploy service to prod"),
@@ -44,7 +44,7 @@ func TestInjectRAGIntoMessages(t *testing.T) {
 }
 
 func TestInjectRAGIntoMessagesWithoutRetriever(t *testing.T) {
-	agent := &PlatformAgent{}
+	agent := &PlatformRunner{}
 	messages := []*schema.Message{schema.UserMessage("check status")}
 	out := agent.injectRAGIntoMessages(context.Background(), messages)
 	if out[0].Content != messages[0].Content {

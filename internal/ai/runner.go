@@ -14,10 +14,13 @@ import (
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/config"
 	"github.com/cy77cc/k8s-manage/internal/rag"
+	"github.com/redis/go-redis/v9"
 )
 
-type PlatformAgent struct {
-	ADKAgent     adk.Agent
+type PlatformRunner struct {
+	runner       *adk.Runner
+	checkpoints  adk.CheckPointStore
+	agent        adk.Agent
 	Model        model.ToolCallingChatModel
 	tools        map[string]tool.InvokableTool
 	metas        map[string]tools.ToolMeta
@@ -25,12 +28,18 @@ type PlatformAgent struct {
 	ragRetriever ragPromptRetriever
 }
 
+type RunnerConfig struct {
+	EnableStreaming bool
+	RedisClient     redis.UniversalClient
+	CheckPointStore adk.CheckPointStore
+}
+
 type ragPromptRetriever interface {
 	Retrieve(ctx context.Context, query string, topK int) (*rag.RAGContext, error)
 	BuildAugmentedPrompt(query string, context *rag.RAGContext) string
 }
 
-func NewPlatformAgent(ctx context.Context, chatModel model.ToolCallingChatModel, deps tools.PlatformDeps) (*PlatformAgent, error) {
+func NewPlatformRunner(ctx context.Context, chatModel model.ToolCallingChatModel, deps tools.PlatformDeps, cfg *RunnerConfig) (*PlatformRunner, error) {
 	if chatModel == nil {
 		return nil, nil
 	}
@@ -41,6 +50,7 @@ func NewPlatformAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 	}
 	registered, err := tools.BuildRegisteredToolsWithMCP(deps, mcpManager)
 	if err != nil {
+		_ = mcpManager.Close()
 		return nil, err
 	}
 
@@ -53,22 +63,36 @@ func NewPlatformAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 		metaMap[item.Meta.Name] = item.Meta
 	}
 
-	adkAgent, err := newADKPlanExecuteAgent(ctx, chatModel, baseTools)
+	agent, err := newPlatformAgent(ctx, chatModel, baseTools)
 	if err != nil {
+		_ = mcpManager.Close()
 		return nil, err
+	}
+
+	store := resolveCheckPointStore(cfg)
+	enableStreaming := true
+	if cfg != nil {
+		enableStreaming = cfg.EnableStreaming
 	}
 
 	var ragRetriever ragPromptRetriever
 	if deps.DB != nil && config.CFG.Milvus.Enable {
 		milvusClient := rag.NewMilvusClient(config.CFG.Milvus)
 		if err := milvusClient.EnsureCollections(ctx); err != nil {
+			_ = mcpManager.Close()
 			return nil, fmt.Errorf("ensure milvus collections: %w", err)
 		}
 		ragRetriever = rag.NewRAGRetriever(milvusClient, rag.NewEmbedder(config.CFG.Embedder))
 	}
 
-	return &PlatformAgent{
-		ADKAgent:     adkAgent,
+	return &PlatformRunner{
+		runner: adk.NewRunner(ctx, adk.RunnerConfig{
+			EnableStreaming: enableStreaming,
+			Agent:           agent,
+			CheckPointStore: store,
+		}),
+		checkpoints:  store,
+		agent:        agent,
 		Model:        chatModel,
 		tools:        toolMap,
 		metas:        metaMap,
@@ -77,7 +101,19 @@ func NewPlatformAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 	}, nil
 }
 
-func (p *PlatformAgent) ToolMetas() []tools.ToolMeta {
+func resolveCheckPointStore(cfg *RunnerConfig) adk.CheckPointStore {
+	if cfg != nil {
+		if cfg.CheckPointStore != nil {
+			return cfg.CheckPointStore
+		}
+		if cfg.RedisClient != nil {
+			return NewRedisCheckPointStore(cfg.RedisClient)
+		}
+	}
+	return NewInMemoryCheckPointStore()
+}
+
+func (p *PlatformRunner) ToolMetas() []tools.ToolMeta {
 	if p == nil {
 		return nil
 	}
@@ -89,20 +125,34 @@ func (p *PlatformAgent) ToolMetas() []tools.ToolMeta {
 	return out
 }
 
-func (p *PlatformAgent) Stream(ctx context.Context, messages []*schema.Message) (*schema.StreamReader[*schema.Message], error) {
-	if p == nil {
-		return nil, fmt.Errorf("agent not initialized")
+func (p *PlatformRunner) Query(ctx context.Context, sessionID, message string, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	if p == nil || p.runner == nil {
+		return errorIterator(fmt.Errorf("runner not initialized"))
 	}
-	if p.Model == nil {
-		return nil, fmt.Errorf("chat model not initialized")
+	query := p.augmentPrompt(ctx, message)
+	callOpts := make([]adk.AgentRunOption, 0, len(opts)+1)
+	callOpts = append(callOpts, opts...)
+	if sid := strings.TrimSpace(sessionID); sid != "" {
+		callOpts = append(callOpts, adk.WithCheckPointID(sid))
 	}
-	messages = p.injectRAGIntoMessages(ctx, messages)
-	return p.Model.Stream(ctx, messages)
+	return p.runner.Query(ctx, query, callOpts...)
 }
 
-func (p *PlatformAgent) Generate(ctx context.Context, messages []*schema.Message) (*schema.Message, error) {
+func (p *PlatformRunner) Resume(ctx context.Context, checkpointID string, targets map[string]any, opts ...adk.AgentRunOption) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+	if p == nil || p.runner == nil {
+		return nil, fmt.Errorf("runner not initialized")
+	}
+	if len(targets) == 0 {
+		return p.runner.Resume(ctx, strings.TrimSpace(checkpointID), opts...)
+	}
+	return p.runner.ResumeWithParams(ctx, strings.TrimSpace(checkpointID), &adk.ResumeParams{
+		Targets: targets,
+	}, opts...)
+}
+
+func (p *PlatformRunner) Generate(ctx context.Context, messages []*schema.Message) (*schema.Message, error) {
 	if p == nil {
-		return nil, fmt.Errorf("agent not initialized")
+		return nil, fmt.Errorf("runner not initialized")
 	}
 	if p.Model == nil {
 		return nil, fmt.Errorf("chat model not initialized")
@@ -111,9 +161,9 @@ func (p *PlatformAgent) Generate(ctx context.Context, messages []*schema.Message
 	return p.Model.Generate(ctx, messages)
 }
 
-func (p *PlatformAgent) RunTool(ctx context.Context, toolName string, params map[string]any) (tools.ToolResult, error) {
+func (p *PlatformRunner) RunTool(ctx context.Context, toolName string, params map[string]any) (tools.ToolResult, error) {
 	if p == nil {
-		return tools.ToolResult{OK: false, Error: "agent not initialized", Source: "platform"}, fmt.Errorf("agent not initialized")
+		return tools.ToolResult{OK: false, Error: "runner not initialized", Source: "platform"}, fmt.Errorf("runner not initialized")
 	}
 	normalizedName := tools.NormalizeToolName(toolName)
 	t, ok := p.tools[normalizedName]
@@ -135,7 +185,14 @@ func (p *PlatformAgent) RunTool(ctx context.Context, toolName string, params map
 	return result, nil
 }
 
-func (p *PlatformAgent) injectRAGIntoMessages(ctx context.Context, messages []*schema.Message) []*schema.Message {
+func (p *PlatformRunner) Close() error {
+	if p == nil || p.mcp == nil {
+		return nil
+	}
+	return p.mcp.Close()
+}
+
+func (p *PlatformRunner) injectRAGIntoMessages(ctx context.Context, messages []*schema.Message) []*schema.Message {
 	if p == nil || p.ragRetriever == nil || len(messages) == 0 {
 		return messages
 	}
@@ -167,9 +224,30 @@ func (p *PlatformAgent) injectRAGIntoMessages(ctx context.Context, messages []*s
 	return out
 }
 
-func (p *PlatformAgent) Close() error {
-	if p == nil || p.mcp == nil {
-		return nil
+func (p *PlatformRunner) augmentPrompt(ctx context.Context, message string) string {
+	if p == nil || p.ragRetriever == nil {
+		return message
 	}
-	return p.mcp.Close()
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return message
+	}
+	contextData, err := p.ragRetriever.Retrieve(ctx, trimmed, 6)
+	if err != nil {
+		return message
+	}
+	augmented := p.ragRetriever.BuildAugmentedPrompt(trimmed, contextData)
+	if strings.TrimSpace(augmented) == "" {
+		return message
+	}
+	return augmented
+}
+
+func errorIterator(err error) *adk.AsyncIterator[*adk.AgentEvent] {
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	go func() {
+		defer gen.Close()
+		gen.Send(&adk.AgentEvent{Err: err})
+	}()
+	return iter
 }

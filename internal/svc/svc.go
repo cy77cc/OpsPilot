@@ -7,7 +7,6 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/cloudwego/eino-ext/devops"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/k8s-manage/internal/ai"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/cache"
@@ -31,8 +30,7 @@ type ServiceContext struct {
 	Rdb            redis.UniversalClient       // Redis 客户端
 	Cache          *expirable.LRU[string, any] // 本地缓存 (LRU)
 	CacheFacade    *cache.Facade               // L1-first cache facade
-	AI             *ai.PlatformAgent           // AI Platform Agent (react + adk planexecute)
-	AICheckpoints  compose.CheckPointStore     // ADK checkpoint persistence
+	AI             *ai.PlatformRunner          // AI Platform Runner
 	CasbinEnforcer *casbin.Enforcer            // Casbin Enforcer
 	Prometheus     prominfra.Client            // Prometheus HTTP API client
 }
@@ -67,14 +65,20 @@ func MustNewServiceContext() *ServiceContext {
 	clientset := MustNewClientset()
 
 	db := storage.MustNewDB()
+	rdb := storage.MustNewRdb()
 
-	platformAgent, err := ai.NewPlatformAgent(ctx, chatModel,
+	platformRunner, err := ai.NewPlatformRunner(ctx, chatModel,
 		tools.PlatformDeps{
 			DB:        db,
 			Clientset: clientset,
-		})
+		},
+		&ai.RunnerConfig{
+			EnableStreaming: true,
+			RedisClient:     rdb,
+		},
+	)
 	if err != nil {
-		logger.L().Warn("Failed to initialize AI PlatformAgent",
+		logger.L().Warn("Failed to initialize AI PlatformRunner",
 			logger.String("base_url", aiBaseURL()),
 			logger.String("model", aiModel()),
 			logger.Error(err),
@@ -96,9 +100,7 @@ func MustNewServiceContext() *ServiceContext {
 	}
 
 	l1 := expirable.NewLRU[string, any](5_000, nil, 24*time.Hour)
-	rdb := storage.MustNewRdb()
 	promClient := initPrometheusClient()
-	checkpoints := ai.NewDBCheckPointStore(db)
 
 	return &ServiceContext{
 		Clientset:      clientset,
@@ -106,8 +108,7 @@ func MustNewServiceContext() *ServiceContext {
 		Rdb:            rdb,
 		Cache:          l1,
 		CacheFacade:    cache.NewFacade(expirable.NewLRU[string, string](5_000, nil, 24*time.Hour), cache.NewRedisL2(rdb)),
-		AI:             platformAgent,
-		AICheckpoints:  checkpoints,
+		AI:             platformRunner,
 		CasbinEnforcer: enforcer,
 		Prometheus:     promClient,
 	}

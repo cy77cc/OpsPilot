@@ -8,10 +8,10 @@ import (
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 )
 
-func BenchmarkPlatformAgentGenerate(b *testing.B) {
-	agent, err := NewPlatformAgent(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{})
+func BenchmarkPlatformRunnerGenerate(b *testing.B) {
+	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
-		b.Fatalf("new platform agent failed: %v", err)
+		b.Fatalf("new platform runner failed: %v", err)
 	}
 	msgs := []*schema.Message{schema.UserMessage("benchmark query")}
 
@@ -24,10 +24,10 @@ func BenchmarkPlatformAgentGenerate(b *testing.B) {
 	}
 }
 
-func BenchmarkPlatformAgentRunTool(b *testing.B) {
-	agent, err := NewPlatformAgent(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{})
+func BenchmarkPlatformRunnerRunTool(b *testing.B) {
+	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
-		b.Fatalf("new platform agent failed: %v", err)
+		b.Fatalf("new platform runner failed: %v", err)
 	}
 	params := map[string]any{"resource": "pods", "namespace": "default", "limit": 1}
 

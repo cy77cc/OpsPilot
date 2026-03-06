@@ -51,6 +51,31 @@ export interface ToolTrace {
   timestamp: string;
 }
 
+export interface AIInterruptApprovalResponse {
+  checkpoint_id?: string;
+  session_id?: string;
+  target: string;
+  approved: boolean;
+  reason?: string;
+}
+
+export interface AIInterruptApprovalResult {
+  resumed: boolean;
+  interrupted?: boolean;
+  content?: string;
+  sessionId?: string;
+  interrupt_targets?: string[];
+  interrupt_contexts?: any[];
+  approval_required?: boolean;
+  review_required?: boolean;
+  tool?: string;
+  arguments?: string;
+  risk?: string;
+  preview?: Record<string, any>;
+  message?: string;
+  interrupt_error?: string;
+}
+
 // AI分析结果数据结构
 export interface AIAnalysis {
   id: string;
@@ -616,6 +641,10 @@ export const aiApi = {
 
   async confirmApproval(id: string, approve: boolean): Promise<ApiResponse<ApprovalTicket>> {
     return apiService.post(`/ai/approvals/${id}/confirm`, { approve });
+  },
+
+  async respondApproval(params: AIInterruptApprovalResponse): Promise<ApiResponse<AIInterruptApprovalResult>> {
+    return apiService.post('/ai/approval/respond', params);
   },
 
   async confirmConfirmation(id: string, approve: boolean): Promise<ApiResponse<ConfirmationTicket>> {
