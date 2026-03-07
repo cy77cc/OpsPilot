@@ -49,30 +49,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router-dom/')) {
-              return 'react-vendor'
-            }
-            // antd 和 @ant-design/icons 必须在同一个 chunk 中，避免循环依赖导致的初始化错误
-            if (id.includes('/antd/') || id.includes('/@ant-design/icons/') || id.includes('/@ant-design/cssinjs/') || id.includes('/rc-')) {
-              return 'antd-vendor'
-            }
-            // @ant-design/x 和 @ant-design/x-markdown 合并到 ai-ui，避免循环依赖
-            if (id.includes('/@ant-design/x/') || id.includes('/@ant-design/x-markdown/')) {
-              return 'ai-ui'
-            }
             if (id.includes('/framer-motion/')) {
               return 'animation-vendor'
-            }
-            // react-markdown 等依赖 react，合并到 react-vendor 避免循环依赖
-            if (
-              id.includes('/react-markdown/') ||
-              id.includes('/react-syntax-highlighter/') ||
-              id.includes('/remark-gfm/') ||
-              id.includes('/unified/') ||
-              id.includes('/remark/') ||
-              id.includes('/rehype/')
-            ) {
-              return 'react-vendor'
             }
             if (
               id.includes('/@monaco-editor/') ||
@@ -84,9 +62,6 @@ export default defineConfig({
             }
             if (id.includes('/@ant-design/charts/') || id.includes('/recharts/')) {
               return 'charts-vendor'
-            }
-            if (id.includes('/axios/') || id.includes('/dayjs/') || id.includes('/ahooks/') || id.includes('/cmdk/')) {
-              return 'utils-vendor'
             }
           }
 

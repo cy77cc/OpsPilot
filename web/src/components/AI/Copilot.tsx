@@ -21,9 +21,10 @@ import {
   Sender,
   Welcome,
   Think,
+  CodeHighlighter,
 } from '@ant-design/x';
 import type { BubbleListRef, BubbleProps } from '@ant-design/x/es/bubble';
-import XMarkdown from '@ant-design/x-markdown';
+import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { Button, message, Popover, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { getSceneLabel } from './constants/sceneMapping';
@@ -65,7 +66,7 @@ const ThinkingBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ c
     <div style={{ marginBottom: 12 }}>
       <Think
         loading={isStreaming}
-        title={'深度思考中'}
+        title={isStreaming ? '正在思考' : `已思考`}
         expanded={value}
         onExpand={(value) => {
           setValue(value);
@@ -75,11 +76,19 @@ const ThinkingBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ c
   );
 };
 
+const Code: React.FC<ComponentProps> = (props) => {
+  const { className, children } = props;
+  const lang = className?.match(/language-(\w+)/)?.[1] || '';
+
+  if (typeof children !== 'string') return null;
+  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+};
+
 // Markdown 内容渲染组件
 const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
   return (
     <div className="ai-markdown-content">
-      <XMarkdown content={content} />
+      <XMarkdown components={{ code: Code }} >{content}</XMarkdown>
     </div>
   );
 };
