@@ -22,7 +22,7 @@ func NewToolCallingChatModel(ctx context.Context) (model.ToolCallingChatModel, e
 	provider := strings.ToLower(strings.TrimSpace(config.CFG.LLM.Provider))
 	switch provider {
 	case "qwen":
-		thinking := false
+		thinking := true
 		return qwen.NewChatModel(ctx, &qwen.ChatModelConfig{
 			BaseURL:        config.CFG.LLM.BaseURL,
 			Model:          config.CFG.LLM.Model,

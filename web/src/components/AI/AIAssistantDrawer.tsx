@@ -1,61 +1,38 @@
+/**
+ * AI Copilot 抽屉组件
+ * 支持场景自动感知与手动切换
+ */
 import React, { useEffect, useCallback } from 'react';
-import { Drawer, Button, Tooltip, Spin } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Drawer } from 'antd';
+import { Copilot } from './Copilot';
 import { useResizableDrawer } from './hooks/useResizableDrawer';
-import { useAIChat } from './hooks/useAIChat';
-import { ConversationsPanel } from './components/ConversationsPanel';
-import { MessageList } from './components/MessageList';
-import { ChatInput } from './components/ChatInput';
-import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage } from './types';
+import type { SceneOption } from './hooks/useAutoScene';
 import './AIAssistantDrawer.css';
 
 interface AIAssistantDrawerProps {
   open: boolean;
   onClose: () => void;
   scene: string;
+  selectValue?: string;
+  onSceneChange?: (scene: string) => void;
+  availableScenes?: SceneOption[];
+  isAuto?: boolean;
 }
 
 /**
- * AI 助手抽屉组件
+ * AI Copilot 抽屉组件
+ * 使用 @ant-design/x 和 @ant-design/x-sdk 实现
  */
-export function AIAssistantDrawer({ open, onClose, scene }: AIAssistantDrawerProps) {
+export function AIAssistantDrawer({
+  open,
+  onClose,
+  scene,
+  selectValue,
+  onSceneChange,
+  availableScenes = [{ key: 'global', label: '全局助手' }],
+  isAuto = true,
+}: AIAssistantDrawerProps) {
   const { width, isResizing, handleMouseDown } = useResizableDrawer();
-  const {
-    messages,
-    isLoading,
-    conversations,
-    currentSessionId,
-    sendMessage,
-    createConversation,
-    switchConversation,
-    deleteConversation,
-    loadConversations,
-    setMessages,
-  } = useAIChat({ scene });
-
-  const sceneLabel = getSceneLabel(scene);
-
-  // 加载会话列表
-  useEffect(() => {
-    if (open) {
-      void loadConversations();
-    }
-  }, [open, loadConversations]);
-
-  // 处理发送消息
-  const handleSend = useCallback(
-    (content: string) => {
-      void sendMessage(content);
-    },
-    [sendMessage]
-  );
-
-  // 处理新建会话
-  const handleNewConversation = useCallback(() => {
-    createConversation();
-    setMessages([]);
-  }, [createConversation, setMessages]);
 
   // 拖拽手柄
   const ResizeHandle = (
@@ -81,56 +58,17 @@ export function AIAssistantDrawer({ open, onClose, scene }: AIAssistantDrawerPro
       title={null}
     >
       {ResizeHandle}
-
-      {/* 头部 */}
-      <div className="ai-drawer-header">
-        <div className="ai-drawer-header-title">
-          <span className="ai-drawer-scene-badge">{sceneLabel}</span>
-          <h3>AI 运维助手</h3>
-        </div>
-        <div className="ai-drawer-header-actions">
-          <Tooltip title="新建会话">
-            <Button type="text" icon={<PlusOutlined />} onClick={handleNewConversation} />
-          </Tooltip>
-          <Tooltip title="刷新会话列表">
-            <Button type="text" icon={<ReloadOutlined />} onClick={() => void loadConversations()} />
-          </Tooltip>
-        </div>
-      </div>
-
-      {/* 主内容区 */}
-      <div className="ai-drawer-content">
-        {/* 会话列表 */}
-        <div className="ai-drawer-conversations">
-          <ConversationsPanel
-            conversations={conversations}
-            currentId={currentSessionId}
-            onSelect={switchConversation}
-            onDelete={deleteConversation}
-            onCreate={handleNewConversation}
-          />
-        </div>
-
-        {/* 消息区域 */}
-        <div className="ai-drawer-messages">
-          {isLoading && messages.length === 0 ? (
-            <div className="ai-drawer-loading">
-              <Spin tip="加载中..." />
-            </div>
-          ) : (
-            <MessageList
-              messages={messages}
-              isLoading={isLoading}
-              scene={scene}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* 输入区域 */}
-      <div className="ai-drawer-input">
-        <ChatInput onSend={handleSend} isLoading={isLoading} />
-      </div>
+      <Copilot
+        open={open}
+        onClose={onClose}
+        scene={scene}
+        selectValue={selectValue}
+        onSceneChange={onSceneChange}
+        availableScenes={availableScenes}
+        isAuto={isAuto}
+      />
     </Drawer>
   );
 }
+
+export default AIAssistantDrawer;

@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/k8s-manage/internal/ai/agent"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 )
 
 func BenchmarkPlatformRunnerGenerate(b *testing.B) {
-	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
+	runner, err := agent.NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
 		b.Fatalf("new platform runner failed: %v", err)
 	}
@@ -19,14 +20,14 @@ func BenchmarkPlatformRunnerGenerate(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := agent.Generate(context.Background(), msgs); err != nil {
+		if _, err := runner.Generate(context.Background(), msgs); err != nil {
 			b.Fatalf("generate failed: %v", err)
 		}
 	}
 }
 
 func BenchmarkPlatformRunnerRunTool(b *testing.B) {
-	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
+	runner, err := agent.NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
 		b.Fatalf("new platform runner failed: %v", err)
 	}
@@ -35,14 +36,14 @@ func BenchmarkPlatformRunnerRunTool(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := agent.RunTool(context.Background(), "k8s_query", params); err != nil {
+		if _, err := runner.RunTool(context.Background(), "k8s_query", params); err != nil {
 			b.Fatalf("run tool failed: %v", err)
 		}
 	}
 }
 
 func BenchmarkPlatformRunnerGenerateParallel(b *testing.B) {
-	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
+	runner, err := agent.NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
 		b.Fatalf("new platform runner failed: %v", err)
 	}
@@ -54,7 +55,7 @@ func BenchmarkPlatformRunnerGenerateParallel(b *testing.B) {
 		for pb.Next() {
 			n := atomic.AddUint64(&seq, 1)
 			msgs := []*schema.Message{schema.UserMessage("benchmark parallel query")}
-			if _, err := agent.Generate(context.Background(), msgs); err != nil {
+			if _, err := runner.Generate(context.Background(), msgs); err != nil {
 				b.Fatalf("generate failed on iteration %d: %v", n, err)
 			}
 		}

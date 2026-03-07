@@ -8,6 +8,7 @@ import (
 
 	modelcomponent "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/k8s-manage/internal/ai/agent"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 )
 
@@ -44,21 +45,21 @@ func (m *fakeToolCallingModel) WithTools(_ []*schema.ToolInfo) (modelcomponent.T
 	return m, nil
 }
 
-func newFakePlatformRunner(t *testing.T) *PlatformRunner {
+func newFakePlatformRunner(t *testing.T) *agent.PlatformRunner {
 	t.Helper()
-	agent, err := NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
+	runner, err := agent.NewPlatformRunner(context.Background(), &fakeToolCallingModel{}, tools.PlatformDeps{}, nil)
 	if err != nil {
 		t.Fatalf("new platform runner failed: %v", err)
 	}
-	if agent == nil {
+	if runner == nil {
 		t.Fatalf("expected non-nil platform runner")
 	}
-	return agent
+	return runner
 }
 
 func TestE2ESimpleQuery(t *testing.T) {
-	agent := newFakePlatformRunner(t)
-	out, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("status")})
+	runner := newFakePlatformRunner(t)
+	out, err := runner.Generate(context.Background(), []*schema.Message{schema.UserMessage("status")})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}
@@ -68,8 +69,8 @@ func TestE2ESimpleQuery(t *testing.T) {
 }
 
 func TestE2EMultiStepTask(t *testing.T) {
-	agent := newFakePlatformRunner(t)
-	out, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("step1 then step2")})
+	runner := newFakePlatformRunner(t)
+	out, err := runner.Generate(context.Background(), []*schema.Message{schema.UserMessage("step1 then step2")})
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
 	}
@@ -79,8 +80,8 @@ func TestE2EMultiStepTask(t *testing.T) {
 }
 
 func TestE2EApprovalInterruptFlow(t *testing.T) {
-	agent := newFakePlatformRunner(t)
-	metas := agent.ToolMetas()
+	runner := newFakePlatformRunner(t)
+	metas := runner.ToolMetas()
 	found := false
 	for _, meta := range metas {
 		if meta.Name == "service_deploy_apply" {
@@ -97,11 +98,11 @@ func TestE2EApprovalInterruptFlow(t *testing.T) {
 }
 
 func TestE2EErrorRecovery(t *testing.T) {
-	agent := newFakePlatformRunner(t)
-	if _, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("trigger error")}); err == nil {
+	runner := newFakePlatformRunner(t)
+	if _, err := runner.Generate(context.Background(), []*schema.Message{schema.UserMessage("trigger error")}); err == nil {
 		t.Fatalf("expected synthetic error")
 	}
-	out, err := agent.Generate(context.Background(), []*schema.Message{schema.UserMessage("recover")})
+	out, err := runner.Generate(context.Background(), []*schema.Message{schema.UserMessage("recover")})
 	if err != nil {
 		t.Fatalf("generate after recovery failed: %v", err)
 	}

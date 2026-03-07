@@ -56,18 +56,23 @@ export default defineConfig({
             if (id.includes('/antd/') || id.includes('/@ant-design/icons/') || id.includes('/@ant-design/cssinjs/') || id.includes('/rc-')) {
               return 'antd-vendor'
             }
-            if (id.includes('/@ant-design/x/')) {
+            // @ant-design/x 和 @ant-design/x-markdown 合并到 ai-ui，避免循环依赖
+            if (id.includes('/@ant-design/x/') || id.includes('/@ant-design/x-markdown/')) {
               return 'ai-ui'
             }
             if (id.includes('/framer-motion/')) {
               return 'animation-vendor'
             }
+            // react-markdown 等依赖 react，合并到 react-vendor 避免循环依赖
             if (
               id.includes('/react-markdown/') ||
               id.includes('/react-syntax-highlighter/') ||
-              id.includes('/remark-gfm/')
+              id.includes('/remark-gfm/') ||
+              id.includes('/unified/') ||
+              id.includes('/remark/') ||
+              id.includes('/rehype/')
             ) {
-              return 'markdown-vendor'
+              return 'react-vendor'
             }
             if (
               id.includes('/@monaco-editor/') ||

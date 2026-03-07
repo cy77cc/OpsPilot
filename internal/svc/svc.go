@@ -8,6 +8,7 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/cloudwego/eino-ext/devops"
 	"github.com/cy77cc/k8s-manage/internal/ai"
+	"github.com/cy77cc/k8s-manage/internal/ai/agent"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/cache"
 	casbinadapter "github.com/cy77cc/k8s-manage/internal/component/casbin"
@@ -30,7 +31,7 @@ type ServiceContext struct {
 	Rdb            redis.UniversalClient       // Redis 客户端
 	Cache          *expirable.LRU[string, any] // 本地缓存 (LRU)
 	CacheFacade    *cache.Facade               // L1-first cache facade
-	AI             *ai.PlatformRunner          // AI Platform Runner
+	AI             *agent.PlatformRunner       // AI Platform Runner
 	CasbinEnforcer *casbin.Enforcer            // Casbin Enforcer
 	Prometheus     prominfra.Client            // Prometheus HTTP API client
 }
@@ -67,12 +68,12 @@ func MustNewServiceContext() *ServiceContext {
 	db := storage.MustNewDB()
 	rdb := storage.MustNewRdb()
 
-	platformRunner, err := ai.NewPlatformRunner(ctx, chatModel,
+	platformRunner, err := agent.NewPlatformRunner(ctx, chatModel,
 		tools.PlatformDeps{
 			DB:        db,
 			Clientset: clientset,
 		},
-		&ai.RunnerConfig{
+		&agent.RunnerConfig{
 			EnableStreaming: true,
 			RedisClient:     rdb,
 		},

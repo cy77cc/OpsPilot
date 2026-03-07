@@ -23,7 +23,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Auth/AuthContext';
 import ProjectSwitcher from '../Project/ProjectSwitcher';
 import { NotificationBell } from '../Notification';
-import { AIAssistantButton } from '../AI';
+import { AICopilotButton } from '../AI';
 import '../Notification/notification.css';
 import { useI18n } from '../../i18n';
 import { usePermission } from '../RBAC';
@@ -402,7 +402,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <NotificationBell onViewAll={() => navigate('/monitor')} />
 
             {/* AI 助手 */}
-            <AIAssistantButton />
+            <AICopilotButton />
 
             {/* 用户菜单 */}
             <Dropdown
