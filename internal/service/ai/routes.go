@@ -20,6 +20,7 @@ func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	g.GET("/capabilities", h.ListTools)
 	g.GET("/tools/:name/params/hints", h.ToolParamHints)
 	g.GET("/scene/:scene/tools", h.SceneTools)
+	g.GET("/scene/:scene/prompts", h.ScenePrompts)
 	g.POST("/tools/preview", h.PreviewTool)
 	g.POST("/tools/execute", h.ExecuteTool)
 	g.GET("/executions/:id", h.GetExecution)

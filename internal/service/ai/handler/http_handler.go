@@ -23,6 +23,7 @@ func (h *HTTPHandler) DeleteSession(c *gin.Context)          { h.inner.deleteSes
 func (h *HTTPHandler) ListTools(c *gin.Context)              { h.inner.capabilities(c) }
 func (h *HTTPHandler) ToolParamHints(c *gin.Context)         { h.inner.toolParamHints(c) }
 func (h *HTTPHandler) SceneTools(c *gin.Context)             { h.inner.sceneTools(c) }
+func (h *HTTPHandler) ScenePrompts(c *gin.Context)           { h.inner.scenePrompts(c) }
 func (h *HTTPHandler) PreviewTool(c *gin.Context)            { h.inner.previewTool(c) }
 func (h *HTTPHandler) ExecuteTool(c *gin.Context)            { h.inner.executeTool(c) }
 func (h *HTTPHandler) GetExecution(c *gin.Context)           { h.inner.getExecution(c) }

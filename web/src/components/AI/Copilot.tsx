@@ -12,7 +12,7 @@ import {
   CopyOutlined,
   LikeOutlined,
   DislikeOutlined,
-  BulbOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import {
   Bubble,
@@ -24,11 +24,15 @@ import {
 } from '@ant-design/x';
 import type { BubbleListRef, BubbleProps } from '@ant-design/x/es/bubble';
 import XMarkdown from '@ant-design/x-markdown';
-import { Button, message, Popover, Select, Space, Tooltip, theme, Collapse } from 'antd';
+import { Button, message, Popover, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage } from './types';
+import type { ChatMessage, EmbeddedRecommendation } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
+import { useConversationRestore, type RestoredConversation } from './hooks/useConversationRestore';
+import { useScenePrompts } from './hooks/useScenePrompts';
+import { MessageActions } from './components/MessageActions';
+import { RecommendationCard } from './components/RecommendationCard';
 
 const { useToken } = theme;
 
@@ -45,57 +49,29 @@ type SSEEventType =
   | 'error'
   | 'heartbeat';
 
-// 扩展消息类型，包含 thinking
+// 扩展消息类型，包含 thinking 和 recommendations
 interface ExtendedChatMessage extends ChatMessage {
   thinking?: string;
+  recommendations?: EmbeddedRecommendation[];
 }
 
-// 默认提示词
-const DEFAULT_PROMPTS = [
-  { key: 'deploy', description: '如何部署一个新服务？' },
-  { key: 'monitor', description: '如何查看服务监控指标？' },
-  { key: 'troubleshoot', description: '帮我排查服务异常问题' },
-];
-
-// 思考过程渲染组件
+// 思考过程渲染组件 - 使用 @ant-design/x Think 组件
 const ThinkingBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ content, isStreaming }) => {
-  const { token } = theme.useToken();
-
   if (!content) return null;
 
+  const [value, setValue] = useState(false);
+
   return (
-    <Collapse
-      defaultActiveKey={['thinking']}
-      size="small"
-      style={{
-        marginBottom: 12,
-        background: token.colorBgTextHover,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: token.borderRadius,
-      }}
-      items={[
-        {
-          key: 'thinking',
-          label: (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <BulbOutlined style={{ color: token.colorWarning }} />
-              <span>{isStreaming ? '思考中...' : '思考过程'}</span>
-            </span>
-          ),
-          children: (
-            <div style={{
-              fontSize: 13,
-              color: token.colorTextSecondary,
-              whiteSpace: 'pre-wrap',
-              maxHeight: 300,
-              overflow: 'auto',
-            }}>
-              {content}
-            </div>
-          ),
-        },
-      ]}
-    />
+    <div style={{ marginBottom: 12 }}>
+      <Think
+        loading={isStreaming}
+        title={'深度思考中'}
+        expanded={value}
+        onExpand={(value) => {
+          setValue(value);
+        }}
+      >{content}</Think>
+    </div>
   );
 };
 
@@ -112,8 +88,13 @@ const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
 const AssistantMessage: React.FC<{
   content: string;
   thinking?: string;
+  recommendations?: EmbeddedRecommendation[];
   isStreaming?: boolean;
-}> = ({ content, thinking, isStreaming }) => {
+  showActions?: boolean;
+  onRegenerate?: () => void;
+  onRecommendationSelect?: (prompt: string) => void;
+  isLoading?: boolean;
+}> = ({ content, thinking, recommendations, isStreaming, showActions = true, onRegenerate, onRecommendationSelect, isLoading }) => {
   const { token } = theme.useToken();
 
   return (
@@ -127,6 +108,24 @@ const AssistantMessage: React.FC<{
       ) : isStreaming ? (
         <span style={{ color: token.colorTextSecondary }}>正在输入...</span>
       ) : null}
+
+      {/* 下一步推荐 */}
+      {recommendations && recommendations.length > 0 && !isStreaming && onRecommendationSelect && (
+        <RecommendationCard
+          recommendations={recommendations}
+          onSelect={onRecommendationSelect}
+        />
+      )}
+
+      {/* 消息操作按钮 */}
+      {showActions && !isStreaming && content && (
+        <MessageActions
+          content={content}
+          messageId=""
+          isLoading={isLoading}
+          onRegenerate={onRegenerate}
+        />
+      )}
     </div>
   );
 };
@@ -135,19 +134,6 @@ const AssistantMessage: React.FC<{
 const createRoleConfig = () => ({
   assistant: {
     placement: 'start' as const,
-    footer: (
-      <div style={{ display: 'flex', marginTop: 4 }}>
-        <Tooltip title="复制">
-          <Button type="text" size="small" icon={<CopyOutlined />} />
-        </Tooltip>
-        <Tooltip title="有帮助">
-          <Button type="text" size="small" icon={<LikeOutlined />} />
-        </Tooltip>
-        <Tooltip title="无帮助">
-          <Button type="text" size="small" icon={<DislikeOutlined />} />
-        </Tooltip>
-      </div>
-    ),
   },
   user: { placement: 'end' as const },
 });
@@ -276,6 +262,35 @@ export const Copilot: React.FC<CopilotProps> = ({
   ]);
   const [activeKey, setActiveKey] = useState('default');
 
+  // 恢复会话的回调
+  const handleRestoreConversation = useCallback((restored: RestoredConversation) => {
+    // 创建恢复的会话
+    const restoredItem: ConversationItem = {
+      key: restored.id,
+      label: restored.title,
+      group: '最近',
+      messages: restored.messages.map(m => ({
+        ...m,
+        createdAt: m.createdAt || new Date().toISOString(),
+      })),
+    };
+    setConversations([restoredItem]);
+    setActiveKey(restored.id);
+  }, []);
+
+  // 使用会话恢复 hook
+  const { isRestoring } = useConversationRestore({
+    scene,
+    enabled: open,
+    onRestore: handleRestoreConversation,
+  });
+
+  // 使用场景提示词 hook
+  const { prompts: scenePrompts } = useScenePrompts({
+    scene,
+    enabled: open,
+  });
+
   // 当前会话
   const activeConversation = useMemo(() => {
     return conversations.find(c => c.key === activeKey) || conversations[0];
@@ -314,6 +329,7 @@ export const Copilot: React.FC<CopilotProps> = ({
     const assistantId = `assistant-${Date.now()}`;
     let assistantContent = '';
     let assistantThinking = '';
+    let assistantRecommendations: EmbeddedRecommendation[] | undefined;
 
     // 添加助手消息占位
     setConversations(prev => prev.map(c => {
@@ -356,6 +372,13 @@ export const Copilot: React.FC<CopilotProps> = ({
               break;
 
             case 'done':
+              // 提取推荐
+              if (data.turn_recommendations) {
+                assistantRecommendations = data.turn_recommendations as EmbeddedRecommendation[];
+              }
+              setIsLoading(false);
+              break;
+
             case 'error':
               setIsLoading(false);
               break;
@@ -372,6 +395,7 @@ export const Copilot: React.FC<CopilotProps> = ({
                   ...m,
                   content: assistantContent,
                   thinking: assistantThinking || undefined,
+                  recommendations: assistantRecommendations,
                 };
               }),
             };
@@ -462,6 +486,41 @@ export const Copilot: React.FC<CopilotProps> = ({
   // 角色配置
   const role = useMemo(() => createRoleConfig(), []);
 
+  // 重新生成消息
+  const handleRegenerate = useCallback(async (assistantMsgId: string) => {
+    if (isLoading) return;
+
+    // 找到当前助手消息之前的用户消息
+    const msgIndex = messages.findIndex(m => m.id === assistantMsgId);
+    if (msgIndex <= 0) {
+      message.warning('无法重新生成：找不到对应的用户问题');
+      return;
+    }
+
+    const userMessage = messages[msgIndex - 1];
+    if (userMessage.role !== 'user' || !userMessage.content) {
+      message.warning('无法重新生成：用户问题为空');
+      return;
+    }
+
+    // 移除当前助手消息
+    setConversations(prev => prev.map(c => {
+      if (c.key !== activeKey) return c;
+      return {
+        ...c,
+        messages: c.messages.filter(m => m.id !== assistantMsgId),
+      };
+    }));
+
+    // 重新发送用户消息
+    await handleSubmit(userMessage.content);
+  }, [messages, activeKey, isLoading, handleSubmit]);
+
+  // 处理推荐点击
+  const handleRecommendationSelect = useCallback((prompt: string) => {
+    handleSubmit(prompt);
+  }, [handleSubmit]);
+
   // 渲染消息内容
   const renderMessageContent = useCallback((msg: ExtendedChatMessage, isCurrentStreaming: boolean) => {
     if (msg.role === 'user') {
@@ -475,10 +534,14 @@ export const Copilot: React.FC<CopilotProps> = ({
       <AssistantMessage
         content={msg.content}
         thinking={msg.thinking}
+        recommendations={msg.recommendations}
         isStreaming={isStreaming || (isCurrentStreaming && !!msg.thinking && !msg.content)}
+        onRegenerate={() => handleRegenerate(msg.id)}
+        onRecommendationSelect={handleRecommendationSelect}
+        isLoading={isLoading}
       />
     );
-  }, []);
+  }, [handleRegenerate, handleRecommendationSelect, isLoading]);
 
   if (!open) return null;
 
@@ -559,7 +622,12 @@ export const Copilot: React.FC<CopilotProps> = ({
         flexDirection: 'column',
         minHeight: 0,
       }}>
-        {messages.length > 0 ? (
+        {/* 恢复会话中的加载状态 */}
+        {isRestoring ? (
+          <div style={{ padding: 16 }}>
+            <Skeleton active paragraph={{ rows: 4 }} />
+          </div>
+        ) : messages.length > 0 ? (
           <Bubble.List
             ref={listRef}
             style={{ paddingInline: 16, height: '100%' }}
@@ -587,7 +655,7 @@ export const Copilot: React.FC<CopilotProps> = ({
             <Prompts
               vertical
               title="我可以帮你："
-              items={DEFAULT_PROMPTS}
+              items={scenePrompts.length > 0 ? scenePrompts : [{ key: 'default', description: '有什么可以帮助你的？' }]}
               onItemClick={(info) => handleSubmit(info?.data?.description as string)}
               style={{ margin: '0 16px 16px' }}
               styles={{

@@ -29,6 +29,15 @@ export interface ToolExecution {
   status: ToolStatus;
   duration?: number;
   error?: string;
+  // 新增: 工具调用参数
+  params?: Record<string, unknown>;
+  // 新增: 工具执行结果
+  result?: {
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+    latency_ms?: number;
+  };
 }
 
 // 工具追踪
@@ -64,6 +73,17 @@ export interface ConfirmationRequest {
   onCancel: () => void;
 }
 
+// 推荐建议
+export interface EmbeddedRecommendation {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  followup_prompt?: string;
+  reasoning?: string;
+  relevance: number;
+}
+
 // 聊天消息
 export interface ChatMessage {
   id: string;
@@ -72,6 +92,8 @@ export interface ChatMessage {
   thinking?: string;
   tools?: ToolExecution[];
   confirmation?: ConfirmationRequest;
+  // 新增: 下一步推荐
+  recommendations?: EmbeddedRecommendation[];
   createdAt: string;
   updatedAt?: string;
 }

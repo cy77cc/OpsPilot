@@ -78,6 +78,18 @@ export interface AISceneToolsPayload {
   tools: AICapability[];
 }
 
+export interface AIScenePromptItem {
+  id: number;
+  prompt_text: string;
+  prompt_type: string;
+  display_order: number;
+}
+
+export interface AIScenePromptsPayload {
+  scene: string;
+  prompts: AIScenePromptItem[];
+}
+
 interface SSEMetaEvent {
   sessionId: string;
   createdAt: string;
@@ -493,6 +505,10 @@ export const aiApi = {
 
   async getSceneTools(scene: string): Promise<ApiResponse<AISceneToolsPayload>> {
     return apiService.get(`/ai/scene/${scene}/tools`);
+  },
+
+  async getScenePrompts(scene: string): Promise<ApiResponse<AIScenePromptsPayload>> {
+    return apiService.get(`/ai/scene/${scene}/prompts`);
   },
 
 };
