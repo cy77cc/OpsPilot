@@ -20,11 +20,8 @@ import {
   Prompts,
   Sender,
   Welcome,
-  Think,
-  CodeHighlighter,
 } from '@ant-design/x';
 import type { BubbleListRef, BubbleProps } from '@ant-design/x/es/bubble';
-import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { Button, message, Popover, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { getSceneLabel } from './constants/sceneMapping';
@@ -33,7 +30,8 @@ import type { SceneOption } from './hooks/useAutoScene';
 import { useConversationRestore, type RestoredConversation } from './hooks/useConversationRestore';
 import { useScenePrompts } from './hooks/useScenePrompts';
 import { MessageActions } from './components/MessageActions';
-import { RecommendationCard } from './components/RecommendationCard';
+import { AssistantMessageBlocks } from './components/AssistantMessageBlocks';
+import { normalizeAssistantMessage } from './messageBlocks';
 
 const { useToken } = theme;
 
@@ -56,43 +54,6 @@ interface ExtendedChatMessage extends ChatMessage {
   recommendations?: EmbeddedRecommendation[];
 }
 
-// 思考过程渲染组件 - 使用 @ant-design/x Think 组件
-const ThinkingBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ content, isStreaming }) => {
-  if (!content) return null;
-
-  const [value, setValue] = useState(false);
-
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <Think
-        loading={isStreaming}
-        title={isStreaming ? '正在思考' : `已思考`}
-        expanded={value}
-        onExpand={(value) => {
-          setValue(value);
-        }}
-      >{content}</Think>
-    </div>
-  );
-};
-
-const Code: React.FC<ComponentProps> = (props) => {
-  const { className, children } = props;
-  const lang = className?.match(/language-(\w+)/)?.[1] || '';
-
-  if (typeof children !== 'string') return null;
-  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
-};
-
-// Markdown 内容渲染组件
-const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
-  return (
-    <div className="ai-markdown-content">
-      <XMarkdown components={{ code: Code }} >{content}</XMarkdown>
-    </div>
-  );
-};
-
 // 助手消息渲染组件
 const AssistantMessage: React.FC<{
   content: string;
@@ -105,26 +66,23 @@ const AssistantMessage: React.FC<{
   isLoading?: boolean;
 }> = ({ content, thinking, recommendations, isStreaming, showActions = true, onRegenerate, onRecommendationSelect, isLoading }) => {
   const { token } = theme.useToken();
+  const blocks = useMemo(() => normalizeAssistantMessage({
+    content,
+    thinking,
+    recommendations,
+    isStreaming,
+  }), [content, thinking, recommendations, isStreaming]);
 
   return (
     <div>
-      {/* 思考过程 */}
-      {thinking && <ThinkingBlock content={thinking} isStreaming={isStreaming} />}
-
-      {/* 主要内容 */}
-      {content ? (
-        <MarkdownContent content={content} />
+      {blocks.length > 0 ? (
+        <AssistantMessageBlocks
+          blocks={blocks}
+          onRecommendationSelect={onRecommendationSelect}
+        />
       ) : isStreaming ? (
         <span style={{ color: token.colorTextSecondary }}>正在输入...</span>
       ) : null}
-
-      {/* 下一步推荐 */}
-      {recommendations && recommendations.length > 0 && !isStreaming && onRecommendationSelect && (
-        <RecommendationCard
-          recommendations={recommendations}
-          onSelect={onRecommendationSelect}
-        />
-      )}
 
       {/* 消息操作按钮 */}
       {showActions && !isStreaming && content && (
@@ -539,6 +497,10 @@ export const Copilot: React.FC<CopilotProps> = ({
     // 助手消息
     const isStreaming = isCurrentStreaming && !msg.content && !msg.thinking;
 
+    // 只有当消息内容正在生成时（内容为空）才显示 loading
+    // 如果消息已经有内容了（即使正在生成推荐），重新生成按钮不显示 loading
+    const showLoading = isLoading && isCurrentStreaming && !msg.content;
+
     return (
       <AssistantMessage
         content={msg.content}
@@ -547,7 +509,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         isStreaming={isStreaming || (isCurrentStreaming && !!msg.thinking && !msg.content)}
         onRegenerate={() => handleRegenerate(msg.id)}
         onRecommendationSelect={handleRecommendationSelect}
-        isLoading={isLoading}
+        isLoading={showLoading}
       />
     );
   }, [handleRegenerate, handleRecommendationSelect, isLoading]);

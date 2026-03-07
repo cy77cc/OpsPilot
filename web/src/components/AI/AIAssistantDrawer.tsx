@@ -2,12 +2,14 @@
  * AI Copilot 抽屉组件
  * 支持场景自动感知与手动切换
  */
-import React, { useEffect, useCallback } from 'react';
-import { Drawer } from 'antd';
-import { Copilot } from './Copilot';
+import React, { lazy, Suspense } from 'react';
+import { Drawer, Skeleton } from 'antd';
+import { AISurfaceBoundary } from './AISurfaceBoundary';
 import { useResizableDrawer } from './hooks/useResizableDrawer';
 import type { SceneOption } from './hooks/useAutoScene';
 import './AIAssistantDrawer.css';
+
+const CopilotSurface = lazy(() => import('./CopilotSurface'));
 
 interface AIAssistantDrawerProps {
   open: boolean;
@@ -58,15 +60,19 @@ export function AIAssistantDrawer({
       title={null}
     >
       {ResizeHandle}
-      <Copilot
-        open={open}
-        onClose={onClose}
-        scene={scene}
-        selectValue={selectValue}
-        onSceneChange={onSceneChange}
-        availableScenes={availableScenes}
-        isAuto={isAuto}
-      />
+      <AISurfaceBoundary>
+        <Suspense fallback={<div style={{ padding: 16 }}><Skeleton active paragraph={{ rows: 4 }} /></div>}>
+          <CopilotSurface
+            open={open}
+            onClose={onClose}
+            scene={scene}
+            selectValue={selectValue}
+            onSceneChange={onSceneChange}
+            availableScenes={availableScenes}
+            isAuto={isAuto}
+          />
+        </Suspense>
+      </AISurfaceBoundary>
     </Drawer>
   );
 }

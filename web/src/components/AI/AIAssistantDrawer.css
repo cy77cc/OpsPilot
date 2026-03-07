@@ -396,6 +396,33 @@
   }
 }
 
+/* 思考中标题渐变色动画 */
+.ai-thinking-title-animated {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    #1890ff 0%,
+    #69c0ff 25%,
+    #1890ff 50%,
+    #69c0ff 75%,
+    #1890ff 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinking-gradient 2s linear infinite;
+}
+
+@keyframes thinking-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
 /* Markdown 内容样式 */
 .ai-markdown-content {
   font-size: 14px;
