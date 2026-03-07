@@ -1,4 +1,4 @@
-package handler
+package ai
 
 import (
 	"errors"
@@ -9,11 +9,10 @@ import (
 	adkcore "github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	aitools "github.com/cy77cc/k8s-manage/internal/ai/tools"
-	"github.com/gin-gonic/gin"
 )
 
-func (h *AIHandler) processADKEvent(
-	emit func(event string, payload gin.H) bool,
+func (o *Orchestrator) processADKEvent(
+	emit func(string, map[string]any) bool,
 	tracker *toolEventTracker,
 	event *adkcore.AgentEvent,
 	assistantContent *strings.Builder,
@@ -27,22 +26,20 @@ func (h *AIHandler) processADKEvent(
 	}
 
 	if event.Output != nil && event.Output.MessageOutput != nil {
-		if err := h.handleStream(emit, tracker, event.Output.MessageOutput, assistantContent, reasoningContent); err != nil {
+		if err := o.handleStream(emit, tracker, event.Output.MessageOutput, assistantContent, reasoningContent); err != nil {
 			return err
 		}
 	}
-
 	if event.Action != nil {
-		if err := h.handleAction(emit, event.Action); err != nil {
+		if err := o.handleAction(emit, event.Action); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func (h *AIHandler) handleStream(
-	emit func(event string, payload gin.H) bool,
+func (o *Orchestrator) handleStream(
+	emit func(string, map[string]any) bool,
 	tracker *toolEventTracker,
 	output *adkcore.MessageVariant,
 	assistantContent *strings.Builder,
@@ -52,7 +49,7 @@ func (h *AIHandler) handleStream(
 		return nil
 	}
 	if output.Message != nil {
-		h.applyMessageChunk(emit, tracker, output.Message, assistantContent, reasoningContent)
+		o.applyMessageChunk(emit, tracker, output.Message, assistantContent, reasoningContent)
 		return nil
 	}
 	if output.MessageStream == nil {
@@ -70,20 +67,20 @@ func (h *AIHandler) handleStream(
 		if chunk == nil {
 			continue
 		}
-		h.applyMessageChunk(emit, tracker, chunk, assistantContent, reasoningContent)
+		o.applyMessageChunk(emit, tracker, chunk, assistantContent, reasoningContent)
 	}
 }
 
-func (h *AIHandler) applyMessageChunk(
-	emit func(event string, payload gin.H) bool,
-	tracker *toolEventTracker,
+func (o *Orchestrator) applyMessageChunk(
+	emit func(string, map[string]any) bool,
+	_ *toolEventTracker,
 	msg *schema.Message,
 	assistantContent *strings.Builder,
 	reasoningContent *strings.Builder,
 ) {
 	if msg.ReasoningContent != "" {
 		reasoningContent.WriteString(msg.ReasoningContent)
-		_ = emit("thinking_delta", gin.H{"contentChunk": msg.ReasoningContent})
+		_ = emit("thinking_delta", map[string]any{"contentChunk": msg.ReasoningContent})
 	}
 	if msg.Role != schema.Tool && msg.Content != "" {
 		assistantContent.WriteString(msg.Content)
@@ -91,7 +88,7 @@ func (h *AIHandler) applyMessageChunk(
 	}
 }
 
-func emitDeltaChunks(emit func(event string, payload gin.H) bool, content string) {
+func emitDeltaChunks(emit func(string, map[string]any) bool, content string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
@@ -102,21 +99,21 @@ func emitDeltaChunks(emit func(event string, payload gin.H) bool, content string
 		if end > len(rs) {
 			end = len(rs)
 		}
-		_ = emit("delta", gin.H{"contentChunk": string(rs[i:end])})
+		_ = emit("delta", map[string]any{"contentChunk": string(rs[i:end])})
 	}
 }
 
-func (h *AIHandler) handleInterrupt(emit func(event string, payload gin.H) bool, info *adkcore.InterruptInfo) error {
+func (o *Orchestrator) handleInterrupt(emit func(string, map[string]any) bool, info *adkcore.InterruptInfo) error {
 	if info == nil {
 		return nil
 	}
-	contextPayload := gin.H{
+	contextPayload := map[string]any{
 		"interrupt_contexts": info.InterruptContexts,
 		"interrupt_targets":  interruptRootTargets(info.InterruptContexts),
 	}
 	switch data := info.Data.(type) {
 	case *aitools.ApprovalInfo:
-		payload := gin.H{
+		payload := map[string]any{
 			"tool":      data.ToolName,
 			"arguments": data.ArgumentsInJSON,
 			"risk":      data.Risk,
@@ -127,7 +124,7 @@ func (h *AIHandler) handleInterrupt(emit func(event string, payload gin.H) bool,
 		}
 		_ = emit("approval_required", payload)
 	case *aitools.ReviewEditInfo:
-		payload := gin.H{
+		payload := map[string]any{
 			"tool":      data.ToolName,
 			"arguments": data.ArgumentsInJSON,
 		}
@@ -137,9 +134,9 @@ func (h *AIHandler) handleInterrupt(emit func(event string, payload gin.H) bool,
 		_ = emit("review_required", payload)
 	default:
 		if len(info.InterruptContexts) > 0 {
-			_ = emit("interrupt_required", gin.H{"contexts": info.InterruptContexts, "interrupt_targets": interruptRootTargets(info.InterruptContexts)})
+			_ = emit("interrupt_required", map[string]any{"contexts": info.InterruptContexts, "interrupt_targets": interruptRootTargets(info.InterruptContexts)})
 		} else {
-			_ = emit("interrupt_required", gin.H{"message": fmt.Sprintf("interrupt: %v", data)})
+			_ = emit("interrupt_required", map[string]any{"message": fmt.Sprintf("interrupt: %v", data)})
 		}
 	}
 	return nil
@@ -184,11 +181,11 @@ func interruptRootTargetsFromSignal(sig *adkcore.InterruptSignal) []string {
 	return out
 }
 
-func interruptPayloadFromSignal(sig *adkcore.InterruptSignal) gin.H {
+func interruptPayloadFromSignal(sig *adkcore.InterruptSignal) map[string]any {
 	if sig == nil {
 		return nil
 	}
-	payload := gin.H{
+	payload := map[string]any{
 		"interrupt_targets": interruptRootTargetsFromSignal(sig),
 		"interrupt_error":   sig.Error(),
 	}
@@ -211,18 +208,18 @@ func interruptPayloadFromSignal(sig *adkcore.InterruptSignal) gin.H {
 	return payload
 }
 
-func (h *AIHandler) handleAction(emit func(event string, payload gin.H) bool, action *adkcore.AgentAction) error {
+func (o *Orchestrator) handleAction(emit func(string, map[string]any) bool, action *adkcore.AgentAction) error {
 	if action == nil {
 		return nil
 	}
 	if action.Interrupted != nil {
-		return h.handleInterrupt(emit, action.Interrupted)
+		return o.handleInterrupt(emit, action.Interrupted)
 	}
 	if action.Exit {
-		_ = emit("done", gin.H{"reason": "agent_exit"})
+		_ = emit("done", map[string]any{"reason": "agent_exit"})
 	}
 	if action.TransferToAgent != nil {
-		_ = emit("agent_transfer", gin.H{"dest_agent": action.TransferToAgent.DestAgentName})
+		_ = emit("agent_transfer", map[string]any{"dest_agent": action.TransferToAgent.DestAgentName})
 	}
 	return nil
 }

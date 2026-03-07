@@ -127,8 +127,8 @@ func (h *AIHandler) refreshSuggestions(uid uint64, scene, answer string) []Recom
 	scene = logic.NormalizeScene(scene)
 	prompt := "你是 suggestion 智能体。基于下面回答提炼 3 条可执行建议，每条一行，格式为：标题|内容|相关度(0-1)|思考摘要（不超过60字）。回答内容如下：\n" + answer
 	out := []RecommendationRecord{}
-	if h.svcCtx.AI != nil {
-		msg, err := h.svcCtx.AI.Generate(context.Background(), []*schema.Message{schema.UserMessage(prompt)})
+	if h.ai != nil {
+		msg, err := h.ai.Generate(context.Background(), []*schema.Message{schema.UserMessage(prompt)})
 		if err == nil && msg != nil {
 			lines := strings.Split(msg.Content, "\n")
 			for _, line := range lines {

@@ -130,7 +130,7 @@ func (h *AIHandler) chat(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "message is required")
 		return
 	}
-	if h.svcCtx.AI == nil {
+	if h.orchestrator == nil {
 		httpx.Fail(c, xcode.ServerError, "AI service not available: LLM not configured or initialization failed. Please check llm.enable, llm.provider, llm.base_url, llm.api_key in config.")
 		return
 	}

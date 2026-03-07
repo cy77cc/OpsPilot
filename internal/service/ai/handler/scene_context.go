@@ -80,14 +80,14 @@ func sceneMetaByKey(scene string) (sceneMeta, bool) {
 }
 
 func (h *AIHandler) sceneRecommendedTools(scene string) []tools.ToolMeta {
-	if h == nil || h.svcCtx == nil || h.svcCtx.AI == nil {
+	if h == nil || h.ai == nil {
 		return nil
 	}
 	meta, ok := sceneMetaByKey(scene)
 	if !ok {
 		return nil
 	}
-	all := h.svcCtx.AI.ToolMetas()
+	all := h.ai.ToolMetas()
 	metaByName := make(map[string]tools.ToolMeta, len(all))
 	for _, item := range all {
 		metaByName[item.Name] = item

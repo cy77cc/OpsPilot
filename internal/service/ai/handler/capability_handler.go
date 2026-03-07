@@ -19,11 +19,11 @@ func (h *AIHandler) capabilities(c *gin.Context) {
 		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	if h.svcCtx.AI == nil {
+	if h.ai == nil {
 		httpx.OK(c, []any{})
 		return
 	}
-	all := h.svcCtx.AI.ToolMetas()
+	all := h.ai.ToolMetas()
 	out := make([]tools.ToolMeta, 0, len(all))
 	for _, item := range all {
 		if h.hasPermission(uid, item.Permission) {
@@ -53,7 +53,7 @@ func (h *AIHandler) previewTool(c *gin.Context) {
 		return
 	}
 	req.Tool = meta.Name
-	if h.svcCtx.AI == nil {
+	if h.ai == nil {
 		httpx.Fail(c, xcode.ServerError, "ai agent not initialized")
 		return
 	}
@@ -116,7 +116,7 @@ func (h *AIHandler) executeTool(c *gin.Context) {
 	start := time.Now()
 	ctx := tools.WithToolUser(c.Request.Context(), uid, strings.TrimSpace(req.ApprovalToken))
 	ctx = tools.WithToolPolicyChecker(ctx, h.toolPolicy)
-	result, err := h.svcCtx.AI.RunTool(ctx, req.Tool, req.Params)
+	result, err := h.ai.RunTool(ctx, req.Tool, req.Params)
 	finished := time.Now()
 	rec.FinishedAt = &finished
 	rec.Result = &result
@@ -280,16 +280,7 @@ func (h *AIHandler) confirmConfirmation(c *gin.Context) {
 }
 
 func (h *AIHandler) findMeta(name string) (tools.ToolMeta, bool) {
-	if h.svcCtx.AI == nil {
-		return tools.ToolMeta{}, false
-	}
-	normalized := tools.NormalizeToolName(name)
-	for _, item := range h.svcCtx.AI.ToolMetas() {
-		if item.Name == normalized {
-			return item, true
-		}
-	}
-	return tools.ToolMeta{}, false
+	return h.control.FindMeta(name)
 }
 
 func strconvFormatInt(v int64) string {
