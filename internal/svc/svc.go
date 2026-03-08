@@ -7,8 +7,8 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/cloudwego/eino-ext/devops"
-	"github.com/cy77cc/k8s-manage/internal/ai"
 	"github.com/cy77cc/k8s-manage/internal/ai/agent"
+	"github.com/cy77cc/k8s-manage/internal/ai/model"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/cache"
 	casbinadapter "github.com/cy77cc/k8s-manage/internal/component/casbin"
@@ -43,7 +43,7 @@ func MustNewServiceContext() *ServiceContext {
 	if err != nil {
 		logger.L().Warn("Failed to initialize devops", logger.Error(err))
 	}
-	chatModel, err := ai.NewToolCallingChatModel(ctx)
+	chatModel, err := model.NewToolCallingChatModel(ctx)
 	if err != nil {
 		logger.L().Warn("Failed to initialize AI chat model",
 			logger.String("provider", config.CFG.LLM.Provider),
@@ -53,7 +53,7 @@ func MustNewServiceContext() *ServiceContext {
 		)
 	}
 	if err == nil {
-		if healthErr := ai.CheckModelHealth(ctx, chatModel); healthErr != nil {
+		if healthErr := model.CheckModelHealth(ctx, chatModel); healthErr != nil {
 			logger.L().Warn("AI chat model health check failed",
 				logger.String("provider", config.CFG.LLM.Provider),
 				logger.String("base_url", aiBaseURL()),

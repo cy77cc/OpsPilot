@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
 )
 
 const platformAgentInstruction = `你是一个专业的智能运维助手，具备以下核心能力：
@@ -55,15 +55,28 @@ func newPlatformAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 		return nil, fmt.Errorf("chat model is nil")
 	}
 
-	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Name:        "PlatformOps",
-		Description: "智能运维助手，可以执行主机管理、K8s 操作、服务部署、监控诊断等任务",
-		Instruction: platformAgentInstruction,
-		Model:       chatModel,
-		ToolsConfig: adk.ToolsConfig{
-			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: allTools,
-			},
-		},
+	planner, err := NewPlanner(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create planner: %w", err)
+	}
+
+	executor, err := NewExecutor(ctx, allTools)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	replanner, err := NewReplanAgent(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create replanner: %w", err)
+	}
+	entryAgent, err := planexecute.New(ctx, &planexecute.Config{
+		Planner:       planner,
+		Executor:      executor,
+		Replanner:     replanner,
+		MaxIterations: 20,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create planexecute agent: %w", err)
+	}
+	return entryAgent, nil
 }

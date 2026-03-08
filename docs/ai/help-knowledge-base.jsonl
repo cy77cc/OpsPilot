@@ -1,9 +1,0 @@
-{"id":"K1","title":"快速上手","category":"quick-start","content":"登录后先切换项目，再查看监控健康度与 critical 告警；日常建议先看监控，再看主机与服务。","keywords":["快速上手","监控","critical","项目切换"]}
-{"id":"K2","title":"主机纳管","category":"hosts","content":"路径：主机管理->主机纳管；步骤：填连接信息->连通性探测->提交纳管->在线确认；失败常见原因：网络不通、凭据错误、账号权限不足。","keywords":["主机","纳管","SSH","探测失败"]}
-{"id":"K3","title":"告警处置","category":"monitoring","content":"先按严重级别排序（critical优先），查看触发指标、对象与时间窗，再结合 AI 执行只读诊断（CPU/内存/磁盘/日志）。","keywords":["告警","critical","监控","诊断"]}
-{"id":"K4","title":"服务发布","category":"services","content":"标准流程：预览->风险确认->执行->观测->回滚（必要时）；生产高风险变更必须二次确认。","keywords":["服务发布","预览","回滚","二次确认"]}
-{"id":"K5","title":"配置中心","category":"config","content":"配置流程：编辑草稿->Diff确认->发布；异常时从历史版本回滚。","keywords":["配置中心","Diff","发布","回滚"]}
-{"id":"K6","title":"任务管理","category":"jobs","content":"任务流程：创建任务->配置Cron->测试验证->观察执行历史。","keywords":["任务","Cron","执行历史"]}
-{"id":"K7","title":"RBAC","category":"security","content":"先角色后用户，默认只读、按需授权；生产写操作建议审批与审计。","keywords":["RBAC","权限","审批","审计"]}
-{"id":"K8","title":"AI助手使用","category":"ai","content":"提问建议：诊断类要求先给只读步骤；变更类要求先预览与回滚方案；值班类要求给10分钟可执行计划。","keywords":["AI助手","提问模板","只读诊断","回滚"]}
-{"id":"K9","title":"值班应急","category":"incident","content":"15分钟处置：0-5确认影响并冻结高风险变更，5-10收集指标日志事件定位故障域，10-15执行回滚/降级/限流恢复核心路径。","keywords":["值班","事故","应急","playbook"]}
