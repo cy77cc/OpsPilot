@@ -49,7 +49,7 @@ func (r *RuleEngine) AnalyzeDeployments(ctx context.Context) error {
 }
 
 // createRiskFinding creates a risk finding record
-func (r *RuleEngine) createRiskFinding(ctx context.Context, riskType, severity, title, description string, args ...interface{}) error {
+func (r *RuleEngine) createRiskFinding(ctx context.Context, riskType, severity, title, description string, args ...any) error {
 	findings := model.RiskFinding{
 		Type:        riskType,
 		Severity:    severity,
@@ -61,7 +61,7 @@ func (r *RuleEngine) createRiskFinding(ctx context.Context, riskType, severity, 
 }
 
 // createSuggestion creates a suggestion record
-func (r *RuleEngine) createSuggestion(ctx context.Context, suggType, title, description, impact string, args ...interface{}) error {
+func (r *RuleEngine) createSuggestion(ctx context.Context, suggType, title, description, impact string, args ...any) error {
 	suggestion := model.Suggestion{
 		Type:        suggType,
 		Title:       title,
