@@ -327,298 +327,298 @@ type RegisteredTool struct {
 }
 
 type OSCPUMemInput struct {
-	Target string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
+	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
 type OSDiskInput struct {
-	Target string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
+	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
 type OSNetInput struct {
-	Target string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
+	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
 type OSProcessTopInput struct {
-	Target string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"description=top process count,default=10"`
+	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
+	Limit  int    `json:"limit,omitempty" jsonschema_description:"top process count,default=10"`
 }
 
 type OSJournalInput struct {
-	Target  string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
-	Service string `json:"service" jsonschema:"required,description=systemd service unit"`
-	Lines   int    `json:"lines,omitempty" jsonschema:"description=log lines,default=200"`
+	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
+	Service string `json:"service" jsonschema_description:"required,systemd service unit"`
+	Lines   int    `json:"lines,omitempty" jsonschema_description:"log lines,default=200"`
 }
 
 type OSContainerRuntimeInput struct {
-	Target string `json:"target,omitempty" jsonschema:"description=target host id/ip/hostname,default=localhost"`
+	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
 type K8sListInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Resource  string `json:"resource" jsonschema:"required,description=resource type,enum=pods,enum=services,enum=deployments,enum=nodes"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max items,default=50"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Resource  string `json:"resource" jsonschema_description:"required,resource type,enum=pods,enum=services,enum=deployments,enum=nodes"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max items,default=50"`
 }
 
 type K8sQueryInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Resource  string `json:"resource" jsonschema:"required,description=resource type,enum=pods,enum=services,enum=deployments,enum=nodes"`
-	Name      string `json:"name,omitempty" jsonschema:"description=resource name for exact lookup"`
-	Label     string `json:"label,omitempty" jsonschema:"description=label selector"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max items,default=50"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Resource  string `json:"resource" jsonschema_description:"required,resource type,enum=pods,enum=services,enum=deployments,enum=nodes"`
+	Name      string `json:"name,omitempty" jsonschema_description:"resource name for exact lookup"`
+	Label     string `json:"label,omitempty" jsonschema_description:"label selector"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max items,default=50"`
 }
 
 type K8sEventsInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max events,default=50"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max events,default=50"`
 }
 
 type K8sEventsQueryInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Kind      string `json:"kind,omitempty" jsonschema:"description=involved object kind,enum=Pod,enum=Deployment,enum=Service,enum=Node"`
-	Name      string `json:"name,omitempty" jsonschema:"description=involved object name"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max events,default=50"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Kind      string `json:"kind,omitempty" jsonschema_description:"involved object kind,enum=Pod,enum=Deployment,enum=Service,enum=Node"`
+	Name      string `json:"name,omitempty" jsonschema_description:"involved object name"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max events,default=50"`
 }
 
 type K8sPodLogsInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Pod       string `json:"pod" jsonschema:"required,description=pod name"`
-	Container string `json:"container,omitempty" jsonschema:"description=container name"`
-	TailLines int    `json:"tail_lines,omitempty" jsonschema:"description=tail lines,default=200"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Pod       string `json:"pod" jsonschema_description:"required,pod name"`
+	Container string `json:"container,omitempty" jsonschema_description:"container name"`
+	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
 }
 
 type K8sLogsInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema:"description=cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"description=kubernetes namespace,default=default"`
-	Pod       string `json:"pod" jsonschema:"required,description=pod name"`
-	Container string `json:"container,omitempty" jsonschema:"description=container name"`
-	TailLines int    `json:"tail_lines,omitempty" jsonschema:"description=tail lines,default=200"`
+	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
+	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
+	Pod       string `json:"pod" jsonschema_description:"required,pod name"`
+	Container string `json:"container,omitempty" jsonschema_description:"container name"`
+	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
 }
 
 type ServiceDetailInput struct {
-	ServiceID int `json:"service_id" jsonschema:"required,description=service id"`
+	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
 type ServiceDeployPreviewInput struct {
-	ServiceID int `json:"service_id" jsonschema:"required,description=service id"`
-	ClusterID int `json:"cluster_id" jsonschema:"required,description=cluster id"`
+	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
+	ClusterID int `json:"cluster_id" jsonschema_description:"required,cluster id"`
 }
 
 type ServiceDeployApplyInput struct {
-	ServiceID int `json:"service_id" jsonschema:"required,description=service id"`
-	ClusterID int `json:"cluster_id" jsonschema:"required,description=cluster id"`
+	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
+	ClusterID int `json:"cluster_id" jsonschema_description:"required,cluster id"`
 }
 
 type ServiceDeployInput struct {
-	ServiceID int  `json:"service_id" jsonschema:"required,description=service id"`
-	ClusterID int  `json:"cluster_id" jsonschema:"required,description=cluster id"`
-	Preview   bool `json:"preview,omitempty" jsonschema:"description=preview deploy without apply"`
-	Apply     bool `json:"apply,omitempty" jsonschema:"description=apply deploy after approval"`
+	ServiceID int  `json:"service_id" jsonschema_description:"required,service id"`
+	ClusterID int  `json:"cluster_id" jsonschema_description:"required,cluster id"`
+	Preview   bool `json:"preview,omitempty" jsonschema_description:"preview deploy without apply"`
+	Apply     bool `json:"apply,omitempty" jsonschema_description:"apply deploy after approval"`
 }
 
 type ServiceStatusInput struct {
-	ServiceID int `json:"service_id" jsonschema:"required,description=service id"`
+	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
 type HostSSHReadonlyInput struct {
-	HostID  int    `json:"host_id" jsonschema:"required,description=host id"`
-	Command string `json:"command" jsonschema:"required,description=readonly command"`
+	HostID  int    `json:"host_id" jsonschema_description:"required,host id"`
+	Command string `json:"command" jsonschema_description:"required,readonly command"`
 }
 
 type HostExecInput struct {
-	HostID  int    `json:"host_id" jsonschema:"required,description=host id"`
-	Command string `json:"command" jsonschema:"required,description=readonly command"`
+	HostID  int    `json:"host_id" jsonschema_description:"required,host id"`
+	Command string `json:"command" jsonschema_description:"required,readonly command"`
 }
 
 type HostInventoryInput struct {
-	Status  string `json:"status,omitempty" jsonschema:"description=optional host status filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on name/ip/hostname"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max hosts,default=50"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional host status filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/ip/hostname"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max hosts,default=50"`
 }
 
 type ClusterInventoryInput struct {
-	Status  string `json:"status,omitempty" jsonschema:"description=optional cluster status filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on name/endpoint"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max clusters,default=50"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional cluster status filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/endpoint"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max clusters,default=50"`
 }
 
 type ServiceInventoryInput struct {
-	Keyword     string `json:"keyword,omitempty" jsonschema:"description=optional keyword on service name/owner"`
-	RuntimeType string `json:"runtime_type,omitempty" jsonschema:"description=optional runtime type filter,k8s/compose/helm"`
-	Env         string `json:"env,omitempty" jsonschema:"description=optional environment filter"`
-	Status      string `json:"status,omitempty" jsonschema:"description=optional service status filter"`
-	Limit       int    `json:"limit,omitempty" jsonschema:"description=max services,default=50"`
+	Keyword     string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name/owner"`
+	RuntimeType string `json:"runtime_type,omitempty" jsonschema_description:"optional runtime type filter,k8s/compose/helm"`
+	Env         string `json:"env,omitempty" jsonschema_description:"optional environment filter"`
+	Status      string `json:"status,omitempty" jsonschema_description:"optional service status filter"`
+	Limit       int    `json:"limit,omitempty" jsonschema_description:"max services,default=50"`
 }
 
 type HostBatchExecPreviewInput struct {
-	HostIDs []int  `json:"host_ids" jsonschema:"required,description=target host ids"`
-	Command string `json:"command" jsonschema:"required,description=shell command to run"`
-	Reason  string `json:"reason,omitempty" jsonschema:"description=execution reason for audit context"`
+	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
+	Command string `json:"command" jsonschema_description:"required,shell command to run"`
+	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
 type HostBatchExecApplyInput struct {
-	HostIDs []int  `json:"host_ids" jsonschema:"required,description=target host ids"`
-	Command string `json:"command" jsonschema:"required,description=shell command to run"`
-	Reason  string `json:"reason,omitempty" jsonschema:"description=execution reason for audit context"`
+	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
+	Command string `json:"command" jsonschema_description:"required,shell command to run"`
+	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
 type HostBatchInput struct {
-	HostIDs []int  `json:"host_ids" jsonschema:"required,description=target host ids"`
-	Command string `json:"command" jsonschema:"required,description=shell command to run"`
-	Reason  string `json:"reason,omitempty" jsonschema:"description=execution reason for audit context"`
+	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
+	Command string `json:"command" jsonschema_description:"required,shell command to run"`
+	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
 type HostBatchStatusInput struct {
-	HostIDs []int  `json:"host_ids" jsonschema:"required,description=target host ids"`
-	Action  string `json:"action" jsonschema:"required,description=status action: online/offline/maintenance"`
-	Reason  string `json:"reason,omitempty" jsonschema:"description=change reason for audit context"`
+	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
+	Action  string `json:"action" jsonschema_description:"required,status action: online/offline/maintenance"`
+	Reason  string `json:"reason,omitempty" jsonschema_description:"change reason for audit context"`
 }
 
 type ServiceCatalogListInput struct {
-	Keyword    string `json:"keyword,omitempty" jsonschema:"description=optional keyword on service name/owner"`
-	CategoryID int    `json:"category_id,omitempty" jsonschema:"description=optional category id: 1 middleware, 2 business"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"description=max services,default=50"`
+	Keyword    string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name/owner"`
+	CategoryID int    `json:"category_id,omitempty" jsonschema_description:"optional category id: 1 middleware, 2 business"`
+	Limit      int    `json:"limit,omitempty" jsonschema_description:"max services,default=50"`
 }
 
 type ServiceVisibilityCheckInput struct {
-	ServiceID int `json:"service_id" jsonschema:"required,description=service id"`
+	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
 type DeploymentTargetListInput struct {
-	Env     string `json:"env,omitempty" jsonschema:"description=optional environment filter"`
-	Status  string `json:"status,omitempty" jsonschema:"description=optional target status filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional target keyword filter"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max targets,default=50"`
+	Env     string `json:"env,omitempty" jsonschema_description:"optional environment filter"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional target status filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional target keyword filter"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max targets,default=50"`
 }
 
 type DeploymentTargetDetailInput struct {
-	TargetID int `json:"target_id" jsonschema:"required,description=deployment target id"`
+	TargetID int `json:"target_id" jsonschema_description:"required,deployment target id"`
 }
 
 type DeploymentBootstrapStatusInput struct {
-	TargetID int `json:"target_id" jsonschema:"required,description=deployment target id"`
+	TargetID int `json:"target_id" jsonschema_description:"required,deployment target id"`
 }
 
 type CredentialListInput struct {
-	Type    string `json:"type,omitempty" jsonschema:"description=credential type or runtime type"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on name/endpoint"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max credentials,default=50"`
+	Type    string `json:"type,omitempty" jsonschema_description:"credential type or runtime type"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/endpoint"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max credentials,default=50"`
 }
 
 type CredentialTestInput struct {
-	CredentialID int `json:"credential_id" jsonschema:"required,description=credential id"`
+	CredentialID int `json:"credential_id" jsonschema_description:"required,credential id"`
 }
 
 type CICDPipelineListInput struct {
-	Status  string `json:"status,omitempty" jsonschema:"description=optional status filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on repo/branch"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max pipelines,default=50"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional status filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on repo/branch"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max pipelines,default=50"`
 }
 
 type CICDPipelineStatusInput struct {
-	PipelineID int `json:"pipeline_id" jsonschema:"required,description=pipeline config id"`
+	PipelineID int `json:"pipeline_id" jsonschema_description:"required,pipeline config id"`
 }
 
 type CICDPipelineTriggerInput struct {
-	PipelineID int               `json:"pipeline_id" jsonschema:"required,description=pipeline config id"`
-	Branch     string            `json:"branch" jsonschema:"required,description=branch to build"`
-	Params     map[string]string `json:"params,omitempty" jsonschema:"description=optional trigger params"`
+	PipelineID int               `json:"pipeline_id" jsonschema_description:"required,pipeline config id"`
+	Branch     string            `json:"branch" jsonschema_description:"required,branch to build"`
+	Params     map[string]string `json:"params,omitempty" jsonschema_description:"optional trigger params"`
 }
 
 type JobListInput struct {
-	Status  string `json:"status,omitempty" jsonschema:"description=optional status filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on name/type"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max jobs,default=50"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional status filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/type"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max jobs,default=50"`
 }
 
 type JobExecutionStatusInput struct {
-	JobID       int `json:"job_id" jsonschema:"required,description=job id"`
-	ExecutionID int `json:"execution_id,omitempty" jsonschema:"description=optional execution id"`
+	JobID       int `json:"job_id" jsonschema_description:"required,job id"`
+	ExecutionID int `json:"execution_id,omitempty" jsonschema_description:"optional execution id"`
 }
 
 type JobRunInput struct {
-	JobID  int            `json:"job_id" jsonschema:"required,description=job id"`
-	Params map[string]any `json:"params,omitempty" jsonschema:"description=optional run params"`
+	JobID  int            `json:"job_id" jsonschema_description:"required,job id"`
+	Params map[string]any `json:"params,omitempty" jsonschema_description:"optional run params"`
 }
 
 type ConfigAppListInput struct {
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on service name"`
-	Env     string `json:"env,omitempty" jsonschema:"description=optional env filter"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max apps,default=50"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name"`
+	Env     string `json:"env,omitempty" jsonschema_description:"optional env filter"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max apps,default=50"`
 }
 
 type ConfigItemGetInput struct {
-	AppID int    `json:"app_id" jsonschema:"required,description=service id as config app id"`
-	Key   string `json:"key" jsonschema:"required,description=config key"`
-	Env   string `json:"env,omitempty" jsonschema:"description=optional env"`
+	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
+	Key   string `json:"key" jsonschema_description:"required,config key"`
+	Env   string `json:"env,omitempty" jsonschema_description:"optional env"`
 }
 
 type ConfigDiffInput struct {
-	AppID int    `json:"app_id" jsonschema:"required,description=service id as config app id"`
-	EnvA  string `json:"env_a" jsonschema:"required,description=compare env a"`
-	EnvB  string `json:"env_b" jsonschema:"required,description=compare env b"`
+	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
+	EnvA  string `json:"env_a" jsonschema_description:"required,compare env a"`
+	EnvB  string `json:"env_b" jsonschema_description:"required,compare env b"`
 }
 
 type MonitorAlertRuleListInput struct {
-	Status  string `json:"status,omitempty" jsonschema:"description=optional rule state filter"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional keyword on name/metric"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max rules,default=50"`
+	Status  string `json:"status,omitempty" jsonschema_description:"optional rule state filter"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/metric"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max rules,default=50"`
 }
 
 type MonitorAlertActiveInput struct {
-	Severity  string `json:"severity,omitempty" jsonschema:"description=optional severity filter"`
-	ServiceID int    `json:"service_id,omitempty" jsonschema:"description=optional service id filter"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max alerts,default=50"`
+	Severity  string `json:"severity,omitempty" jsonschema_description:"optional severity filter"`
+	ServiceID int    `json:"service_id,omitempty" jsonschema_description:"optional service id filter"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max alerts,default=50"`
 }
 
 type MonitorAlertInput struct {
-	Severity  string `json:"severity,omitempty" jsonschema:"description=optional severity filter"`
-	ServiceID int    `json:"service_id,omitempty" jsonschema:"description=optional service id filter"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"description=max alerts,default=50"`
+	Severity  string `json:"severity,omitempty" jsonschema_description:"optional severity filter"`
+	ServiceID int    `json:"service_id,omitempty" jsonschema_description:"optional service id filter"`
+	Limit     int    `json:"limit,omitempty" jsonschema_description:"max alerts,default=50"`
 }
 
 type MonitorMetricQueryInput struct {
-	Query     string `json:"query" jsonschema:"required,description=metric query or metric name"`
-	TimeRange string `json:"time_range,omitempty" jsonschema:"description=time range,default=1h"`
-	Step      int    `json:"step,omitempty" jsonschema:"description=step seconds,default=60"`
+	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
+	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
+	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
 }
 
 type MonitorMetricInput struct {
-	Query     string `json:"query" jsonschema:"required,description=metric query or metric name"`
-	TimeRange string `json:"time_range,omitempty" jsonschema:"description=time range,default=1h"`
-	Step      int    `json:"step,omitempty" jsonschema:"description=step seconds,default=60"`
+	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
+	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
+	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
 }
 
 type TopologyGetInput struct {
-	ServiceID int `json:"service_id,omitempty" jsonschema:"description=optional service id"`
-	Depth     int `json:"depth,omitempty" jsonschema:"description=max depth,default=2"`
+	ServiceID int `json:"service_id,omitempty" jsonschema_description:"optional service id"`
+	Depth     int `json:"depth,omitempty" jsonschema_description:"max depth,default=2"`
 }
 
 type AuditLogSearchInput struct {
-	TimeRange    string `json:"time_range,omitempty" jsonschema:"description=time range,default=24h"`
-	ResourceType string `json:"resource_type,omitempty" jsonschema:"description=optional resource type"`
-	Action       string `json:"action,omitempty" jsonschema:"description=optional action type"`
-	UserID       int    `json:"user_id,omitempty" jsonschema:"description=optional actor user id"`
-	Limit        int    `json:"limit,omitempty" jsonschema:"description=max logs,default=50"`
+	TimeRange    string `json:"time_range,omitempty" jsonschema_description:"time range,default=24h"`
+	ResourceType string `json:"resource_type,omitempty" jsonschema_description:"optional resource type"`
+	Action       string `json:"action,omitempty" jsonschema_description:"optional action type"`
+	UserID       int    `json:"user_id,omitempty" jsonschema_description:"optional actor user id"`
+	Limit        int    `json:"limit,omitempty" jsonschema_description:"max logs,default=50"`
 }
 
 type UserListInput struct {
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional username/email keyword"`
-	Status  int    `json:"status,omitempty" jsonschema:"description=optional status filter"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max users,default=50"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional username/email keyword"`
+	Status  int    `json:"status,omitempty" jsonschema_description:"optional status filter"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max users,default=50"`
 }
 
 type RoleListInput struct {
-	Keyword string `json:"keyword,omitempty" jsonschema:"description=optional role keyword"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"description=max roles,default=50"`
+	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional role keyword"`
+	Limit   int    `json:"limit,omitempty" jsonschema_description:"max roles,default=50"`
 }
 
 type PermissionCheckInput struct {
-	UserID   int    `json:"user_id" jsonschema:"required,description=user id"`
-	Resource string `json:"resource" jsonschema:"required,description=resource name"`
-	Action   string `json:"action" jsonschema:"required,description=action name"`
+	UserID   int    `json:"user_id" jsonschema_description:"required,user id"`
+	Resource string `json:"resource" jsonschema_description:"required,resource name"`
+	Action   string `json:"action" jsonschema_description:"required,action name"`
 }

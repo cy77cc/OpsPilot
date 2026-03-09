@@ -6,29 +6,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/components/tool/utils"
 	. "github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
 
-func CICDPipelineList(ctx context.Context, deps PlatformDeps, input CICDPipelineListInput) (ToolResult, error) {
-	return RunWithPolicyAndEvent(
-		ctx,
-		ToolMeta{
-			Name:        "cicd_pipeline_list",
-			Description: "查询 CI 流水线列表。可选参数 status/keyword/limit。示例: {\"status\":\"active\"}。",
-			Mode:        ToolModeReadonly,
-			Risk:        ToolRiskLow,
-			Provider:    "local",
-			Permission:  "ai:tool:read",
-			DefaultHint: map[string]any{"limit": 50},
-			SceneScope:  []string{"cicd"},
-		},
-		input,
-		func(in CICDPipelineListInput) (any, string, error) {
+type CICDPipelineListOutput struct {
+	Total int `json:"total"`
+	List  []model.CICDServiceCIConfig
+}
+
+func CICDPipelineList(ctx context.Context, deps PlatformDeps, input CICDPipelineListInput) tool.InvokableTool {
+	t, err := utils.InferOptionableTool(
+		"cicd_pipeline_list",
+		"查询 CI 流水线列表。可选参数 status/keyword/limit。示例: {\"status\":\"active\"}。",
+		func(ctx context.Context, input *CICDPipelineListInput, opts ...tool.Option) (*CICDPipelineListOutput, error) {
 			if deps.DB == nil {
-				return nil, "db", fmt.Errorf("db unavailable")
+				return nil, fmt.Errorf("db unavailable")
 			}
-			limit := in.Limit
+			limit := input.Limit
 			if limit <= 0 {
 				limit = 50
 			}
@@ -36,20 +33,27 @@ func CICDPipelineList(ctx context.Context, deps PlatformDeps, input CICDPipeline
 				limit = 200
 			}
 			query := deps.DB.Model(&model.CICDServiceCIConfig{})
-			if status := strings.TrimSpace(in.Status); status != "" {
+			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
-			if kw := strings.TrimSpace(in.Keyword); kw != "" {
+			if kw := strings.TrimSpace(input.Keyword); kw != "" {
 				pattern := "%" + kw + "%"
 				query = query.Where("repo_url LIKE ? OR branch LIKE ?", pattern, pattern)
 			}
 			var rows []model.CICDServiceCIConfig
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
-				return nil, "db", err
+				return nil, err
 			}
-			return map[string]any{"total": len(rows), "list": rows}, "db", nil
+			return &CICDPipelineListOutput{
+				Total: len(rows),
+				List:  rows,
+			}, nil
 		},
 	)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }
 
 func CICDPipelineStatus(ctx context.Context, deps PlatformDeps, input CICDPipelineStatusInput) (ToolResult, error) {
