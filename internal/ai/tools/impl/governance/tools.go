@@ -55,25 +55,6 @@ func NewGovernanceTools(ctx context.Context, deps core.PlatformDeps) []tool.Invo
 	}
 }
 
-// Register returns all governance tools as RegisteredTool slice.
-func Register(ctx context.Context, deps core.PlatformDeps) []core.RegisteredTool {
-	tools := NewGovernanceTools(ctx, deps)
-	registered := make([]core.RegisteredTool, len(tools))
-	for i, t := range tools {
-		registered[i] = core.RegisteredTool{
-			Meta: core.ToolMeta{
-				Name:     fmt.Sprintf("governance_tool_%d", i),
-				Mode:     core.ToolModeReadonly,
-				Risk:     core.ToolRiskLow,
-				Domain:   core.DomainUser,
-				Category: core.CategoryDiscovery,
-			},
-			Tool: t,
-		}
-	}
-	return registered
-}
-
 type UserListOutput struct {
 	Total int          `json:"total"`
 	List  []model.User `json:"list"`

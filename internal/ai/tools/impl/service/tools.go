@@ -63,24 +63,6 @@ func NewServiceTools(ctx context.Context, deps core.PlatformDeps) []tool.Invokab
 	}
 }
 
-// Register returns all service tools as RegisteredTool slice.
-func Register(ctx context.Context, deps core.PlatformDeps) []core.RegisteredTool {
-	tools := NewServiceTools(ctx, deps)
-	registered := make([]core.RegisteredTool, len(tools))
-	for i, t := range tools {
-		registered[i] = core.RegisteredTool{
-			Meta: core.ToolMeta{
-				Name:     fmt.Sprintf("service_tool_%d", i),
-				Mode:     core.ToolModeReadonly,
-				Risk:     core.ToolRiskLow,
-				Domain:   core.DomainService,
-				Category: core.CategoryDiscovery,
-			},
-			Tool: t,
-		}
-	}
-	return registered
-}
 
 type ServiceGetDetailOutput struct {
 	Service model.Service `json:"service"`

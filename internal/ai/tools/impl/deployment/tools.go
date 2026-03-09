@@ -75,25 +75,6 @@ func NewDeploymentTools(ctx context.Context, deps core.PlatformDeps) []tool.Invo
 	}
 }
 
-// Register returns all deployment tools as RegisteredTool slice.
-func Register(ctx context.Context, deps core.PlatformDeps) []core.RegisteredTool {
-	tools := NewDeploymentTools(ctx, deps)
-	registered := make([]core.RegisteredTool, len(tools))
-	for i, t := range tools {
-		registered[i] = core.RegisteredTool{
-			Meta: core.ToolMeta{
-				Name:     fmt.Sprintf("deployment_tool_%d", i),
-				Mode:     core.ToolModeReadonly,
-				Risk:     core.ToolRiskLow,
-				Domain:   core.DomainConfig,
-				Category: core.CategoryDiscovery,
-			},
-			Tool: t,
-		}
-	}
-	return registered
-}
-
 type DeploymentTargetListOutput struct {
 	Total int              `json:"total"`
 	List  []map[string]any `json:"list"`

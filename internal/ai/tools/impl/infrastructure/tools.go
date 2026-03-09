@@ -31,25 +31,6 @@ func NewInfrastructureTools(ctx context.Context, deps core.PlatformDeps) []tool.
 	}
 }
 
-// Register returns all infrastructure tools as RegisteredTool slice.
-func Register(ctx context.Context, deps core.PlatformDeps) []core.RegisteredTool {
-	tools := NewInfrastructureTools(ctx, deps)
-	registered := make([]core.RegisteredTool, len(tools))
-	for i, t := range tools {
-		registered[i] = core.RegisteredTool{
-			Meta: core.ToolMeta{
-				Name:     fmt.Sprintf("infrastructure_tool_%d", i),
-				Mode:     core.ToolModeReadonly,
-				Risk:     core.ToolRiskLow,
-				Domain:   core.DomainInfrastructure,
-				Category: core.CategoryDiscovery,
-			},
-			Tool: t,
-		}
-	}
-	return registered
-}
-
 type CredentialListOutput struct {
 	Total int              `json:"total"`
 	List  []map[string]any `json:"list"`

@@ -55,24 +55,6 @@ func NewMonitorTools(ctx context.Context, deps core.PlatformDeps) []tool.Invokab
 	}
 }
 
-// Register returns all monitor tools as RegisteredTool slice.
-func Register(ctx context.Context, deps core.PlatformDeps) []core.RegisteredTool {
-	tools := NewMonitorTools(ctx, deps)
-	registered := make([]core.RegisteredTool, len(tools))
-	for i, t := range tools {
-		registered[i] = core.RegisteredTool{
-			Meta: core.ToolMeta{
-				Name:     fmt.Sprintf("monitor_tool_%d", i),
-				Mode:     core.ToolModeReadonly,
-				Risk:     core.ToolRiskLow,
-				Domain:   core.DomainMonitor,
-				Category: core.CategoryDiscovery,
-			},
-			Tool: t,
-		}
-	}
-	return registered
-}
 
 type MonitorAlertRuleListOutput struct {
 	Total int               `json:"total"`
