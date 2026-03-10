@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"github.com/cloudwego/eino/adk"
 )
 
 type Output struct {
@@ -65,15 +67,11 @@ type SelectedResource struct {
 	Name string
 }
 
-type StageRunner interface {
-	Run(ctx context.Context, input string) (string, error)
-}
-
 type Rewriter struct {
-	runner StageRunner
+	runner *adk.Runner
 }
 
-func New(runner StageRunner) *Rewriter {
+func New(runner *adk.Runner) *Rewriter {
 	return &Rewriter{runner: runner}
 }
 
@@ -83,7 +81,7 @@ func (r *Rewriter) Rewrite(ctx context.Context, in Input) (Output, error) {
 	if r == nil || r.runner == nil {
 		return out, nil
 	}
-	raw, err := r.runner.Run(ctx, buildPromptInput(in))
+	raw, err := runADKRewrite(ctx, r.runner, buildPromptInput(in))
 	if err != nil {
 		return out, nil
 	}

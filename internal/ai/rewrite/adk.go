@@ -10,11 +10,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-type adkRunner struct {
-	runner *adk.Runner
-}
-
-func NewADKRunner(ctx context.Context, model einomodel.BaseChatModel) (StageRunner, error) {
+func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Rewriter, error) {
 	if model == nil {
 		return nil, fmt.Errorf("rewrite model is required")
 	}
@@ -28,16 +24,16 @@ func NewADKRunner(ctx context.Context, model einomodel.BaseChatModel) (StageRunn
 	if err != nil {
 		return nil, err
 	}
-	return &adkRunner{
+	return &Rewriter{
 		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}),
 	}, nil
 }
 
-func (r *adkRunner) Run(ctx context.Context, input string) (string, error) {
-	if r == nil || r.runner == nil {
+func runADKRewrite(ctx context.Context, runner *adk.Runner, input string) (string, error) {
+	if runner == nil {
 		return "", fmt.Errorf("rewrite ADK runner is not configured")
 	}
-	iter := r.runner.Query(ctx, input)
+	iter := runner.Query(ctx, input)
 	var last string
 	for {
 		event, ok := iter.Next()

@@ -1,18 +1,6 @@
 package rewrite
 
-import (
-	"context"
-	"testing"
-)
-
-type stubRunner struct {
-	output string
-	err    error
-}
-
-func (s stubRunner) Run(_ context.Context, _ string) (string, error) {
-	return s.output, s.err
-}
+import "testing"
 
 func TestHeuristicRewriteTreatsAllHostsAsExplicitTarget(t *testing.T) {
 	out := heuristicRewrite(Input{Message: "查看所有主机的状态"})
@@ -28,13 +16,15 @@ func TestHeuristicRewriteTreatsAllHostsAsExplicitTarget(t *testing.T) {
 }
 
 func TestRewriteConstrainsModelOutputForAllHosts(t *testing.T) {
-	r := New(stubRunner{
-		output: `{"normalized_goal":"查看所有主机的状态","operation_mode":"query","domain_hints":["k8s","hostops","delivery"],"ambiguity_flags":["resource_target_not_explicit"],"narrative":"bad narrative"}`,
-	})
-	out, err := r.Rewrite(context.Background(), Input{Message: "查看所有主机的状态"})
-	if err != nil {
-		t.Fatalf("Rewrite() error = %v", err)
+	parsed := Output{
+		NormalizedGoal: "查看所有主机的状态",
+		OperationMode:  "query",
+		DomainHints:    []string{"k8s", "hostops", "delivery"},
+		AmbiguityFlags: []string{"resource_target_not_explicit"},
+		Narrative:      "bad narrative",
 	}
+	fallback := heuristicRewrite(Input{Message: "查看所有主机的状态"})
+	out := normalizeOutput(Input{Message: "查看所有主机的状态"}, parsed, fallback)
 	if len(out.DomainHints) != 1 || out.DomainHints[0] != "hostops" {
 		t.Fatalf("DomainHints = %v, want [hostops]", out.DomainHints)
 	}

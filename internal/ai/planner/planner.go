@@ -6,17 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/google/uuid"
 
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
 )
 
 type Planner struct {
-	runner StageRunner
-}
-
-type StageRunner interface {
-	Run(ctx context.Context, input string) (string, error)
+	runner *adk.Runner
 }
 
 type Input struct {
@@ -70,7 +67,7 @@ type PlanStep struct {
 	Narrative string         `json:"narrative,omitempty"`
 }
 
-func New(runner StageRunner) *Planner {
+func New(runner *adk.Runner) *Planner {
 	return &Planner{runner: runner}
 }
 
@@ -80,7 +77,7 @@ func (p *Planner) Plan(ctx context.Context, in Input) (Decision, error) {
 	if p == nil || p.runner == nil {
 		return out, nil
 	}
-	raw, err := p.runner.Run(ctx, buildPromptInput(in))
+	raw, err := runADKPlanner(ctx, p.runner, buildPromptInput(in))
 	if err != nil {
 		return out, nil
 	}

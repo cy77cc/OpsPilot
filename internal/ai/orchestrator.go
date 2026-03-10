@@ -39,18 +39,18 @@ func NewOrchestrator(sessions *state.SessionState, executions *runtime.Execution
 	}
 	bootstrapCtx := context.Background()
 	if rewriteModel, err := NewRewriteChatModel(bootstrapCtx); err == nil {
-		if stageRunner, stageErr := rewrite.NewADKRunner(bootstrapCtx, rewriteModel); stageErr == nil {
-			out.rewriter = rewrite.New(stageRunner)
+		if stage, stageErr := rewrite.NewWithADK(bootstrapCtx, rewriteModel); stageErr == nil {
+			out.rewriter = stage
 		}
 	}
 	if plannerModel, err := NewToolCallingChatModel(bootstrapCtx); err == nil {
-		if stageRunner, stageErr := planner.NewADKRunner(bootstrapCtx, plannerModel, deps); stageErr == nil {
-			out.planner = planner.New(stageRunner)
+		if stage, stageErr := planner.NewWithADK(bootstrapCtx, plannerModel, deps); stageErr == nil {
+			out.planner = stage
 		}
 	}
 	if summarizerModel, err := NewSummarizerChatModel(bootstrapCtx); err == nil {
-		if stageRunner, stageErr := summarizer.NewADKRunner(bootstrapCtx, summarizerModel); stageErr == nil {
-			out.summarizer = summarizer.New(stageRunner)
+		if stage, stageErr := summarizer.NewWithADK(bootstrapCtx, summarizerModel); stageErr == nil {
+			out.summarizer = stage
 		}
 	}
 	return out

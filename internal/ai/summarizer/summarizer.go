@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cy77cc/OpsPilot/internal/ai/executor"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
@@ -33,15 +34,11 @@ type SummaryOutput struct {
 	ReplanHint            *ReplanHint `json:"replan_hint,omitempty"`
 }
 
-type StageRunner interface {
-	Run(ctx context.Context, input string) (string, error)
-}
-
 type Summarizer struct {
-	runner StageRunner
+	runner *adk.Runner
 }
 
-func New(runner StageRunner) *Summarizer {
+func New(runner *adk.Runner) *Summarizer {
 	return &Summarizer{runner: runner}
 }
 
@@ -50,7 +47,7 @@ func (s *Summarizer) Summarize(ctx context.Context, in Input) (SummaryOutput, er
 	if s == nil || s.runner == nil {
 		return out, nil
 	}
-	raw, err := s.runner.Run(ctx, buildPromptInput(in))
+	raw, err := runADKSummarizer(ctx, s.runner, buildPromptInput(in))
 	if err != nil {
 		return out, nil
 	}

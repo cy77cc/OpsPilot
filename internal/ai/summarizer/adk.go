@@ -12,11 +12,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-type adkRunner struct {
-	runner *adk.Runner
-}
-
-func NewADKRunner(ctx context.Context, model einomodel.BaseChatModel) (StageRunner, error) {
+func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Summarizer, error) {
 	if model == nil {
 		return nil, fmt.Errorf("summarizer model is required")
 	}
@@ -38,14 +34,16 @@ func NewADKRunner(ctx context.Context, model einomodel.BaseChatModel) (StageRunn
 	if err != nil {
 		return nil, err
 	}
-	return &adkRunner{runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})}, nil
+	return &Summarizer{
+		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}),
+	}, nil
 }
 
-func (r *adkRunner) Run(ctx context.Context, input string) (string, error) {
-	if r == nil || r.runner == nil {
+func runADKSummarizer(ctx context.Context, runner *adk.Runner, input string) (string, error) {
+	if runner == nil {
 		return "", fmt.Errorf("summarizer ADK runner is not configured")
 	}
-	iter := r.runner.Query(ctx, input)
+	iter := runner.Query(ctx, input)
 	var last string
 	for {
 		event, ok := iter.Next()
