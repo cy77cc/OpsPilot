@@ -2,17 +2,56 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 )
+
+type ToolResult struct {
+	OK        bool   `json:"ok"`
+	ErrorCode string `json:"error_code,omitempty"`
+	Data      any    `json:"data,omitempty"`
+	Error     string `json:"error,omitempty"`
+	Source    string `json:"source"`
+	LatencyMS int64  `json:"latency_ms"`
+}
+
+func WithToolUser(ctx context.Context, userID uint64, approvalToken string) context.Context {
+	return core.WithToolUser(ctx, userID, approvalToken)
+}
+
+func WithToolRuntimeContext(ctx context.Context, runtime map[string]any) context.Context {
+	return core.WithToolRuntimeContext(ctx, runtime)
+}
+
+func WithToolMemoryAccessor(ctx context.Context, accessor core.ToolMemoryAccessor) context.Context {
+	return core.WithToolMemoryAccessor(ctx, accessor)
+}
+
+func WithToolEventEmitter(ctx context.Context, emitter core.ToolEventEmitter) context.Context {
+	return core.WithToolEventEmitter(ctx, emitter)
+}
+
+func ToolUserFromContext(ctx context.Context) (uint64, string) {
+	return core.ToolUserFromContext(ctx)
+}
+
+func MarshalToolResult(result ToolResult) (string, error) {
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
 
 // ApprovalInfo is emitted when a high-risk tool requires approval.
 type ApprovalInfo struct {
 	ToolName        string         `json:"tool_name"`
 	ArgumentsInJSON string         `json:"arguments"`
-	Risk            ToolRisk       `json:"risk"`
+	Risk            string         `json:"risk"`
 	Preview         map[string]any `json:"preview"`
 }
 
@@ -50,11 +89,11 @@ type ApprovalPreviewFn func(ctx context.Context, args string) (map[string]any, e
 
 type ApprovableTool struct {
 	tool.InvokableTool
-	risk      ToolRisk
+	risk      string
 	previewFn ApprovalPreviewFn
 }
 
-func NewApprovableTool(base tool.InvokableTool, risk ToolRisk, previewFn ApprovalPreviewFn) *ApprovableTool {
+func NewApprovableTool(base tool.InvokableTool, risk string, previewFn ApprovalPreviewFn) *ApprovableTool {
 	return &ApprovableTool{InvokableTool: base, risk: risk, previewFn: previewFn}
 }
 
@@ -105,63 +144,7 @@ func (t *ApprovableTool) InvokableRun(ctx context.Context, args string, opts ...
 
 func (t *ApprovableTool) preview(ctx context.Context, args string) (map[string]any, error) {
 	if t.previewFn == nil {
-		return map[string]any{}, nil
+		return nil, nil
 	}
-	preview, err := t.previewFn(ctx, args)
-	if err != nil {
-		return nil, fmt.Errorf("build approval preview: %w", err)
-	}
-	if preview == nil {
-		return map[string]any{}, nil
-	}
-	return preview, nil
-}
-
-type ReviewableTool struct {
-	tool.InvokableTool
-}
-
-func NewReviewableTool(base tool.InvokableTool) *ReviewableTool {
-	return &ReviewableTool{InvokableTool: base}
-}
-
-func (t *ReviewableTool) InvokableRun(ctx context.Context, args string, opts ...tool.Option) (string, error) {
-	info, err := t.Info(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
-	if !wasInterrupted {
-		return "", tool.StatefulInterrupt(ctx, &ReviewEditInfo{
-			ToolName:        info.Name,
-			ArgumentsInJSON: args,
-		}, args)
-	}
-
-	isResumeTarget, hasData, result := tool.GetResumeContext[*ReviewEditResult](ctx)
-	if !isResumeTarget {
-		return "", tool.StatefulInterrupt(ctx, &ReviewEditInfo{
-			ToolName:        info.Name,
-			ArgumentsInJSON: storedArgs,
-		}, storedArgs)
-	}
-	if !hasData || result == nil {
-		return "", fmt.Errorf("missing review result for tool %q", info.Name)
-	}
-	if result.Disapproved {
-		if result.DisapproveReason != nil {
-			return fmt.Sprintf("tool %q disapproved: %s", info.Name, *result.DisapproveReason), nil
-		}
-		return fmt.Sprintf("tool %q disapproved", info.Name), nil
-	}
-
-	callArgs := storedArgs
-	if result.EditedArgumentsInJSON != nil {
-		callArgs = *result.EditedArgumentsInJSON
-	} else if !result.NoNeedToEdit {
-		return "", fmt.Errorf("invalid review result for tool %q", info.Name)
-	}
-
-	return t.InvokableTool.InvokableRun(ctx, callArgs, opts...)
+	return t.previewFn(ctx, args)
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/cloudwego/eino-ext/devops"
 	"github.com/cy77cc/k8s-manage/internal/ai"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 	"github.com/cy77cc/k8s-manage/internal/cache"
 	casbinadapter "github.com/cy77cc/k8s-manage/internal/component/casbin"
 	"github.com/cy77cc/k8s-manage/internal/config"
@@ -68,7 +68,7 @@ func MustNewServiceContext() *ServiceContext {
 	rdb := storage.MustNewRdb()
 
 	platformRunner, err := ai.NewAIAgent(ctx, chatModel,
-		tools.PlatformDeps{
+		core.PlatformDeps{
 			DB:        db,
 			Clientset: clientset,
 		},

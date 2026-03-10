@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +11,7 @@ import (
 	"github.com/cy77cc/k8s-manage/internal/service/ai/logic"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"github.com/google/uuid"
 )
 
 func (h *AIHandler) listSessions(c *gin.Context) {
@@ -21,8 +20,8 @@ func (h *AIHandler) listSessions(c *gin.Context) {
 		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	scene := c.Query("scene")
-	httpx.OK(c, h.gateway.ListSessions(uid, scene))
+	scene := strings.TrimSpace(c.Query("scene"))
+	httpx.OK(c, h.sessions.List(uid, scene))
 }
 
 func (h *AIHandler) currentSession(c *gin.Context) {
@@ -31,13 +30,13 @@ func (h *AIHandler) currentSession(c *gin.Context) {
 		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	scene := c.Query("scene")
-	session, found := h.gateway.CurrentSession(uid, scene)
-	if !found {
+	scene := strings.TrimSpace(c.Query("scene"))
+	items := h.sessions.List(uid, scene)
+	if len(items) == 0 {
 		httpx.OK(c, nil)
 		return
 	}
-	httpx.OK(c, session)
+	httpx.OK(c, items[0])
 }
 
 func (h *AIHandler) getSession(c *gin.Context) {
@@ -46,12 +45,12 @@ func (h *AIHandler) getSession(c *gin.Context) {
 		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	session, found := h.gateway.GetSession(uid, c.Param("id"))
-	if !found {
+	sess, ok := h.sessions.Get(uid, c.Param("id"))
+	if !ok {
 		httpx.Fail(c, xcode.NotFound, "session not found")
 		return
 	}
-	httpx.OK(c, session)
+	httpx.OK(c, sess)
 }
 
 func (h *AIHandler) branchSession(c *gin.Context) {
@@ -61,26 +60,33 @@ func (h *AIHandler) branchSession(c *gin.Context) {
 		return
 	}
 	var req struct {
-		MessageID string `json:"messageId"`
-		Title     string `json:"title"`
+		Title           string `json:"title"`
+		AnchorMessageID string `json:"anchor_message_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
-	session, err := h.gateway.BranchSession(uid, c.Param("id"), req.MessageID, req.Title)
-	if err != nil {
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			httpx.Fail(c, xcode.NotFound, "session not found")
-		case strings.Contains(err.Error(), "anchor message not found"):
-			httpx.Fail(c, xcode.ParamError, "anchor message not found")
-		default:
-			httpx.Fail(c, xcode.ServerError, err.Error())
-		}
+	sourceID := c.Param("id")
+	src, ok := h.sessions.Get(uid, sourceID)
+	if !ok {
+		httpx.Fail(c, xcode.NotFound, "source session not found")
 		return
 	}
-	httpx.OK(c, session)
+	now := time.Now()
+	branched := &logic.AISession{
+		ID:        "sess-" + uuid.NewString(),
+		UserID:    uid,
+		Scene:     src.Scene,
+		Title:     strings.TrimSpace(req.Title),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if branched.Title == "" {
+		branched.Title = "Branched: " + src.Title
+	}
+	h.sessions.Put(branched)
+	httpx.OK(c, branched)
 }
 
 func (h *AIHandler) deleteSession(c *gin.Context) {
@@ -89,8 +95,8 @@ func (h *AIHandler) deleteSession(c *gin.Context) {
 		httpx.Fail(c, xcode.Unauthorized, "unauthorized")
 		return
 	}
-	h.gateway.DeleteSession(uid, c.Param("id"))
-	httpx.OK(c, nil)
+	h.sessions.Delete(uid, c.Param("id"))
+	httpx.OK(c, gin.H{"status": "ok"})
 }
 
 func (h *AIHandler) updateSessionTitle(c *gin.Context) {
@@ -100,26 +106,20 @@ func (h *AIHandler) updateSessionTitle(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title string `json:"title"`
+		Title string `json:"title" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
-	title := normalizeSessionTitle(req.Title)
-	if title == "" {
-		httpx.Fail(c, xcode.ParamError, "title is required")
+	session, ok := h.sessions.Get(uid, c.Param("id"))
+	if !ok {
+		httpx.Fail(c, xcode.NotFound, "session not found")
 		return
 	}
-	session, err := h.gateway.UpdateSessionTitle(uid, c.Param("id"), title)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			httpx.Fail(c, xcode.NotFound, "session not found")
-			return
-		}
-		httpx.Fail(c, xcode.ServerError, err.Error())
-		return
-	}
+	session.Title = strings.TrimSpace(req.Title)
+	session.UpdatedAt = time.Now()
+	h.sessions.Put(session)
 	httpx.OK(c, session)
 }
 
