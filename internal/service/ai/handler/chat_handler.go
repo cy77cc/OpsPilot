@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/service/ai/logic"
@@ -131,8 +130,8 @@ func (h *AIHandler) chat(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "message is required")
 		return
 	}
-	if h.orchestrator == nil {
-		httpx.Fail(c, xcode.ServerError, "AI service not available: LLM not configured or initialization failed. Please check llm.enable, llm.provider, llm.base_url, llm.api_key in config.")
+	if h.ai == nil {
+		httpx.Fail(c, xcode.ServerError, "AI service not available")
 		return
 	}
 	uid, ok := uidFromContext(c)
@@ -275,20 +274,8 @@ func buildStrictToolUseDirective(toolNames []string) string {
 	return "工具调用硬约束:\n1) 只能调用以下真实存在的工具，工具名必须逐字匹配，禁止改名、缩写、拼接或臆造新工具。\n2) 如果下列工具都不适用，就直接说明原因或继续提问，不要假装调用工具。\n3) 不要把工具原始返回直接原样贴给用户，先提炼结论再引用关键字段。\n\n可用工具:\n- " + strings.Join(names, "\n- ")
 }
 
-func toolNamesFromMetas(metas []core.ToolMeta) []string {
-	out := make([]string, 0, len(metas))
-	for _, meta := range metas {
-		name := strings.TrimSpace(meta.Name)
-		if name == "" {
-			continue
-		}
-		out = append(out, name)
-	}
-	return out
-}
-
 func (h *AIHandler) buildToolContext(ctx context.Context, uid uint64, approvalToken, scene, userMessage string, runtime map[string]any, emit func(event string, payload gin.H) bool, tracker *toolEventTracker) context.Context {
-	ctx = tools.WithToolUser(ctx, uid, approvalToken)
+	ctx = core.WithToolUser(ctx, uid, approvalToken)
 	normalized := normalizeRuntimeContext(runtime)
 	if _, ok := normalized["require_confirmation"]; !ok {
 		normalized["require_confirmation"] = true
@@ -303,10 +290,9 @@ func (h *AIHandler) buildToolContext(ctx context.Context, uid uint64, approvalTo
 			normalized[k] = v
 		}
 	}
-	ctx = tools.WithToolRuntimeContext(ctx, normalized)
-	ctx = tools.WithToolMemoryAccessor(ctx, logic.NewToolMemoryAccessor(h.runtime, uid, scene))
-	ctx = tools.WithToolPolicyChecker(ctx, h.toolPolicy)
-	ctx = tools.WithToolEventEmitter(ctx, func(event string, payload any) {
+	ctx = core.WithToolRuntimeContext(ctx, normalized)
+	ctx = core.WithToolMemoryAccessor(ctx, logic.NewToolMemoryAccessor(h.runtime, uid, scene))
+	ctx = core.WithToolEventEmitter(ctx, func(event string, payload any) {
 		switch event {
 		case "tool_call", "tool_result":
 			pm := toPayloadMap(payload)
@@ -419,11 +405,6 @@ func toPayloadMap(v any) map[string]any {
 		return m
 	}
 	return map[string]any{"raw": v}
-}
-
-func mustJSON(v any) string {
-	raw, _ := jsonMarshal(v)
-	return raw
 }
 
 func (h *AIHandler) buildConversationMessages(history []map[string]any, originalMsg, finalPrompt string) []*schema.Message {

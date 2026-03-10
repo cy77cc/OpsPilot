@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cy77cc/k8s-manage/internal/service/ai/logic"
+	"github.com/gin-gonic/gin"
 )
 
 // jsonMarshal is an alias for json.Marshal that returns a string
@@ -77,4 +78,25 @@ func normalizeSessionTitle(input string) string {
 		rs = rs[:64]
 	}
 	return strings.TrimSpace(string(rs))
+}
+
+func uidFromContext(c *gin.Context) (uint64, bool) {
+	v, ok := c.Get("uid")
+	if !ok {
+		return 0, false
+	}
+	switch x := v.(type) {
+	case uint:
+		return uint64(x), true
+	case uint64:
+		return x, true
+	case int:
+		return uint64(x), true
+	case int64:
+		return uint64(x), true
+	case float64:
+		return uint64(x), true
+	default:
+		return 0, false
+	}
 }

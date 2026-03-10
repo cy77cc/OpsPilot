@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -92,44 +91,7 @@ func (c *ApprovalConfig) Validate() error {
 	return nil
 }
 
-func (c *ApprovalConfig) Decide(meta core.ToolMeta) ApprovalDecision {
-	risk := strings.ToLower(strings.TrimSpace(string(meta.Risk)))
-	if !isRiskLevel(risk) {
-		risk = strings.ToLower(strings.TrimSpace(c.Defaults.RiskLevel))
-	}
-	confirmTimeout := time.Duration(c.Defaults.ConfirmationTimeoutSeconds) * time.Second
-	approvalTimeout := time.Duration(c.Defaults.ApprovalTimeoutSeconds) * time.Second
-	requiresApproval := risk != "low"
-	if rule, ok := c.RiskPolicy[risk]; ok {
-		requiresApproval = rule.RequiresApproval
-		if rule.TimeoutSeconds > 0 {
-			approvalTimeout = time.Duration(rule.TimeoutSeconds) * time.Second
-		}
-	}
-	if toolCfg, ok := c.Tools[meta.Name]; ok {
-		if isRiskLevel(toolCfg.RiskLevel) {
-			risk = toolCfg.RiskLevel
-		}
-		if toolCfg.ConfirmationTimeoutSec > 0 {
-			confirmTimeout = time.Duration(toolCfg.ConfirmationTimeoutSec) * time.Second
-		}
-		if toolCfg.ApprovalTimeoutSec > 0 {
-			approvalTimeout = time.Duration(toolCfg.ApprovalTimeoutSec) * time.Second
-		}
-	}
-	return ApprovalDecision{
-		RiskLevel:           risk,
-		RequiresApproval:    requiresApproval,
-		ConfirmationTimeout: confirmTimeout,
-		ApprovalTimeout:     approvalTimeout,
-	}
-}
-
-func isRiskLevel(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "low", "medium", "high":
-		return true
-	default:
-		return false
-	}
+func isRiskLevel(s string) bool {
+	l := strings.ToLower(strings.TrimSpace(s))
+	return l == "low" || l == "medium" || l == "high"
 }

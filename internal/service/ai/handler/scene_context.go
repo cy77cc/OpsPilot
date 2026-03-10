@@ -2,11 +2,9 @@ package handler
 
 import (
 	"os"
-	"sort"
 	"strings"
 	"sync"
 
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,26 +76,6 @@ func sceneMetaByKey(scene string) (sceneMeta, bool) {
 	meta, ok := sceneRegistry[normalizeSceneKey(scene)]
 	return meta, ok
 }
-
-func (h *AIHandler) sceneRecommendedTools(scene string) []core.ToolMeta {
-	if h == nil || h.ai == nil {
-		return nil
-	}
-	meta, ok := sceneMetaByKey(scene)
-	if !ok {
-		return nil
-	}
-	all := h.ai.ToolMetas()
-	metaByName := make(map[string]core.ToolMeta, len(all))
-	for _, item := range all {
-		metaByName[item.Name] = item
-	}
-	out := make([]core.ToolMeta, 0, len(meta.Tools))
-	for _, name := range meta.Tools {
-		if item, exists := metaByName[name]; exists {
-			out = append(out, item)
-		}
-	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }

@@ -5,17 +5,17 @@ import (
 	"strings"
 	"time"
 
-	coreai "github.com/cy77cc/k8s-manage/internal/ai"
 	aitools "github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/httpx"
 	"github.com/cy77cc/k8s-manage/internal/service/ai/events"
+	"github.com/cy77cc/k8s-manage/internal/service/ai/logic"
 	"github.com/cy77cc/k8s-manage/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *AIHandler) chatWithADK(c *gin.Context, req ChatRequest, uid uint64, msg string) {
-	if h.orchestrator == nil {
-		httpx.Fail(c, xcode.ServerError, "ai orchestrator not initialized")
+	if h.ai == nil {
+		httpx.Fail(c, xcode.ServerError, "ai agent not initialized")
 		return
 	}
 
@@ -47,17 +47,27 @@ func (h *AIHandler) chatWithADK(c *gin.Context, req ChatRequest, uid uint64, msg
 	go events.HeartbeatLoop(stopHeartbeat, emit)
 	defer close(stopHeartbeat)
 
-	err := h.orchestrator.ChatStream(c.Request.Context(), coreai.ChatStreamRequest{
-		UserID:    uid,
-		SessionID: req.SessionID,
-		Message:   msg,
-		Context:   req.Context,
-	}, func(event string, payload map[string]any) bool {
+	scene := logic.NormalizeScene(logic.ToString(req.Context["scene"]))
+	session := h.sessions.Ensure(uid, scene)
+	if req.SessionID != "" {
+		session.ID = req.SessionID
+		h.sessions.Put(session)
+	}
+	h.runtime.RememberContext(uid, session.Scene, req.Context)
+
+	// 发送 meta 事件
+	emit("meta", gin.H{"sessionId": session.ID})
+
+	_, err := h.ai.Stream(c.Request.Context(), session.ID, msg, uid, req.Context, func(event string, payload map[string]any) bool {
 		return emit(event, gin.H(payload))
 	})
 	if err != nil {
 		_ = emit("error", gin.H{"message": err.Error()})
+		return
 	}
+
+	// 检查中断状态在 AIAgent.Stream 内部已经处理或通过事件发送了
+	emit("done", gin.H{"stream_state": "ok"})
 }
 
 func (h *AIHandler) resumeADKApproval(c *gin.Context) {
@@ -70,9 +80,13 @@ func (h *AIHandler) resumeADKApproval(c *gin.Context) {
 		httpx.BindErr(c, err)
 		return
 	}
-	payload, err := h.orchestrator.ResumePayload(c.Request.Context(), strings.TrimSpace(req.CheckpointID), map[string]any{
+
+	checkpointID := strings.TrimSpace(req.CheckpointID)
+	targets := map[string]any{
 		strings.TrimSpace(req.Target): req.Data,
-	})
+	}
+
+	payload, err := h.ai.ResumePayload(c.Request.Context(), checkpointID, targets)
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -115,7 +129,7 @@ func (h *AIHandler) handleApprovalResponse(c *gin.Context) {
 		data = payload
 	}
 
-	payload, err := h.orchestrator.ResumePayload(c.Request.Context(), checkpointID, map[string]any{target: data})
+	payload, err := h.ai.ResumePayload(c.Request.Context(), checkpointID, map[string]any{target: data})
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return

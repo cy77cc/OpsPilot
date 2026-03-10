@@ -40,13 +40,6 @@ const (
 	DomainUser           ToolDomain = "user"
 )
 
-type ToolCategory string
-
-const (
-	CategoryDiscovery ToolCategory = "discovery"
-	CategoryAction    ToolCategory = "action"
-)
-
 type ToolResult struct {
 	OK        bool   `json:"ok"`
 	ErrorCode string `json:"error_code,omitempty"`
@@ -62,25 +55,6 @@ type ToolExecutionError struct {
 	Recoverable bool     `json:"recoverable"`
 	Suggestions []string `json:"suggestions,omitempty"`
 	HintAction  string   `json:"hint_action,omitempty"`
-}
-
-type ToolMeta struct {
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Mode         ToolMode          `json:"mode"`
-	Risk         ToolRisk          `json:"risk"`
-	Provider     string            `json:"provider"`
-	Permission   string            `json:"permission"`
-	Schema       map[string]any    `json:"schema,omitempty"`
-	Required     []string          `json:"required,omitempty"`
-	DefaultHint  map[string]any    `json:"default_hint,omitempty"`
-	Examples     []string          `json:"examples,omitempty"`
-	EnumSources  map[string]string `json:"enum_sources,omitempty"`
-	ParamHints   map[string]string `json:"param_hints,omitempty"`
-	RelatedTools []string          `json:"related_tools,omitempty"`
-	SceneScope   []string          `json:"scene_scope,omitempty"`
-	Domain       ToolDomain        `json:"domain,omitempty"`
-	Category     ToolCategory      `json:"category,omitempty"`
 }
 
 type ApprovalRequiredError struct {
@@ -134,7 +108,6 @@ func IsConfirmationRequired(err error) (*ConfirmationRequiredError, bool) {
 	return nil, false
 }
 
-type ToolPolicyChecker func(ctx context.Context, meta ToolMeta, params map[string]any) error
 type ToolEventEmitter func(event string, payload any)
 type ToolMemoryAccessor interface {
 	GetLastToolParams(toolName string) map[string]any
@@ -144,17 +117,12 @@ type ToolMemoryAccessor interface {
 type ctxKey string
 
 const (
-	policyCheckerCtxKey  ctxKey = "ai_tool_policy_checker"
 	eventEmitterCtxKey   ctxKey = "ai_tool_event_emitter"
 	userIDCtxKey         ctxKey = "ai_user_id"
 	approvalCtxKey       ctxKey = "ai_approval_token"
 	runtimeCtxKey        ctxKey = "ai_runtime_context"
 	memoryAccessorCtxKey ctxKey = "ai_tool_memory_accessor"
 )
-
-func WithToolPolicyChecker(ctx context.Context, checker ToolPolicyChecker) context.Context {
-	return context.WithValue(ctx, policyCheckerCtxKey, checker)
-}
 
 func WithToolEventEmitter(ctx context.Context, emitter ToolEventEmitter) context.Context {
 	return context.WithValue(ctx, eventEmitterCtxKey, emitter)
@@ -194,18 +162,6 @@ func ToolUserFromContext(ctx context.Context) (uint64, string) {
 	uid, _ := ctx.Value(userIDCtxKey).(uint64)
 	token, _ := ctx.Value(approvalCtxKey).(string)
 	return uid, token
-}
-
-func CheckToolPolicy(ctx context.Context, meta ToolMeta, params map[string]any) error {
-	v := ctx.Value(policyCheckerCtxKey)
-	if v == nil {
-		return nil
-	}
-	checker, ok := v.(ToolPolicyChecker)
-	if !ok || checker == nil {
-		return nil
-	}
-	return checker(ctx, meta, params)
 }
 
 func EmitToolEvent(ctx context.Context, event string, payload any) {

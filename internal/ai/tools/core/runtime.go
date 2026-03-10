@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -11,29 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
-
-// EmitPolicyRequiredEvent 发射策略要求事件（审批/确认）。
-// 当工具执行被策略拦截时，通过 SSE 通知前端。
-func EmitPolicyRequiredEvent(ctx context.Context, meta ToolMeta, err error) {
-	if apErr, ok := IsApprovalRequired(err); ok {
-		EmitToolEvent(ctx, "approval_required", map[string]any{
-			"tool":           meta.Name,
-			"approval_token": apErr.Token,
-			"expiresAt":      apErr.ExpiresAt,
-			"message":        apErr.Error(),
-		})
-		return
-	}
-	if cfErr, ok := IsConfirmationRequired(err); ok {
-		EmitToolEvent(ctx, "confirmation_required", map[string]any{
-			"tool":               meta.Name,
-			"confirmation_token": cfErr.Token,
-			"expiresAt":          cfErr.ExpiresAt,
-			"preview":            cfErr.Preview,
-			"message":            cfErr.Error(),
-		})
-	}
-}
 
 // ResolveK8sClient 解析 Kubernetes 客户端，根据参数和依赖项选择合适的客户端。
 //

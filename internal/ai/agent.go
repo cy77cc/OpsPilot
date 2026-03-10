@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,10 +16,17 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
-	"github.com/cy77cc/k8s-manage/internal/ai/aspect"
 	airag "github.com/cy77cc/k8s-manage/internal/ai/rag"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools"
 	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/cicd"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/deployment"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/governance"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/host"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/infrastructure"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/kubernetes"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/monitor"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/impl/service"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -34,8 +40,6 @@ type RunnerConfig struct {
 	RedisClient redis.UniversalClient
 	// MaxStep 限制 Agent 推理的最大步数。
 	MaxStep int
-	// SecurityAspect 提供工具执行的安全中间件。
-	SecurityAspect *aspect.SecurityAspect
 	// CheckPointStore 启用跨执行中断的状态持久化。
 	CheckPointStore compose.CheckPointStore
 	// HeartbeatInterval 定义流式处理期间心跳事件的间隔。
@@ -43,14 +47,12 @@ type RunnerConfig struct {
 }
 
 // AIAgent 是基于 react.Agent 实现的 AI 助手。
-// 它负责管理工具注册表、执行流式对话、处理审批中断，并集成 RAG 检索增强。
+// 它负责管理工具列表、执行流式对话、处理审批中断，并集成 RAG 检索增强。
 type AIAgent struct {
 	// model 是支持工具调用的聊天模型。
 	model einomodel.ToolCallingChatModel
-	// registered 存储所有已注册的工具。
-	registered []core.RegisteredTool
-	// registry 提供按名称/领域/类别查找工具的能力。
-	registry *tools.Registry
+	// tools 存储所有已注册的工具。
+	tools []tool.BaseTool
 	// agent 是底层的 ReAct Agent 实现。
 	agent *react.Agent
 	// retriever 用于 RAG 知识检索。
@@ -79,15 +81,20 @@ type AIAgent struct {
 //   - *AIAgent: 创建的 Agent 实例。
 //   - error: 初始化过程中的错误。
 func NewAIAgent(ctx context.Context, model einomodel.ToolCallingChatModel, deps core.PlatformDeps, cfg *RunnerConfig) (*AIAgent, error) {
-	registered, err := tools.BuildRegisteredTools(deps)
-	if err != nil {
-		return nil, err
-	}
+	// 直接收集所有工具，简化 Registry 和 Builder 层
+	var invokables []tool.InvokableTool
+	invokables = append(invokables, host.NewHostTools(ctx, deps)...)
+	invokables = append(invokables, deployment.NewDeploymentTools(ctx, deps)...)
+	invokables = append(invokables, infrastructure.NewInfrastructureTools(ctx, deps)...)
+	invokables = append(invokables, service.NewServiceTools(ctx, deps)...)
+	invokables = append(invokables, monitor.NewMonitorTools(ctx, deps)...)
+	invokables = append(invokables, governance.NewGovernanceTools(ctx, deps)...)
+	invokables = append(invokables, kubernetes.NewKubernetesTools(ctx, deps)...)
+	invokables = append(invokables, cicd.NewCICDTools(ctx, deps)...)
 
-	// 构建工具列表（带风险级别包装）
-	allTools := make([]tool.BaseTool, 0, len(registered))
-	for _, item := range registered {
-		allTools = append(allTools, tools.WrapRegisteredTool(item))
+	allTools := make([]tool.BaseTool, 0, len(invokables))
+	for _, t := range invokables {
+		allTools = append(allTools, t)
 	}
 
 	maxStep := 15
@@ -98,11 +105,6 @@ func NewAIAgent(ctx context.Context, model einomodel.ToolCallingChatModel, deps 
 	// 构建工具节点配置
 	toolsConfig := compose.ToolsNodeConfig{
 		Tools: allTools,
-	}
-
-	// 注入 SecurityAspect 中间件
-	if cfg != nil && cfg.SecurityAspect != nil {
-		toolsConfig.ToolCallMiddlewares = append(toolsConfig.ToolCallMiddlewares, cfg.SecurityAspect.Middleware())
 	}
 
 	// 创建 react.Agent
@@ -117,8 +119,7 @@ func NewAIAgent(ctx context.Context, model einomodel.ToolCallingChatModel, deps 
 
 	a := &AIAgent{
 		model:             model,
-		registered:        registered,
-		registry:          tools.NewRegistry(registered),
+		tools:             allTools,
 		agent:             agent,
 		maxStep:           maxStep,
 		heartbeatInterval: 10 * time.Second, // default
@@ -144,36 +145,6 @@ func NewAIAgent(ctx context.Context, model einomodel.ToolCallingChatModel, deps 
 	}
 
 	return a, nil
-}
-
-// NewPlatformRunner 创建平台运行器（兼容旧接口）。
-// 内部调用 NewAIAgent，保持向后兼容性。
-//
-// 参数:
-//   - ctx: 上下文。
-//   - model: 支持工具调用的聊天模型。
-//   - deps: 平台依赖项。
-//   - cfg: 配置选项。
-//
-// 返回:
-//   - *AIAgent: 创建的 Agent 实例。
-//   - error: 初始化错误。
-func NewPlatformRunner(ctx context.Context, model einomodel.ToolCallingChatModel, deps core.PlatformDeps, cfg *RunnerConfig) (*AIAgent, error) {
-	return NewAIAgent(ctx, model, deps, cfg)
-}
-
-// ToolMetas 返回所有已注册工具的元信息列表。
-// 结果按工具名称排序。
-//
-// 返回:
-//   - []core.ToolMeta: 工具元信息列表。
-func (a *AIAgent) ToolMetas() []core.ToolMeta {
-	out := make([]core.ToolMeta, 0, len(a.registered))
-	for _, item := range a.registered {
-		out = append(out, item.Meta)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
 }
 
 // Generate 非流式生成方法，实现兼容接口。
@@ -204,15 +175,27 @@ func (a *AIAgent) Generate(ctx context.Context, messages []*schema.Message) (*sc
 //   - core.ToolResult: 工具执行结果。
 //   - error: 执行错误。
 func (a *AIAgent) RunTool(ctx context.Context, toolName string, params map[string]any) (core.ToolResult, error) {
-	item, ok := a.registry.Get(toolName)
-	if !ok {
-		return core.ToolResult{}, ErrToolNotFound
+	var targetTool tool.InvokableTool
+	for _, t := range a.tools {
+		if it, ok := t.(tool.InvokableTool); ok {
+			info, _ := it.Info(ctx)
+			if info.Name == toolName {
+				targetTool = it
+				break
+			}
+		}
 	}
+
+	if targetTool == nil {
+		return core.ToolResult{}, fmt.Errorf("tool not found: %s", toolName)
+	}
+
 	raw, err := json.Marshal(params)
 	if err != nil {
 		return core.ToolResult{}, err
 	}
-	content, err := item.Tool.InvokableRun(ctx, string(raw))
+
+	content, err := targetTool.InvokableRun(ctx, string(raw))
 	if err != nil {
 		return core.ToolResult{OK: false, Error: err.Error(), Source: "tool"}, err
 	}
@@ -224,13 +207,12 @@ func (a *AIAgent) RunTool(ctx context.Context, toolName string, params map[strin
 	}
 
 	// 新格式：将 Output 结构体包装为 ToolResult
-	// Output 结构体通常是 {field1: value1, ...} 格式
 	var outputData map[string]any
 	if json.Unmarshal([]byte(content), &outputData) == nil {
 		return core.ToolResult{
 			OK:     true,
 			Data:   outputData,
-			Source: item.Meta.Provider,
+			Source: "agent",
 		}, nil
 	}
 
@@ -238,27 +220,8 @@ func (a *AIAgent) RunTool(ctx context.Context, toolName string, params map[strin
 	return core.ToolResult{
 		OK:     true,
 		Data:   map[string]any{"content": content},
-		Source: item.Meta.Provider,
+		Source: "agent",
 	}, nil
-}
-
-// Query 执行简单查询（非流式），返回结果字符串。
-// 内部调用 Stream 方法，但只返回最终内容。
-//
-// 参数:
-//   - ctx: 上下文。
-//   - sessionID: 会话 ID。
-//   - message: 用户消息。
-//
-// 返回:
-//   - string: 响应内容。
-//   - error: 查询错误。
-func (a *AIAgent) Query(ctx context.Context, sessionID, message string) (string, error) {
-	result, err := a.Stream(ctx, sessionID, message, 0, nil, nil)
-	if err != nil {
-		return "", err
-	}
-	return result.Content, nil
 }
 
 // Stream 流式执行对话。
@@ -527,20 +490,8 @@ func (a *AIAgent) Resume(ctx context.Context, checkpointID string, approval any,
 	return result, nil
 }
 
-// FindMeta 根据名称查找工具元信息。
-//
-// 参数:
-//   - name: 工具名称。
-//
-// 返回:
-//   - core.ToolMeta: 工具元信息。
-//   - bool: 是否找到。
-func (a *AIAgent) FindMeta(name string) (core.ToolMeta, bool) {
-	item, ok := a.registry.Get(name)
-	if !ok {
-		return core.ToolMeta{}, false
-	}
-	return item.Meta, true
+func (a *AIAgent) ResumePayload(ctx context.Context, checkpointID string, targets map[string]any) (map[string]any, error) {
+	return nil, fmt.Errorf("ResumePayload not implemented in simplified refactoring")
 }
 
 // AddKnowledge 向知识库添加知识条目。
