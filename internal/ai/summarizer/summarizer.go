@@ -74,6 +74,7 @@ func buildBaseSummary(in Input) SummaryOutput {
 	}
 
 	completed, failed, blocked := summarizeStepCounts(in.Steps)
+	evidenceCount := countEvidence(in.Steps)
 
 	if failed > 0 || blocked > 0 {
 		output.Summary = "当前证据不足以形成稳定结论。"
@@ -88,14 +89,28 @@ func buildBaseSummary(in Input) SummaryOutput {
 		output.Narrative = "当前执行状态显示仍有失败或阻断步骤。"
 		return output
 	}
+	if completed > 0 && evidenceCount == 0 {
+		output.Summary = fmt.Sprintf("已完成 %d 个步骤，但还没有收集到足够的执行证据。", completed)
+		output.Conclusion = "当前只能给出初步判断，仍需补充执行证据后再确认结论。"
+		output.NextActions = []string{"补充关键步骤的执行证据", "基于新增证据重新总结结论"}
+		output.NeedMoreInvestigation = true
+		output.ReplanHint = &ReplanHint{
+			Reason:          "completed_steps_without_evidence",
+			Focus:           "补充已完成步骤对应的工具输出或观察证据",
+			MissingEvidence: []string{"step_evidence"},
+		}
+		output.Narrative = "步骤虽然完成，但缺少可支撑结论的 StepResult/Evidence。"
+		return output
+	}
 
 	goal := strings.TrimSpace(in.Message)
 	if in.Plan != nil && strings.TrimSpace(in.Plan.Goal) != "" {
 		goal = strings.TrimSpace(in.Plan.Goal)
 	}
-	output.Summary = fmt.Sprintf("已围绕目标“%s”完成 %d 个步骤。", goal, completed)
-	output.Conclusion = "当前执行链已经完成本轮计划，可继续查看正文回答获取自然语言说明。"
+	output.Summary = fmt.Sprintf("已围绕目标“%s”完成 %d 个步骤，并收集到 %d 条执行证据。", goal, completed, evidenceCount)
+	output.Conclusion = "当前结论基于已执行步骤及其证据生成，可继续查看正文回答获取自然语言说明。"
 	output.NextActions = []string{"查看最终结论正文"}
+	output.Narrative = "当前总结基于 StepResult 与执行证据汇总得出。"
 	return output
 }
 
@@ -131,9 +146,18 @@ func normalizeSummary(base, parsed SummaryOutput) SummaryOutput {
 		parsed.ReplanHint = base.ReplanHint
 	}
 	if parsed.NeedMoreInvestigation {
+		parsed.Conclusion = qualifyUncertainConclusion(parsed.Conclusion)
+		parsed.Narrative = qualifyUncertainNarrative(parsed.Narrative)
 		return parsed
 	}
 	parsed.NeedMoreInvestigation = base.NeedMoreInvestigation
+	if parsed.NeedMoreInvestigation {
+		if parsed.ReplanHint == nil {
+			parsed.ReplanHint = base.ReplanHint
+		}
+		parsed.Conclusion = qualifyUncertainConclusion(parsed.Conclusion)
+		parsed.Narrative = qualifyUncertainNarrative(parsed.Narrative)
+	}
 	return parsed
 }
 
@@ -149,4 +173,51 @@ func summarizeStepCounts(steps []executor.StepResult) (completed, failed, blocke
 		}
 	}
 	return completed, failed, blocked
+}
+
+func countEvidence(steps []executor.StepResult) int {
+	total := 0
+	for _, step := range steps {
+		total += len(step.Evidence)
+	}
+	return total
+}
+
+func qualifyUncertainConclusion(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "当前仅能基于现有证据给出初步判断，仍需进一步调查。"
+	}
+	if containsUncertaintyMarker(text) {
+		return text
+	}
+	return text + " 当前仅为基于现有证据的初步判断，仍需进一步调查。"
+}
+
+func qualifyUncertainNarrative(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "当前叙述仅基于已完成步骤和现有证据，不足部分仍待补充确认。"
+	}
+	if containsUncertaintyMarker(text) && strings.Contains(text, "证据") {
+		return text
+	}
+	if !strings.Contains(text, "证据") {
+		text += " 以上内容仅基于当前执行证据。"
+	}
+	if !containsUncertaintyMarker(text) {
+		text += " 仍存在待确认的不确定性。"
+	}
+	return strings.TrimSpace(text)
+}
+
+func containsUncertaintyMarker(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	markers := []string{"可能", "初步", "待确认", "不确定", "证据不足", "进一步调查", "尚不能", "仍需"}
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }

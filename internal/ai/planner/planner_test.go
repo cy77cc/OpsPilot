@@ -196,3 +196,90 @@ func TestNormalizeDecisionPropagatesSelectedResourceIDsIntoStepInput(t *testing.
 		t.Fatalf("cluster_id = %d, want 22", got)
 	}
 }
+
+func TestBuildBaseDecisionCarriesPodTargetIntoResolvedResources(t *testing.T) {
+	out := buildBaseDecision(Input{
+		Message: "查看 local 集群 kube-system 空间下的 cilium-87f2m 最近 100 条日志",
+		Rewrite: rewrite.Output{
+			NormalizedGoal: "查看 local 集群 kube-system 空间下的 cilium-87f2m 最近 100 条日志",
+			OperationMode:  "query",
+			ResourceHints: rewrite.ResourceHints{
+				ClusterName: "local",
+				Namespace:   "kube-system",
+			},
+			NormalizedRequest: rewrite.NormalizedRequest{
+				Targets: []rewrite.RequestTarget{
+					{Type: "pod", Name: "cilium-87f2m"},
+				},
+			},
+		},
+	})
+	if out.Plan == nil {
+		t.Fatalf("base plan is nil")
+	}
+	if got := out.Plan.Resolved.PodName; got != "cilium-87f2m" {
+		t.Fatalf("pod name = %q, want cilium-87f2m", got)
+	}
+}
+
+func TestNormalizeClarifyDecisionDoesNotAskForKnownPodAgain(t *testing.T) {
+	base := buildBaseDecision(Input{
+		Message: "查看 local 集群 kube-system 空间下的 cilium-87f2m 最近 100 条日志",
+		Rewrite: rewrite.Output{
+			NormalizedGoal: "查看 local 集群 kube-system 空间下的 cilium-87f2m 最近 100 条日志",
+			OperationMode:  "query",
+			ResourceHints: rewrite.ResourceHints{
+				ClusterName: "local",
+				Namespace:   "kube-system",
+			},
+			NormalizedRequest: rewrite.NormalizedRequest{
+				Targets: []rewrite.RequestTarget{
+					{Type: "pod", Name: "cilium-87f2m"},
+				},
+			},
+		},
+	})
+	parsed := Decision{
+		Type:      DecisionClarify,
+		Message:   "需要先明确目标 Pod 名称后才能继续执行。",
+		Narrative: "缺少 pod 信息。",
+	}
+
+	out := normalizeDecision(base, parsed)
+	if out.Type != DecisionClarify {
+		t.Fatalf("Type = %s, want %s", out.Type, DecisionClarify)
+	}
+	if out.Message != "需要先明确目标集群后才能继续执行。" {
+		t.Fatalf("clarify message = %q", out.Message)
+	}
+}
+
+func TestValidatePlanPrerequisitesUsesStructuredTargetTypeInsteadOfKeyword(t *testing.T) {
+	plan := &ExecutionPlan{
+		PlanID: "plan-4",
+		Resolved: ResolvedResources{
+			ClusterID: 3,
+		},
+		Steps: []PlanStep{{
+			StepID: "step-1",
+			Expert: "k8s",
+			Title:  "读取最近 100 条日志",
+			Task:   "get the latest 100 lines and analyze health",
+			Input: map[string]any{
+				"normalized_request": map[string]any{
+					"targets": []any{
+						map[string]any{"type": "pod", "name": "cilium-87f2m"},
+					},
+				},
+			},
+		}},
+	}
+
+	out := validatePlanPrerequisites(plan)
+	if out.Type != DecisionClarify {
+		t.Fatalf("Type = %s, want %s", out.Type, DecisionClarify)
+	}
+	if out.Message != "需要先明确目标 Pod 名称后才能继续执行。" {
+		t.Fatalf("Message = %q", out.Message)
+	}
+}

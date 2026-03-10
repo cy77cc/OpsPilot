@@ -27,6 +27,7 @@ Reasoning rules:
 - Treat explanations, hypotheses, likely causes, and interpretations as inferences unless directly proven
 - If evidence is mixed, incomplete, contradictory, or indirect, do not present the conclusion as certain
 - If the available evidence is insufficient to support a reliable conclusion, set need_more_investigation=true
+- Every conclusion must be traceable to the provided StepResult or Evidence; if you cannot point to supporting execution evidence, mark the point as uncertain or leave it out
 - If executor paused, was blocked, failed to resolve a key target, or could not gather decisive evidence, usually set need_more_investigation=true
 - Prefer precise and bounded statements over broad or absolute claims
 - Do not broaden the scope beyond the executed work

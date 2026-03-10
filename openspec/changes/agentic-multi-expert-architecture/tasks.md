@@ -235,7 +235,7 @@
 - [x] 定义进入 `clarify` 的歧义阈值或等价判定规则
 
 #### Planner Guardrails
-- [ ] 明确 Planner 在 unresolved / ambiguous 资源场景 MUST 输出 `clarify`
+- [x] 明确 Planner 在 unresolved / ambiguous 资源场景 MUST 输出 `clarify`
 - [x] 明确 Planner MUST 使用结构化字段表达 `mode/risk/depends_on`
 - [x] 明确 Planner MUST NOT 通过 narrative 隐式塞入执行要求
 
@@ -245,9 +245,9 @@
 - [x] 明确 Experts 输出结论时区分“观察事实”和“推断判断”
 
 #### Summarizer Guardrails
-- [ ] 明确 Summarizer MUST 基于 `StepResult/Evidence` 生成结论
-- [ ] 明确 Summarizer MUST 标记不确定性，不得将推断表述为已证实事实
-- [ ] 明确 Summarizer 在证据不足时输出 `need_more_investigation=true`
+- [x] 明确 Summarizer MUST 基于 `StepResult/Evidence` 生成结论
+- [x] 明确 Summarizer MUST 标记不确定性，不得将推断表述为已证实事实
+- [x] 明确 Summarizer 在证据不足时输出 `need_more_investigation=true`
 
 ## Stage 9: Testing
 
@@ -256,7 +256,7 @@
 ### 9.1 Unit Tests
 - [x] Rewrite 输出协议测试
 - [x] Planner 决策协议测试
-- [ ] Resolve 工具测试
+- [x] Resolve 工具测试
 - [x] Executor 状态机测试
 - [x] Approval / Resume 测试
 - [x] Resume 幂等测试

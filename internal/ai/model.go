@@ -45,7 +45,7 @@ func NewToolCallingChatModel(ctx context.Context) (einomodel.ToolCallingChatMode
 func NewRewriteChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	return newChatModel(ctx, chatModelOptions{
 		timeout:  rewriteChatModelTimeout,
-		thinking: false,
+		thinking: true,
 		temp:     0,
 	})
 }
@@ -53,7 +53,7 @@ func NewRewriteChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 func NewSummarizerChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	return newChatModel(ctx, chatModelOptions{
 		timeout:  summaryChatModelTimeout,
-		thinking: false,
+		thinking: true,
 		temp:     float32(config.CFG.LLM.Temperature),
 	})
 }
