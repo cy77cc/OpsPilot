@@ -7,7 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
 
@@ -24,7 +24,7 @@ type CredentialTestInput struct {
 }
 
 // NewInfrastructureTools returns all infrastructure tools.
-func NewInfrastructureTools(ctx context.Context, deps core.PlatformDeps) []tool.InvokableTool {
+func NewInfrastructureTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		CredentialList(ctx, deps),
 		CredentialTest(ctx, deps),
@@ -36,7 +36,7 @@ type CredentialListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func CredentialList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func CredentialList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"credential_list",
 		"Query cluster credential list for accessing Kubernetes clusters or other infrastructure. Optional parameters: type filters by runtime type or source (k8s/helm/compose), keyword searches by name or endpoint, limit controls max results (default 50, max 200). Returns credentials with id, name, runtime type, endpoint, status, and last test result. Use credential IDs for deployment target configuration. Example: {\"type\":\"k8s\",\"limit\":20}.",
@@ -98,7 +98,7 @@ type CredentialTestOutput struct {
 	LastTestMessage string `json:"last_test_message"`
 }
 
-func CredentialTest(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func CredentialTest(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"credential_test",
 		"Get credential connectivity test result. credential_id is required. Returns the last test result including test timestamp, status (success/failed), and any error message. Use this to verify if a credential is valid before using it for deployment. Example: {\"credential_id\":5}.",

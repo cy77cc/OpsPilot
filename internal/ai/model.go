@@ -37,11 +37,11 @@ func NewToolCallingChatModel(ctx context.Context) (einomodel.ToolCallingChatMode
 		thinking := true
 		temp := float32(config.CFG.LLM.Temperature)
 		return qwenmodel.NewChatModel(ctx, &qwenmodel.ChatModelConfig{
-			APIKey:      config.CFG.LLM.APIKey,
-			BaseURL:     config.CFG.LLM.BaseURL,
-			Model:       config.CFG.LLM.Model,
-			Temperature: &temp,
-			Timeout:     30 * time.Second,
+			APIKey:         config.CFG.LLM.APIKey,
+			BaseURL:        config.CFG.LLM.BaseURL,
+			Model:          config.CFG.LLM.Model,
+			Temperature:    &temp,
+			Timeout:        30 * time.Second,
 			EnableThinking: &thinking,
 		})
 	default:

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
 
@@ -45,7 +45,7 @@ type AuditLogSearchInput struct {
 }
 
 // NewGovernanceTools returns all governance tools.
-func NewGovernanceTools(ctx context.Context, deps core.PlatformDeps) []tool.InvokableTool {
+func NewGovernanceTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		UserList(ctx, deps),
 		RoleList(ctx, deps),
@@ -60,7 +60,7 @@ type UserListOutput struct {
 	List  []model.User `json:"list"`
 }
 
-func UserList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func UserList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"user_list",
 		"Query the list of users in the platform. Optional parameters: keyword searches by username or email, status filters by user status (0=disabled, 1=enabled), limit controls max results (default 50, max 200). Returns users with id, username, email, role information, and status. Use this to find user IDs for permission checks. Example: {\"keyword\":\"admin\",\"status\":1}.",
@@ -104,7 +104,7 @@ type RoleListOutput struct {
 	List  []model.Role `json:"list"`
 }
 
-func RoleList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func RoleList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"role_list",
 		"Query the list of roles in the platform. Optional parameters: keyword searches by role name or code, limit controls max results (default 50, max 200). Returns roles with id, name, code, description, and permission count. Use this to understand available roles for user assignment. Example: {\"keyword\":\"admin\"}.",
@@ -147,7 +147,7 @@ type PermissionCheckOutput struct {
 	Checked            map[string]any     `json:"checked"`
 }
 
-func PermissionCheck(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func PermissionCheck(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"permission_check",
 		"Check if a user has a specific permission. user_id, resource, and action are required. Returns whether the permission is granted, matched permissions if any, and the checked parameters. Use this to verify user access before performing sensitive operations. Example: {\"user_id\":1,\"resource\":\"service\",\"action\":\"delete\"}.",
@@ -218,7 +218,7 @@ type TopologyGetOutput struct {
 	Depth int              `json:"depth"`
 }
 
-func TopologyGet(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func TopologyGet(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"topology_get",
 		"Query service topology showing relationships between services and deployment targets. Optional parameters: service_id focuses topology on a specific service, depth controls how many levels of relationships to explore (default 2, max 5). Returns nodes (services/targets) and edges (deployment relationships). Use this to understand service dependencies. Example: {\"service_id\":12,\"depth\":3}.",
@@ -267,7 +267,7 @@ type AuditLogSearchOutput struct {
 	List  []model.AuditLog `json:"list"`
 }
 
-func AuditLogSearch(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func AuditLogSearch(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"audit_log_search",
 		"Search audit logs for platform activities. Optional parameters: time_range filters logs within a duration (default 24h, accepts values like 1h, 6h, 24h, 7d), resource_type filters by resource kind (service/cluster/host), action filters by action type (create/update/delete), user_id filters by actor, limit controls max results (default 50, max 200). Returns audit entries with timestamps and details. Example: {\"time_range\":\"24h\",\"resource_type\":\"service\"}.",

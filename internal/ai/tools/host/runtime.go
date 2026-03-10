@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	sshclient "github.com/cy77cc/k8s-manage/internal/client/ssh"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
@@ -25,7 +25,7 @@ func runLocalCommand(ctx context.Context, timeout time.Duration, name string, ar
 	return strings.TrimSpace(string(out)), err
 }
 
-func runOnTarget(ctx context.Context, deps core.PlatformDeps, target, localName string, localArgs []string, remoteCmd string) (string, string, error) {
+func runOnTarget(ctx context.Context, deps common.PlatformDeps, target, localName string, localArgs []string, remoteCmd string) (string, string, error) {
 	node, err := resolveNodeByTarget(deps, target)
 	if err != nil {
 		return "", "target_check", err
@@ -51,7 +51,7 @@ func runOnTarget(ctx context.Context, deps core.PlatformDeps, target, localName 
 	return out, "remote_ssh", err
 }
 
-func resolveNodeByTarget(deps core.PlatformDeps, target string) (*model.Node, error) {
+func resolveNodeByTarget(deps common.PlatformDeps, target string) (*model.Node, error) {
 	trimmed := strings.TrimSpace(target)
 	if trimmed == "" || trimmed == "localhost" {
 		return nil, nil

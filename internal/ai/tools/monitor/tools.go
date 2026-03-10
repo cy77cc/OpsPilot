@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
 
@@ -45,7 +45,7 @@ type MonitorMetricInput struct {
 }
 
 // NewMonitorTools returns all monitor tools.
-func NewMonitorTools(ctx context.Context, deps core.PlatformDeps) []tool.InvokableTool {
+func NewMonitorTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		MonitorAlertRuleList(ctx, deps),
 		MonitorAlert(ctx, deps),
@@ -55,13 +55,12 @@ func NewMonitorTools(ctx context.Context, deps core.PlatformDeps) []tool.Invokab
 	}
 }
 
-
 type MonitorAlertRuleListOutput struct {
 	Total int               `json:"total"`
 	List  []model.AlertRule `json:"list"`
 }
 
-func MonitorAlertRuleList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func MonitorAlertRuleList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert_rule_list",
 		"Query the list of alert rules configured in the monitoring system. Optional parameters: status filters by rule state (enabled/disabled), keyword searches by rule name or metric name, limit controls max results (default 50, max 200). Returns alert rules with threshold conditions, severity levels, and notification settings. Example: {\"status\":\"enabled\",\"keyword\":\"cpu\"}.",
@@ -105,7 +104,7 @@ type MonitorAlertOutput struct {
 	List  []model.AlertEvent `json:"list"`
 }
 
-func MonitorAlert(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func MonitorAlert(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert",
 		"Query active/firing alert events from the monitoring system. Optional parameters: severity filters by alert severity (critical/warning/info), service_id filters alerts related to a specific service, limit controls max results (default 50, max 200). Returns alerts currently in firing status with timestamps, labels, and annotations. Example: {\"severity\":\"critical\",\"limit\":20}.",
@@ -148,7 +147,7 @@ type MonitorAlertActiveOutput struct {
 	List  []model.AlertEvent `json:"list"`
 }
 
-func MonitorAlertActive(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func MonitorAlertActive(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert_active",
 		"Query all active/firing alerts currently affecting the system. Optional parameters: severity filters by alert level (critical/warning/info), service_id filters by specific service, limit controls max results (default 50, max 200). Use this to get a quick overview of all ongoing issues. Example: {\"severity\":\"critical\"}.",
@@ -194,7 +193,7 @@ type MonitorMetricOutput struct {
 	Count     int                 `json:"count"`
 }
 
-func MonitorMetric(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func MonitorMetric(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric",
 		"Query time-series metric data from the monitoring system. query is required and specifies the metric name or PromQL expression. Optional parameters: time_range sets the query duration (default 1h, accepts values like 5m, 1h, 24h), step sets the data point interval in seconds (default 60). Returns metric points with timestamps and values. Example: {\"query\":\"cpu_usage\",\"time_range\":\"1h\",\"step\":60}.",
@@ -242,7 +241,7 @@ type MonitorMetricQueryOutput struct {
 	Count     int                 `json:"count"`
 }
 
-func MonitorMetricQuery(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func MonitorMetricQuery(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric_query",
 		"Query metric data points over a time range for analysis and visualization. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (default 60). Returns an array of metric points with timestamps. Example: {\"query\":\"memory_usage\",\"time_range\":\"30m\"}.",

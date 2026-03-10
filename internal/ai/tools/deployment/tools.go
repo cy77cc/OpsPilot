@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	"github.com/cy77cc/k8s-manage/internal/model"
 )
 
@@ -62,7 +62,7 @@ type ServiceInventoryInput struct {
 }
 
 // NewDeploymentTools returns all deployment tools.
-func NewDeploymentTools(ctx context.Context, deps core.PlatformDeps) []tool.InvokableTool {
+func NewDeploymentTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		DeploymentTargetList(ctx, deps),
 		DeploymentTargetDetail(ctx, deps),
@@ -80,7 +80,7 @@ type DeploymentTargetListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func DeploymentTargetList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_list",
 		"Query deployment target list. Optional parameters: env/status/keyword/limit. Example: {\"env\":\"prod\",\"limit\":20}.",
@@ -141,7 +141,7 @@ type DeploymentTargetDetailOutput struct {
 	Nodes  []model.DeploymentTargetNode `json:"nodes"`
 }
 
-func DeploymentTargetDetail(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetDetail(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_detail",
 		"Query deployment target detail. target_id is required. Example: {\"target_id\":12}.",
@@ -180,7 +180,7 @@ type DeploymentBootstrapStatusOutput struct {
 	Steps           []model.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
 
-func DeploymentBootstrapStatus(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func DeploymentBootstrapStatus(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_bootstrap_status",
 		"Query deployment target bootstrap status. target_id is required. Example: {\"target_id\":12}.",
@@ -226,7 +226,7 @@ type ConfigAppListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func ConfigAppList(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func ConfigAppList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_app_list",
 		"Query config app list. Optional parameters: keyword/env/limit. Example: {\"env\":\"prod\"}.",
@@ -277,7 +277,7 @@ type ConfigItemGetOutput struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func ConfigItemGet(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func ConfigItemGet(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_item_get",
 		"Query config item value. app_id and key are required, optional env. Example: {\"app_id\":12,\"key\":\"DATABASE_URL\"}.",
@@ -325,7 +325,7 @@ type ConfigDiffOutput struct {
 	Diff      []map[string]any `json:"diff"`
 }
 
-func ConfigDiff(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func ConfigDiff(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_diff",
 		"Compare config difference. app_id, env_a, env_b are required. Example: {\"app_id\":12,\"env_a\":\"staging\",\"env_b\":\"prod\"}.",
@@ -397,7 +397,7 @@ type ClusterListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ClusterListInventory(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func ClusterListInventory(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"cluster_list_inventory",
 		"Query cluster inventory list. Optional parameters: status/keyword/limit. Example: {\"status\":\"active\"}.",
@@ -459,7 +459,7 @@ type ServiceListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ServiceListInventory(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func ServiceListInventory(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"service_list_inventory",
 		"Query service inventory list. Optional parameters: status/runtime_type/env/keyword/limit. Example: {\"env\":\"prod\"}.",

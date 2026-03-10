@@ -7,7 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/k8s-manage/internal/ai/tools/core"
+	"github.com/cy77cc/k8s-manage/internal/ai/tools/common"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -61,7 +61,7 @@ type K8sLogsInput struct {
 }
 
 // NewKubernetesTools returns all kubernetes tools.
-func NewKubernetesTools(ctx context.Context, deps core.PlatformDeps) []tool.InvokableTool {
+func NewKubernetesTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		K8sQuery(ctx, deps),
 		K8sListResources(ctx, deps),
@@ -76,7 +76,7 @@ type K8sQueryOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sQuery(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sQuery(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_query",
 		"Query Kubernetes resources with filtering options. resource is required and specifies the resource type (pods/services/deployments/nodes). Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), name filters by exact name, label uses label selector, limit caps results (default 50). Returns resource details with status and metadata. Example: {\"resource\":\"pods\",\"namespace\":\"default\",\"label\":\"app=nginx\"}.",
@@ -84,7 +84,7 @@ func K8sQuery(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required")
 			}
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}
@@ -206,7 +206,7 @@ type K8sListResourcesOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sListResources(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sListResources(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_list_resources",
 		"List Kubernetes resources of a specific type. resource is required and must be one of: pods, services, deployments, nodes. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns a simplified list of resources with basic information. Example: {\"resource\":\"pods\",\"namespace\":\"kube-system\",\"limit\":20}.",
@@ -214,7 +214,7 @@ func K8sListResources(ctx context.Context, deps core.PlatformDeps) tool.Invokabl
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required")
 			}
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}
@@ -295,12 +295,12 @@ type K8sEventsOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sEvents(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sEvents(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_events",
 		"Query Kubernetes events with optional filtering. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), kind filters by involved object kind (Pod/Deployment/Service/Node), name filters by object name, limit caps results (default 50). Returns events with type, reason, message, and involved object info. Example: {\"namespace\":\"default\",\"kind\":\"Pod\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sEventsQueryInput, opts ...tool.Option) (*K8sEventsOutput, error) {
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}
@@ -351,12 +351,12 @@ type K8sGetEventsOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sGetEvents(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sGetEvents(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_events",
 		"Get Kubernetes events from a namespace. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns events with type, reason, and message. Use this for a quick event overview. Example: {\"namespace\":\"default\",\"limit\":30}.",
 		func(ctx context.Context, input *K8sEventsInput, opts ...tool.Option) (*K8sGetEventsOutput, error) {
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}
@@ -395,12 +395,12 @@ type K8sLogsOutput struct {
 	Logs      string `json:"logs"`
 }
 
-func K8sLogs(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sLogs(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_logs",
 		"Get logs from a Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container specifies which container in a multi-container pod, tail_lines limits log lines (default 200). Returns pod logs as a string. Example: {\"namespace\":\"default\",\"pod\":\"nginx-abc123\",\"tail_lines\":100}.",
 		func(ctx context.Context, input *K8sLogsInput, opts ...tool.Option) (*K8sLogsOutput, error) {
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}
@@ -441,12 +441,12 @@ type K8sGetPodLogsOutput struct {
 	Logs      string `json:"logs"`
 }
 
-func K8sGetPodLogs(ctx context.Context, deps core.PlatformDeps) tool.InvokableTool {
+func K8sGetPodLogs(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_pod_logs",
 		"Get logs from a specific Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container for multi-container pods, tail_lines limits output (default 200). Returns pod logs for debugging and troubleshooting. Example: {\"namespace\":\"production\",\"pod\":\"api-server-xyz789\",\"tail_lines\":500}.",
 		func(ctx context.Context, input *K8sPodLogsInput, opts ...tool.Option) (*K8sGetPodLogsOutput, error) {
-			cli, _, err := core.ResolveK8sClient(deps, core.StructToMap(input))
+			cli, _, err := common.ResolveK8sClient(deps, common.StructToMap(input))
 			if err != nil {
 				return nil, err
 			}

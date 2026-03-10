@@ -1,4 +1,4 @@
-package core
+package common
 
 import (
 	"encoding/json"
@@ -7,9 +7,16 @@ import (
 	"strings"
 
 	"github.com/cy77cc/k8s-manage/internal/model"
+	"gorm.io/gorm"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+// 定义一些通用的协议
+
+type PlatformDeps struct {
+	DB *gorm.DB
+}
 
 // ResolveK8sClient 解析 Kubernetes 客户端，根据参数和依赖项选择合适的客户端。
 //
@@ -45,11 +52,6 @@ func ResolveK8sClient(deps PlatformDeps, params map[string]any) (*kubernetes.Cli
 			// 返回从集群配置创建的客户端
 			return cli, "cluster_kubeconfig", nil
 		}
-	}
-
-	// 如果没有指定集群或获取失败，尝试使用默认客户端
-	if deps.Clientset != nil {
-		return deps.Clientset, "default_clientset", nil
 	}
 
 	// 如果所有尝试都失败，返回错误
