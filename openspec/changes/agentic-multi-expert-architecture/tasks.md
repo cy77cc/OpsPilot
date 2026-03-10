@@ -1,300 +1,297 @@
 # Tasks: Agentic Multi-Expert Architecture
 
-## Phase 1: 基础框架
+## Stage 1: Core Boundary And Contracts
 
-### 1.1 目录结构与配置
+目标：建立新的 AI 编排主边界，定义统一契约，为后续 Rewrite / Planner / Executor / 前端对接提供稳定宿主。
+
+### 1.1 Orchestrator Host
+- [x] 定义 `internal/ai/gateway_contract.go`
+- [x] 定义 `RunRequest / ResumeRequest / RuntimeContext / StreamEvent`
+- [x] 实现 `internal/ai/orchestrator.go` 顶层编排入口
+- [x] 明确 `internal/service/ai` 只负责 route / auth / transport shell
+- [x] 清理旧 handler 假设，按新后端边界重组入口
+
+### 1.2 Runtime State
+- [x] 定义 `ExecutionState`
+- [x] 定义 `StepState`
+- [x] 定义 `PendingApproval`
+- [x] 统一 `trace_id / session_id / plan_id / step_id` 贯穿模型
+- [x] 明确 `Run(...)` / `Resume(...)` 的共享状态边界
+
+### 1.3 Event Foundation
+- [x] 创建 `internal/ai/events/`
+- [x] 定义统一 `EventMeta`
+- [x] 明确高层事件与底层调试事件的边界
+
+### 1.4 Rollout Foundation
+- [x] 定义新编排链路的 feature flag / rollout 开关
+- [ ] 定义灰度启用与回滚门槛
+- [x] 定义旧链路兼容与回退路径
+
+## Stage 2: Rewrite Stage
+
+目标：增加入口 Rewrite，将用户口语化输入规整为可规划的半结构化任务表达。
+
+### 2.1 Rewrite Contract
+- [ ] 定义 `rewrite.Output`
+- [ ] 定义 `normalized_goal / operation_mode / resource_hints / domain_hints / ambiguity_flags / narrative`
+- [ ] 约束 Rewrite 输出为半结构化协议
+- [ ] 明确 Rewrite 不负责最终 resolve / permission / execution plan
+
+### 2.2 Rewrite Runtime
+- [ ] 创建 `internal/ai/rewrite/` 目录
+- [ ] 实现 `internal/ai/rewrite/rewrite.go`
+- [ ] 实现 `internal/ai/rewrite/prompt.go`
+- [ ] 选择 Eino `v0.8.0` 中适合的 Agent / middleware 装配方式
+- [ ] 输出面向前端的 `rewrite_result` 事件
+
+## Stage 3: Planner
+
+目标：让 Planner 在 Rewrite 之后稳定地产出半结构化决策与执行计划。
+
+### 3.1 Planner Contract
+- [ ] 定义 `PlannerDecision`
+- [ ] 定义 `ExecutionPlan`
+- [ ] 定义 `PlanStep`
+- [ ] 为 `PlannerDecision` 和 `ExecutionPlan` 增加 `narrative`
+- [ ] 明确 `clarify/reject/direct_reply/plan` 四类决策
+- [ ] 约束 `mode/risk` 进入 `PlanStep`
+
+### 3.2 Planner Tools
+- [ ] 实现 `resolve_service`
+- [ ] 实现 `resolve_cluster`
+- [ ] 实现 `resolve_host`
+- [ ] 实现 `check_permission`
+- [ ] 实现 `get_user_context`
+- [ ] 统一 `ResolveResult / ResolveCandidate / ResolveStatus`
+- [ ] 约束 `resolve_*` 复用 inventory 数据源
+- [ ] 约束 `get_user_context` 返回标准化上下文
+
+### 3.3 Planner Runtime
 - [ ] 创建 `internal/ai/planner/` 目录
+- [ ] 实现 `internal/ai/planner/planner.go`
+- [ ] 实现 `internal/ai/planner/prompt.go`
+- [ ] 实现 Planner 结构化输出解析
+- [ ] 输出 `planner_state / plan_created / clarify_required`
+
+## Stage 4: Experts As Agent Tools
+
+目标：完成各领域专家隔离，并统一通过 Agent Tool 接入执行层。
+
+### 4.1 Expert Registry
+- [ ] 创建 `internal/ai/experts/registry.go`
+- [ ] 定义 `Expert` 接口
+- [ ] 定义 `AsTool()` 导出约定
+- [ ] 统一专家注册与目录输出
+
+### 4.2 HostOpsExpert
+- [ ] 创建 `internal/ai/experts/hostops/`
+- [ ] 实现 HostOpsExpert
+- [ ] 迁移 `os_* / host_*` 相关工具
+- [ ] 明确只读与写入类工具的风险元数据
+
+### 4.3 K8sExpert
+- [ ] 创建 `internal/ai/experts/k8s/`
+- [ ] 实现 K8sExpert
+- [ ] 迁移 `k8s_*` 相关工具
+- [ ] 明确工具风险元数据
+
+### 4.4 ServiceExpert
+- [ ] 创建 `internal/ai/experts/service/`
+- [ ] 实现 ServiceExpert
+- [ ] 迁移 `service_* / deployment_* / credential_* / config_*`
+- [ ] 明确工具风险元数据
+
+### 4.5 DeliveryExpert
+- [ ] 创建 `internal/ai/experts/delivery/`
+- [ ] 实现 DeliveryExpert
+- [ ] 迁移 `cicd_* / job_*`
+- [ ] 明确工具风险元数据
+
+### 4.6 ObservabilityExpert
+- [ ] 创建 `internal/ai/experts/observability/`
+- [ ] 实现 ObservabilityExpert
+- [ ] 迁移 `monitor_* / topology_* / audit_*`
+- [ ] 明确工具风险元数据
+
+### 4.7 Planner Support Tool Cleanup
+- [ ] 将 `host_list_inventory` 归入 Planner support tools
+- [ ] 将 `service_list_inventory` 归入 Planner support tools
+- [ ] 将 `cluster_list_inventory` 归入 Planner support tools
+- [ ] 将 `permission_check` 归入 Planner support tools
+- [ ] 评估 `user_list / role_list` 是否仅保留在 Planner support tools
+- [ ] 将 `service_deploy / host_batch` 收敛为兼容入口
+
+## Stage 5: Executor Runtime
+
+目标：建立确定性执行层，管理 step 调度、状态机、审批和恢复。
+
+### 5.1 Runtime Core
 - [ ] 创建 `internal/ai/executor/` 目录
-- [ ] 创建 `internal/ai/experts/` 目录及子目录
-- [ ] 创建 `internal/ai/summarizer/` 目录
-- [ ] 实现 `internal/ai/config.go` 配置加载
-
-### 1.2 专家注册表
-- [ ] 实现 `internal/ai/experts/registry.go` 专家注册表
-- [ ] 定义 `Expert` 接口和基础结构
-- [ ] 定义 `ExpertAgent.AsTool()` 接口，统一 `AgentAsTool` 导出能力
-- [ ] 实现 `ExpertCatalog()` 方法生成专家目录
-
-### 1.3 Planner 基础框架
-- [ ] 实现 `internal/ai/planner/planner.go` Planner Agent
-- [ ] 实现 `internal/ai/planner/prompt.go` 系统提示词
-- [ ] 定义 `planner.Request` / `planner.Response` / `planner.Interface`
-- [ ] 定义 `ExecutionPlan` / `PlanStep` / `ClarificationResponse` 结构化契约
-- [ ] 定义 `PlannerDecision` 协议，覆盖 `clarify/reject/plan/direct_reply`
-- [ ] 约束 `PlanStep.Intent` 的枚举集合和 `PlanStep.Input` 的最小输入边界
-- [ ] 实现 Planner 结构化输出解析，不依赖自然语言计划正文
-
-## Phase 2: Planner 工具
-
-### 2.1 资源解析工具
-- [ ] 实现 `resolve_service` 工具
-  - 支持精确匹配和模糊匹配
-  - 返回服务列表（ID、名称、环境、状态）
-- [ ] 实现 `resolve_cluster` 工具
-  - 支持按名称、环境解析
-- [ ] 实现 `resolve_host` 工具
-  - 支持主机名、IP、关键词匹配
-- [ ] 统一 `ResolveResult` / `ResolveCandidate` / `ResolveStatus` 协议
-- [ ] 明确 `resolve_*` 复用 `*_list_inventory` 的分层关系，不重复实现底层查询
-- [ ] 定义 `planner/resolve.go` 中的 `ResolveServiceInput` / `ResolveClusterInput` / `ResolveHostInput`
-- [ ] 约束三个 resolve 工具统一复用 inventory 工具并返回 `ResolveResult`
-- [ ] 定义统一 `ResolveScore` 评分模型和分项权重
-- [ ] 定义 `exact/ambiguous/missing` 的阈值规则
-- [ ] 定义澄清候选的裁剪、排序和文案规则
-- [ ] 为 `service/cluster/host` 三类资源补充差异化匹配规则
-
-### 2.2 权限检查工具
-- [ ] 实现 `check_permission` 工具
-  - 检查用户对资源的操作权限
-  - 返回权限状态和原因
-- [ ] 定义 `planner/permission.go` 中的 `PermissionCheckInput` / `PermissionCheckResult`
-- [ ] 约束 `check_permission` 仅做预检查，不生成审批 token
-
-### 2.3 上下文工具
-- [ ] 实现 `get_user_context` 工具
-  - 获取用户当前页面
-  - 获取选中的资源
-  - 获取运行时上下文
-- [ ] 定义 `planner/context.go` 中的 `UserContext` 结构
-- [ ] 约束 `get_user_context` 返回标准化上下文，而不是直接透传原始网关 payload
-
-### 2.4 Planner 工具装配
-- [ ] 将 Planner 工具层拆分为 `tools.go` / `resolve.go` / `context.go` / `permission.go`
-- [ ] 约束 Planner 内部默认调用顺序：`get_user_context -> resolve_* -> check_permission`
-
-## Phase 3: 领域专家迁移
-
-### 3.1 HostOpsExpert
-- [ ] 实现 `internal/ai/experts/hostops/expert.go`
-- [ ] 实现 `internal/ai/experts/hostops/prompt.go` 提示词
-- [ ] 按统一骨架实现 HostOpsExpert 的 `Name/Description/AsTool`
-- [ ] 明确 HostOpsExpert prompt contract（角色/边界/工具/决策原则/输出格式）
-- [ ] 迁移工具:
-  - [ ] os_get_cpu_mem
-  - [ ] os_get_disk_fs
-  - [ ] os_get_net_stat
-  - [ ] os_get_process_top
-  - [ ] os_get_journal_tail
-  - [ ] os_get_container_runtime
-  - [ ] host_exec
-  - [ ] host_batch_exec_preview
-  - [ ] host_batch_exec_apply
-  - [ ] host_batch_status_update
-  - [ ] host_ssh_exec_readonly
-
-### 3.2 K8sExpert
-- [ ] 实现 `internal/ai/experts/k8s/expert.go`
-- [ ] 实现 `internal/ai/experts/k8s/prompt.go` 提示词
-- [ ] 按统一骨架实现 K8sExpert 的 `Name/Description/AsTool`
-- [ ] 明确 K8sExpert prompt contract（角色/边界/工具/决策原则/输出格式）
-- [ ] 迁移工具:
-  - [ ] k8s_query
-  - [ ] k8s_events
-  - [ ] k8s_logs
-  - [ ] k8s_list_resources
-  - [ ] k8s_get_events
-  - [ ] k8s_get_pod_logs
-
-### 3.3 ServiceExpert
-- [ ] 实现 `internal/ai/experts/service/expert.go`
-- [ ] 实现 `internal/ai/experts/service/prompt.go` 提示词
-- [ ] 按统一骨架实现 ServiceExpert 的 `Name/Description/AsTool`
-- [ ] 明确 ServiceExpert prompt contract（角色/边界/工具/决策原则/输出格式）
-- [ ] 迁移工具:
-  - [ ] service_status
-  - [ ] service_get_detail
-  - [ ] service_deploy_preview
-  - [ ] service_deploy_apply
-  - [ ] service_catalog_list
-  - [ ] service_category_tree
-  - [ ] service_visibility_check
-  - [ ] deployment_target_list
-  - [ ] deployment_target_detail
-  - [ ] deployment_bootstrap_status
-  - [ ] credential_list
-  - [ ] credential_test
-  - [ ] config_app_list
-  - [ ] config_item_get
-  - [ ] config_diff
-
-### 3.4 DeliveryExpert
-- [ ] 实现 `internal/ai/experts/delivery/expert.go`
-- [ ] 实现 `internal/ai/experts/delivery/prompt.go` 提示词
-- [ ] 按统一骨架实现 DeliveryExpert 的 `Name/Description/AsTool`
-- [ ] 明确 DeliveryExpert prompt contract（角色/边界/工具/决策原则/输出格式）
-- [ ] 迁移工具:
-  - [ ] cicd_pipeline_list
-  - [ ] cicd_pipeline_status
-  - [ ] cicd_pipeline_trigger
-  - [ ] job_list
-  - [ ] job_execution_status
-  - [ ] job_run
-
-### 3.5 ObservabilityExpert
-- [ ] 实现 `internal/ai/experts/observability/expert.go`
-- [ ] 实现 `internal/ai/experts/observability/prompt.go` 提示词
-- [ ] 按统一骨架实现 ObservabilityExpert 的 `Name/Description/AsTool`
-- [ ] 明确 ObservabilityExpert prompt contract（角色/边界/工具/决策原则/输出格式）
-- [ ] 迁移工具:
-  - [ ] monitor_alert
-  - [ ] monitor_metric
-  - [ ] monitor_alert_rule_list
-  - [ ] monitor_alert_active
-  - [ ] monitor_metric_query
-  - [ ] topology_get
-  - [ ] audit_log_search
-
-## Phase 3.6: Planner 支撑工具归位
-
-- [ ] 将 `host_list_inventory` 归入 Planner 资源解析工具
-- [ ] 将 `service_list_inventory` 归入 Planner 资源解析工具
-- [ ] 将 `cluster_list_inventory` 归入 Planner 资源解析工具
-- [ ] 将 `permission_check` 归入 Planner 权限预检查工具
-- [ ] 评估 `user_list` / `role_list` 是否仅保留在 Planner 辅助工具集中
-- [ ] 定义 Planner 的 expert selection policy，覆盖运行态异常/发布失败/配置问题/权限审计问题
-- [ ] 将旧兼容入口 `service_deploy` 从专家标准工具集移出，仅保留迁移兼容层
-- [ ] 将旧兼容入口 `host_batch` 从专家标准工具集移出，仅保留迁移兼容层
-
-## Phase 4: Executor
-
-### 4.1 核心实现
-- [ ] 实现 `internal/ai/executor/executor.go` Executor Agent
-- [ ] 定义 `executor.Request` / `executor.Result` / `executor.ResumeRequest` / `executor.Interface`
-- [ ] 实现 `internal/ai/executor/scheduler.go` 调度器
+- [ ] 实现 `executor.go`
+- [ ] 实现 `scheduler.go`
+- [ ] 定义 `executor.Request / executor.Result / executor.ResumeRequest`
 - [ ] 实现代码驱动的 DAG 调度
-- [ ] 使用稳定 `step_id` 管理依赖、事件、重试和恢复
-- [ ] 实现 `ExpertTaskInput` / `StepResult` / `Evidence` 统一契约
-- [ ] 定义 `StepState` 状态机：`pending/ready/running/waiting_approval/retrying/blocked/failed/completed/cancelled`
-- [ ] 定义统一 `StepError` 模型和错误码集合
-- [ ] 明确审批恢复状态 `ApprovalResumeState` 和 step 级恢复流程
+- [ ] 使用稳定 `step_id` 管理依赖和状态
 
-### 4.2 错误处理
-- [ ] 实现重试逻辑 (max_retry=3)
-- [ ] 实现超时控制
-- [ ] 实现用户友好的错误消息
-- [ ] 实现 blocked dependency 处理，避免下游步骤误执行
-- [ ] 定义 `ToolMeta` 统一元数据：`mode/risk/idempotent/approval_policy/mutates_resources/produces_evidence`
-- [ ] 为所有迁入 Expert 的 write 类工具补齐 `ToolMeta`
-- [ ] 定义 `ApprovalDecision` 并在 Executor/tool middleware 中统一判定
-- [ ] 定义 `read/write` × `low/medium/high` 风险矩阵与默认审批策略
-- [ ] 约束 `Idempotent=false` 的写工具不得被 Executor 自动重试
-- [ ] 为具备副作用的工具补充 `request_id` 或等价去重键支持
-- [ ] 为批量执行类工具明确 `preview -> approval -> apply` 三段式契约
-- [ ] 定义 `ToolExecutionReceipt` 并约束 Expert 将副作用摘要归并进 `StepResult`
-- [ ] 对齐现有 `ToolModeReadonly/ToolModeMutating` 与 `ToolRiskLow/Medium/High`，避免设计与旧实现枚举不一致
-- [ ] 明确 `ToolRiskMedium=review/edit`、`ToolRiskHigh=approval` 的运行时兼容语义
-- [ ] 按 expert 维度整理现有工具的 `mode/risk/approval_policy` 映射表
-- [ ] 标记迁移兼容工具 `service_deploy`、`host_batch` 的下线策略
+### 5.2 Step State Machine
+- [ ] 定义 `pending/ready/running/waiting_approval/completed/failed/blocked/cancelled`
+- [ ] 实现状态流转校验
+- [ ] 实现 blocked dependency 处理
+- [ ] 实现单 step 恢复流程
+- [ ] 定义 `StepError` 与错误码
 
-## Phase 5: Summarizer
+### 5.3 Approval And Retry
+- [ ] 定义 `ApprovalDecision`
+- [ ] 明确 `readonly/low`、`medium`、`high` 风险策略
+- [ ] 实现审批前持久化
+- [ ] 实现审批后恢复
+- [ ] 实现重试逻辑
+- [ ] 约束非幂等写工具不得自动重试
+- [ ] 为 resume / approval 补充幂等键或等价去重机制
+- [ ] 明确“重复批准请求不得重复执行副作用”
 
-### 5.1 核心实现
-- [ ] 实现 `internal/ai/summarizer/summarizer.go` Summarizer Agent
-- [ ] 实现 `internal/ai/summarizer/prompt.go` 系统提示词
-- [ ] 定义 `summarizer.Request` / `summarizer.Response` / `summarizer.Interface`
-- [ ] 定义 `SummarizerInput` / `SummarizerDecision` 结构化输出
-- [ ] 实现缺失事实 `MissingFacts` 与重规划提示 `NextPlanHints`
-- [ ] 明确 Summarizer 的判定规则和 `NeedMoreInvestigation` 触发条件
+### 5.4 Step Output
+- [ ] 定义 `StepResult`
+- [ ] 定义 `Evidence`
+- [ ] 为 Step 输出增加 `summary`
+- [ ] 为前端事件增加 `user_visible_summary`
 
-### 5.2 循环控制
-- [ ] 实现迭代计数
-- [ ] 实现最大迭代限制
+## Stage 6: Summarizer
 
-## Phase 6: Orchestrator
+目标：在执行完成后生成用户可读总结，并决定是否需要补充调查。
 
-### 6.1 编排入口
-- [ ] 重构 `internal/ai/orchestrator.go` 顶层编排
-- [ ] 定义 `ai.RunRequest` / `ai.RunResult` / `ai.ResumeRequest` / `ai.Orchestrator`
-- [ ] 实现完整流程:
-  - Planner → Executor → Expert → Summarizer
-- [ ] 实现迭代循环
-- [ ] 实现用户澄清处理
-- [ ] 实现审批/中断后的 `Resume(...)` 流程
-- [ ] 明确正常执行、澄清分支、审批恢复、重规划、失败终止的时序实现
+### 6.1 Summary Contract
+- [ ] 定义 `SummaryOutput`
+- [ ] 包含 `summary / conclusion / next_actions / need_more_investigation / narrative`
+- [ ] 约束 `summary` 作为最终结构化结论，而不是正文流式输出替代物
 
-### 6.2 SSE 事件
-- [ ] 实现 `planner_state` 事件 (`clarifying/planning/replanning`)
-- [ ] 实现 `plan_created` 事件
-- [ ] 实现 `step_start` 事件
-- [ ] 实现 `step_result` 事件
-- [ ] 实现 `expert_progress` 事件
-- [ ] 定义统一 `EventMeta` 元字段 (`session_id/plan_id/trace_id/iteration/timestamp`)
-- [ ] 定义 `approval_required` / `error` / `done` 的 payload schema
-- [ ] 约束同一 `step_id` 的事件顺序
-- [ ] 保持兼容现有事件 (`delta`, `tool_call`, etc.)
+### 6.2 Summarizer Runtime
+- [ ] 创建 `internal/ai/summarizer/` 目录
+- [ ] 实现 `summarizer.go`
+- [ ] 实现 `prompt.go`
+- [ ] 定义 `NeedMoreInvestigation` 判定规则
+- [ ] 定义 `ReplanHint` 或等价重规划提示结构
+- [ ] 实现 `Summary -> Replan` 回路契约
+- [ ] 实现最大迭代次数控制
+- [ ] 输出 `summary` 事件
 
-## Phase 7: 测试与集成
+## Stage 7: Event Stream And ThoughtChain
 
-### 7.1 单元测试
-- [ ] Planner 工具测试
-- [ ] Executor 调度器测试
-- [ ] 计划解析器测试
-- [ ] DAG 拓扑排序测试
-- [ ] Planner decision 协议测试
-- [ ] StepState 状态流转测试
-- [ ] Summarizer 判定规则测试
+目标：建立面向前端的高层事件语义，并用 ThoughtChain 承载阶段过程。
 
-### 7.2 集成测试
-- [ ] 端到端流程测试
-- [ ] 用户澄清场景测试
+### 7.1 Event Schema
+- [ ] 定义 `rewrite_result`
+- [ ] 定义 `planner_state`
+- [ ] 定义 `plan_created`
+- [ ] 定义 `step_update`
+- [ ] 定义 `approval_required`
+- [ ] 定义 `clarify_required`
+- [ ] 定义 `replan_started`
+- [ ] 定义 `delta`
+- [ ] 定义 `summary`
+- [ ] 定义 `done / error`
+
+### 7.2 Frontend Contract
+- [ ] 定义 ThoughtChain 阶段模型：`rewrite / plan / execute / user_action / summary`
+- [ ] 为每个阶段定义标题、描述、内容、状态映射
+- [ ] 约束前端主体验消费高层事件
+- [ ] 保留 `tool_call / tool_result` 作为补充信息，而不是主流程
+- [ ] 明确 `delta` 用于正文流式输出，`summary` 用于结构化结论
+
+### 7.3 ThoughtChain UI
+- [ ] 在 AI 面板引入 `ThoughtChain`
+- [ ] 将 `rewrite_result` 映射到 `rewrite`
+- [ ] 将 `plan_created` 映射到 `plan`
+- [ ] 将 `step_update` 聚合到 `execute`
+- [ ] 将 `approval_required / clarify_required` 映射到 `user_action`
+- [ ] 明确区分 `clarify` 与 `approval` 的标题、说明、CTA、恢复语义
+- [ ] 将 `replan_started` 映射为新一轮规划提示或迭代状态
+- [ ] 将 `summary` 映射到 `summary`
+- [ ] 保持正文回答独立渲染，不与 ThoughtChain 混淆
+
+## Stage 8: Resume API And Gateway Alignment
+
+目标：将审批和恢复模型从旧 checkpoint 语义收敛到 plan-step 语义，同时保持网关映射清晰。
+
+### 8.1 Resume Model
+- [ ] 将恢复接口收敛到 `session_id + plan_id + step_id`
+- [ ] 明确前端审批请求模型
+- [ ] 明确 rejected/cancelled 的用户可见语义
+- [ ] 明确重复恢复请求的幂等响应语义
+
+### 8.2 Gateway Alignment
+- [ ] 对齐 `/api/v1/ai/chat`
+- [ ] 定义规范的 step-resume 接口，并将 `/api/v1/ai/approval/respond` 映射到该语义
+- [ ] 为 `/api/v1/ai/adk/resume` 定义兼容策略，避免继续暴露旧 checkpoint 心智模型
+- [ ] 统一 route 层与 orchestrator host 的请求映射
+
+### 8.3 Model Guardrails
+- [ ] 补充运行时和 prompt 约束，避免模型在 Rewrite / Planner / Expert / Summarizer 阶段跑偏
+
+#### Rewrite Guardrails
+- [ ] 明确 Rewrite MUST NOT 伪造资源 ID、权限结果、执行结论
+- [ ] 明确 Rewrite 遇到歧义时保留 `ambiguity_flags`，而不是擅自消歧
+- [ ] 定义进入 `clarify` 的歧义阈值或等价判定规则
+
+#### Planner Guardrails
+- [ ] 明确 Planner 在 unresolved / ambiguous 资源场景 MUST 输出 `clarify`
+- [ ] 明确 Planner MUST 使用结构化字段表达 `mode/risk/depends_on`
+- [ ] 明确 Planner MUST NOT 通过 narrative 隐式塞入执行要求
+
+#### Expert Guardrails
+- [ ] 明确 Experts MUST 只调用本领域工具
+- [ ] 明确 Experts MUST NOT 越权调用 Planner support tools
+- [ ] 明确 Experts 输出结论时区分“观察事实”和“推断判断”
+
+#### Summarizer Guardrails
+- [ ] 明确 Summarizer MUST 基于 `StepResult/Evidence` 生成结论
+- [ ] 明确 Summarizer MUST 标记不确定性，不得将推断表述为已证实事实
+- [ ] 明确 Summarizer 在证据不足时输出 `need_more_investigation=true`
+
+## Stage 9: Testing
+
+目标：验证新架构的契约、执行链路和前端体验。
+
+### 9.1 Unit Tests
+- [ ] Rewrite 输出协议测试
+- [ ] Planner 决策协议测试
+- [ ] Resolve 工具测试
+- [ ] Executor 状态机测试
+- [ ] Approval / Resume 测试
+- [ ] Resume 幂等测试
+- [ ] Summarizer 判定测试
+- [ ] Event schema 测试
+
+### 9.2 Integration Tests
+- [ ] 端到端主链路测试
+- [ ] 澄清场景测试
+- [ ] 审批恢复测试
+- [ ] 灰度开关与回滚路径测试
+- [ ] 重启后 `waiting_approval` 恢复测试
 - [ ] 多专家协作测试
-- [ ] 错误重试测试
-- [ ] 迭代循环测试
-- [ ] AgentAsTool 专家调用链路测试
-- [ ] 计划恢复与审批中断恢复测试
-- [ ] Orchestrator `Run(...)` / `Resume(...)` 双入口测试
-- [ ] 灰度开关和 fallback 路径测试
+- [ ] Replan 事件与前端感知测试
+- [ ] Summary 输出测试
+- [ ] ThoughtChain 事件对接测试
 
-### 7.3 兼容性测试
-- [ ] SSE 事件流兼容验证
-- [ ] 前端集成测试
-- [ ] SSE 事件顺序和 payload schema 验证
+### 9.3 Evaluation
+- [ ] 定义 Rewrite 质量评估指标
+- [ ] 定义 Planner clarify 率 / plan 可执行率指标
+- [ ] 定义 Resume 成功率 / 重复恢复拦截率指标
+- [ ] 定义 ThoughtChain 事件完整率与前端渲染一致性指标
 
-## Phase 7.4: 配置与状态
-- [ ] 定义运行时配置结构：Planner / Executor / Experts / Summary / Rollout
-- [ ] 支持 per-expert `enabled/max_step/timeout/model`
-- [ ] 定义 `ExecutionState` 持久化结构
-- [ ] 在 step 状态变化、step 完成、waiting_approval 时持久化状态
-- [ ] 定义标准化 `RuntimeContext` 结构，避免直接透传前端原始 payload
-- [ ] 明确 `GatewayRuntime -> Orchestrator -> Planner` 的上下文注入边界
-- [ ] 明确 `SessionSnapshot` / `ExecutionState` / `SessionValues` 的读写边界
-- [ ] 定义统一 `TraceContext` 并约束 `Run/Resume/Planner/Executor/Expert/Tool` 全链路透传
-- [ ] 定义编排层、模型层、工具层的最小遥测埋点
-- [ ] 定义新 orchestrator 的核心指标与灰度对比口径
-- [ ] 定义 `DebugRecord` 和原始 payload 引用策略，避免日志直接落完整 prompt/tool output
-- [ ] 定义敏感信息脱敏规则，覆盖 `RawOutput/Evidence/SSE/DebugRecord`
-- [ ] 定义 `ConversationHistory/PlanningContext/ExecutionSummary/RawArtifactsRef` 四层上下文模型
-- [ ] 为 Planner/Expert/Summarizer 定义软硬 token 预算和超限裁剪策略
-- [ ] 定义 `StepDigest` / `IterationDigest`，用于重规划和长会话压缩
-- [ ] 定义固定的上下文裁剪优先级，避免不同轮次出现非确定性 prompt 形态
+## Stage 10: Cleanup And Migration
 
-## Phase 8: 文档与清理
+目标：清理旧假设、保留兼容入口、补全文档，完成迁移收口。
 
-### 8.1 文档
+### 10.1 Cleanup
+- [ ] 删除旧 proposal/design 不再适配的实现假设
+- [ ] 清理旧 handler 依赖残留
+- [ ] 清理旧单体 Agent 主链路的过时绑定
+- [ ] 清理与新事件模型冲突的旧 SSE 假设
+
+### 10.2 Migration Docs
 - [ ] 更新 API 文档
 - [ ] 更新架构文档
-- [ ] 编写迁移指南
-- [ ] 补充“旧链路 -> 新链路”模块映射说明
-- [ ] 补充“逐文件迁移表”，覆盖 `agent.go` / `gateway.go` / `orchestrator.go` / `router/` / `graph/` / `approval/` / `tools/`
-- [ ] 补充删除门槛和回滚策略说明
-
-### 8.2 清理
-- [ ] 将 `internal/ai/agent.go` 降级为 compat runner，并停止承载新编排逻辑
-- [ ] 删除 `internal/ai/agent.go` 中全量工具池绑定和单体 `react.Agent` 主链路
-- [ ] 重写 `internal/ai/orchestrator.go` 为新主编排入口，并移除旧占位/过时逻辑
-- [ ] 调整 `internal/ai/gateway.go`，使其优先接入新 orchestrator 而不是旧单体 Agent
-- [ ] 收敛 `internal/ai/gateway.go`：只负责 session/runtime context/SSE/approval，不承载推理逻辑
-- [ ] 评估 `internal/ai/router/` 是否仍有保留价值；如无则删除
-- [ ] 评估 `internal/ai/graph/` 是否仍有保留价值；如无则删除
-- [ ] 若保留 `router/`，将其职责收缩为轻量预分类；若不保留，删除对应调用方
-- [ ] 若保留 `graph/`，仅抽取可复用校验/执行能力；若不保留，删除旧 ActionGraph 及其测试
-- [ ] 保留 `approval/`、`aspect/`、`state/`、`rag/`、`tools/` 作为新架构支撑层，并完成新接口适配
-- [ ] 删除旧 4 expert 命名、映射表和过时文档片段
-- [ ] 清理未使用的导入
-- [ ] 更新 memory/MEMORY.md
-
-### 8.3 验收后删除
-- [ ] 在新 orchestrator 成为默认入口后，移除旧 fallback 开关
-- [ ] 删除已无调用方的 compat 适配代码
-- [ ] 删除旧 `router + graph + single-agent` 组合链路的集成测试，替换为新 orchestrator 集成测试
-- [ ] 删除旧链路专属测试，保留或重写为新架构测试
+- [ ] 补充前端 ThoughtChain 对接说明
+- [ ] 补充旧链路到新链路的迁移说明

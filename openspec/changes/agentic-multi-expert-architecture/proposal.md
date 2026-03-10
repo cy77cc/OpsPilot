@@ -2,399 +2,453 @@
 
 ## 概述
 
-基于 Eino ADK 的 `Transfer` + `AgentAsTool` 特性，重构 AI 模块为四层 Agentic 架构：Planner → Executor → Expert → Summarizer，实现多领域专家协作的智能运维助手。
+基于 Eino `v0.8.0` 的 ADK 新能力，重构 AI 编排入口为：
 
-## 动机
-
-### 当前问题
-
-1. **单体 Agent 负担过重**: 现有 `react.Agent` 扁平注册 50+ 工具，所有领域工具混在一起，导致：
-   - 推理效率低，模型需要从大量工具中选择
-   - 领域边界模糊，难以针对性优化 prompt
-   - 工具冲突风险增加
-
-2. **资源解析分散**: 用户说"检查 payment-api"，需要专家自己去查询 service_id，造成：
-   - 多个专家重复查询
-   - 用户自然语言理解不一致
-   - 缺乏统一的权限预检查
-
-3. **缺乏规划能力**: 当前 Agent 直接执行工具调用，没有显式的计划制定和调整机制
-
-4. **结果汇总不完整**: 执行完多个工具后，缺乏统一的汇总和判断机制
-
-### 目标状态
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    四层 Agentic Multi-Expert 架构                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   Planner Agent ──► Executor Agent ──► Domain Experts ──► Summarizer Agent │
-│                                                                             │
-│   - Planner: 意图理解 + 资源解析 + 权限检查 + 计划制定                        │
-│   - Executor: 计划执行 + 依赖调度 + 审批恢复 + 结果收集                        │
-│   - Experts: 领域任务执行 (HostOps/K8s/Service/Delivery/Observability)       │
-│   - Summarizer: 结果汇总 + 完整性判断                                        │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+```text
+Gateway / API
+    -> AI Orchestrator Host
+        -> Rewrite
+        -> Planner
+        -> Executor Runtime
+            -> Expert Agents as Tools
+        -> Summarizer
 ```
 
-## 架构设计
+本次变更的目标不是简单把单体 Agent 拆成更多 Agent，而是建立一条完整、可演进的 AI 执行链路：
 
-### 整体架构
+- 在入口增加 `Rewrite` 阶段，将用户口语化输入改写为稳定的任务表达
+- 用 `Planner` 负责资源解析、权限预检查、结构化计划
+- 用后端 `Executor Runtime` 负责确定性的 DAG 调度、审批、恢复和状态机
+- 用 `Expert Agents as Tools` 承接领域执行能力
+- 用 `Summarizer` 输出最终结论
+- 用前端 `ThoughtChain` 展示阶段性进展，让用户感知 AI 正在工作
 
+## 本次提案要解决的问题
+
+### 1. 当前 AI 编排边界不清晰
+
+现有实现中，AI 入口、流式输出、工具调用、审批恢复和会话语义没有稳定收敛到一个明确的后端宿主边界。
+
+结果是：
+
+- Gateway 层和 AI core 的职责容易漂移
+- 后续接入 `Rewrite / Planner / Executor / Summarizer` 时缺少稳定入口
+- 前后端都难以围绕统一契约演进
+
+### 2. 用户输入过于口语化，直接进入规划不稳定
+
+用户经常会输入类似：
+
+- “看看 payment-api 最近是不是有点慢”
+- “顺便查一下是不是刚发版”
+- “帮我处理一下这个服务”
+
+如果直接把这类输入送给 Planner，会让 Planner 同时承担：
+
+- 语言清洗
+- 意图规整
+- 资源识别
+- 计划生成
+
+这会降低计划稳定性，也会放大 prompt 复杂度。
+
+### 3. 原提案对前端对接不够
+
+原提案更多停留在后端架构层，虽然列出了 SSE 事件，但没有真正定义：
+
+- 前端需要消费的对象模型
+- 哪些内容要展示给用户
+- 哪些内容只属于后端运行时细节
+
+这会导致前端拿到很多事件名，却没有清晰的 UI 语义。
+
+### 4. 用户缺少“AI 正在工作”的感知
+
+如果界面只展示最终答案，用户在复杂排查场景中会感知为：
+
+- 卡住了
+- 没响应
+- 不知道 AI 到底做了什么
+
+尤其复杂调查、跨专家协作、审批等待场景下，必须把阶段性过程以产品化方式呈现出来。
+
+## 核心设计调整
+
+相较于原提案，本次提案做以下关键调整。
+
+### 调整 1: 明确采用 Eino `v0.8.0` 新特性
+
+本次方案不再泛泛地描述 “基于 Eino ADK”，而是明确利用 `v0.8.0` 中已具备的能力：
+
+- `adk.NewAgentTool(...)`
+- `Transfer / SetSubAgents / DeterministicTransfer`
+- `interrupt / resume`
+- `ADK middleware`
+- `prebuilt planexecute / supervisor` 的设计思路
+
+采用原则：
+
+- `Rewrite / Planner / Summarizer` 适合使用 Agent 与 Transfer 语义
+- `Experts` 适合通过 `AgentAsTool` 接入
+- `Executor` 仍由后端运行时代码负责，不把调度确定性交回模型
+
+### 调整 2: 在入口新增 Rewrite 阶段
+
+新增显式 `Rewrite` 阶段，用于把用户口语化输入改写成稳定的任务表达。
+
+职责：
+
+- 规整用户意图
+- 抽取资源线索
+- 初步判断任务模式
+- 生成更适合 Planner 消费的输入
+
+示意：
+
+```text
+用户输入:
+  “帮我看看 payment-api 最近是不是有点慢，顺便查下是不是刚发版”
+
+Rewrite 输出:
+  - goal: 排查 payment-api 响应变慢，并核对近期发布是否相关
+  - resource_hint: service_name=payment-api
+  - operation_mode: investigate
+  - candidate_domains: service, observability, delivery
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                            Planner Agent                             │  │
-│   │                                                                      │  │
-│   │   输入: 用户请求 + 运行时上下文                                       │  │
-│   │                                                                      │  │
-│   │   Tools:                                                             │  │
-│   │   ├── resolve_service      # 服务名称 → service_id                  │  │
-│   │   ├── resolve_cluster      # 集群名称 → cluster_id                  │  │
-│   │   ├── resolve_host         # 主机名称 → host_id                     │  │
-│   │   ├── check_permission     # 权限预检查                             │  │
-│   │   └── get_user_context     # 获取用户上下文                         │  │
-│   │                                                                      │  │
-│   │   输出:                                                              │  │
-│   │   - 需要澄清 → 输出结构化 PlannerDecision(type=clarify)               │  │
-│   │   - 可以执行 → 输出结构化 PlannerDecision(type=plan)                  │  │
-│   │                                                                      │  │
-│   └────────────────────────────────┬────────────────────────────────────┘  │
-│                                    │                                        │
-│                                    │ 结构化计划                             │
-│                                    ▼                                        │
-│   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                           Executor Agent                             │  │
-│   │                                                                      │  │
-│   │   职责:                                                              │  │
-│   │   - 执行结构化计划与 DAG 调度                                         │  │
-│   │   - 调度专家: 无依赖并行，有依赖串行                                  │  │
-│   │   - 错误重试 (max_retry=3)                                           │  │
-│   │   - 审批等待与 Resume 恢复                                            │  │
-│   │                                                                      │  │
-│   │   无平台 Tools，通过 AgentAsTool 调用专家                             │  │
-│   │                                                                      │  │
-│   └────────────────────────────────┬────────────────────────────────────┘  │
-│                                    │                                        │
-│            ┌───────────────────────┼───────────────────────┐               │
-│            │                       │                       │               │
-│            ▼             ▼              ▼              ▼             ▼     │
-│   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐ ┌────┐│
-│   │HostOpsExpert │ │  K8sExpert   │ │ServiceExpert │ │DeliveryExp │ │Obs ││
-│   │ os_*/host_*  │ │    k8s_*     │ │service_*/    │ │ cicd_*/    │ │mon ││
-│   │              │ │              │ │deployment_*/ │ │ job_*      │ │top ││
-│   │              │ │              │ │credential_*/ │ │            │ │aud ││
-│   │              │ │              │ │config_*      │ │            │ │    ││
-│   └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘ └────┘│
-│                                    │                                        │
-│                                    ▼                                        │
-│   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                          Summarizer Agent                            │  │
-│   │                                                                      │  │
-│   │   职责:                                                              │  │
-│   │   - 汇总各专家结果                                                   │  │
-│   │   - 判断完整性，是否需要补充调查                                      │  │
-│   │   - 输出最终回答 (流式)                                              │  │
-│   │                                                                      │  │
-│   │   需要补充 → 回到 Planner (受 max_iterations 限制)                    │  │
-│   │                                                                      │  │
-│   └─────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+
+`Rewrite` 不负责：
+
+- 最终资源解析
+- 权限检查
+- 执行计划生成
+- 调用 mutating 工具
+
+### 调整 3: Executor 定义为 Runtime，而不是纯 Agent
+
+原提案中将 `Executor` 命名为 Agent，但本质职责包括：
+
+- DAG 调度
+- 并行/串行控制
+- 重试
+- 超时
+- 审批等待
+- Resume 恢复
+- step 状态管理
+
+这些职责属于确定性运行时，而不是模型自治职责。
+
+因此本次提案将其重新定义为：
+
+```text
+Executor Runtime
 ```
 
-### 各层职责
+它可以调用 Expert Agent Tools，但自身不应退化为一个再次持有高度自治的“大编排 Agent”。
 
-#### 1. Planner Agent
+### 调整 4: 前端引入 ThoughtChain 作为阶段可视化主载体
 
-**核心职责**:
-- 理解用户意图
-- 解析资源 ID（用户说"payment-api" → 查到 service_id=123）
+前端新增：
+
+```tsx
+import { ThoughtChain } from "@ant-design/x";
+```
+
+用 `ThoughtChain` 展示用户可感知的 AI 工作阶段，而不是直接暴露底层工具日志。
+
+推荐的一级阶段：
+
+1. 理解你的问题
+2. 整理排查计划
+3. 调用专家执行
+4. 等待确认或补充
+5. 生成结论
+
+其中：
+
+- `ThoughtChain` 用于展示过程
+- 正文回答用于输出最终给用户的可读答案
+- `summary` 用于输出最终结构化结论
+
+目标是让用户感知：
+
+- AI 已开始工作
+- 当前处于哪个阶段
+- 为什么正在等待
+- 最终结论是什么
+
+### 调整 5: 后端入口重新定义，不再沿用旧 handler 假设
+
+原提案默认存在一个稳定的 handler/orchestrator seam，但当前旧 handler 已删除。
+
+因此本次提案明确要求：
+
+- `internal/service/ai` 仅负责 route 和 transport shell
+- `internal/ai` 负责 AI orchestration host
+- 所有 AI 运行时语义在 `internal/ai` 内收敛
+
+这比继续围绕旧 handler 设计更符合当前后端规划。
+
+## 新的后端架构边界
+
+### 1. Gateway / Route 层
+
+职责：
+
+- 请求映射
+- 鉴权
+- session shell
+- SSE transport framing
+
+不负责：
+
+- 规划
+- 调度
+- 审批语义
+- 前端事件语义定义
+
+### 2. AI Orchestrator Host
+
+位于 `internal/ai`，作为唯一稳定编排入口。
+
+职责：
+
+- 接收 `RunRequest / ResumeRequest`
+- 串联 Rewrite / Planner / Executor Runtime / Summarizer
+- 负责统一 trace、session、execution state 生命周期
+- 负责输出统一事件语义
+
+### 3. Rewrite
+
+职责：
+
+- 口语输入规整
+- 意图归一化
+- 任务模式识别
+- 资源 hint 提取
+
+### 4. Planner
+
+职责：
+
+- 资源解析
 - 权限预检查
-- 制定执行计划
+- 用户澄清
+- 输出结构化 `ExecutionPlan`
 
-**工具集**:
+### 5. Executor Runtime
 
-| 工具 | 说明 |
-|------|------|
-| `resolve_service` | 根据服务名称/关键词解析服务ID，支持模糊匹配 |
-| `resolve_cluster` | 根据集群名称/环境解析集群ID |
-| `resolve_host` | 根据主机名/IP解析主机ID |
-| `check_permission` | 检查当前用户对指定资源的操作权限 |
-| `get_user_context` | 获取用户当前上下文信息（当前页面、选中的资源等） |
+职责：
 
-**输出模式**:
+- 基于 `ExecutionPlan` 执行 step
+- 管理依赖关系和状态机
+- 调用 Expert Agent Tools
+- 处理审批、恢复、重试和超时
 
-- 面向系统：输出结构化 `PlannerDecision`
-- 面向用户：保留流式自然语言 `delta`
+### 6. Expert Agents as Tools
 
-Planner 不再依赖自然语言正文驱动执行，真正进入 Executor 的必须是结构化 `ExecutionPlan`。
+领域专家包括：
 
-**需要澄清时的直接回复**:
+- HostOpsExpert
+- K8sExpert
+- ServiceExpert
+- DeliveryExpert
+- ObservabilityExpert
 
-```
-用户: "检查 payment 服务"
-Planner: "找到多个匹配的服务，请选择：
-          1. payment-api (生产环境)
-          2. payment-gateway (生产环境)
-          3. payment-worker (测试环境)
-          请回复序号或完整名称。"
-```
+各专家只持有本领域工具，不暴露 Planner support tools。
 
-#### 2. Executor Agent
+### 7. Summarizer
 
-**核心职责**:
-- 解析计划步骤，提取专家调用
-- 分析依赖关系 (depends_on)
-- 调度执行：无依赖并行，有依赖串行
-- 收集结果，错误重试
+职责：
 
-**无平台工具**，通过 AgentAsTool 调用专家
+- 汇总执行证据
+- 形成对用户可读的结论
+- 判断是否需要补充调查
+- 输出 `summary`
 
-**调度策略**:
+## 新的前端对接方案
 
-```
-Step 1: ServiceExpert (无依赖)          → 执行
-Step 2: K8sExpert (依赖 Step 1)         → 等待 Step 1 完成后执行
-Step 3: ObservabilityExpert (依赖 Step 1) → 等待 Step 1 完成后执行
+### 1. 前端不再直接围绕零散工具事件设计
 
-执行顺序:
-Step 1 → [Step 2, Step 3 并行]
-```
+前端对接应围绕以下 UI 对象，而不是仅围绕 SSE 事件名：
 
-补充约束：
+- `ThoughtChain`
+- `PlanView`
+- `StepView`
+- `ApprovalView`
+- `SummaryView`
 
-- Executor 使用稳定 `step_id` 管理依赖、状态、事件和恢复
-- 进入审批的步骤持久化为 `waiting_approval`
-- `Resume(...)` 只恢复被阻断的单个 step，不重跑已完成步骤
+### 2. ThoughtChain 的展示原则
 
-#### 3. Domain Expert Agents
+`ThoughtChain` 只展示用户应该看到的阶段内容，不展示纯后端调试信息。
 
-**HostOpsExpert** - 主机运维专家:
-- CPU/内存/磁盘监控
-- 进程管理
-- 系统日志查询
-- 网络状态检查
-- 只读命令与批量变更预览
-- 批量执行与状态变更（需 review/approval）
+展示原则：
 
-**K8sExpert** - Kubernetes 专家:
-- Pod/Deployment/Service 查询
-- 容器日志获取
-- 事件分析
-- 资源状态检查
+- 展示 AI 在做什么
+- 展示当前进度和等待原因
+- 展示关键阶段结果摘要
+- 不直接倾倒 tool JSON 和底层调度噪音
 
-**ServiceExpert** - 服务管理专家:
-- 服务状态查询
-- 服务部署预览与执行
-- 服务目录查询
-- 部署目标、凭证与配置差异分析
+### 3. summary 的职责
 
-**DeliveryExpert** - 交付专家:
-- CI/CD 流水线查询和触发
-- Job 执行状态和运行
-- 发布链路问题分析
+`summary` 仍然是最终对用户输出的正文内容，不与 `ThoughtChain` 混为一谈。
 
-**ObservabilityExpert** - 观测专家:
-- 指标查询和分析
-- 告警规则和状态
-- 服务拓扑分析
-- 审计日志分析
+关系如下：
 
-#### 4. Summarizer Agent
-
-**核心职责**:
-- 汇总各专家结果
-- 判断完整性，是否需要补充调查
-- 输出最终回答（流式）
-
-**判断逻辑**:
-
-```go
-type SummarizerDecision struct {
-    NeedMoreInvestigation bool     // 是否需要补充调查
-    NextSteps             string   // 如果需要，下一步调查什么
-    CurrentConclusion     string   // 当前结论
-    Confidence            float64  // 置信度
-}
+```text
+ThoughtChain = 过程感知
+summary      = 最终结论
 ```
 
-如果 `NeedMoreInvestigation=true` 且没超过最大迭代次数，回到 Planner 重新规划。
+### 4. 前端阶段建议
 
-补充约束：
+| 阶段 Key | 用户可见标题 | 说明 |
+|---------|-------------|------|
+| `rewrite` | 理解你的问题 | 展示归一化任务表达 |
+| `plan` | 整理排查计划 | 展示资源解析和计划摘要 |
+| `execute` | 调用专家执行 | 展示专家阶段进展和关键发现 |
+| `user_action` | 等待你处理 | 展示澄清或审批动作 |
+| `summary` | 生成结论 | 展示最终汇总结论摘要 |
 
-- Summarizer 只消费 `Planner/Executor/Expert` 的结构化结果
-- Summarizer 不直接回查平台工具
-- Summarizer 必须明确缺失事实和重规划提示，而不只给一个布尔值
+### 5. 建议的前端事件语义
 
-### 执行控制
+为了让前端能稳定消费，本次提案要求后端按阶段输出高层语义事件。
 
-| 参数 | 值 | 说明 |
-|------|-----|------|
-| `max_retry` | 3 | 单个步骤最大重试次数 |
-| `max_iterations` | 5 | Planner → Summarizer 最大循环次数 |
-| `expert_timeout` | 60s | 单个专家超时 |
-| `total_timeout` | 300s | 总超时 |
+建议事件包括：
 
-### SSE 事件流
+- `meta`
+- `rewrite_result`
+- `planner_state`
+- `plan_created`
+- `step_update`
+- `approval_required`
+- `clarify_required`
+- `delta`
+- `summary`
+- `done`
+- `error`
 
-```
-event: meta
-data: {"session_id":"sess-xxx","trace_id":"trace-xxx","iteration":1}
+其中：
 
-event: delta
-data: {"contentChunk":"我来帮你排查 payment-api 响应慢的问题..."}  # Planner 流式输出
+- `step_update` 面向前端，优先表达状态变化
+- 后端内部如需 `step_start / step_result / expert_progress`，可以内部使用，但对前端输出应尽量收敛
+- `delta` 用于最终用户可读正文的流式输出
+- `summary` 用于最终结构化结论，不替代正文流式能力
 
-event: planner_state
-data: {"state":"planning","session_id":"sess-xxx","trace_id":"trace-xxx","iteration":1}
+## 原提案中删除或收敛的内容
 
-event: plan_created
-data: {"plan_id":"plan-xxx","steps":[...], "resolved":{...}}   # 计划创建
+本次提案显式删去或收敛以下不合理部分。
 
-event: step_start
-data: {"step_id":"step-1", "expert":"ServiceExpert"}
+### 1. 删除“所有层都按 Agent 对待”的隐含假设
 
-event: expert_progress
-data: {"step_id":"step-1","expert":"ServiceExpert", "status":"running"}
+不再把 `Executor` 继续包装成一个高度自治的 Agent 概念。
 
-event: expert_progress
-data: {"step_id":"step-1","expert":"ServiceExpert", "status":"done"}
+改为：
 
-event: step_result
-data: {"step_id":"step-1","ok":true,"summary":"..."}
+- `Rewrite / Planner / Summarizer` 是 agent-friendly 的阶段
+- `Experts` 是 agent-as-tool
+- `Executor` 是 runtime
 
-event: step_start
-data: {"step_id":"step-2", "expert":"K8sExpert"}
+### 2. 删除对旧 handler 结构的依赖假设
 
-event: step_start
-data: {"step_id":"step-3", "expert":"ObservabilityExpert"}    # 并行
+原提案默认旧 handler 仍是稳定基础，这与当前实际情况不符。
 
-event: approval_required
-data: {"step_id":"step-4","risk":"high","scope":"production"} # 如命中审批
+本次改为：
 
-event: delta
-data: {"contentChunk":"## 排查结果\n"}                           # Summarizer 流式输出
+- 按新的后端规划重新定义入口
+- 不再围绕旧 handler 组织运行时
 
-event: done
-data: {"stream_state":"ok"}
-```
+### 3. 收敛前端事件设计
 
-## 目录结构
+原提案列出大量 SSE 事件，但没有前端对象模型支撑。
 
-```
+本次改为：
+
+- 先定义前端 UI 模型
+- 再定义少量高语义事件
+- 不把底层调度细节直接裸露给前端
+
+### 4. 删除“只靠 summary 解释执行过程”的默认体验
+
+本次明确要求：
+
+- 必须有 `ThoughtChain` 展示阶段过程
+- `summary` 只负责最终答案
+
+## 建议目录结构
+
+```text
 internal/ai/
+├── gateway_contract.go
+├── orchestrator.go
+├── config.go
+├── events/
+├── runtime/
+├── rewrite/
 ├── planner/
-│   ├── planner.go           # Planner Agent 实现
-│   ├── prompt.go            # 系统提示词 (专家目录)
-│   ├── tools.go             # Planner 工具装配
-│   ├── resolve.go           # resolve_* / inventory 复用
-│   ├── context.go           # get_user_context
-│   └── permission.go        # check_permission
 ├── executor/
-│   ├── executor.go          # Executor Agent 实现
-│   └── scheduler.go         # 调度器 (并行/串行执行)
 ├── experts/
-│   ├── registry.go          # 专家注册表
-│   ├── shared/
-│   │   └── types.go
-│   ├── hostops/
-│   │   ├── expert.go
-│   │   └── prompt.go
-│   ├── k8s/
-│   │   ├── expert.go
-│   │   └── prompt.go
-│   ├── service/
-│   │   ├── expert.go
-│   │   └── prompt.go
-│   ├── delivery/
-│   │   ├── expert.go
-│   │   └── prompt.go
-│   └── observability/
-│       ├── expert.go
-│       └── prompt.go
-├── summarizer/
-│   ├── summarizer.go        # Summarizer Agent 实现
-│   └── prompt.go
-├── orchestrator.go          # 顶层编排入口
-└── config.go                # 配置 (max_retry, max_iterations, timeout, rollout)
+└── summarizer/
 ```
 
-## 关键设计决策
+说明：
 
-| 决策点 | 选择 | 理由 |
-|--------|------|------|
-| 计划格式 | 结构化 `PlannerDecision/ExecutionPlan` + 流式自然语言 | 系统执行稳定，用户仍可见过程 |
-| 执行模式 | 流式输出 | 提高用户体验，减少等待感 |
-| 资源解析 | Planner 负责 | 统一入口，避免专家重复查询 |
-| 权限检查 | Planner 预检查 | 提前拒绝无权限操作，减少无效执行 |
-| 专家依赖 | Planner 标注，Executor 用 Go 代码调度 | 保持 DAG 执行确定性 |
-| 错误处理 | max_retry=3，友好报错 | 平衡可靠性和用户体验 |
-| 用户澄清 | Planner 直接回复 | 简化流程，提高响应速度 |
-| 循环控制 | max_iterations=5 | 防止无限循环，控制成本 |
-| 高风险变更 | Executor/tool middleware 审批收口 | 避免审批逻辑散落在 prompt |
+- `gateway_contract.go` 负责 `RunRequest / ResumeRequest / StreamEvent`
+- `events/` 负责前后端事件 schema
+- `runtime/` 负责 `ExecutionState / StepState / Resume`
 
 ## 迁移策略
 
-本次迁移采用“先双轨、后切主、最后删除”的方式，而不是直接在旧链路上原地重写。
+本次变更按依赖关系推进，而不是沿用原提案的“大而全周计划”。
 
-### Phase 1: 基础框架 (Week 1)
+### Phase A: Core Boundary
 
-1. 创建目录结构
-2. 实现 Planner Agent 基础框架
-3. 实现 resolve_* 工具
-4. 实现计划解析器
+- 重定义 AI route 与 AI core 的边界
+- 定义 `RunRequest / ResumeRequest / StreamEvent`
+- 在 `internal/ai` 建立稳定 orchestrator host
+- 建立新链路 rollout 开关与回滚路径
 
-### Phase 2: 专家迁移 (Week 2)
+### Phase B: Rewrite + Planner
 
-1. 迁移 Host 相关工具到 HostOpsExpert
-2. 迁移 K8s 相关工具到 K8sExpert
-3. 迁移 Service 相关工具到 ServiceExpert
-4. 迁移 Delivery 相关工具到 DeliveryExpert
-5. 迁移 Observability 相关工具到 ObservabilityExpert
+- 引入 Rewrite 阶段
+- 打通 Rewrite 到 Planner 的输入契约
+- 统一资源解析、澄清、权限预检查
 
-### Phase 3: Executor & Summarizer (Week 3)
+### Phase C: Executor Runtime + Experts
 
-1. 实现 Executor Agent
-2. 实现调度器 (并行/串行)
-3. 实现 Summarizer Agent
-4. 实现循环控制
+- 实现 step 状态机
+- 管理审批、恢复、超时、重试
+- 以 Agent Tool 方式挂载 Experts
 
-### Phase 4: 集成测试 (Week 4)
+### Phase D: Frontend ThoughtChain Contract
 
-1. 端到端测试
-2. SSE 事件流验证
-3. 错误处理测试
-4. 性能测试
+- 收敛 SSE 事件 schema
+- 设计 `ThoughtChain` 数据模型
+- 打通阶段可视化与 summary 输出
 
-### Phase 5: 切换与清理
+### Phase E: Summarization + Replan
 
-1. 将新 orchestrator 切为默认入口
-2. 将旧 `internal/ai/agent.go` 降级为兼容层
-3. 删除旧单体 `react.Agent + 全量工具池` 主链路
-4. 清理旧 4 expert 命名和过时文档
+- 补齐 Summarizer 输出契约
+- 处理 need-more-investigation / replan
 
-## 风险与缓解
+## 成功标准
 
-| 风险 | 影响 | 缓解措施 |
-|------|------|----------|
-| LLM 调用次数增加 | 成本上升、延迟增加 | 并行执行、缓存资源解析结果 |
-| 层级间信息丢失 | 执行结果不完整 | 结构化计划格式、上下文注入 |
-| 专家调用失败 | 任务中断 | 重试机制、优雅降级 |
-| 无限循环 | 成本失控 | max_iterations 限制 |
-| 上下文膨胀 | 质量下降、token 超限 | `StepDigest/IterationDigest` 压缩、固定裁剪顺序 |
-| 高风险工具误触发 | 造成错误变更 | `ToolMeta` 风险分级、review/approval、preview/apply 分离 |
+### 后端
 
-## 成功指标
+- AI core 成为唯一稳定编排边界
+- `Rewrite -> Planner -> Executor Runtime -> Experts -> Summarizer` 链路成立
+- 审批与恢复基于统一运行时状态
+- Eino `v0.8.0` 新特性被明确用于合适边界
 
-1. **功能完整性**: 支持所有现有工具操作
-2. **响应时间**: P95 < 10s (简单查询), P95 < 60s (复杂排查)
-3. **准确率**: 资源解析准确率 > 95%
-4. **用户满意度**: 支持流式输出，用户感知延迟降低 50%
+### 前端
 
-## 相关文档
+- AI 面板使用 `ThoughtChain` 展示阶段过程
+- 用户能看到每个阶段的可理解内容
+- `summary` 独立输出最终结论
+- 复杂任务中，用户能够感知 AI 正在持续工作
 
-- `openspec/specs/ai-assistant-adk-architecture/spec.md` - ADK 架构规范
-- `openspec/specs/ai-control-plane-baseline/spec.md` - AI 控制平面基线
+### 体验
+
+- 用户能理解 AI 正在做什么
+- 复杂排查中的等待成本更可接受
+- 前后端围绕统一契约协作，而不是各自猜测运行时语义
+- 新链路可以在灰度失败时安全回退
