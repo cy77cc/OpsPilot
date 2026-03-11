@@ -375,3 +375,63 @@ func TestExecutorCompactsMissingPrerequisiteErrors(t *testing.T) {
 		t.Fatalf("error message should be compacted, got %q", step.ErrorMessage)
 	}
 }
+
+func TestExecutorSupportsMultiExpertPlanExecution(t *testing.T) {
+	store := newExecutionStore(t)
+	runner := &stubStepRunner{result: StepResult{Summary: "expert completed step"}}
+	exec := New(store, WithStepRunner(runner))
+	ctx := context.Background()
+
+	result, err := exec.Run(ctx, Request{
+		TraceID:   "trace-7",
+		SessionID: "session-7",
+		Message:   "inspect service and verify metrics",
+		Plan: planner.ExecutionPlan{
+			PlanID: "plan-7",
+			Goal:   "inspect service and verify metrics",
+			Steps: []planner.PlanStep{
+				{
+					StepID: "step-1",
+					Title:  "检查服务状态",
+					Expert: "service",
+					Task:   "inspect service runtime state",
+					Mode:   "readonly",
+					Risk:   "low",
+					Input: map[string]any{
+						"service_id": 42,
+					},
+				},
+				{
+					StepID:    "step-2",
+					Title:     "分析指标",
+					Expert:    "observability",
+					Task:      "analyze service metrics",
+					Mode:      "readonly",
+					Risk:      "low",
+					DependsOn: []string{"step-1"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if runner.calls != 2 {
+		t.Fatalf("runner calls = %d, want 2", runner.calls)
+	}
+	if got := result.State.Steps["step-1"].Status; got != runtime.StepCompleted {
+		t.Fatalf("step-1 status = %s, want %s", got, runtime.StepCompleted)
+	}
+	if got := result.State.Steps["step-2"].Status; got != runtime.StepCompleted {
+		t.Fatalf("step-2 status = %s, want %s", got, runtime.StepCompleted)
+	}
+	completed := 0
+	for _, step := range result.Steps {
+		if step.Status == runtime.StepCompleted {
+			completed++
+		}
+	}
+	if completed != 2 {
+		t.Fatalf("completed step results = %d, want 2 (%#v)", completed, result.Steps)
+	}
+}

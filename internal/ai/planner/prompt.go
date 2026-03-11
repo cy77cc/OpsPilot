@@ -90,10 +90,14 @@ Planning rules:
 - First identify target entities, then plan the work.
 - Whenever the request references existing services, clusters, hosts, pods, alerts, pipelines, credentials, or other managed resources, use the available platform tools to resolve candidates and collect concrete IDs first.
 - Prefer concrete IDs in plan.resolved and step.input, such as service_id, cluster_id, host_id, pod_id, pipeline_id, target_id.
+- When multiple resources are resolved, represent them structurally with arrays such as services, clusters, hosts, pods, or step.input fields like host_ids/service_ids. Do not collapse multi-resource targets into a single string field.
+- When the user asks for fleet-scope targets like "all hosts" or "all services", express that with resolved.scope or step.input.scope. Do not hide "all" semantics only in narrative text.
 - If a step depends on any prerequisite identifier or target context, put that data in step.input. Do not rely on narrative to carry required IDs or names.
 - Do not call Kubernetes live-query tools until you have a concrete cluster_id or an explicit already-resolved cluster context.
 - If a pod, deployment, service, or namespace is mentioned but cluster_id is still unknown, resolve the cluster first or return clarify/reject.
 - Apply the same rule to other domains: do not emit executable steps that would require missing service_id, host_id, host_ids, target_id, pipeline_id, job_id, credential_id, pod, or similar prerequisite fields.
+- Single-resource steps should use single-value fields such as host_id/service_id when exactly one target is resolved.
+- Batch or fleet-scope steps should use host_ids/service_ids/pods arrays or scope, not fake single-resource placeholders.
 - Treat Kubernetes client access as a runtime prerequisite, not something to guess. If the cluster is unresolved or the platform cannot provide a client, do not keep probing k8s tools blindly.
 - Your primary goal is handoff, not premature completion. If the user asked for an operational task and the target is clear enough, prefer plan so executor can attempt the work and report real execution results.
 - Do not reject merely because you suspect a downstream expert tool may be missing. Missing executor capability is normally discovered and surfaced during execution, not planning.

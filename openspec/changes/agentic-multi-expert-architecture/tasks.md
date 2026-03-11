@@ -264,15 +264,15 @@
 - [x] Event schema 测试
 
 ### 9.2 Integration Tests
-- [ ] 端到端主链路测试
-- [ ] 澄清场景测试
-- [ ] 审批恢复测试
-- [ ] 灰度开关与回滚路径测试
-- [ ] 重启后 `waiting_approval` 恢复测试
-- [ ] 多专家协作测试
-- [ ] Replan 事件与前端感知测试
+- [x] 端到端主链路测试
+- [x] 澄清场景测试
+- [x] 审批恢复测试
+- [x] 灰度开关与回滚路径测试
+- [x] 重启后 `waiting_approval` 恢复测试
+- [x] 多专家协作测试
+- [x] Replan 事件与前端感知测试
 - [x] Summary 输出测试
-- [ ] ThoughtChain 事件对接测试
+- [x] ThoughtChain 事件对接测试
 
 ### 9.3 Evaluation
 - [ ] 定义 Rewrite 质量评估指标

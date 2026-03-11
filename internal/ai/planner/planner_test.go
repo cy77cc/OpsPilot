@@ -36,6 +36,15 @@ func TestPlanFallsBackToMinimalPlan(t *testing.T) {
 	if out.Plan.Steps[0].Task != "查看所有主机的状态" {
 		t.Fatalf("Task = %q", out.Plan.Steps[0].Task)
 	}
+	if out.Plan.Resolved.Scope == nil {
+		t.Fatalf("Resolved.Scope is nil")
+	}
+	if out.Plan.Resolved.Scope.Kind != "all" || out.Plan.Resolved.Scope.ResourceType != "host" {
+		t.Fatalf("Resolved.Scope = %#v, want all host scope", out.Plan.Resolved.Scope)
+	}
+	if got := looseStringValue(out.Plan.Steps[0].Input["scope"].(map[string]any)["resource_type"]); got != "host" {
+		t.Fatalf("step scope resource_type = %q, want host", got)
+	}
 }
 
 func TestPlanFallsBackToClarifyWhenRewriteStillAmbiguous(t *testing.T) {
@@ -262,6 +271,9 @@ func TestBuildBaseDecisionCarriesPodTargetIntoResolvedResources(t *testing.T) {
 	if got := out.Plan.Resolved.PodName; got != "cilium-87f2m" {
 		t.Fatalf("pod name = %q, want cilium-87f2m", got)
 	}
+	if len(out.Plan.Resolved.Pods) != 1 || out.Plan.Resolved.Pods[0].Name != "cilium-87f2m" {
+		t.Fatalf("pods = %#v, want cilium-87f2m", out.Plan.Resolved.Pods)
+	}
 }
 
 func TestValidatePlanPrerequisitesUsesStructuredTargetTypeInsteadOfKeyword(t *testing.T) {
@@ -288,5 +300,48 @@ func TestValidatePlanPrerequisitesUsesStructuredTargetTypeInsteadOfKeyword(t *te
 	out := validatePlanPrerequisites(plan)
 	if out.Type != "" {
 		t.Fatalf("Type = %s, want empty decision", out.Type)
+	}
+}
+
+func TestParseDecisionAcceptsResolvedScopeForFleetTargets(t *testing.T) {
+	raw := `{"type":"plan","narrative":"check all hosts","plan":{"plan_id":"plan-hosts","goal":"查看所有主机状态","resolved":{"scope":{"kind":"all","resource_type":"host"},"hosts":[]},"steps":[{"step_id":"step-1","title":"查询所有主机状态","expert":"hostops","task":"query all hosts","mode":"readonly","risk":"low","input":{"scope":{"kind":"all","resource_type":"host"}}}]}}`
+
+	parsed, err := ParseDecision(raw)
+	if err != nil {
+		t.Fatalf("ParseDecision() error = %v", err)
+	}
+	out := normalizeDecision(buildBaseDecision(Input{
+		Message: "查看所有主机状态",
+		Rewrite: rewrite.Output{
+			NormalizedGoal: "查看所有主机状态",
+			OperationMode:  "query",
+			NormalizedRequest: rewrite.NormalizedRequest{
+				Targets: []rewrite.RequestTarget{{Type: "host", Name: "all"}},
+			},
+		},
+	}), parsed)
+	if out.Type != DecisionPlan || out.Plan == nil {
+		t.Fatalf("unexpected decision: %#v", out)
+	}
+	if out.Plan.Resolved.Scope == nil || out.Plan.Resolved.Scope.ResourceType != "host" {
+		t.Fatalf("scope = %#v, want host scope", out.Plan.Resolved.Scope)
+	}
+	if clarify := validatePlanPrerequisites(out.Plan); clarify.Type != "" {
+		t.Fatalf("unexpected clarify: %#v", clarify)
+	}
+}
+
+func TestPopulateStepInputPropagatesMultipleHostsAsHostIDs(t *testing.T) {
+	step := PlanStep{Expert: "hostops", Input: map[string]any{}}
+	out := populateStepInput(step, ResolvedResources{
+		HostIDs: []int{1, 2, 3},
+		Hosts:   []ResourceRef{{ID: 1, Name: "n1"}, {ID: 2, Name: "n2"}, {ID: 3, Name: "n3"}},
+	})
+	got := intSliceValue(out["host_ids"])
+	if len(got) != 3 || got[0] != 1 || got[2] != 3 {
+		t.Fatalf("host_ids = %#v, want [1 2 3]", got)
+	}
+	if _, ok := out["host_id"]; ok {
+		t.Fatalf("host_id should not be set for multi-host input: %#v", out)
 	}
 }

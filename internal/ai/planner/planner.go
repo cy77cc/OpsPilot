@@ -48,15 +48,37 @@ type ExecutionPlan struct {
 	Steps     []PlanStep        `json:"steps"`
 }
 
+type ResourceRef struct {
+	ID   int    `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+type PodRef struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	ClusterID int    `json:"cluster_id,omitempty"`
+}
+
+type ResourceScope struct {
+	Kind         string         `json:"kind,omitempty"`
+	ResourceType string         `json:"resource_type,omitempty"`
+	Selector     map[string]any `json:"selector,omitempty"`
+}
+
 type ResolvedResources struct {
-	ServiceName string   `json:"service_name,omitempty"`
-	ServiceID   int      `json:"service_id,omitempty"`
-	ClusterName string   `json:"cluster_name,omitempty"`
-	ClusterID   int      `json:"cluster_id,omitempty"`
-	HostNames   []string `json:"host_names,omitempty"`
-	HostIDs     []int    `json:"host_ids,omitempty"`
-	Namespace   string   `json:"namespace,omitempty"`
-	PodName     string   `json:"pod_name,omitempty"`
+	ServiceName string         `json:"service_name,omitempty"`
+	ServiceID   int            `json:"service_id,omitempty"`
+	ClusterName string         `json:"cluster_name,omitempty"`
+	ClusterID   int            `json:"cluster_id,omitempty"`
+	HostNames   []string       `json:"host_names,omitempty"`
+	HostIDs     []int          `json:"host_ids,omitempty"`
+	Namespace   string         `json:"namespace,omitempty"`
+	PodName     string         `json:"pod_name,omitempty"`
+	Services    []ResourceRef  `json:"services,omitempty"`
+	Clusters    []ResourceRef  `json:"clusters,omitempty"`
+	Hosts       []ResourceRef  `json:"hosts,omitempty"`
+	Pods        []PodRef       `json:"pods,omitempty"`
+	Scope       *ResourceScope `json:"scope,omitempty"`
 }
 
 type PlanStep struct {
@@ -161,6 +183,11 @@ func buildBaseDecision(in Input) Decision {
 				PodName:     collectPodName(rewritten),
 				HostNames:   collectHostNames(rewritten),
 				HostIDs:     collectHostIDs(rewritten),
+				Services:    collectServices(rewritten),
+				Clusters:    collectClusters(rewritten),
+				Hosts:       collectHosts(rewritten),
+				Pods:        collectPods(rewritten),
+				Scope:       detectScope(rewritten),
 			},
 			Narrative: "该计划是 Planner 失败时的最小兜底结构，保留用户目标与已知资源线索。",
 			Steps: []PlanStep{
@@ -177,6 +204,7 @@ func buildBaseDecision(in Input) Decision {
 						"message":            strings.TrimSpace(in.Message),
 						"normalized_request": rewritten.NormalizedRequest,
 						"resource_hints":     rewritten.ResourceHints,
+						"scope":              scopeToMap(detectScope(rewritten)),
 					},
 				},
 			},
@@ -253,6 +281,21 @@ func canonicalizePlan(base, parsed *ExecutionPlan) *ExecutionPlan {
 	}
 	if strings.TrimSpace(parsed.Narrative) == "" {
 		parsed.Narrative = base.Narrative
+	}
+	if len(parsed.Resolved.Services) == 0 {
+		parsed.Resolved.Services = cloneResourceRefs(base.Resolved.Services)
+	}
+	if len(parsed.Resolved.Clusters) == 0 {
+		parsed.Resolved.Clusters = cloneResourceRefs(base.Resolved.Clusters)
+	}
+	if len(parsed.Resolved.Hosts) == 0 {
+		parsed.Resolved.Hosts = cloneResourceRefs(base.Resolved.Hosts)
+	}
+	if len(parsed.Resolved.Pods) == 0 {
+		parsed.Resolved.Pods = clonePodRefs(base.Resolved.Pods)
+	}
+	if parsed.Resolved.Scope == nil && base.Resolved.Scope != nil {
+		parsed.Resolved.Scope = cloneScope(base.Resolved.Scope)
 	}
 	if len(parsed.Steps) == 0 {
 		parsed.Steps = base.Steps
@@ -348,9 +391,9 @@ func parseResolvedResources(value any) ResolvedResources {
 		looseStringValue(raw["pod_name"]),
 		looseStringValue(raw["pod"]),
 	)
-	hosts := stringSliceValue(raw["host_names"])
-	if len(hosts) == 0 {
-		hosts = stringSliceValue(raw["hosts"])
+	hostNames := stringSliceValue(raw["host_names"])
+	if len(hostNames) == 0 {
+		hostNames = stringSliceValue(raw["hosts"])
 	}
 	hostIDs := intSliceValue(raw["host_ids"])
 	if len(hostIDs) == 0 {
@@ -358,15 +401,48 @@ func parseResolvedResources(value any) ResolvedResources {
 			hostIDs = []int{hostID}
 		}
 	}
+	services := parseResourceRefs(raw["services"])
+	if len(services) == 0 && serviceID > 0 {
+		services = []ResourceRef{{ID: serviceID, Name: serviceName}}
+	}
+	clusters := parseResourceRefs(raw["clusters"])
+	if len(clusters) == 0 && (clusterID > 0 || clusterName != "") {
+		clusters = []ResourceRef{{ID: clusterID, Name: clusterName}}
+	}
+	hostRefs := parseResourceRefs(raw["hosts"])
+	if len(hostRefs) == 0 {
+		for i, id := range hostIDs {
+			ref := ResourceRef{ID: id}
+			if i < len(hostNames) {
+				ref.Name = hostNames[i]
+			}
+			hostRefs = append(hostRefs, ref)
+		}
+	}
+	if len(hostRefs) == 0 {
+		for _, name := range hostNames {
+			hostRefs = append(hostRefs, ResourceRef{Name: name})
+		}
+	}
+	pods := parsePodRefs(raw["pods"])
+	if len(pods) == 0 && podName != "" {
+		pods = []PodRef{{Name: podName, Namespace: namespace, ClusterID: clusterID}}
+	}
+	scope := parseResourceScope(raw["scope"])
 	return ResolvedResources{
 		ServiceName: serviceName,
 		ServiceID:   serviceID,
 		ClusterName: clusterName,
 		ClusterID:   clusterID,
 		Namespace:   namespace,
-		HostNames:   hosts,
+		HostNames:   hostNames,
 		HostIDs:     hostIDs,
 		PodName:     podName,
+		Services:    services,
+		Clusters:    clusters,
+		Hosts:       hostRefs,
+		Pods:        pods,
+		Scope:       scope,
 	}
 }
 
@@ -455,31 +531,49 @@ func looseIntValue(value any) int {
 }
 
 func stringSliceValue(value any) []string {
-	items, ok := value.([]any)
-	if !ok {
+	switch v := value.(type) {
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := strings.TrimSpace(item); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := strings.TrimSpace(looseStringValue(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
 		return nil
 	}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if text := strings.TrimSpace(looseStringValue(item)); text != "" {
-			out = append(out, text)
-		}
-	}
-	return out
 }
 
 func intSliceValue(value any) []int {
-	items, ok := value.([]any)
-	if !ok {
+	switch v := value.(type) {
+	case []int:
+		out := make([]int, 0, len(v))
+		for _, item := range v {
+			if item > 0 {
+				out = append(out, item)
+			}
+		}
+		return out
+	case []any:
+		out := make([]int, 0, len(v))
+		for _, item := range v {
+			if number := looseIntValue(item); number > 0 {
+				out = append(out, number)
+			}
+		}
+		return out
+	default:
 		return nil
 	}
-	out := make([]int, 0, len(items))
-	for _, item := range items {
-		if number := looseIntValue(item); number > 0 {
-			out = append(out, number)
-		}
-	}
-	return out
 }
 
 func mapSliceValue(value any) []map[string]any {
@@ -551,12 +645,24 @@ func populateStepInput(step PlanStep, resolved ResolvedResources) map[string]any
 		if resolved.PodName != "" && strings.TrimSpace(looseStringValue(input["pod"])) == "" {
 			input["pod"] = resolved.PodName
 		}
+		if len(resolved.Pods) > 1 && len(podRefsFromInput(input["pods"])) == 0 {
+			input["pods"] = podRefsToAny(resolved.Pods)
+		}
+		if resolved.Scope != nil && input["scope"] == nil {
+			input["scope"] = scopeToMap(resolved.Scope)
+		}
 	case "service":
 		if resolved.ServiceID > 0 && looseIntValue(input["service_id"]) == 0 {
 			input["service_id"] = resolved.ServiceID
 		}
 		if resolved.ClusterID > 0 && looseIntValue(input["cluster_id"]) == 0 {
 			input["cluster_id"] = resolved.ClusterID
+		}
+		if len(resolved.Services) > 1 && len(intSliceValue(input["service_ids"])) == 0 {
+			input["service_ids"] = resourceIDs(resolved.Services)
+		}
+		if resolved.Scope != nil && input["scope"] == nil {
+			input["scope"] = scopeToMap(resolved.Scope)
 		}
 	case "hostops":
 		if len(resolved.HostIDs) == 1 && looseIntValue(input["host_id"]) == 0 {
@@ -566,6 +672,9 @@ func populateStepInput(step PlanStep, resolved ResolvedResources) map[string]any
 			hostIDs := make([]int, len(resolved.HostIDs))
 			copy(hostIDs, resolved.HostIDs)
 			input["host_ids"] = hostIDs
+		}
+		if resolved.Scope != nil && input["scope"] == nil {
+			input["scope"] = scopeToMap(resolved.Scope)
 		}
 	}
 	return input
@@ -619,7 +728,7 @@ func validatePlanPrerequisites(plan *ExecutionPlan) Decision {
 				}
 			}
 		case "hostops":
-			if requiresHostTarget(step, plan.Resolved) && len(resolvedHostIDs(step, plan.Resolved)) == 0 {
+			if requiresHostTarget(step, plan.Resolved) && len(resolvedHostIDs(step, plan.Resolved)) == 0 && !hasResolvedScope(step, plan.Resolved, "host") {
 				return Decision{
 					Type:      DecisionClarify,
 					Message:   "需要先明确目标主机后才能继续执行主机相关步骤。",
@@ -647,10 +756,13 @@ func requiresK8sPodTarget(step PlanStep, resolved ResolvedResources) bool {
 }
 
 func requiresHostTarget(step PlanStep, resolved ResolvedResources) bool {
+	if hasResolvedScope(step, resolved, "host") {
+		return false
+	}
 	if len(resolvedHostIDs(step, resolved)) > 0 {
 		return true
 	}
-	if len(resolved.HostIDs) > 0 || len(resolved.HostNames) > 0 {
+	if len(resolved.HostIDs) > 0 || len(resolved.HostNames) > 0 || len(resolved.Hosts) > 0 {
 		return true
 	}
 	return hasTargetType(step, "host")
@@ -667,6 +779,12 @@ func resolvedServiceID(step PlanStep, resolved ResolvedResources) int {
 	if serviceID := looseIntValue(step.Input["service_id"]); serviceID > 0 {
 		return serviceID
 	}
+	if ids := intSliceValue(step.Input["service_ids"]); len(ids) == 1 {
+		return ids[0]
+	}
+	if len(resolved.Services) == 1 && resolved.Services[0].ID > 0 {
+		return resolved.Services[0].ID
+	}
 	return resolved.ServiceID
 }
 
@@ -676,6 +794,9 @@ func resolvedPodName(step PlanStep, resolved ResolvedResources) string {
 	}
 	if pod := strings.TrimSpace(resolved.PodName); pod != "" {
 		return pod
+	}
+	if len(resolved.Pods) == 1 && strings.TrimSpace(resolved.Pods[0].Name) != "" {
+		return strings.TrimSpace(resolved.Pods[0].Name)
 	}
 	return targetNameForType(step, "pod")
 }
@@ -692,7 +813,20 @@ func resolvedHostIDs(step PlanStep, resolved ResolvedResources) []int {
 		copy(hostIDs, resolved.HostIDs)
 		return hostIDs
 	}
+	if len(resolved.Hosts) > 0 {
+		return resourceIDs(resolved.Hosts)
+	}
 	return nil
+}
+
+func hasResolvedScope(step PlanStep, resolved ResolvedResources, resourceType string) bool {
+	if scope := parseResourceScope(step.Input["scope"]); scope != nil {
+		return strings.EqualFold(strings.TrimSpace(scope.ResourceType), resourceType) && strings.TrimSpace(scope.Kind) != ""
+	}
+	if resolved.Scope == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(resolved.Scope.ResourceType), resourceType) && strings.TrimSpace(resolved.Scope.Kind) != ""
 }
 
 func hasTargetType(step PlanStep, want string) bool {
@@ -817,6 +951,301 @@ func collectPodName(r rewrite.Output) string {
 		}
 	}
 	return ""
+}
+
+func collectServices(r rewrite.Output) []ResourceRef {
+	refs := make([]ResourceRef, 0, 1)
+	if r.ResourceHints.ServiceID > 0 || strings.TrimSpace(r.ResourceHints.ServiceName) != "" {
+		refs = append(refs, ResourceRef{ID: r.ResourceHints.ServiceID, Name: strings.TrimSpace(r.ResourceHints.ServiceName)})
+	}
+	for _, target := range r.NormalizedRequest.Targets {
+		if !strings.EqualFold(strings.TrimSpace(target.Type), "service") {
+			continue
+		}
+		name := strings.TrimSpace(target.Name)
+		if name == "" || isAllKeyword(name) {
+			continue
+		}
+		refs = append(refs, ResourceRef{Name: name})
+	}
+	return dedupeResourceRefs(refs)
+}
+
+func collectClusters(r rewrite.Output) []ResourceRef {
+	refs := make([]ResourceRef, 0, 1)
+	if r.ResourceHints.ClusterID > 0 || strings.TrimSpace(r.ResourceHints.ClusterName) != "" {
+		refs = append(refs, ResourceRef{ID: r.ResourceHints.ClusterID, Name: strings.TrimSpace(r.ResourceHints.ClusterName)})
+	}
+	for _, target := range r.NormalizedRequest.Targets {
+		if !strings.EqualFold(strings.TrimSpace(target.Type), "cluster") {
+			continue
+		}
+		name := strings.TrimSpace(target.Name)
+		if name == "" || isAllKeyword(name) {
+			continue
+		}
+		refs = append(refs, ResourceRef{Name: name})
+	}
+	return dedupeResourceRefs(refs)
+}
+
+func collectHosts(r rewrite.Output) []ResourceRef {
+	refs := make([]ResourceRef, 0, len(r.NormalizedRequest.Targets)+1)
+	if r.ResourceHints.HostID > 0 || strings.TrimSpace(r.ResourceHints.HostName) != "" {
+		refs = append(refs, ResourceRef{ID: r.ResourceHints.HostID, Name: strings.TrimSpace(r.ResourceHints.HostName)})
+	}
+	for _, target := range r.NormalizedRequest.Targets {
+		if !strings.EqualFold(strings.TrimSpace(target.Type), "host") {
+			continue
+		}
+		name := strings.TrimSpace(target.Name)
+		if name == "" || isAllKeyword(name) {
+			continue
+		}
+		refs = append(refs, ResourceRef{Name: name})
+	}
+	return dedupeResourceRefs(refs)
+}
+
+func collectPods(r rewrite.Output) []PodRef {
+	pods := make([]PodRef, 0, len(r.NormalizedRequest.Targets))
+	for _, target := range r.NormalizedRequest.Targets {
+		if !strings.EqualFold(strings.TrimSpace(target.Type), "pod") {
+			continue
+		}
+		name := strings.TrimSpace(target.Name)
+		if name == "" || isAllKeyword(name) {
+			continue
+		}
+		pods = append(pods, PodRef{
+			Name:      name,
+			Namespace: strings.TrimSpace(r.ResourceHints.Namespace),
+			ClusterID: r.ResourceHints.ClusterID,
+		})
+	}
+	if len(pods) == 0 && strings.TrimSpace(r.ResourceHints.Namespace) != "" && strings.TrimSpace(collectPodName(r)) != "" {
+		pods = append(pods, PodRef{
+			Name:      strings.TrimSpace(collectPodName(r)),
+			Namespace: strings.TrimSpace(r.ResourceHints.Namespace),
+			ClusterID: r.ResourceHints.ClusterID,
+		})
+	}
+	return dedupePodRefs(pods)
+}
+
+func detectScope(r rewrite.Output) *ResourceScope {
+	for _, target := range r.NormalizedRequest.Targets {
+		name := strings.TrimSpace(target.Name)
+		if !isAllKeyword(name) {
+			continue
+		}
+		scope := &ResourceScope{
+			Kind:         "all",
+			ResourceType: strings.TrimSpace(target.Type),
+			Selector:     map[string]any{},
+		}
+		if ns := strings.TrimSpace(r.ResourceHints.Namespace); ns != "" {
+			scope.Selector["namespace"] = ns
+		}
+		if r.ResourceHints.ClusterID > 0 {
+			scope.Selector["cluster_id"] = r.ResourceHints.ClusterID
+		}
+		if clusterName := strings.TrimSpace(r.ResourceHints.ClusterName); clusterName != "" {
+			scope.Selector["cluster_name"] = clusterName
+		}
+		if len(scope.Selector) == 0 {
+			scope.Selector = nil
+		}
+		return scope
+	}
+	return nil
+}
+
+func parseResourceRefs(value any) []ResourceRef {
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]ResourceRef, 0, len(items))
+	for _, item := range items {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		ref := ResourceRef{
+			ID:   looseIntValue(row["id"]),
+			Name: strings.TrimSpace(firstNonEmpty(looseStringValue(row["name"]), looseStringValue(row["label"]))),
+		}
+		if ref.ID > 0 || ref.Name != "" {
+			out = append(out, ref)
+		}
+	}
+	return dedupeResourceRefs(out)
+}
+
+func parsePodRefs(value any) []PodRef {
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]PodRef, 0, len(items))
+	for _, item := range items {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		pod := PodRef{
+			Name:      strings.TrimSpace(firstNonEmpty(looseStringValue(row["name"]), looseStringValue(row["pod"]))),
+			Namespace: strings.TrimSpace(looseStringValue(row["namespace"])),
+			ClusterID: looseIntValue(row["cluster_id"]),
+		}
+		if pod.Name != "" {
+			out = append(out, pod)
+		}
+	}
+	return dedupePodRefs(out)
+}
+
+func parseResourceScope(value any) *ResourceScope {
+	row, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	scope := &ResourceScope{
+		Kind:         strings.TrimSpace(looseStringValue(row["kind"])),
+		ResourceType: strings.TrimSpace(looseStringValue(row["resource_type"])),
+	}
+	if selector, ok := row["selector"].(map[string]any); ok && len(selector) > 0 {
+		scope.Selector = cloneInput(selector)
+	}
+	if scope.Kind == "" || scope.ResourceType == "" {
+		return nil
+	}
+	return scope
+}
+
+func resourceIDs(refs []ResourceRef) []int {
+	out := make([]int, 0, len(refs))
+	for _, ref := range refs {
+		if ref.ID > 0 {
+			out = append(out, ref.ID)
+		}
+	}
+	return out
+}
+
+func podRefsFromInput(value any) []PodRef {
+	return parsePodRefs(value)
+}
+
+func podRefsToAny(refs []PodRef) []map[string]any {
+	out := make([]map[string]any, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, map[string]any{
+			"name":       ref.Name,
+			"namespace":  ref.Namespace,
+			"cluster_id": ref.ClusterID,
+		})
+	}
+	return out
+}
+
+func scopeToMap(scope *ResourceScope) map[string]any {
+	if scope == nil {
+		return nil
+	}
+	out := map[string]any{
+		"kind":          scope.Kind,
+		"resource_type": scope.ResourceType,
+	}
+	if len(scope.Selector) > 0 {
+		out["selector"] = cloneInput(scope.Selector)
+	}
+	return out
+}
+
+func cloneResourceRefs(in []ResourceRef) []ResourceRef {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ResourceRef, len(in))
+	copy(out, in)
+	return out
+}
+
+func clonePodRefs(in []PodRef) []PodRef {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]PodRef, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneScope(in *ResourceScope) *ResourceScope {
+	if in == nil {
+		return nil
+	}
+	out := &ResourceScope{
+		Kind:         in.Kind,
+		ResourceType: in.ResourceType,
+	}
+	if len(in.Selector) > 0 {
+		out.Selector = cloneInput(in.Selector)
+	}
+	return out
+}
+
+func dedupeResourceRefs(values []ResourceRef) []ResourceRef {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]ResourceRef, 0, len(values))
+	for _, value := range values {
+		key := fmt.Sprintf("%d:%s", value.ID, strings.TrimSpace(value.Name))
+		if value.ID == 0 && strings.TrimSpace(value.Name) == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		value.Name = strings.TrimSpace(value.Name)
+		out = append(out, value)
+	}
+	return out
+}
+
+func dedupePodRefs(values []PodRef) []PodRef {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]PodRef, 0, len(values))
+	for _, value := range values {
+		value.Name = strings.TrimSpace(value.Name)
+		value.Namespace = strings.TrimSpace(value.Namespace)
+		if value.Name == "" {
+			continue
+		}
+		key := fmt.Sprintf("%s:%s:%d", value.Name, value.Namespace, value.ClusterID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func isAllKeyword(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "all", "*", "全部", "所有":
+		return true
+	default:
+		return false
+	}
 }
 
 func firstNonEmpty(values ...string) string {
