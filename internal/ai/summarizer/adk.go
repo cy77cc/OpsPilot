@@ -6,6 +6,7 @@ package summarizer
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -33,12 +34,15 @@ func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Summarizer
 	}, nil
 }
 
-func runADKSummarizer(ctx context.Context, runner *adk.Runner, input string, onDelta func(string)) (string, error) {
+func runADKSummarizer(ctx context.Context, runner *adk.Runner, input []*schema.Message, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
 	if runner == nil {
 		return "", fmt.Errorf("summarizer ADK runner is not configured")
 	}
-	iter := runner.Query(ctx, input)
-	var streamed string
+
+	iter := runner.Run(ctx, input)
+
+	var streamedAnswer string
+	var streamedReasoning string
 	for {
 		event, ok := iter.Next()
 		if !ok {
@@ -50,27 +54,52 @@ func runADKSummarizer(ctx context.Context, runner *adk.Runner, input string, onD
 		if event.Err != nil {
 			return "", event.Err
 		}
-		msg, _, err := adk.GetMessage(event)
-		if err != nil || msg == nil {
+		if event.Output == nil || event.Output.MessageOutput == nil {
 			continue
 		}
-		if msg.Role == schema.Assistant {
-			streamed = emitSummaryDelta(streamed, msg.Content, onDelta)
+		output := event.Output.MessageOutput
+		if output.IsStreaming && output.MessageStream != nil {
+			for {
+				msg, err := output.MessageStream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					return "", err
+				}
+				if msg == nil || msg.Role != schema.Assistant {
+					continue
+				}
+				streamedReasoning = emitSummaryDelta(streamedReasoning, msg.ReasoningContent, onThinkingDelta)
+				streamedAnswer = emitSummaryDelta(streamedAnswer, msg.Content, onAnswerDelta)
+			}
+			continue
+		}
+		msg := output.Message
+		if msg != nil && msg.Role == schema.Assistant {
+			streamedReasoning = emitSummaryDelta(streamedReasoning, msg.ReasoningContent, onThinkingDelta)
+			streamedAnswer = emitSummaryDelta(streamedAnswer, msg.Content, onAnswerDelta)
 		}
 	}
-	if strings.TrimSpace(streamed) == "" {
+	if strings.TrimSpace(streamedAnswer) == "" {
 		return "", fmt.Errorf("summarizer stage produced empty output")
 	}
-	return strings.TrimSpace(streamed), nil
+	return strings.TrimSpace(streamedAnswer), nil
 }
 
 func emitSummaryDelta(previous, current string, onDelta func(string)) string {
-	if onDelta == nil {
-		return strings.TrimSpace(current)
-	}
 	current = strings.TrimSpace(current)
 	previous = strings.TrimSpace(previous)
-	if current == "" || current == previous {
+	if current == "" {
+		return previous
+	}
+	if onDelta == nil {
+		if previous != "" && !strings.HasPrefix(current, previous) {
+			return strings.TrimSpace(previous + current)
+		}
+		return current
+	}
+	if current == previous {
 		return current
 	}
 	if previous != "" && strings.HasPrefix(current, previous) {
@@ -80,5 +109,5 @@ func emitSummaryDelta(previous, current string, onDelta func(string)) string {
 		return current
 	}
 	onDelta(current)
-	return current
+	return strings.TrimSpace(previous + current)
 }

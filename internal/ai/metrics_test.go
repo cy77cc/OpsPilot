@@ -106,20 +106,19 @@ func TestAIMetricsThoughtChainCompleteness(t *testing.T) {
 	run.Observe(StreamEvent{Type: events.StageDelta, Data: map[string]any{"stage": "plan"}})
 	run.Observe(StreamEvent{Type: events.StepUpdate})
 	run.Observe(StreamEvent{Type: events.StageDelta, Data: map[string]any{"stage": "execute"}})
-	run.Observe(StreamEvent{Type: events.Summary})
 	run.Finalize()
 
 	snapshot := metrics.Snapshot()
 	if snapshot.ThoughtChain.Runs != 1 {
 		t.Fatalf("thought chain runs = %d, want 1", snapshot.ThoughtChain.Runs)
 	}
-	if snapshot.ThoughtChain.ExpectedStageSignals != 4 {
-		t.Fatalf("expected stage signals = %d, want 4", snapshot.ThoughtChain.ExpectedStageSignals)
+	if snapshot.ThoughtChain.ExpectedStageSignals != 3 {
+		t.Fatalf("expected stage signals = %d, want 3", snapshot.ThoughtChain.ExpectedStageSignals)
 	}
 	if snapshot.ThoughtChain.DeliveredStageSignals != 3 {
 		t.Fatalf("delivered stage signals = %d, want 3", snapshot.ThoughtChain.DeliveredStageSignals)
 	}
-	if snapshot.ThoughtChain.RunsWithMissingSignals != 1 {
-		t.Fatalf("runs with missing signals = %d, want 1", snapshot.ThoughtChain.RunsWithMissingSignals)
+	if snapshot.ThoughtChain.RunsWithMissingSignals != 0 {
+		t.Fatalf("runs with missing signals = %d, want 0", snapshot.ThoughtChain.RunsWithMissingSignals)
 	}
 }

@@ -3,6 +3,7 @@ import type { EmbeddedRecommendation } from './types';
 export interface AssistantMessageInput {
   content?: string;
   thinking?: string;
+  showThinking?: boolean;
   rawEvidence?: string[];
   recommendations?: EmbeddedRecommendation[];
   isStreaming?: boolean;
@@ -48,11 +49,11 @@ export type AssistantMessageBlock =
 export function normalizeAssistantMessage(input: AssistantMessageInput): AssistantMessageBlock[] {
   const blocks: AssistantMessageBlock[] = [];
 
-  if (input.thinking) {
+  if (input.showThinking || input.thinking) {
     blocks.push({
       id: 'thinking',
       type: 'thinking',
-      content: input.thinking,
+      content: input.thinking || '',
       isStreaming: input.isStreaming && !input.content,
     });
   }

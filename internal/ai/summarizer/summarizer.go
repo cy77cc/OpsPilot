@@ -5,11 +5,12 @@ package summarizer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/prompt"
+	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/ai/availability"
 	"github.com/cy77cc/OpsPilot/internal/ai/executor"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
@@ -18,7 +19,7 @@ import (
 
 // Input 是总结器的输入结构。
 type Input struct {
-	Message string               // 用户原始消息
+	Message string                 // 用户原始消息
 	Plan    *planner.ExecutionPlan // 执行计划
 	State   runtime.ExecutionState // 执行状态
 	Steps   []executor.StepResult  // 步骤结果列表
@@ -27,7 +28,7 @@ type Input struct {
 // Summarizer 是总结器核心。
 type Summarizer struct {
 	runner *adk.Runner
-	runFn  func(context.Context, Input, func(string)) (string, error)
+	runFn  func(context.Context, Input, func(string), func(string)) (string, error)
 }
 
 // New 创建新的总结器实例。
@@ -36,7 +37,7 @@ func New(runner *adk.Runner) *Summarizer {
 }
 
 // NewWithFunc 使用自定义执行函数创建总结器。
-func NewWithFunc(runFn func(context.Context, Input, func(string)) (string, error)) *Summarizer {
+func NewWithFunc(runFn func(context.Context, Input, func(string), func(string)) (string, error)) *Summarizer {
 	return &Summarizer{runFn: runFn}
 }
 
@@ -72,16 +73,16 @@ func (e *UnavailableError) UserVisibleMessage() string {
 }
 
 func (s *Summarizer) Summarize(ctx context.Context, in Input) (string, error) {
-	return s.summarize(ctx, in, nil)
+	return s.summarize(ctx, in, nil, nil)
 }
 
-func (s *Summarizer) SummarizeStream(ctx context.Context, in Input, onDelta func(string)) (string, error) {
-	return s.summarize(ctx, in, onDelta)
+func (s *Summarizer) SummarizeStream(ctx context.Context, in Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
+	return s.summarize(ctx, in, onThinkingDelta, onAnswerDelta)
 }
 
-func (s *Summarizer) summarize(ctx context.Context, in Input, onDelta func(string)) (string, error) {
+func (s *Summarizer) summarize(ctx context.Context, in Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
 	if s != nil && s.runFn != nil {
-		return s.runFn(ctx, in, onDelta)
+		return s.runFn(ctx, in, onThinkingDelta, onAnswerDelta)
 	}
 	if s == nil || s.runner == nil {
 		return "", &UnavailableError{
@@ -89,7 +90,11 @@ func (s *Summarizer) summarize(ctx context.Context, in Input, onDelta func(strin
 			UserVisibleReason: availability.UnavailableMessage(availability.LayerSummarizer),
 		}
 	}
-	raw, err := runADKSummarizer(ctx, s.runner, buildPromptInput(in), onDelta)
+	message := buildPromptInput(ctx, in)
+	if message != nil {
+		return "", fmt.Errorf("构建 prompt 失败")
+	}
+	raw, err := runADKSummarizer(ctx, s.runner, message, onThinkingDelta, onAnswerDelta)
 	if err != nil {
 		return "", &UnavailableError{
 			Code:              "summarizer_model_unavailable",
@@ -100,9 +105,23 @@ func (s *Summarizer) summarize(ctx context.Context, in Input, onDelta func(strin
 	return normalizeSummary(raw)
 }
 
-func buildPromptInput(in Input) string {
-	data, _ := json.Marshal(in)
-	return string(data)
+func buildPromptInput(ctx context.Context, in Input) []*schema.Message {
+	template := prompt.FromMessages(
+		schema.FString,
+		schema.SystemMessage(SystemPrompt()),
+		schema.UserMessage(userPrompt()),
+	)
+
+	message, err := template.Format(ctx, map[string]any{
+		"Message": in.Message,
+		"Steps":   in.Steps,
+		"Plan":    in.Plan,
+		"State":   in.State,
+	})
+	if err != nil {
+		return nil
+	}
+	return message
 }
 
 func firstNonEmpty(values ...string) string {

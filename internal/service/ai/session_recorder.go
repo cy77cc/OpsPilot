@@ -77,6 +77,9 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 	case events.StageDelta:
 		stageKey := firstString(payload["stage"])
 		if stageKey != "" {
+			if stageKey == "summary" {
+				break
+			}
 			stage := r.findStage(stageKey)
 			content := firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
 			if replace, _ := payload["replace"].(bool); replace {
@@ -87,9 +90,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 			stage["status"] = normalizeThoughtStatus(payload["status"])
 			if toString(stage["title"]) == "" {
 				stage["title"] = resolveThoughtStageTitle(stageKey)
-			}
-			if toString(stage["description"]) == "" && stageKey == "summary" {
-				stage["description"] = "正在生成最终结论"
 			}
 			r.upsertStage(stage)
 		}
@@ -131,6 +131,8 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 		})
 	case events.Delta:
 		r.assistant.Content += firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
+	case events.ThinkingDelta:
+		r.assistant.Thinking += firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
 	case events.ApprovalRequired:
 		r.upsertStage(map[string]any{
 			"key":         "user_action",
@@ -155,13 +157,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 			"title":       "整理排查计划",
 			"status":      "loading",
 			"description": "正在开始新一轮规划",
-		})
-	case events.Summary:
-		r.upsertStage(map[string]any{
-			"key":         "summary",
-			"title":       "生成结论",
-			"status":      "success",
-			"description": firstString(payload["summary"], "已生成最终结论"),
 		})
 	case events.Error:
 		r.assistant.Status = "error"
@@ -402,8 +397,6 @@ func resolveThoughtStageTitle(stage string) string {
 		return "整理排查计划"
 	case "execute":
 		return "调用专家执行"
-	case "summary":
-		return "生成结论"
 	case "user_action":
 		return "等待你操作"
 	default:

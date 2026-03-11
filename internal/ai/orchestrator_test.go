@@ -142,18 +142,24 @@ func newClarifyPlanner() *planner.Planner {
 }
 
 func newSummarizerForServiceStatus() *summarizer.Summarizer {
-	return summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onDelta func(string)) (string, error) {
-		if onDelta != nil {
-			onDelta("已根据执行证据整理最终结论。")
+	return summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
+		if onThinkingDelta != nil {
+			onThinkingDelta("先核对专家执行结果，再确认服务是否正常。")
+		}
+		if onAnswerDelta != nil {
+			onAnswerDelta("payment-api 当前运行正常。")
 		}
 		return "payment-api 当前运行正常。", nil
 	})
 }
 
 func newSummarizerNeedingInvestigation() *summarizer.Summarizer {
-	return summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onDelta func(string)) (string, error) {
-		if onDelta != nil {
-			onDelta("已基于有限证据生成初步判断。")
+	return summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
+		if onThinkingDelta != nil {
+			onThinkingDelta("当前证据有限，需要谨慎整理回答。")
+		}
+		if onAnswerDelta != nil {
+			onAnswerDelta("当前证据不足以形成稳定结论。")
 		}
 		return "当前证据不足以形成稳定结论。", nil
 	})
@@ -336,6 +342,7 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 	var names []string
 	var stages []string
 	var deltas []string
+	var thinkingDeltas []string
 	var stageChunks []string
 	err := orch.Run(context.Background(), RunRequest{
 		Message: "查看 payment-api 的状态",
@@ -354,6 +361,9 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 		if evt.Type == events.Delta {
 			deltas = append(deltas, stringValue(evt.Data["content_chunk"]))
 		}
+		if evt.Type == events.ThinkingDelta {
+			thinkingDeltas = append(thinkingDeltas, stringValue(evt.Data["content_chunk"]))
+		}
 		return true
 	})
 	if err != nil {
@@ -366,21 +376,28 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 		"planner_state",
 		"plan_created",
 		"step_update",
+		"thinking_delta",
+		"delta",
 		"summary",
 		"done",
 	})
 	assertStageSeen(t, stages, "rewrite")
 	assertStageSeen(t, stages, "plan")
 	assertStageSeen(t, stages, "execute")
-	assertStageSeen(t, stages, "summary")
 	assertStageChunkContains(t, stageChunks, "已提取服务和状态查询目标。")
 	assertStageChunkContains(t, stageChunks, "已确认目标服务、操作模式和执行边界。")
-	assertStageChunkContains(t, stageChunks, "已根据执行证据整理最终结论。")
+	assertStageChunkContains(t, stageChunks, "正在思考并整理最终回答。")
 	assertStageChunkNotContains(t, stageChunks, "开始理解你的问题并提取目标线索。")
 	assertStageChunkNotContains(t, stageChunks, "正在整理目标、资源和执行约束。")
 	assertStageChunkNotContains(t, stageChunks, "正在汇总执行证据并生成结论。")
+	if len(thinkingDeltas) == 0 {
+		t.Fatalf("thinking_delta events = %v, want streamed reasoning", thinkingDeltas)
+	}
 	if len(deltas) == 0 {
 		t.Fatalf("delta events = %v, want streamed final answer", deltas)
+	}
+	if thinkingIndex, deltaIndex := firstEventIndex(names, "thinking_delta"), firstEventIndex(names, "delta"); thinkingIndex < 0 || deltaIndex < 0 || thinkingIndex > deltaIndex {
+		t.Fatalf("events = %v, want thinking_delta before delta", names)
 	}
 	if deltaIndex, doneIndex := firstEventIndex(names, "delta"), firstEventIndex(names, "done"); deltaIndex < 0 || doneIndex < 0 || deltaIndex > doneIndex {
 		t.Fatalf("events = %v, want delta before done", names)

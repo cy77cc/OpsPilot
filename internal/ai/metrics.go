@@ -201,11 +201,9 @@ func (r *thoughtChainRunMetrics) Observe(evt StreamEvent) {
 	case events.ApprovalRequired, events.ClarifyRequired:
 		r.requiredStages["user_action"] = struct{}{}
 		r.deliveredStages["user_action"] = struct{}{}
-	case events.Summary:
-		r.requiredStages["summary"] = struct{}{}
 	case events.StageDelta:
 		stage := strings.TrimSpace(stringValue(evt.Data["stage"]))
-		if stage != "" {
+		if stage != "" && stage != "summary" {
 			r.deliveredStages[stage] = struct{}{}
 		}
 	}

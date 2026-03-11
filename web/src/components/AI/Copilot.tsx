@@ -64,8 +64,6 @@ function buildStageDescription(
         return '执行过程中出现异常';
       }
       return status === 'success' ? '已完成计划执行并收集结果' : '正在调用专家执行计划';
-    case 'summary':
-      return status === 'success' ? '已生成最终结论' : '正在生成最终结论';
     default:
       return undefined;
   }
@@ -262,13 +260,18 @@ const AssistantMessage: React.FC<{
 }> = ({ content, thinking, recommendations, thoughtChain, rawEvidence, isStreaming, showActions = true, onRegenerate, onRecommendationSelect, isLoading }) => {
   const { token } = theme.useToken();
   const chainItems = useMemo(() => visibleThoughtChain(thoughtChain), [thoughtChain]);
+  const showThinking = useMemo(
+    () => Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading')),
+    [thinking, thoughtChain],
+  );
   const blocks = useMemo(() => normalizeAssistantMessage({
     content,
     thinking,
+    showThinking,
     rawEvidence,
     recommendations,
     isStreaming,
-  }), [content, thinking, rawEvidence, recommendations, isStreaming]);
+  }), [content, thinking, showThinking, rawEvidence, recommendations, isStreaming]);
 
   return (
     <div>
@@ -638,14 +641,6 @@ export const Copilot: React.FC<CopilotProps> = ({
               const chunkText = resolveStreamContent(data);
               const replace = Boolean(data.replace);
               setConversations((prev) => updateAssistantMessage(prev, activeKey, assistantId, (message) => {
-                if (stageKey === 'summary') {
-                  const previousThinking = message.thinking || '';
-                  const nextThinking = replace ? chunkText : `${previousThinking}${chunkText}`.trim();
-                  return {
-                    ...message,
-                    thinking: nextThinking,
-                  };
-                }
                 const currentStage = (message.thoughtChain || []).find((item) => item.key === stageKey);
                 const status = normalizeThoughtStatus(data.status as string | undefined, 'loading');
                 const milestone = buildStageMilestone(stageKey, 'delta', data);
@@ -726,7 +721,7 @@ export const Copilot: React.FC<CopilotProps> = ({
               break;
 
             case 'thinking_delta':
-              assistantThinking += (data.contentChunk as string) || '';
+              assistantThinking += resolveStreamContent(data);
               break;
 
             case 'approval_required':
@@ -770,7 +765,7 @@ export const Copilot: React.FC<CopilotProps> = ({
             case 'summary': {
               setConversations((prev) => updateAssistantMessage(prev, activeKey, assistantId, (message) => ({
                 ...message,
-                thinking: message.thinking || String(data.summary || ''),
+                thoughtChain: (message.thoughtChain || []).filter((item) => item.key !== 'summary'),
               })));
               break;
             }
@@ -786,13 +781,6 @@ export const Copilot: React.FC<CopilotProps> = ({
                 assistantContent ||= String(finalAssistant?.content || '');
                 if (!assistantThinking) {
                   assistantThinking = String(finalAssistant?.thinking || '');
-                  if (!assistantThinking) {
-                    const finalThoughtChain = Array.isArray(finalAssistant?.thoughtChain)
-                      ? (finalAssistant?.thoughtChain as ThoughtStageItem[])
-                      : [];
-                    const summaryStage = finalThoughtChain.find((item) => item.key === 'summary');
-                    assistantThinking = String(summaryStage?.content || '');
-                  }
                 }
                 assistantRecommendations ||= (finalAssistant?.recommendations as EmbeddedRecommendation[] | undefined);
                 const finalRawEvidence = (finalAssistant?.rawEvidence as string[] | undefined) || undefined;

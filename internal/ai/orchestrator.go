@@ -547,17 +547,22 @@ func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritt
 					},
 				})
 				if execErr == nil && executed != nil {
+					emitStageDelta(emit, meta, "summary", "loading", "正在思考并整理最终回答。", "", "")
 					summaryText, summaryErr := o.summarizeExecution(ctx, message, decision.Plan, executed, func(chunk string) {
-						emitStageDelta(emit, meta, "summary", "loading", chunk, "", "")
+						emitEvent(emit, events.ThinkingDelta, meta, map[string]any{
+							"content_chunk": chunk,
+							"contentChunk":  chunk,
+						})
+					}, func(chunk string) {
 						emitEvent(emit, events.Delta, meta, map[string]any{
 							"content_chunk": chunk,
 							"contentChunk":  chunk,
 						})
 					})
 					emitEvent(emit, events.Summary, meta, map[string]any{
+						"status":  summaryStageStatus(summaryErr),
 						"summary": summaryText,
 					})
-					emitStageDelta(emit, meta, "summary", summaryStageStatus(summaryErr), summaryText, "", "")
 					if body := o.renderAndEmitFinalAnswer(decision.Plan, executed, summaryText, emit, meta); body != "" {
 						return body, nil
 					}
@@ -866,9 +871,20 @@ func resumeStatusMessage(status string, approved bool) string {
 //   - onDelta: 流式输出回调
 //
 // 返回: 总结输出和可能的错误
-func (o *Orchestrator) summarizeExecution(ctx context.Context, message string, plan *planner.ExecutionPlan, result *executor.Result, onDelta func(string)) (string, error) {
+func (o *Orchestrator) summarizeExecution(
+	ctx context.Context,
+	message string,
+	plan *planner.ExecutionPlan,
+	result *executor.Result,
+	onThinkingDelta func(string),
+	onAnswerDelta func(string),
+) (string, error) {
 	if o.summarizer == nil {
-		return summarizerUnavailableSummary(nil), &summarizer.UnavailableError{
+		fallback := summarizerUnavailableSummary(nil)
+		if onAnswerDelta != nil {
+			onAnswerDelta(fallback)
+		}
+		return fallback, &summarizer.UnavailableError{
 			Code:              "summarizer_runner_unavailable",
 			UserVisibleReason: availability.UnavailableMessage(availability.LayerSummarizer),
 		}
@@ -878,9 +894,13 @@ func (o *Orchestrator) summarizeExecution(ctx context.Context, message string, p
 		Plan:    plan,
 		State:   result.State,
 		Steps:   result.Steps,
-	}, onDelta)
+	}, onThinkingDelta, onAnswerDelta)
 	if err != nil {
-		return summarizerUnavailableSummary(err), err
+		fallback := summarizerUnavailableSummary(err)
+		if onAnswerDelta != nil {
+			onAnswerDelta(fallback)
+		}
+		return fallback, err
 	}
 	return out, nil
 }

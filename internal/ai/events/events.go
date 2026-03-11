@@ -28,6 +28,7 @@ const (
 	ApprovalRequired Name = "approval_required" // 审批请求事件
 	ClarifyRequired  Name = "clarify_required"  // 澄清请求事件
 	ReplanStarted    Name = "replan_started"    // 重规划开始事件
+	ThinkingDelta    Name = "thinking_delta"    // 模型思考增量事件
 	Delta            Name = "delta"             // 增量内容事件
 	Summary          Name = "summary"           // 总结结果事件
 	Done             Name = "done"              // 完成事件
