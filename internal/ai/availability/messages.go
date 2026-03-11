@@ -1,14 +1,20 @@
+// Package availability 提供 AI 模块可用性相关的消息定义。
+//
+// 本文件定义各 AI 层的不可用和无效输出消息，用于友好的错误提示。
 package availability
 
+// Layer AI 处理层类型。
 type Layer string
 
+// AI 处理层常量。
 const (
-	LayerRewrite    Layer = "rewrite"
-	LayerPlanner    Layer = "planner"
-	LayerExpert     Layer = "expert"
-	LayerSummarizer Layer = "summarizer"
+	LayerRewrite    Layer = "rewrite"    // 改写层
+	LayerPlanner    Layer = "planner"    // 规划层
+	LayerExpert     Layer = "expert"     // 专家执行层
+	LayerSummarizer Layer = "summarizer" // 总结层
 )
 
+// UnavailableMessage 返回指定层不可用的用户友好消息。
 func UnavailableMessage(layer Layer) string {
 	switch layer {
 	case LayerRewrite:
@@ -24,6 +30,7 @@ func UnavailableMessage(layer Layer) string {
 	}
 }
 
+// InvalidOutputMessage 返回指定层输出无效的用户友好消息。
 func InvalidOutputMessage(layer Layer) string {
 	switch layer {
 	case LayerRewrite:

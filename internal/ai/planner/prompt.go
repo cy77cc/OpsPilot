@@ -1,5 +1,10 @@
+// Package planner 实现 AI 编排的规划阶段。
+//
+// 本文件定义规划器的系统提示词。
 package planner
 
+// SystemPrompt 返回规划器的系统提示词。
+// 定义了规划器的职责、决策类型和约束条件。
 func SystemPrompt() string {
 	return `You are the Planner stage of an AI operations orchestrator.
 

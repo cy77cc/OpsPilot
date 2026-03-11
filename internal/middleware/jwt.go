@@ -1,3 +1,7 @@
+// Package middleware 提供 HTTP 中间件实现。
+//
+// 本文件实现 JWT 认证中间件，用于验证请求中的 JWT Token。
+// 支持从 Authorization 头或 URL 查询参数获取 Token。
 package middleware
 
 import (
@@ -9,6 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// JWTAuth 返回 JWT 认证中间件。
+//
+// 验证流程：
+//  1. 从 Authorization 头获取 Bearer Token
+//  2. 如果没有，尝试从 URL 查询参数 token 获取
+//  3. 解析 Token 并将用户 ID 注入到 gin.Context
 func JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		accessTokenH := c.Request.Header.Get("Authorization")

@@ -1,3 +1,9 @@
+// Package monitor 提供监控和告警相关的工具实现。
+//
+// 本文件实现监控操作工具集，包括：
+//   - 告警规则列表查询
+//   - 活跃告警查询
+//   - 指标时间序列查询
 package monitor
 
 import (
@@ -12,39 +18,46 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// MonitorAlertRuleListInput 告警规则列表查询输入。
 type MonitorAlertRuleListInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional rule state filter"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/metric"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max rules,default=50"`
 }
 
+// MonitorAlertActiveInput 活跃告警查询输入。
 type MonitorAlertActiveInput struct {
 	Severity  string `json:"severity,omitempty" jsonschema_description:"optional severity filter"`
 	ServiceID int    `json:"service_id,omitempty" jsonschema_description:"optional service id filter"`
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max alerts,default=50"`
 }
 
+// MonitorAlertInput 告警查询输入。
 type MonitorAlertInput struct {
 	Severity  string `json:"severity,omitempty" jsonschema_description:"optional severity filter"`
 	ServiceID int    `json:"service_id,omitempty" jsonschema_description:"optional service id filter"`
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max alerts,default=50"`
 }
 
+// MonitorMetricQueryInput 指标查询输入。
 type MonitorMetricQueryInput struct {
 	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
 	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
 	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
 }
 
+// MonitorMetricInput 指标数据查询输入。
 type MonitorMetricInput struct {
 	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
 	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
 	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
 }
 
-// NewMonitorTools returns all monitor tools.
+// NewMonitorTools 创建所有监控工具。
 func NewMonitorTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		MonitorAlertRuleList(ctx, deps),

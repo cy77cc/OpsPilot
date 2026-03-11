@@ -1,3 +1,6 @@
+// Package planner 实现 AI 编排的规划阶段。
+//
+// 本文件提供资源解析和辅助函数。
 package planner
 
 import (
@@ -10,34 +13,38 @@ import (
 	"gorm.io/gorm"
 )
 
+// ResolveStatus 表示资源解析状态。
 type ResolveStatus string
 
 const (
-	ResolveStatusExact     ResolveStatus = "exact"
-	ResolveStatusAmbiguous ResolveStatus = "ambiguous"
-	ResolveStatusMissing   ResolveStatus = "missing"
+	ResolveStatusExact     ResolveStatus = "exact"     // 精确匹配
+	ResolveStatusAmbiguous ResolveStatus = "ambiguous" // 存在歧义
+	ResolveStatusMissing   ResolveStatus = "missing"   // 未找到
 )
 
+// ResolveCandidate 表示资源解析的候选结果。
 type ResolveCandidate struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Score  int    `json:"score"`
-	Reason string `json:"reason,omitempty"`
+	ID     string `json:"id"`              // 资源 ID
+	Name   string `json:"name"`            // 资源名称
+	Score  int    `json:"score"`           // 匹配分数
+	Reason string `json:"reason,omitempty"` // 匹配原因
 }
 
+// ResolveResult 表示资源解析结果。
 type ResolveResult struct {
-	Status     ResolveStatus      `json:"status"`
-	Query      string             `json:"query"`
-	Selected   *ResolveCandidate  `json:"selected,omitempty"`
-	Candidates []ResolveCandidate `json:"candidates,omitempty"`
+	Status     ResolveStatus      `json:"status"`           // 解析状态
+	Query      string             `json:"query"`            // 查询字符串
+	Selected   *ResolveCandidate  `json:"selected,omitempty"` // 选中的候选
+	Candidates []ResolveCandidate `json:"candidates,omitempty"` // 候选列表
 }
 
+// UserContext 表示用户上下文信息。
 type UserContext struct {
-	UserID      uint64   `json:"user_id"`
-	Username    string   `json:"username,omitempty"`
-	IsAdmin     bool     `json:"is_admin"`
-	RoleCodes   []string `json:"role_codes,omitempty"`
-	ProjectID   string   `json:"project_id,omitempty"`
+	UserID      uint64   `json:"user_id"`          // 用户 ID
+	Username    string   `json:"username,omitempty"` // 用户名
+	IsAdmin     bool     `json:"is_admin"`          // 是否管理员
+	RoleCodes   []string `json:"role_codes,omitempty"` // 角色代码
+	ProjectID   string   `json:"project_id,omitempty"` // 项目 ID
 	Scene       string   `json:"scene,omitempty"`
 	CurrentPage string   `json:"current_page,omitempty"`
 }

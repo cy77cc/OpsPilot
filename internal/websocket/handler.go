@@ -1,3 +1,7 @@
+// Package websocket 提供 WebSocket 连接处理功能。
+//
+// 本文件实现 WebSocket 连接升级和客户端管理，
+// 用于实时推送通知消息。
 package websocket
 
 import (
@@ -8,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// upgrader 是 HTTP 到 WebSocket 的升级器。
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -16,7 +21,10 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// HandleWebSocket 处理 WebSocket 连接
+// HandleWebSocket 处理 WebSocket 连接请求。
+//
+// 从查询参数或上下文中获取用户 ID，
+// 升级 HTTP 连接为 WebSocket，注册到 Hub 并启动读写协程。
 func HandleWebSocket(c *gin.Context) {
 	// 从上下文获取用户ID
 	userIDStr := c.Query("user_id")

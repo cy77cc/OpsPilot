@@ -1,3 +1,7 @@
+// Package executor 实现 AI 编排的执行阶段。
+//
+// 本文件实现步骤调度器，负责管理步骤状态转换和依赖处理。
+// 调度器根据步骤依赖关系和执行状态决定执行顺序。
 package executor
 
 import (
@@ -11,6 +15,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
 
+// advanceScheduler 推进执行调度，处理步骤状态转换。
+// 循环处理 Pending -> Ready -> Running -> Completed/Failed 状态转换。
 func advanceScheduler(ctx context.Context, store *runtime.ExecutionStore, state *runtime.ExecutionState, req Request, stepRunner StepRunner) (*Result, error) {
 	if state == nil {
 		return nil, fmt.Errorf("execution state is required")
@@ -101,6 +107,8 @@ func advanceScheduler(ctx context.Context, store *runtime.ExecutionStore, state 
 	return &Result{State: *state, Steps: results}, nil
 }
 
+// advanceAfterApproval 处理审批后的执行恢复。
+// 根据审批结果继续执行或取消步骤。
 func advanceAfterApproval(ctx context.Context, store *runtime.ExecutionStore, state *runtime.ExecutionState, req ResumeRequest, stepRunner StepRunner) (*Result, error) {
 	if state == nil {
 		return nil, fmt.Errorf("execution state is required")
@@ -171,6 +179,7 @@ func advanceAfterApproval(ctx context.Context, store *runtime.ExecutionStore, st
 	}, stepRunner)
 }
 
+// executeStep 执行单个步骤，调用专家 Agent。
 func executeStep(ctx context.Context, state *runtime.ExecutionState, stepID string, req Request, stepRunner StepRunner) ([]StepResult, error) {
 	step := state.Steps[stepID]
 	if stepRunner == nil {
@@ -233,6 +242,7 @@ func executeStep(ctx context.Context, state *runtime.ExecutionState, stepID stri
 	return []StepResult{result}, nil
 }
 
+// markStepFailure 标记步骤失败，根据策略决定是否自动重试。
 func markStepFailure(req Request, state *runtime.ExecutionState, stepID, code, message, userSummary string) ([]StepResult, error) {
 	step, ok := state.Steps[stepID]
 	if !ok {
@@ -262,6 +272,7 @@ func markStepFailure(req Request, state *runtime.ExecutionState, stepID, code, m
 	return []StepResult{snapshotResult(step)}, nil
 }
 
+// depsSatisfied 检查步骤的所有依赖是否已满足。
 func depsSatisfied(state *runtime.ExecutionState, stepID string) bool {
 	deps := stepDependencies(state, stepID)
 	if len(deps) == 0 {
@@ -275,6 +286,7 @@ func depsSatisfied(state *runtime.ExecutionState, stepID string) bool {
 	return true
 }
 
+// depsBlocked 检查步骤是否有被阻塞的依赖。
 func depsBlocked(state *runtime.ExecutionState, stepID string) bool {
 	for _, dep := range stepDependencies(state, stepID) {
 		status := state.Steps[dep].Status
@@ -285,6 +297,7 @@ func depsBlocked(state *runtime.ExecutionState, stepID string) bool {
 	return false
 }
 
+// stepDependencies 获取步骤的依赖列表。
 func stepDependencies(state *runtime.ExecutionState, stepID string) []string {
 	if state == nil || state.Steps == nil {
 		return nil
@@ -299,6 +312,7 @@ func stepDependencies(state *runtime.ExecutionState, stepID string) []string {
 	return nil
 }
 
+// needsApproval 检查步骤是否需要审批。
 func needsApproval(step runtime.StepState) bool {
 	if step.ApprovalSatisfied {
 		return false
@@ -306,6 +320,7 @@ func needsApproval(step runtime.StepState) bool {
 	return riskPolicy(step.Mode, step.Risk).RequiresApproval
 }
 
+// shouldAutoRetry 检查步骤是否应该自动重试。
 func shouldAutoRetry(step runtime.StepState) bool {
 	policy := riskPolicy(step.Mode, step.Risk)
 	if !policy.AutoRetry {
@@ -314,6 +329,7 @@ func shouldAutoRetry(step runtime.StepState) bool {
 	return step.Attempts < step.MaxAttempts
 }
 
+// approvalStageName 根据风险策略返回审批阶段名称。
 func approvalStageName(policy RiskPolicy) string {
 	if !policy.RequiresApproval {
 		return "none"
@@ -324,6 +340,7 @@ func approvalStageName(policy RiskPolicy) string {
 	return "guarded"
 }
 
+// hasFailedOrBlocked 检查执行是否有失败或被阻塞的步骤。
 func hasFailedOrBlocked(state *runtime.ExecutionState) bool {
 	for _, step := range state.Steps {
 		if step.Status == runtime.StepFailed || step.Status == runtime.StepBlocked || step.Status == runtime.StepCancelled {
@@ -333,6 +350,7 @@ func hasFailedOrBlocked(state *runtime.ExecutionState) bool {
 	return false
 }
 
+// markDependentsBlocked 将依赖失败步骤的所有后续步骤标记为阻塞。
 func markDependentsBlocked(state *runtime.ExecutionState, failedStepID string) {
 	for stepID := range state.Steps {
 		for _, dep := range stepDependencies(state, stepID) {
@@ -344,6 +362,7 @@ func markDependentsBlocked(state *runtime.ExecutionState, failedStepID string) {
 	}
 }
 
+// transitionStep 执行步骤状态转换。
 func transitionStep(state *runtime.ExecutionState, stepID string, target runtime.StepStatus, summary string) error {
 	if state == nil {
 		return fmt.Errorf("execution state is required")
@@ -369,6 +388,8 @@ func transitionStep(state *runtime.ExecutionState, stepID string, target runtime
 	return nil
 }
 
+// validTransition 检查状态转换是否有效。
+// 定义了步骤状态机的合法转换。
 func validTransition(from, to runtime.StepStatus) bool {
 	if from == to {
 		return true
@@ -389,6 +410,7 @@ func validTransition(from, to runtime.StepStatus) bool {
 	}
 }
 
+// snapshotResult 从步骤状态创建结果快照。
 func snapshotResult(step runtime.StepState) StepResult {
 	var errInfo *StepError
 	if step.ErrorCode != "" || step.ErrorMessage != "" {
@@ -403,6 +425,7 @@ func snapshotResult(step runtime.StepState) StepResult {
 	}
 }
 
+// describePreparedStep 生成步骤准备状态的描述文本。
 func describePreparedStep(step planner.PlanStep, status runtime.StepStatus) string {
 	switch status {
 	case runtime.StepReady:

@@ -1,3 +1,9 @@
+// Package ai 提供 AI 编排服务的会话记录功能。
+//
+// 本文件实现聊天记录的持久化和思维链渲染，用于：
+//   - 记录用户消息和助手响应
+//   - 渲染思维链（思考过程）的可视化内容
+//   - 持久化会话状态到数据库
 package ai
 
 import (
@@ -10,17 +16,19 @@ import (
 	aistate "github.com/cy77cc/OpsPilot/internal/ai/state"
 )
 
+// chatRecorder 聊天记录器，负责记录和渲染对话内容。
 type chatRecorder struct {
-	store       *aistate.ChatStore
-	userID      uint64
-	scene       string
-	title       string
-	prompt      string
-	sessionID   string
-	assistantID string
-	assistant   aistate.ChatMessageRecord
+	store       *aistate.ChatStore       // 聊天存储
+	userID      uint64                   // 用户 ID
+	scene       string                   // 场景
+	title       string                   // 会话标题
+	prompt      string                   // 用户提示
+	sessionID   string                   // 会话 ID
+	assistantID string                   // 助手消息 ID
+	assistant   aistate.ChatMessageRecord // 助手消息记录
 }
 
+// newChatRecorder 创建新的聊天记录器。
 func newChatRecorder(store *aistate.ChatStore, userID uint64, scene, message string) *chatRecorder {
 	if store == nil {
 		return nil

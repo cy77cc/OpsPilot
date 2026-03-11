@@ -1,3 +1,6 @@
+// Package summarizer 实现 AI 编编的总结阶段。
+//
+// 本文件定义总结器的决策工具，用于输出结构化总结。
 package summarizer
 
 import (
@@ -7,18 +10,22 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// decisionTool 是决策工具的基础实现。
 type decisionTool struct {
 	info *schema.ToolInfo
 }
 
+// Info 返回工具信息。
 func (t decisionTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return t.info, nil
 }
 
+// InvokableRun 执行工具调用，直接返回参数作为结果。
 func (t decisionTool) InvokableRun(_ context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
 	return argumentsInJSON, nil
 }
 
+// summaryDecisionTool 创建总结决策工具。
 func summaryDecisionTool() tool.BaseTool {
 	return decisionTool{
 		info: &schema.ToolInfo{

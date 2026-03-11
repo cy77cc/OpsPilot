@@ -1,3 +1,6 @@
+// Package prometheus 提供 Prometheus HTTP API 客户端实现。
+//
+// 本文件定义客户端配置和规范化逻辑。
 package prometheus
 
 import (
@@ -6,16 +9,23 @@ import (
 	"time"
 )
 
-// Config holds Prometheus client settings.
+// Config 是 Prometheus 客户端配置。
 type Config struct {
-	Address       string        `yaml:"address" json:"address"`
-	Host          string        `yaml:"host" json:"host"`
-	Port          string        `yaml:"port" json:"port"`
-	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
-	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent"`
-	RetryCount    int           `yaml:"retry_count" json:"retry_count"`
+	Address       string        `yaml:"address" json:"address"`             // Prometheus 地址 (如 http://prometheus:9090)
+	Host          string        `yaml:"host" json:"host"`                   // Prometheus 主机
+	Port          string        `yaml:"port" json:"port"`                   // Prometheus 端口
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`             // 请求超时
+	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent"` // 最大并发数
+	RetryCount    int           `yaml:"retry_count" json:"retry_count"`     // 重试次数
 }
 
+// Normalize 规范化配置，填充默认值。
+//
+// 默认值：
+//   - 端口: 9090
+//   - 超时: 10s
+//   - 最大并发: 10
+//   - 重试次数: 3
 func (c Config) Normalize() Config {
 	out := c
 	if strings.TrimSpace(out.Address) == "" {

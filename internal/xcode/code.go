@@ -1,3 +1,10 @@
+// Package xcode 提供统一的业务错误码定义。
+//
+// 本文件定义了应用程序使用的所有业务错误码，分为四类：
+//   - 成功码 (1000~1999)
+//   - 客户端错误 (2000~2999)
+//   - 服务端错误 (3000~3999)
+//   - 业务错误 (4000~4999)
 package xcode
 
 import (
@@ -5,51 +12,52 @@ import (
 	"net/http"
 )
 
+// Xcode 是业务错误码类型。
 type Xcode uint32
 
-// Success codes (1000~1999)
+// 成功码 (1000~1999)
 const (
-	Success       Xcode = 1000 // Success
-	CreateSuccess Xcode = 1001 // Create Success
-	DeleteSuccess Xcode = 1002 // Delete Success
-	UpdateSuccess Xcode = 1003 // Update Success
+	Success       Xcode = 1000 // 请求成功
+	CreateSuccess Xcode = 1001 // 创建成功
+	DeleteSuccess Xcode = 1002 // 删除成功
+	UpdateSuccess Xcode = 1003 // 更新成功
 )
 
-// Client errors (2000~2999)
+// 客户端错误码 (2000~2999)
 const (
-	ParamError      Xcode = 2000 // Parameter Error
-	MissingParam    Xcode = 2001 // Missing Parameter
-	MethodNotAllow  Xcode = 2002 // Method Not Allowed
-	Unauthorized    Xcode = 2003 // Unauthorized
-	Forbidden       Xcode = 2004 // Forbidden
-	NotFound        Xcode = 2005 // Not Found
-	ErrInvalidParam Xcode = 2006 // Invalid Parameter
+	ParamError      Xcode = 2000 // 参数错误
+	MissingParam    Xcode = 2001 // 缺少必要参数
+	MethodNotAllow  Xcode = 2002 // 请求方法不支持
+	Unauthorized    Xcode = 2003 // 未认证
+	Forbidden       Xcode = 2004 // 无权限
+	NotFound        Xcode = 2005 // 资源不存在
+	ErrInvalidParam Xcode = 2006 // 无效参数
 )
 
-// Server errors (3000~3999)
+// 服务端错误码 (3000~3999)
 const (
-	ServerError     Xcode = 3000 // Internal Server Error
-	DatabaseError   Xcode = 3001 // Database Error
-	CacheError      Xcode = 3002 // Cache Error
-	ExternalAPIFail Xcode = 3003 // External API Failure
-	TimeoutError    Xcode = 3004 // Timeout
+	ServerError     Xcode = 3000 // 服务器内部错误
+	DatabaseError   Xcode = 3001 // 数据库错误
+	CacheError      Xcode = 3002 // 缓存服务错误
+	ExternalAPIFail Xcode = 3003 // 外部服务调用失败
+	TimeoutError    Xcode = 3004 // 请求超时
 )
 
-// Business errors (4000~4999)
+// 业务错误码 (4000~4999)
 const (
-	FileUploadFail         Xcode = 4000 // File Upload Failed
-	FileTypeInvalid        Xcode = 4001 // Invalid File Type
-	UserAlreadyExist       Xcode = 4002 // User Already Exists
-	UserNotExist           Xcode = 4003 // User Not Exists
-	PasswordError          Xcode = 4004 // Password Error
-	TokenExpired           Xcode = 4005 // Token Expired
-	TokenInvalid           Xcode = 4006 // Token Invalid
-	PermissionDenied       Xcode = 4007 // Permission Denied
-	PermissionAlreadyExist Xcode = 4008 // Permission Already Exists
-	LoginFailed            Xcode = 4009 // Login Failed
+	FileUploadFail         Xcode = 4000 // 文件上传失败
+	FileTypeInvalid        Xcode = 4001 // 文件格式不支持
+	UserAlreadyExist       Xcode = 4002 // 用户已存在
+	UserNotExist           Xcode = 4003 // 用户不存在
+	PasswordError          Xcode = 4004 // 密码错误
+	TokenExpired           Xcode = 4005 // Token 已过期
+	TokenInvalid           Xcode = 4006 // Token 无效
+	PermissionDenied       Xcode = 4007 // 权限不足
+	PermissionAlreadyExist Xcode = 4008 // 权限已存在
+	LoginFailed            Xcode = 4009 // 登录失败
 )
 
-// Msg returns the message corresponding to the Xcode
+// Msg 返回错误码对应的中文消息。
 func (c Xcode) Msg() string {
 	switch c {
 	case Success:
@@ -106,32 +114,37 @@ func (c Xcode) Msg() string {
 	}
 }
 
-// CodeError wraps Xcode and message
+// CodeError 封装业务错误码和消息。
 type CodeError struct {
-	Code Xcode  `json:"code"`
-	Msg  string `json:"msg"`
+	Code Xcode  `json:"code"` // 业务错误码
+	Msg  string `json:"msg"`  // 错误消息
 }
 
+// Error 实现 error 接口。
 func (e *CodeError) Error() string {
 	return fmt.Sprintf("code: %d, msg: %s", e.Code, e.Msg)
 }
 
-// New creates a new CodeError
+// New 创建新的 CodeError。
 func New(code Xcode, msg string) error {
 	return &CodeError{Code: code, Msg: msg}
 }
 
-// NewErrCode creates a CodeError from Xcode, using default message
+// NewErrCode 使用错误码创建 CodeError，使用默认消息。
 func NewErrCode(code Xcode) error {
 	return &CodeError{Code: code, Msg: code.Msg()}
 }
 
-// NewErrCodeMsg creates a CodeError from Xcode with custom message
+// NewErrCodeMsg 使用错误码和自定义消息创建 CodeError。
 func NewErrCodeMsg(code Xcode, msg string) error {
 	return &CodeError{Code: code, Msg: msg}
 }
 
-// FromError converts an error to CodeError.
+// FromError 将 error 转换为 CodeError。
+//
+// 如果 err 为 nil 返回 nil。
+// 如果 err 已经是 *CodeError 则直接返回。
+// 否则包装为 ServerError。
 func FromError(err error) *CodeError {
 	if err == nil {
 		return nil
@@ -142,7 +155,7 @@ func FromError(err error) *CodeError {
 	return &CodeError{Code: ServerError, Msg: err.Error()}
 }
 
-// HttpStatus converts Xcode to HTTP status code
+// HttpStatus 将业务错误码转换为 HTTP 状态码。
 func (c Xcode) HttpStatus() int {
 	switch c {
 	case Success, CreateSuccess, DeleteSuccess, UpdateSuccess:

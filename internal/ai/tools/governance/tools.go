@@ -1,3 +1,10 @@
+// Package governance 提供治理相关的工具实现。
+//
+// 本文件实现治理操作工具集，包括：
+//   - 用户和角色查询
+//   - 权限检查
+//   - 服务拓扑查询
+//   - 审计日志搜索
 package governance
 
 import (
@@ -12,30 +19,37 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// UserListInput 用户列表查询输入。
 type UserListInput struct {
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional username/email keyword"`
 	Status  int    `json:"status,omitempty" jsonschema_description:"optional status filter"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max users,default=50"`
 }
 
+// RoleListInput 角色列表查询输入。
 type RoleListInput struct {
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional role keyword"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max roles,default=50"`
 }
 
+// PermissionCheckInput 权限检查输入。
 type PermissionCheckInput struct {
 	UserID   int    `json:"user_id" jsonschema_description:"required,user id"`
 	Resource string `json:"resource" jsonschema_description:"required,resource name"`
 	Action   string `json:"action" jsonschema_description:"required,action name"`
 }
 
+// TopologyGetInput 拓扑查询输入。
 type TopologyGetInput struct {
 	ServiceID int `json:"service_id,omitempty" jsonschema_description:"optional service id"`
 	Depth     int `json:"depth,omitempty" jsonschema_description:"max depth,default=2"`
 }
 
+// AuditLogSearchInput 审计日志搜索输入。
 type AuditLogSearchInput struct {
 	TimeRange    string `json:"time_range,omitempty" jsonschema_description:"time range,default=24h"`
 	ResourceType string `json:"resource_type,omitempty" jsonschema_description:"optional resource type"`
@@ -44,7 +58,7 @@ type AuditLogSearchInput struct {
 	Limit        int    `json:"limit,omitempty" jsonschema_description:"max logs,default=50"`
 }
 
-// NewGovernanceTools returns all governance tools.
+// NewGovernanceTools 创建所有治理工具。
 func NewGovernanceTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		UserList(ctx, deps),

@@ -1,3 +1,7 @@
+// Package httpx 提供 HTTP 请求处理相关的工具函数。
+//
+// 本文件实现参数提取和类型转换功能，
+// 用于从 gin.Context 中提取用户 ID、路由参数和查询参数。
 package httpx
 
 import (
@@ -7,8 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UIDFromCtx extracts the user ID from gin context (set by JWT middleware).
-// Returns 0 if not present or not convertible.
+// UIDFromCtx 从 gin.Context 中提取用户 ID。
+//
+// 用户 ID 由 JWT 中间件设置到上下文中。
+// 如果不存在或无法转换，返回 0。
 func UIDFromCtx(c *gin.Context) uint64 {
 	v, ok := c.Get("uid")
 	if !ok {
@@ -17,7 +23,10 @@ func UIDFromCtx(c *gin.Context) uint64 {
 	return ToUint64(v)
 }
 
-// ToUint64 converts common numeric types to uint64.
+// ToUint64 将常见数值类型转换为 uint64。
+//
+// 支持的类型：uint, uint64, int, int64, float64。
+// 负数返回 0。
 func ToUint64(v any) uint64 {
 	switch x := v.(type) {
 	case uint:
@@ -44,15 +53,17 @@ func ToUint64(v any) uint64 {
 	}
 }
 
-// UintFromParam parses a uint from a gin route path parameter.
-// Returns 0 if the parameter is missing or not a valid number.
+// UintFromParam 从路由路径参数中解析 uint 值。
+//
+// 如果参数缺失或不是有效数字，返回 0。
 func UintFromParam(c *gin.Context, key string) uint {
 	v, _ := strconv.ParseUint(c.Param(key), 10, 64)
 	return uint(v)
 }
 
-// UintFromQuery parses a uint from a gin query string parameter.
-// Returns 0 if the parameter is missing or not a valid number.
+// UintFromQuery 从查询字符串参数中解析 uint 值。
+//
+// 自动去除首尾空白。如果参数缺失或不是有效数字，返回 0。
 func UintFromQuery(c *gin.Context, key string) uint {
 	v, _ := strconv.ParseUint(strings.TrimSpace(c.Query(key)), 10, 64)
 	return uint(v)

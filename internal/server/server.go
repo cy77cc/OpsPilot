@@ -1,3 +1,6 @@
+// Package server 提供 HTTP 服务器启动和管理功能。
+//
+// 本文件实现基于 Gin 的 HTTP 服务器，支持优雅关闭。
 package server
 
 import (
@@ -28,7 +31,10 @@ import (
 // @host      localhost:8080
 // @BasePath  /api/v1
 
-// Start 启动 HTTP 服务器
+// Start 启动 HTTP 服务器。
+//
+// 非阻塞调用，在后台启动服务器。
+// 当 context 被取消时优雅关闭。
 func Start(ctx context.Context) error {
 	go startServer(ctx)
 	<-ctx.Done()
@@ -36,7 +42,10 @@ func Start(ctx context.Context) error {
 	return nil
 }
 
-// startServer 启动 Gin 服务
+// startServer 启动 Gin 服务。
+//
+// 初始化服务上下文、创建路由、启动监听。
+// 支持优雅关闭，超时时间为 10 秒。
 func startServer(ctx context.Context) {
 	svcCtx := svc.MustNewServiceContext()
 	// storage.MustMigrate(svcCtx.DB)

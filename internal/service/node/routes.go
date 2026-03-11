@@ -1,3 +1,7 @@
+// Package node 提供节点管理服务的路由注册（已废弃）。
+//
+// 本文件注册节点相关的 HTTP 路由，此服务已被 host 服务替代。
+// 所有响应包含 Deprecation 头指示废弃日期。
 package node
 
 import (
@@ -8,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterNodeHandlers 注册节点服务路由（已废弃）。
 func RegisterNodeHandlers(r *gin.RouterGroup, serverCtx *svc.ServiceContext) {
 	g := r.Group("node", middleware.JWTAuth())
 	h := handler.NewNodeHandler(serverCtx)

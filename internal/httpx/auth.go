@@ -1,3 +1,7 @@
+// Package httpx 提供 HTTP 请求处理相关的工具函数。
+//
+// 本文件实现基于数据库的权限检查功能，
+// 用于判断用户是否为管理员或是否拥有特定权限。
 package httpx
 
 import (
@@ -9,9 +13,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// IsAdmin reports whether the given user is an administrator.
-// A user is considered admin if their username equals "admin" (case-insensitive)
-// or if they hold a role with code "admin" (case-insensitive).
+// IsAdmin 判断指定用户是否为管理员。
+//
+// 判断条件（满足任一）：
+//   - 用户名为 "admin"（不区分大小写）
+//   - 用户持有 code 为 "admin" 的角色（不区分大小写）
 func IsAdmin(db *gorm.DB, userID uint64) bool {
 	if userID == 0 {
 		return false
@@ -40,8 +46,13 @@ func IsAdmin(db *gorm.DB, userID uint64) bool {
 	return false
 }
 
-// HasAnyPermission reports whether the user holds at least one of the given permission codes.
-// Admin users always return true. Supports "*:*" wildcard and "<domain>:*" domain wildcard.
+// HasAnyPermission 判断用户是否拥有指定的任一权限。
+//
+// 权限检查顺序：
+//  1. 管理员拥有所有权限
+//  2. 检查通配符权限 "*:*"
+//  3. 检查精确匹配的权限
+//  4. 检查领域通配符 "<domain>:*"
 func HasAnyPermission(db *gorm.DB, userID uint64, codes ...string) bool {
 	if userID == 0 {
 		return false
@@ -82,9 +93,13 @@ func HasAnyPermission(db *gorm.DB, userID uint64, codes ...string) bool {
 	return false
 }
 
-// Authorize checks that the current user has at least one of the given permission codes.
-// If the check fails, it writes a Forbidden response and returns false.
-// Usage: if !httpx.Authorize(c, db, "k8s:read") { return }
+// Authorize 检查当前用户是否拥有指定的任一权限。
+//
+// 如果检查失败，写入 Forbidden 响应并返回 false。
+//
+// 用法:
+//
+//	if !httpx.Authorize(c, db, "k8s:read") { return }
 func Authorize(c *gin.Context, db *gorm.DB, codes ...string) bool {
 	uid := UIDFromCtx(c)
 	if HasAnyPermission(db, uid, codes...) {

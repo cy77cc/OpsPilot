@@ -1,3 +1,6 @@
+// Package state 提供 AI 编排的状态管理功能。
+//
+// 本文件实现会话状态和检查点存储，使用 Redis 作为持久化后端。
 package state
 
 import (
@@ -13,37 +16,42 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const defaultTTL = 24 * time.Hour
+const defaultTTL = 24 * time.Hour // 默认过期时间
 
+// SessionSnapshot 表示会话快照。
 type SessionSnapshot struct {
-	SessionID string          `json:"session_id"`
-	Title     string          `json:"title,omitempty"`
-	Messages  []StoredMessage `json:"messages"`
-	Context   map[string]any  `json:"context,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	SessionID string          `json:"session_id"`         // 会话 ID
+	Title     string          `json:"title,omitempty"`     // 会话标题
+	Messages  []StoredMessage `json:"messages"`            // 消息列表
+	Context   map[string]any  `json:"context,omitempty"`   // 上下文
+	CreatedAt time.Time       `json:"created_at"`          // 创建时间
+	UpdatedAt time.Time       `json:"updated_at"`          // 更新时间
 }
 
+// StoredMessage 表示存储的消息。
 type StoredMessage struct {
-	Role       string    `json:"role"`
-	Content    string    `json:"content"`
-	ToolCallID string    `json:"tool_call_id,omitempty"`
-	ToolName   string    `json:"tool_name,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	Role       string    `json:"role"`                 // 角色 (user/assistant/system)
+	Content    string    `json:"content"`              // 内容
+	ToolCallID string    `json:"tool_call_id,omitempty"` // 工具调用 ID
+	ToolName   string    `json:"tool_name,omitempty"`  // 工具名称
+	Timestamp  time.Time `json:"timestamp"`            // 时间戳
 }
 
+// SessionState 管理会话状态，使用 Redis 存储。
 type SessionState struct {
-	client redis.UniversalClient
-	prefix string
-	ttl    time.Duration
+	client redis.UniversalClient // Redis 客户端
+	prefix string                 // 键前缀
+	ttl    time.Duration          // 过期时间
 }
 
+// CheckpointStore 管理检查点存储，用于断点续传。
 type CheckpointStore struct {
-	client redis.UniversalClient
-	prefix string
-	ttl    time.Duration
+	client redis.UniversalClient // Redis 客户端
+	prefix string                 // 键前缀
+	ttl    time.Duration          // 过期时间
 }
 
+// NewSessionState 创建新的会话状态管理器。
 func NewSessionState(client redis.UniversalClient, prefix string) *SessionState {
 	if prefix == "" {
 		prefix = "ai:session:"
@@ -51,6 +59,7 @@ func NewSessionState(client redis.UniversalClient, prefix string) *SessionState 
 	return &SessionState{client: client, prefix: prefix, ttl: defaultTTL}
 }
 
+// NewCheckpointStore 创建新的检查点存储。
 func NewCheckpointStore(client redis.UniversalClient, prefix string) *CheckpointStore {
 	if prefix == "" {
 		prefix = "ai:checkpoint:"

@@ -85,6 +85,15 @@ func TestNormalizeOutputKeepsModelSemanticsAndRetrievalFields(t *testing.T) {
 	if !out.RequiresRAG {
 		t.Fatalf("RequiresRAG = false, want true")
 	}
+	if out.NormalizedGoal != "" {
+		t.Fatalf("NormalizedGoal = %q, want empty because model did not provide it", out.NormalizedGoal)
+	}
+	if out.OperationMode != "investigate" {
+		t.Fatalf("OperationMode = %q, want investigate", out.OperationMode)
+	}
+	if out.Narrative != "" {
+		t.Fatalf("Narrative = %q, want model-owned empty narrative preserved", out.Narrative)
+	}
 }
 
 func TestRewriteDetectsNumericResourceIDsFromSelection(t *testing.T) {
@@ -104,5 +113,27 @@ func TestRewriteDetectsNumericResourceIDsFromSelection(t *testing.T) {
 	}
 	if base.ResourceHints.HostID != 56 {
 		t.Fatalf("HostID = %d, want 56", base.ResourceHints.HostID)
+	}
+}
+
+func TestNormalizeOutputDoesNotRebuildNarrativeOrGoalFromBase(t *testing.T) {
+	base := buildBaseOutput(Input{
+		Message: "查看 local 集群 pod 日志",
+		SelectedResources: []SelectedResource{
+			{Type: "cluster", ID: "12", Name: "local"},
+		},
+	})
+	out := normalizeOutput(base, Output{
+		RawUserInput: "查看 local 集群 pod 日志",
+		Narrative:    "",
+	})
+	if out.NormalizedGoal != "" {
+		t.Fatalf("NormalizedGoal = %q, want empty", out.NormalizedGoal)
+	}
+	if out.Narrative != "" {
+		t.Fatalf("Narrative = %q, want empty", out.Narrative)
+	}
+	if out.ResourceHints.ClusterID != 12 {
+		t.Fatalf("ClusterID = %d, want 12", out.ResourceHints.ClusterID)
 	}
 }

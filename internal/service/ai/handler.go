@@ -1,3 +1,11 @@
+// Package ai 提供 AI 编排服务的 HTTP 处理器实现。
+//
+// 本文件实现 AI 对话、会话管理和流程恢复等核心功能的 HTTP 接口。
+// 主要职责包括：
+//   - SSE 流式对话响应
+//   - 会话持久化和查询
+//   - 审批流程恢复
+//   - 用户反馈收集
 package ai
 
 import (
@@ -20,40 +28,46 @@ import (
 	"github.com/google/uuid"
 )
 
+// HTTPHandler AI 服务的 HTTP 处理器。
 type HTTPHandler struct {
-	svcCtx       *svc.ServiceContext
-	sessions     *aistate.SessionState
-	chatStore    *aistate.ChatStore
-	orchestrator *coreai.Orchestrator
+	svcCtx       *svc.ServiceContext     // 服务上下文
+	sessions     *aistate.SessionState   // 会话状态管理
+	chatStore    *aistate.ChatStore      // 聊天记录存储
+	orchestrator *coreai.Orchestrator    // AI 编排器
 }
 
+// approvalResponseRequest 审批响应请求结构。
 type approvalResponseRequest struct {
-	CheckpointID string `json:"checkpoint_id,omitempty"`
-	SessionID    string `json:"session_id,omitempty"`
-	PlanID       string `json:"plan_id,omitempty"`
-	StepID       string `json:"step_id,omitempty"`
-	Target       string `json:"target,omitempty"`
-	Approved     bool   `json:"approved"`
-	Reason       string `json:"reason,omitempty"`
+	CheckpointID string `json:"checkpoint_id,omitempty"` // 检查点 ID（兼容旧版）
+	SessionID    string `json:"session_id,omitempty"`    // 会话 ID
+	PlanID       string `json:"plan_id,omitempty"`       // 计划 ID
+	StepID       string `json:"step_id,omitempty"`       // 步骤 ID
+	Target       string `json:"target,omitempty"`        // 目标标识
+	Approved     bool   `json:"approved"`                // 是否批准
+	Reason       string `json:"reason,omitempty"`        // 原因说明
 }
 
+// updateSessionTitleRequest 更新会话标题请求。
 type updateSessionTitleRequest struct {
-	Title string `json:"title" binding:"required"`
+	Title string `json:"title" binding:"required"` // 新标题
 }
 
+// branchSessionRequest 分支会话请求。
 type branchSessionRequest struct {
-	Title string `json:"title,omitempty"`
+	Title string `json:"title,omitempty"` // 新会话标题
 }
 
+// feedbackRequest 用户反馈请求。
 type feedbackRequest struct {
-	SessionID   string `json:"session_id,omitempty"`
-	Namespace   string `json:"namespace,omitempty"`
-	IsEffective bool   `json:"is_effective"`
-	Comment     string `json:"comment,omitempty"`
-	Question    string `json:"question,omitempty"`
-	Answer      string `json:"answer,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`   // 会话 ID
+	Namespace   string `json:"namespace,omitempty"`     // 命名空间
+	IsEffective bool   `json:"is_effective"`            // 是否有效反馈
+	Comment     string `json:"comment,omitempty"`       // 反馈评论
+	Question    string `json:"question,omitempty"`      // 问题（用于知识提取）
+	Answer      string `json:"answer,omitempty"`        // 答案（用于知识提取）
 }
 
+// NewHTTPHandler 创建新的 HTTP 处理器实例。
 func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 	sessionState := aistate.NewSessionState(svcCtx.Rdb, "ai:session:")
 	executionStore := runtime.NewExecutionStore(svcCtx.Rdb, "ai:execution:")
@@ -67,6 +81,9 @@ func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 	}
 }
 
+// Chat 处理对话请求，返回 SSE 流式响应。
+//
+// 支持 AI 编排的完整流程：改写、规划、执行、总结。
 func (h *HTTPHandler) Chat(c *gin.Context) {
 	var req v1.ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -124,10 +141,12 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 	}
 }
 
+// ResumeStep 处理步骤恢复请求。
 func (h *HTTPHandler) ResumeStep(c *gin.Context) {
 	h.handleResume(c, false)
 }
 
+// handleResume 统一处理恢复请求。
 func (h *HTTPHandler) handleResume(c *gin.Context, legacyADK bool) {
 	var req approvalResponseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -142,10 +161,12 @@ func (h *HTTPHandler) handleResume(c *gin.Context, legacyADK bool) {
 	httpx.OK(c, buildResumeResponse(res, legacyADK))
 }
 
+// ResumeADKApproval 处理 ADK 审批恢复请求（兼容旧版）。
 func (h *HTTPHandler) ResumeADKApproval(c *gin.Context) {
 	h.handleResume(c, true)
 }
 
+// buildResumeRequest 构建恢复请求对象。
 func buildResumeRequest(req approvalResponseRequest) coreai.ResumeRequest {
 	return coreai.ResumeRequest{
 		SessionID: req.SessionID,

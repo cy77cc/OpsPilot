@@ -29,8 +29,17 @@ func TestPlanReturnsUnavailableWhenRunnerMissing(t *testing.T) {
 	}
 }
 
-func TestPlanFallsBackToClarifyWhenRewriteStillAmbiguous(t *testing.T) {
-	out, err := New(nil).Plan(context.Background(), Input{
+func TestPlanDoesNotShortCircuitWhenRewriteReportsAmbiguity(t *testing.T) {
+	called := false
+	planner := NewWithFunc(func(_ context.Context, in Input, _ func(string)) (Decision, error) {
+		called = true
+		if len(in.Rewrite.AmbiguityFlags) != 1 {
+			t.Fatalf("ambiguity flags = %#v, want preserved input", in.Rewrite.AmbiguityFlags)
+		}
+		return Decision{Type: DecisionDirectReply, Message: "继续规划"}, nil
+	})
+
+	out, err := planner.Plan(context.Background(), Input{
 		Message: "帮我看看状态",
 		Rewrite: rewrite.Output{
 			AmbiguityFlags: []string{"resource_target_not_explicit"},
@@ -39,11 +48,11 @@ func TestPlanFallsBackToClarifyWhenRewriteStillAmbiguous(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if out.Type != DecisionClarify {
-		t.Fatalf("Type = %s, want %s", out.Type, DecisionClarify)
+	if !called {
+		t.Fatalf("planner run function was not called")
 	}
-	if len(out.Candidates) != 1 {
-		t.Fatalf("Candidates = %#v", out.Candidates)
+	if out.Type != DecisionDirectReply {
+		t.Fatalf("Type = %s, want %s", out.Type, DecisionDirectReply)
 	}
 }
 
@@ -82,7 +91,7 @@ func TestNormalizeDecisionDoesNotPanicWhenBaseHasNoPlan(t *testing.T) {
 }
 
 func TestParseDecisionAcceptsNumericStepIDsAndNormalizesPlan(t *testing.T) {
-	raw := `{"narrative":"Target pod identified","plan":{"plan_id":"plan_pod_log_analysis_001","goal":"Fetch logs and analyze health","resolved":{"cluster_id":1,"pod_name":"mysql-0","namespace":"default"},"narrative":"Execute log retrieval and health analysis.","steps":[{"step_id":1,"title":"Retrieve Pod Logs","expert":"k8s","intent":"Fetch logs","task":"Retrieve logs","depends_on":[],"mode":"query","risk":"low","narrative":"Get logs"},{"step_id":2,"title":"Analyze Pod Health","expert":"analysis","intent":"Assess health","task":"Analyze logs","depends_on":[1],"mode":"analysis","risk":"low","narrative":"Interpret logs"}]},"type":"plan"}`
+	raw := `{"narrative":"Target pod identified","plan":{"plan_id":"plan_pod_log_analysis_001","goal":"Fetch logs and analyze health","resolved":{"cluster_id":1,"pod_name":"mysql-0","namespace":"default"},"narrative":"Execute log retrieval and health analysis.","steps":[{"step_id":1,"title":"Retrieve Pod Logs","expert":"k8s","intent":"Fetch logs","task":"Retrieve logs","depends_on":[],"mode":"query","risk":"low","narrative":"Get logs"},{"step_id":2,"title":"Analyze Pod Health","expert":"observability","intent":"Assess health","task":"Analyze logs","depends_on":[1],"mode":"analysis","risk":"low","narrative":"Interpret logs"}]},"type":"plan"}`
 
 	parsed, err := ParseDecision(raw)
 	if err != nil {
@@ -111,8 +120,8 @@ func TestParseDecisionAcceptsNumericStepIDsAndNormalizesPlan(t *testing.T) {
 	if got := out.Plan.Steps[0].Mode; got != "readonly" {
 		t.Fatalf("step 1 mode = %q, want readonly", got)
 	}
-	if got := out.Plan.Steps[1].Expert; got != "analysis" {
-		t.Fatalf("step 2 expert = %q, want analysis preserved", got)
+	if got := out.Plan.Steps[1].Expert; got != "observability" {
+		t.Fatalf("step 2 expert = %q, want observability preserved", got)
 	}
 	if len(out.Plan.Steps[1].DependsOn) != 1 || out.Plan.Steps[1].DependsOn[0] != "1" {
 		t.Fatalf("step 2 depends_on = %#v", out.Plan.Steps[1].DependsOn)
@@ -307,23 +316,6 @@ func TestNormalizeDecisionPreservesFleetHostStepSemantics(t *testing.T) {
 	}
 }
 
-func TestPickPrimaryExpertPrefersHostContextOverMisleadingDomainHint(t *testing.T) {
-	got := pickPrimaryExpert(rewrite.Output{
-		ResourceHints: rewrite.ResourceHints{
-			HostName: "火山云服务器",
-		},
-		DomainHints: []string{"service"},
-		NormalizedRequest: rewrite.NormalizedRequest{
-			Targets: []rewrite.RequestTarget{
-				{Type: "host", Name: "火山云服务器"},
-			},
-		},
-	})
-	if got != "hostops" {
-		t.Fatalf("pickPrimaryExpert() = %q, want hostops", got)
-	}
-}
-
 func TestBuildBaseDecisionCarriesPodTargetIntoResolvedResources(t *testing.T) {
 	out := buildBasePlanContext(Input{
 		Message: "查看 local 集群 kube-system 空间下的 cilium-87f2m 最近 100 条日志",
@@ -364,6 +356,8 @@ func TestValidatePlanPrerequisitesUsesStructuredTargetTypeInsteadOfKeyword(t *te
 			Expert: "k8s",
 			Title:  "读取最近 100 条日志",
 			Task:   "get the latest 100 lines and analyze health",
+			Mode:   "readonly",
+			Risk:   "low",
 			Input: map[string]any{
 				"normalized_request": map[string]any{
 					"targets": []any{
@@ -422,5 +416,41 @@ func TestPopulateStepInputPropagatesMultipleHostsAsHostIDs(t *testing.T) {
 	}
 	if _, ok := out["host_id"]; ok {
 		t.Fatalf("host_id should not be set for multi-host input: %#v", out)
+	}
+}
+
+func TestNormalizeDecisionReturnsPlanningInvalidForUnsupportedMode(t *testing.T) {
+	base := buildBasePlanContext(Input{
+		Message: "查看 payment-api 状态",
+		Rewrite: rewrite.Output{
+			NormalizedGoal: "查看 payment-api 状态",
+		},
+	})
+	parsed := Decision{
+		Type: DecisionPlan,
+		Plan: &ExecutionPlan{
+			PlanID: "plan-invalid-mode",
+			Goal:   "查看 payment-api 状态",
+			Steps: []PlanStep{{
+				StepID: "step-1",
+				Title:  "检查服务状态",
+				Expert: "service",
+				Task:   "inspect payment-api",
+				Mode:   "custom_mode",
+				Risk:   "low",
+			}},
+		},
+	}
+
+	_, err := normalizeDecision(base, parsed)
+	if err == nil {
+		t.Fatalf("normalizeDecision() error = nil, want PlanningError")
+	}
+	var planningErr *PlanningError
+	if !errors.As(err, &planningErr) {
+		t.Fatalf("normalizeDecision() error = %v, want PlanningError", err)
+	}
+	if planningErr.Code != "planning_invalid" {
+		t.Fatalf("Code = %q, want planning_invalid", planningErr.Code)
 	}
 }

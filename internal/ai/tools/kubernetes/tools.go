@@ -1,3 +1,9 @@
+// Package kubernetes 提供 Kubernetes 集群操作相关的工具实现。
+//
+// 本文件实现 K8s 操作工具集，包括：
+//   - 资源查询（Pod、Service、Deployment、Node）
+//   - 事件检查
+//   - 日志获取
 package kubernetes
 
 import (
@@ -12,8 +18,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// K8sListInput 资源列表查询输入。
 type K8sListInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
@@ -21,6 +30,7 @@ type K8sListInput struct {
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max items,default=50"`
 }
 
+// K8sQueryInput 资源查询输入，支持按名称和标签过滤。
 type K8sQueryInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
@@ -30,12 +40,14 @@ type K8sQueryInput struct {
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max items,default=50"`
 }
 
+// K8sEventsInput 事件查询输入。
 type K8sEventsInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max events,default=50"`
 }
 
+// K8sEventsQueryInput 事件查询输入，支持按对象过滤。
 type K8sEventsQueryInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
@@ -44,6 +56,7 @@ type K8sEventsQueryInput struct {
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max events,default=50"`
 }
 
+// K8sPodLogsInput Pod 日志查询输入。
 type K8sPodLogsInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
@@ -52,6 +65,7 @@ type K8sPodLogsInput struct {
 	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
 }
 
+// K8sLogsInput 日志查询输入。
 type K8sLogsInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
 	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
@@ -60,7 +74,7 @@ type K8sLogsInput struct {
 	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
 }
 
-// NewKubernetesTools returns all kubernetes tools.
+// NewKubernetesTools 创建所有 Kubernetes 工具。
 func NewKubernetesTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		K8sQuery(ctx, deps),

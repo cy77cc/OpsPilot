@@ -1,3 +1,7 @@
+// Package summarizer 实现 AI 编排的总结阶段。
+//
+// Summarizer 负责汇总执行结果，生成用户可见的最终答案。
+// 输出包含摘要、关键发现、建议和重规划提示。
 package summarizer
 
 import (
@@ -13,50 +17,57 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
 
+// Input 是总结器的输入结构。
 type Input struct {
-	Message string
-	Plan    *planner.ExecutionPlan
-	State   runtime.ExecutionState
-	Steps   []executor.StepResult
+	Message string               // 用户原始消息
+	Plan    *planner.ExecutionPlan // 执行计划
+	State   runtime.ExecutionState // 执行状态
+	Steps   []executor.StepResult  // 步骤结果列表
 }
 
+// ReplanHint 表示重规划提示。
 type ReplanHint struct {
-	Reason          string   `json:"reason,omitempty"`
-	Focus           string   `json:"focus,omitempty"`
-	MissingEvidence []string `json:"missing_evidence,omitempty"`
+	Reason          string   `json:"reason,omitempty"`          // 重规划原因
+	Focus           string   `json:"focus,omitempty"`           // 关注点
+	MissingEvidence []string `json:"missing_evidence,omitempty"` // 缺失证据
 }
 
+// SummaryOutput 表示总结输出。
 type SummaryOutput struct {
-	Summary               string      `json:"summary"`
-	Headline              string      `json:"headline,omitempty"`
-	Conclusion            string      `json:"conclusion,omitempty"`
-	KeyFindings           []string    `json:"key_findings,omitempty"`
-	ResourceSummaries     []string    `json:"resource_summaries,omitempty"`
-	Recommendations       []string    `json:"recommendations,omitempty"`
-	RawOutputPolicy       string      `json:"raw_output_policy,omitempty"`
-	NextActions           []string    `json:"next_actions,omitempty"`
-	NeedMoreInvestigation bool        `json:"need_more_investigation"`
-	Narrative             string      `json:"narrative"`
-	ReplanHint            *ReplanHint `json:"replan_hint,omitempty"`
+	Summary               string      `json:"summary"`                     // 总结
+	Headline              string      `json:"headline,omitempty"`          // 标题
+	Conclusion            string      `json:"conclusion,omitempty"`        // 结论
+	KeyFindings           []string    `json:"key_findings,omitempty"`      // 关键发现
+	ResourceSummaries     []string    `json:"resource_summaries,omitempty"` // 资源摘要
+	Recommendations       []string    `json:"recommendations,omitempty"`   // 建议
+	RawOutputPolicy       string      `json:"raw_output_policy,omitempty"` // 原始输出策略
+	NextActions           []string    `json:"next_actions,omitempty"`      // 后续动作
+	NeedMoreInvestigation bool        `json:"need_more_investigation"`     // 是否需要更多调查
+	Narrative             string      `json:"narrative"`                   // 自然语言描述
+	ReplanHint            *ReplanHint `json:"replan_hint,omitempty"`       // 重规划提示
 }
 
+// Summarizer 是总结器核心。
 type Summarizer struct {
-	runner *adk.Runner
-	runFn  func(context.Context, Input, func(string)) (SummaryOutput, error)
+	runner *adk.Runner                                             // ADK 运行器
+	runFn  func(context.Context, Input, func(string)) (SummaryOutput, error) // 执行函数
 }
 
+// New 创建新的总结器实例。
 func New(runner *adk.Runner) *Summarizer {
 	return &Summarizer{runner: runner}
 }
 
+// NewWithFunc 使用自定义执行函数创建总结器。
 func NewWithFunc(runFn func(context.Context, Input, func(string)) (SummaryOutput, error)) *Summarizer {
 	return &Summarizer{runFn: runFn}
 }
 
+// UnavailableError 表示总结器不可用错误。
 type UnavailableError struct {
-	Code              string
-	UserVisibleReason string
-	Cause             error
+	Code              string // 错误码
+	UserVisibleReason string // 用户可见原因
+	Cause             error  // 原始错误
 }
 
 func (e *UnavailableError) Error() string {
@@ -109,13 +120,9 @@ func (s *Summarizer) summarize(ctx context.Context, in Input, onDelta func(strin
 			Cause:             err,
 		}
 	}
-	var parsed SummaryOutput
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
-		return SummaryOutput{}, &UnavailableError{
-			Code:              "summarizer_invalid_json",
-			UserVisibleReason: availability.InvalidOutputMessage(availability.LayerSummarizer),
-			Cause:             err,
-		}
+	parsed, err := parseSummaryOutput(raw)
+	if err != nil {
+		return normalizeSummary(buildPlainTextSummaryOutput(raw))
 	}
 	return normalizeSummary(parsed)
 }
@@ -136,14 +143,14 @@ func firstNonEmpty(values ...string) string {
 }
 
 func normalizeSummary(parsed SummaryOutput) (SummaryOutput, error) {
-	parsed.Summary = firstNonEmpty(parsed.Summary, parsed.Headline, parsed.Conclusion)
-	parsed.Headline = firstNonEmpty(parsed.Headline, parsed.Summary)
-	parsed.Conclusion = firstNonEmpty(parsed.Conclusion, parsed.Summary)
-	if parsed.Summary == "" || parsed.Headline == "" || parsed.Conclusion == "" {
+	parsed.Summary = firstNonEmpty(parsed.Summary, parsed.Headline, parsed.Conclusion, parsed.Narrative)
+	parsed.Headline = firstNonEmpty(parsed.Headline, parsed.Summary, parsed.Conclusion)
+	parsed.Conclusion = firstNonEmpty(parsed.Conclusion, parsed.Summary, parsed.Narrative)
+	if !hasRenderableSummary(parsed) {
 		return SummaryOutput{}, &UnavailableError{
 			Code:              "summarizer_invalid_output",
 			UserVisibleReason: availability.InvalidOutputMessage(availability.LayerSummarizer),
-			Cause:             fmt.Errorf("summary output missing summary/headline/conclusion"),
+			Cause:             fmt.Errorf("summary output missing renderable fields"),
 		}
 	}
 	if strings.TrimSpace(parsed.RawOutputPolicy) == "" {
@@ -153,62 +160,123 @@ func normalizeSummary(parsed SummaryOutput) (SummaryOutput, error) {
 	parsed.ResourceSummaries = dedupe(parsed.ResourceSummaries)
 	parsed.Recommendations = dedupe(parsed.Recommendations)
 	parsed.NextActions = dedupe(parsed.NextActions)
-	if parsed.NeedMoreInvestigation {
-		parsed.Conclusion = qualifyUncertainConclusion(parsed.Conclusion)
-		parsed.Narrative = qualifyUncertainNarrative(parsed.Narrative)
-		parsed.Headline = qualifyHeadline(parsed.Headline)
-	}
 	return parsed, nil
 }
 
-func qualifyUncertainConclusion(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "当前仅能基于现有证据给出初步判断，仍需进一步调查。"
+func parseSummaryOutput(raw string) (SummaryOutput, error) {
+	candidates := []string{
+		strings.TrimSpace(raw),
+		extractFencedJSON(raw),
+		extractJSONObject(raw),
 	}
-	if containsUncertaintyMarker(text) {
-		return text
-	}
-	return text + " 当前仅为基于现有证据的初步判断，仍需进一步调查。"
-}
-
-func qualifyUncertainNarrative(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "当前叙述仅基于已完成步骤和现有证据，不足部分仍待补充确认。"
-	}
-	if containsUncertaintyMarker(text) && strings.Contains(text, "证据") {
-		return text
-	}
-	if !strings.Contains(text, "证据") {
-		text += " 以上内容仅基于当前执行证据。"
-	}
-	if !containsUncertaintyMarker(text) {
-		text += " 仍存在待确认的不确定性。"
-	}
-	return strings.TrimSpace(text)
-}
-
-func qualifyHeadline(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "当前仅能给出初步判断"
-	}
-	if containsUncertaintyMarker(text) {
-		return text
-	}
-	return text + "（初步判断）"
-}
-
-func containsUncertaintyMarker(text string) bool {
-	text = strings.ToLower(strings.TrimSpace(text))
-	markers := []string{"可能", "初步", "待确认", "不确定", "证据不足", "进一步调查", "尚不能", "仍需"}
-	for _, marker := range markers {
-		if strings.Contains(text, marker) {
-			return true
+	var lastErr error
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		var parsed SummaryOutput
+		if err := json.Unmarshal([]byte(candidate), &parsed); err == nil {
+			return parsed, nil
+		} else {
+			lastErr = err
 		}
 	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("summary output is empty")
+	}
+	return SummaryOutput{}, lastErr
+}
+
+func buildPlainTextSummaryOutput(raw string) SummaryOutput {
+	text := strings.TrimSpace(raw)
+	text = strings.TrimSpace(strings.TrimPrefix(text, "```"))
+	text = strings.TrimSpace(strings.TrimPrefix(text, "json"))
+	text = strings.TrimSpace(strings.TrimSuffix(text, "```"))
+	return SummaryOutput{
+		Summary:    text,
+		Headline:   text,
+		Conclusion: text,
+		Narrative:  text,
+	}
+}
+
+func hasRenderableSummary(parsed SummaryOutput) bool {
+	if firstNonEmpty(parsed.Summary, parsed.Headline, parsed.Conclusion, parsed.Narrative) != "" {
+		return true
+	}
+	if len(parsed.KeyFindings) > 0 || len(parsed.ResourceSummaries) > 0 || len(parsed.Recommendations) > 0 || len(parsed.NextActions) > 0 {
+		return true
+	}
+	if parsed.ReplanHint != nil && (parsed.ReplanHint.Reason != "" || parsed.ReplanHint.Focus != "" || len(parsed.ReplanHint.MissingEvidence) > 0) {
+		return true
+	}
 	return false
+}
+
+func extractFencedJSON(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if !strings.Contains(trimmed, "```") {
+		return ""
+	}
+	parts := strings.Split(trimmed, "```")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		part = strings.TrimPrefix(part, "json")
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "{") || strings.HasPrefix(part, "[") {
+			return part
+		}
+	}
+	return ""
+}
+
+func extractJSONObject(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	start := strings.Index(trimmed, "{")
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(trimmed); i++ {
+		ch := trimmed[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return trimmed[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 func dedupe(values []string) []string {

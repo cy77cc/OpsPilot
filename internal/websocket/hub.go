@@ -1,3 +1,7 @@
+// Package websocket 提供 WebSocket 连接处理功能。
+//
+// 本文件实现 WebSocket Hub 消息中心，管理所有客户端连接，
+// 支持用户级别的消息广播和心跳检测。
 package websocket
 
 import (
@@ -10,54 +14,57 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WSMessage WebSocket 消息格式
+// WSMessage 是 WebSocket 消息格式。
 type WSMessage struct {
-	Type         string              `json:"type"`
-	Notification *UserNotificationWS `json:"notification,omitempty"`
-	ID           string              `json:"id,omitempty"`
-	ReadAt       string              `json:"read_at,omitempty"`
-	DismissedAt  string              `json:"dismissed_at,omitempty"`
-	ConfirmedAt  string              `json:"confirmed_at,omitempty"`
+	Type         string              `json:"type"`                   // 消息类型 (new/update)
+	Notification *UserNotificationWS `json:"notification,omitempty"` // 通知内容
+	ID           string              `json:"id,omitempty"`           // 通知 ID
+	ReadAt       string              `json:"read_at,omitempty"`      // 已读时间
+	DismissedAt  string              `json:"dismissed_at,omitempty"` // 忽略时间
+	ConfirmedAt  string              `json:"confirmed_at,omitempty"` // 确认时间
 }
 
-// UserNotificationWS WebSocket 通知格式
+// UserNotificationWS 是 WebSocket 通知格式。
 type UserNotificationWS struct {
-	ID             uint               `json:"id"`
-	UserID         uint64             `json:"user_id"`
-	NotificationID uint               `json:"notification_id"`
-	ReadAt         *time.Time         `json:"read_at"`
-	DismissedAt    *time.Time         `json:"dismissed_at"`
-	ConfirmedAt    *time.Time         `json:"confirmed_at"`
-	Notification   model.Notification `json:"notification"`
+	ID             uint               `json:"id"`              // 用户通知 ID
+	UserID         uint64             `json:"user_id"`         // 用户 ID
+	NotificationID uint               `json:"notification_id"` // 通知 ID
+	ReadAt         *time.Time         `json:"read_at"`         // 已读时间
+	DismissedAt    *time.Time         `json:"dismissed_at"`    // 忽略时间
+	ConfirmedAt    *time.Time         `json:"confirmed_at"`    // 确认时间
+	Notification   model.Notification `json:"notification"`    // 通知详情
 }
 
-// Client WebSocket 客户端
+// Client 是 WebSocket 客户端连接。
 type Client struct {
-	UserID uint64
-	Conn   *websocket.Conn
-	Send   chan []byte
-	Hub    *Hub
+	UserID uint64            // 用户 ID
+	Conn   *websocket.Conn   // WebSocket 连接
+	Send   chan []byte       // 发送消息队列
+	Hub    *Hub              // 所属 Hub
 }
 
-// Hub WebSocket 连接中心
+// Hub 是 WebSocket 连接中心，管理所有客户端连接。
 type Hub struct {
-	clients    map[uint64]map[*Client]bool // userID -> clients
-	broadcast  chan *BroadcastMessage
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
+	clients    map[uint64]map[*Client]bool // 按用户 ID 分组的客户端集合
+	broadcast  chan *BroadcastMessage      // 广播消息通道
+	register   chan *Client                // 注册通道
+	unregister chan *Client                // 注销通道
+	mu         sync.RWMutex                // 读写锁
 }
 
-// BroadcastMessage 广播消息
+// BroadcastMessage 是广播消息结构。
 type BroadcastMessage struct {
-	UserID  uint64
-	Message []byte
+	UserID  uint64  // 目标用户 ID
+	Message []byte  // 消息内容
 }
 
+// hubInstance 是 Hub 单例实例。
 var hubInstance *Hub
 var hubOnce sync.Once
 
-// GetHub 获取 Hub 单例
+// GetHub 获取 Hub 单例实例。
+//
+// 首次调用时初始化 Hub 并启动运行协程。
 func GetHub() *Hub {
 	hubOnce.Do(func() {
 		hubInstance = &Hub{
@@ -71,7 +78,9 @@ func GetHub() *Hub {
 	return hubInstance
 }
 
-// Run 启动 Hub
+// Run 启动 Hub 事件循环。
+//
+// 处理客户端注册、注销、消息广播和心跳检测。
 func (h *Hub) Run() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
@@ -139,17 +148,17 @@ func (h *Hub) Run() {
 	}
 }
 
-// Register 注册客户端
+// Register 注册客户端到 Hub。
 func (h *Hub) Register(client *Client) {
 	h.register <- client
 }
 
-// Unregister 注销客户端
+// Unregister 从 Hub 注销客户端。
 func (h *Hub) Unregister(client *Client) {
 	h.unregister <- client
 }
 
-// PushNotification 推送新通知给用户
+// PushNotification 推送新通知给指定用户。
 func (h *Hub) PushNotification(userID uint64, notif *model.UserNotification) {
 	msg := WSMessage{
 		Type: "new",
@@ -176,7 +185,7 @@ func (h *Hub) PushNotification(userID uint64, notif *model.UserNotification) {
 	}
 }
 
-// PushUpdate 推送通知状态更新
+// PushUpdate 推送通知状态更新给指定用户。
 func (h *Hub) PushUpdate(userID uint64, notifID uint, readAt, dismissedAt, confirmedAt *time.Time) {
 	msg := WSMessage{
 		Type: "update",
@@ -205,7 +214,9 @@ func (h *Hub) PushUpdate(userID uint64, notifID uint, readAt, dismissedAt, confi
 	}
 }
 
-// ReadPump 读取消息
+// ReadPump 读取客户端消息。
+//
+// 处理 pong 消息，超时断开连接。
 func (c *Client) ReadPump() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -230,7 +241,9 @@ func (c *Client) ReadPump() {
 	}
 }
 
-// WritePump 写入消息
+// WritePump 写入消息到客户端。
+//
+// 从发送队列读取消息并写入连接，支持批量发送和心跳检测。
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {

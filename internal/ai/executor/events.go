@@ -1,3 +1,6 @@
+// Package executor 实现 AI 编排的执行阶段。
+//
+// 本文件定义执行阶段的事件发射函数，用于向前端推送实时状态。
 package executor
 
 import (
@@ -8,6 +11,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
 
+// emitStepUpdate 发送步骤更新事件。
 func emitStepUpdate(req Request, state *runtime.ExecutionState, step runtime.StepState) {
 	if req.EmitEvent == nil {
 		return
@@ -31,6 +35,7 @@ func emitStepUpdate(req Request, state *runtime.ExecutionState, step runtime.Ste
 	})
 }
 
+// emitToolCall 发送工具调用事件。
 func emitToolCall(req Request, state *runtime.ExecutionState, step runtime.StepState, toolName, summary string) {
 	if req.EmitEvent == nil {
 		return
@@ -54,6 +59,7 @@ func emitToolCall(req Request, state *runtime.ExecutionState, step runtime.StepS
 	})
 }
 
+// emitToolResult 发送工具调用结果事件。
 func emitToolResult(req Request, state *runtime.ExecutionState, step runtime.StepState, toolName, status, summary, errMsg string, result map[string]any) {
 	if req.EmitEvent == nil {
 		return
@@ -84,6 +90,7 @@ func emitToolResult(req Request, state *runtime.ExecutionState, step runtime.Ste
 	req.EmitEvent("tool_result", meta, payload)
 }
 
+// emitApprovalRequired 发送审批请求事件。
 func emitApprovalRequired(req Request, state *runtime.ExecutionState, approval *runtime.PendingApproval, step runtime.StepState) {
 	if req.EmitEvent == nil || approval == nil {
 		return
@@ -106,6 +113,7 @@ func emitApprovalRequired(req Request, state *runtime.ExecutionState, approval *
 	})
 }
 
+// statePlanID 从执行状态中获取计划 ID。
 func statePlanID(state *runtime.ExecutionState) string {
 	if state == nil {
 		return ""

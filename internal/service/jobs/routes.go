@@ -1,3 +1,10 @@
+// Package jobs 提供定时任务管理服务的路由注册。
+//
+// 本文件注册任务相关的 HTTP 路由，包括：
+//   - 任务 CRUD
+//   - 任务启停控制
+//   - 执行记录查询
+//   - 日志查看
 package jobs
 
 import (
@@ -6,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterJobsHandlers 注册任务服务路由到 v1 组。
 func RegisterJobsHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	g := v1.Group("/jobs", middleware.JWTAuth())

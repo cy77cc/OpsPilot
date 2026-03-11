@@ -1,3 +1,10 @@
+// Package automation 提供自动化运维服务的路由注册。
+//
+// 本文件注册自动化相关的 HTTP 路由，包括：
+//   - 清单管理（Inventory）
+//   - Playbook 管理
+//   - 运行预览和执行
+//   - 执行日志查询
 package automation
 
 import (
@@ -6,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterAutomationHandlers 注册自动化服务路由到 v1 组。
 func RegisterAutomationHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	g := v1.Group("/automation", middleware.JWTAuth())

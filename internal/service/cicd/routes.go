@@ -1,3 +1,12 @@
+// Package cicd 提供 CI/CD 持续集成部署服务的路由注册。
+//
+// 本文件注册 CI/CD 相关的 HTTP 路由，包括：
+//   - CI 配置管理
+//   - CI 运行触发和查询
+//   - CD 配置管理
+//   - 发布管理和审批
+//   - 服务时间线
+//   - 审计事件
 package cicd
 
 import (
@@ -6,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterCICDHandlers 注册 CI/CD 服务路由到 v1 组。
 func RegisterCICDHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	g := v1.Group("/cicd", middleware.JWTAuth())

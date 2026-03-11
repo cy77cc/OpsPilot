@@ -1,3 +1,7 @@
+// Package adapter 提供 Casbin 权限适配器实现。
+//
+// 本文件实现基于 GORM 的只读 Casbin 适配器，
+// 从数据库加载角色权限策略和用户角色继承关系。
 package adapter
 
 import (
@@ -8,15 +12,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// Adapter 是基于 GORM 的 Casbin 适配器。
 type Adapter struct {
 	db *gorm.DB
 }
 
+// NewAdapter 创建 Casbin 适配器实例。
 func NewAdapter(db *gorm.DB) *Adapter {
 	return &Adapter{db: db}
 }
 
-// LoadPolicy loads all policy rules from the storage.
+// LoadPolicy 从数据库加载所有策略规则。
+//
+// 加载两类策略：
+//  1. 角色权限策略 (p, role_code, permission_code)
+//  2. 用户角色继承 (g, user_id, role_code)
 func (a *Adapter) LoadPolicy(model model.Model) error {
 	// 1. Load Role Policies (p, role, permission_code)
 	// Query: SELECT r.code as role_code, p.code as permission_code FROM roles r JOIN role_permissions rp ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id WHERE r.status = 1 AND p.status = 1
@@ -63,22 +73,30 @@ func (a *Adapter) LoadPolicy(model model.Model) error {
 	return nil
 }
 
-// SavePolicy saves all policy rules to the storage.
+// SavePolicy 保存所有策略规则到存储。
+//
+// 本适配器为只读模式，不支持此操作。
 func (a *Adapter) SavePolicy(model model.Model) error {
 	return fmt.Errorf("not implemented: read-only adapter")
 }
 
-// AddPolicy adds a policy rule to the storage.
+// AddPolicy 添加策略规则到存储。
+//
+// 本适配器为只读模式，不支持此操作。
 func (a *Adapter) AddPolicy(sec string, ptype string, rule []string) error {
 	return fmt.Errorf("not implemented: read-only adapter")
 }
 
-// RemovePolicy removes a policy rule from the storage.
+// RemovePolicy 从存储移除策略规则。
+//
+// 本适配器为只读模式，不支持此操作。
 func (a *Adapter) RemovePolicy(sec string, ptype string, rule []string) error {
 	return fmt.Errorf("not implemented: read-only adapter")
 }
 
-// RemoveFilteredPolicy removes policy rules that match the filter from the storage.
+// RemoveFilteredPolicy 移除匹配过滤器的策略规则。
+//
+// 本适配器为只读模式，不支持此操作。
 func (a *Adapter) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) error {
 	return fmt.Errorf("not implemented: read-only adapter")
 }

@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { Think, CodeHighlighter } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RecommendationCard } from './RecommendationCard';
-import type { AssistantMessageBlock, RawEvidenceBlock, RecommendationsBlock } from '../messageBlocks';
+import type { AssistantMessageBlock, RawEvidenceBlock, RecommendationsBlock, SummaryOutputBlock } from '../messageBlocks';
 
 class BlockErrorBoundary extends React.Component<{
   fallback: React.ReactNode;
@@ -118,6 +118,57 @@ const RawEvidenceMessageBlock: React.FC<{ block: RawEvidenceBlock }> = ({ block 
   </BlockErrorBoundary>
 );
 
+const SummaryOutputMessageBlock: React.FC<{ block: SummaryOutputBlock }> = ({ block }) => (
+  <BlockErrorBoundary
+    fallback={(
+      <pre style={{ whiteSpace: 'pre-wrap', margin: '12px 0 0' }}>
+        {[block.headline, block.conclusion, block.narrative]
+          .filter(Boolean)
+          .join('\n\n')}
+      </pre>
+    )}
+  >
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>结构化结论</div>
+      {block.headline ? <div style={{ fontWeight: 600, marginBottom: 8 }}>{block.headline}</div> : null}
+      {block.conclusion ? <div style={{ marginBottom: 8 }}>{block.conclusion}</div> : null}
+      {block.narrative ? <div style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>{block.narrative}</div> : null}
+      {block.keyFindings && block.keyFindings.length > 0 ? (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>关键发现</div>
+          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+            {block.keyFindings.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {block.resourceSummaries && block.resourceSummaries.length > 0 ? (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>资源摘要</div>
+          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+            {block.resourceSummaries.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {block.recommendations && block.recommendations.length > 0 ? (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>建议</div>
+          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+            {block.recommendations.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {block.nextActions && block.nextActions.length > 0 ? (
+        <div>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>后续动作</div>
+          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+            {block.nextActions.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  </BlockErrorBoundary>
+);
+
 export function AssistantMessageBlocks({
   blocks,
   onRecommendationSelect,
@@ -149,6 +200,8 @@ export function AssistantMessageBlocks({
                 onRecommendationSelect={onRecommendationSelect}
               />
             );
+          case 'summary_output':
+            return <SummaryOutputMessageBlock key={block.id} block={block} />;
           case 'raw_evidence':
             return <RawEvidenceMessageBlock key={block.id} block={block} />;
           case 'fallback':

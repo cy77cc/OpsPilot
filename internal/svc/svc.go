@@ -1,3 +1,7 @@
+// Package svc 提供服务上下文管理。
+//
+// 本文件实现 ServiceContext，用于管理应用程序运行时依赖，
+// 包括数据库连接、Redis 客户端、K8s 客户端、Casbin 权限执行器等。
 package svc
 
 import (
@@ -23,17 +27,27 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+// ServiceContext 封装应用程序运行时依赖。
 type ServiceContext struct {
 	Clientset      *kubernetes.Clientset       // K8s 客户端
 	DB             *gorm.DB                    // GORM 数据库实例
 	Rdb            redis.UniversalClient       // Redis 客户端
 	Cache          *expirable.LRU[string, any] // 本地缓存 (LRU)
-	CacheFacade    *cache.Facade               // L1-first cache facade
-	CasbinEnforcer *casbin.Enforcer            // Casbin Enforcer
-	Prometheus     prominfra.Client            // Prometheus HTTP API client
+	CacheFacade    *cache.Facade               // L1-first 缓存门面
+	CasbinEnforcer *casbin.Enforcer            // Casbin 权限执行器
+	Prometheus     prominfra.Client            // Prometheus HTTP API 客户端
 }
 
-// MustNewServiceContext 创建服务上下文，如果失败则 panic
+// MustNewServiceContext 创建服务上下文，如果失败则 panic。
+//
+// 初始化流程：
+//  1. 初始化 devops 组件
+//  2. 检查 AI 模型健康状态
+//  3. 创建 K8s 客户端
+//  4. 创建数据库和 Redis 连接
+//  5. 初始化 Casbin 权限执行器
+//  6. 创建本地缓存和缓存门面
+//  7. 初始化 Prometheus 客户端
 func MustNewServiceContext() *ServiceContext {
 	ctx := context.Background()
 	err := devops.Init(ctx)
@@ -95,14 +109,17 @@ func MustNewServiceContext() *ServiceContext {
 	}
 }
 
+// aiBaseURL 返回 AI 模型的基础 URL。
 func aiBaseURL() string {
 	return config.CFG.LLM.BaseURL
 }
 
+// aiModel 返回 AI 模型名称。
 func aiModel() string {
 	return config.CFG.LLM.Model
 }
 
+// firstNonEmpty 返回第一个非空字符串。
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -112,6 +129,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// initPrometheusClient 初始化 Prometheus 客户端。
 func initPrometheusClient() prominfra.Client {
 	if !config.CFG.Prometheus.Enable {
 		return nil
@@ -131,6 +149,11 @@ func initPrometheusClient() prominfra.Client {
 	return c
 }
 
+// MustNewClientset 创建 K8s 客户端，如果失败则返回 nil。
+//
+// 尝试顺序：
+//  1. 从 ~/.kube/config 加载 kubeconfig
+//  2. 使用集群内配置（Pod 内运行时）
 func MustNewClientset() *kubernetes.Clientset {
 	// Try to load kubeconfig from home directory
 	var kubeconfig string

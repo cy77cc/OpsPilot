@@ -14,6 +14,7 @@ func TestFinalAnswerRendererFormatsSummaryWithoutSemanticRewrite(t *testing.T) {
 	paragraphs := renderer.Render("查看所有主机状态", &planner.ExecutionPlan{}, &executor.Result{}, summarizer.SummaryOutput{
 		Headline:          "所有 3 台主机当前均处于正常运行状态。",
 		Conclusion:        "系统资源充足，当前没有明显性能压力。",
+		Narrative:         "详细状态如下：主机 test 负载正常，火山云服务器负载极低，其余主机状态一致。",
 		KeyFindings:       []string{"主机 test 负载正常。", "主机 火山云服务器 负载极低。"},
 		Recommendations:   []string{"继续保持常规巡检即可。"},
 		RawOutputPolicy:   "summary_only",
@@ -26,6 +27,9 @@ func TestFinalAnswerRendererFormatsSummaryWithoutSemanticRewrite(t *testing.T) {
 	}
 	if !strings.Contains(joined, "系统资源充足，当前没有明显性能压力。") {
 		t.Fatalf("rendered body = %q, want summary conclusion", joined)
+	}
+	if !strings.Contains(joined, "详细状态如下：主机 test 负载正常") {
+		t.Fatalf("rendered body = %q, want summary narrative", joined)
 	}
 	if !strings.Contains(joined, "其余主机状态一致。") {
 		t.Fatalf("rendered body = %q, want resource summary", joined)
@@ -79,5 +83,23 @@ func TestFinalAnswerRendererIncludesEvidenceOnlyWhenRequested(t *testing.T) {
 	}
 	if !strings.Contains(joined, "命令 df -h 在 host_id 2 上执行成功") {
 		t.Fatalf("rendered body = %q, want step summary evidence", joined)
+	}
+}
+
+func TestFinalAnswerRendererPreservesModelNarrativeWithoutFixedSectionHeadings(t *testing.T) {
+	renderer := newFinalAnswerRenderer()
+	paragraphs := renderer.Render("检查 payment-api", nil, &executor.Result{}, summarizer.SummaryOutput{
+		Headline:    "payment-api 当前运行正常。",
+		Conclusion:  "未观察到明显异常。",
+		Narrative:   "从最近执行结果看，服务响应稳定，当前没有发现需要立即处理的问题。",
+		KeyFindings: []string{"最近一次检查返回状态正常。"},
+	})
+
+	joined := strings.Join(paragraphs, "\n\n")
+	if strings.Contains(joined, "关键依据：") || strings.Contains(joined, "建议：") {
+		t.Fatalf("rendered body = %q, should not force fixed section headings", joined)
+	}
+	if !strings.Contains(joined, "从最近执行结果看，服务响应稳定") {
+		t.Fatalf("rendered body = %q, want narrative preserved", joined)
 	}
 }

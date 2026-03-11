@@ -1,3 +1,12 @@
+// Package service 提供服务目录管理服务的路由注册。
+//
+// 本文件注册服务相关的 HTTP 路由，包括：
+//   - 服务 CRUD
+//   - 服务渲染和转换
+//   - 变量管理
+//   - 版本管理
+//   - 部署和回滚
+//   - Helm 部署支持
 package service
 
 import (
@@ -6,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterServiceHandlers 注册服务管理路由到 v1 组。
 func RegisterServiceHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	g := v1.Group("/services", middleware.JWTAuth())

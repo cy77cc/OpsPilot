@@ -1,3 +1,6 @@
+// Package middleware 提供 HTTP 中间件实现。
+//
+// 本文件实现 CORS 跨域处理中间件，根据配置设置跨域响应头。
 package middleware
 
 import (
@@ -9,6 +12,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Cors 返回 CORS 跨域处理中间件。
+//
+// 根据配置设置以下响应头：
+//   - Access-Control-Allow-Origin
+//   - Access-Control-Allow-Methods
+//   - Access-Control-Allow-Headers
+//   - Access-Control-Expose-Headers
+//   - Access-Control-Allow-Credentials
 func Cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method

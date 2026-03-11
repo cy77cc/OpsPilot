@@ -1,3 +1,6 @@
+// Package rewrite 实现 AI 编排的改写阶段。
+//
+// 本文件提供 ADK 集成，构建改写器 Agent。
 package rewrite
 
 import (
@@ -10,6 +13,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// NewWithADK 使用 ADK 创建改写器实例。
 func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Rewriter, error) {
 	if model == nil {
 		return nil, fmt.Errorf("rewrite model is required")

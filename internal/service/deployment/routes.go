@@ -1,3 +1,12 @@
+// Package deployment 提供部署管理服务的路由注册。
+//
+// 本文件注册部署相关的 HTTP 路由，包括：
+//   - 部署目标管理
+//   - 发布管理和审批
+//   - 集群引导
+//   - 凭证管理
+//   - 审计日志和指标统计
+//   - 部署拓扑和策略
 package deployment
 
 import (
@@ -6,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterDeploymentHandlers 注册部署服务路由到 v1 组。
 func RegisterDeploymentHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	auditH := NewAuditHandler(svcCtx)

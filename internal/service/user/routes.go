@@ -1,3 +1,9 @@
+// Package user 提供用户认证服务的路由注册。
+//
+// 本文件注册用户相关的 HTTP 路由，包括：
+//   - 用户登录、登出、注册
+//   - Token 刷新
+//   - 用户信息查询
 package user
 
 import (
@@ -8,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterUserHandlers 注册用户服务路由。
 func RegisterUserHandlers(r *gin.RouterGroup, serverCtx *svc.ServiceContext) {
 	// 无需认证的组
 	authGroup := r.Group("auth")

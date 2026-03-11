@@ -1,3 +1,6 @@
+// Package summarizer 实现 AI 编排的总结阶段。
+//
+// 本文件提供 ADK 集成，构建总结器 Agent。
 package summarizer
 
 import (
@@ -12,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// NewWithADK 使用 ADK 创建总结器实例。
 func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Summarizer, error) {
 	if model == nil {
 		return nil, fmt.Errorf("summarizer model is required")

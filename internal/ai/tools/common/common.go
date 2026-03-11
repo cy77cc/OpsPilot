@@ -1,3 +1,7 @@
+// Package common 提供工具模块的共享类型和辅助函数。
+//
+// 本文件定义平台依赖结构、Kubernetes 客户端解析和类型转换工具，
+// 是所有领域工具的基础支撑模块。
 package common
 
 import (
@@ -13,9 +17,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// 定义一些通用的协议
+// PlatformDeps 平台依赖，包含工具执行所需的共享资源。
+//
+// 所有工具通过此结构访问数据库、配置和外部客户端。
 type PlatformDeps struct {
-	DB *gorm.DB
+	DB *gorm.DB // 数据库连接
 }
 
 // ResolveK8sClient 解析 Kubernetes 客户端，根据参数和依赖项选择合适的客户端。
@@ -61,6 +67,10 @@ func ResolveK8sClient(deps PlatformDeps, params map[string]any) (*kubernetes.Cli
 	return nil, "fallback", fmt.Errorf("k8s client unavailable: cluster %d has no usable kubeconfig or db access", clusterID)
 }
 
+// toInt 将任意类型转换为整数。
+//
+// 支持的类型：int, int64, float64, uint64, json.Number, string
+// 转换失败时返回 0。
 func toInt(v any) int {
 	switch x := v.(type) {
 	case int:

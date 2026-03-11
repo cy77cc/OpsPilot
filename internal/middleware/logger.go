@@ -1,3 +1,6 @@
+// Package middleware 提供 HTTP 中间件实现。
+//
+// 本文件实现请求日志中间件，记录每个请求的方法、路径、状态码和耗时。
 package middleware
 
 import (
@@ -8,6 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Logger 返回请求日志中间件。
+//
+// 记录信息包括：请求方法、路径、状态码、追踪 ID、耗时。
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()

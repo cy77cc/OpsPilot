@@ -1,3 +1,7 @@
+// Package prometheus 提供 Prometheus HTTP API 客户端实现。
+//
+// 本文件实现基于 HTTP 的 Prometheus 查询客户端，
+// 支持 PromQL 即时查询、范围查询和元数据查询。
 package prometheus
 
 import (
@@ -13,18 +17,21 @@ import (
 	"time"
 )
 
+// Client 是 Prometheus 客户端接口。
 type Client interface {
-	Query(ctx context.Context, query string, ts time.Time) (*QueryResult, error)
-	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error)
-	Metadata(ctx context.Context, metric string) ([]MetadataItem, error)
+	Query(ctx context.Context, query string, ts time.Time) (*QueryResult, error)                                                          // 即时查询
+	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error)                        // 范围查询
+	Metadata(ctx context.Context, metric string) ([]MetadataItem, error)                                                                 // 元数据查询
 }
 
+// HTTPClient 是基于 HTTP 的 Prometheus 客户端实现。
 type HTTPClient struct {
-	baseURL    *url.URL
-	httpClient *http.Client
-	retryCount int
+	baseURL    *url.URL     // Prometheus 服务地址
+	httpClient *http.Client // HTTP 客户端
+	retryCount int          // 重试次数
 }
 
+// NewClient 创建 Prometheus HTTP 客户端。
 func NewClient(cfg Config) (*HTTPClient, error) {
 	normalized := cfg.Normalize()
 	if strings.TrimSpace(normalized.Address) == "" {
@@ -43,6 +50,7 @@ func NewClient(cfg Config) (*HTTPClient, error) {
 	}, nil
 }
 
+// Query 执行即时查询。
 func (c *HTTPClient) Query(ctx context.Context, query string, ts time.Time) (*QueryResult, error) {
 	q := url.Values{}
 	q.Set("query", query)
@@ -62,6 +70,7 @@ func (c *HTTPClient) Query(ctx context.Context, query string, ts time.Time) (*Qu
 	return &QueryResult{ResultType: data.ResultType, Vector: data.Result}, nil
 }
 
+// QueryRange 执行范围查询。
 func (c *HTTPClient) QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error) {
 	q := url.Values{}
 	q.Set("query", query)
@@ -83,6 +92,7 @@ func (c *HTTPClient) QueryRange(ctx context.Context, query string, start, end ti
 	return &QueryResult{ResultType: data.ResultType, Matrix: data.Result}, nil
 }
 
+// Metadata 获取指标元数据。
 func (c *HTTPClient) Metadata(ctx context.Context, metric string) ([]MetadataItem, error) {
 	q := url.Values{}
 	if strings.TrimSpace(metric) != "" {
@@ -110,6 +120,7 @@ func (c *HTTPClient) Metadata(ctx context.Context, metric string) ([]MetadataIte
 	return items, nil
 }
 
+// doGet 执行 HTTP GET 请求，支持重试。
 func (c *HTTPClient) doGet(ctx context.Context, endpoint string, query url.Values) ([]byte, error) {
 	var lastErr error
 	for i := 0; i < c.retryCount; i++ {

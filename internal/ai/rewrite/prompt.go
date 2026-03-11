@@ -1,5 +1,9 @@
+// Package rewrite 实现 AI 编排的改写阶段。
+//
+// 本文件定义改写器的系统提示词。
 package rewrite
 
+// SystemPrompt 返回改写器的系统提示词。
 func SystemPrompt() string {
 	return `You are a Request Normalizer Agent in an AI operations system.
 

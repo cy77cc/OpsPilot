@@ -1,3 +1,7 @@
+// Package planner 实现 AI 编排的规划阶段。
+//
+// 本文件定义规划器的决策工具，用于输出结构化决策。
+// 包括 clarify、reject、direct_reply、plan 四种决策类型。
 package planner
 
 import (
@@ -7,18 +11,22 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// decisionTool 是决策工具的基础实现。
 type decisionTool struct {
 	info *schema.ToolInfo
 }
 
+// Info 返回工具信息。
 func (t decisionTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return t.info, nil
 }
 
+// InvokableRun 执行工具调用，直接返回参数作为结果。
 func (t decisionTool) InvokableRun(_ context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
 	return argumentsInJSON, nil
 }
 
+// decisionTools 返回所有决策工具。
 func decisionTools() []tool.BaseTool {
 	return []tool.BaseTool{
 		newDecisionTool("clarify", "Emit a final clarify decision when resource targets remain unresolved or ambiguous.", map[string]*schema.ParameterInfo{

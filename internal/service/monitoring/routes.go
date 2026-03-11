@@ -1,3 +1,11 @@
+// Package monitoring 提供监控和告警服务的路由注册。
+//
+// 本文件注册监控相关的 HTTP 路由，包括：
+//   - 告警管理和规则配置
+//   - 指标查询
+//   - 告警渠道管理
+//   - 告警投递记录
+//   - Alertmanager Webhook 接收
 package monitoring
 
 import (
@@ -6,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterMonitoringHandlers 注册监控服务路由到 v1 组。
 func RegisterMonitoringHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	h.StartCollector()

@@ -1,3 +1,6 @@
+// Package cmd 提供命令行入口。
+//
+// 本文件实现数据库迁移命令，支持 up/down/status 子命令。
 package cmd
 
 import (
@@ -12,15 +15,17 @@ import (
 )
 
 var (
-	upSteps   int
-	downSteps int
+	upSteps   int // 向前迁移步数
+	downSteps int // 回滚步数
 )
 
+// migrateCMD 是数据库迁移父命令。
 var migrateCMD = &cobra.Command{
 	Use:   "migrate",
 	Short: "database migration commands",
 }
 
+// migrateUpCMD 执行向上迁移。
 var migrateUpCMD = &cobra.Command{
 	Use:   "up",
 	Short: "apply versioned migrations",
@@ -31,6 +36,7 @@ var migrateUpCMD = &cobra.Command{
 	},
 }
 
+// migrateDownCMD 执行回滚迁移。
 var migrateDownCMD = &cobra.Command{
 	Use:   "down",
 	Short: "rollback versioned migrations",
@@ -41,6 +47,7 @@ var migrateDownCMD = &cobra.Command{
 	},
 }
 
+// migrateStatusCMD 打印迁移状态。
 var migrateStatusCMD = &cobra.Command{
 	Use:   "status",
 	Short: "print migration status",
@@ -67,6 +74,9 @@ var migrateStatusCMD = &cobra.Command{
 	},
 }
 
+// mustInitMigrationDeps 初始化迁移依赖。
+//
+// 返回数据库连接和清理函数。
 func mustInitMigrationDeps() (*gorm.DB, func()) {
 	config.MustNewConfig()
 	logger.Init(logger.MustNewZapLogger())

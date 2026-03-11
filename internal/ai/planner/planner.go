@@ -1,3 +1,7 @@
+// Package planner 实现 AI 编排的规划阶段。
+//
+// Planner 负责解析用户意图，解析资源引用，并生成执行计划。
+// 输出四种决策类型: clarify (需要澄清)、reject (拒绝)、direct_reply (直接回复)、plan (生成计划)。
 package planner
 
 import (
@@ -14,40 +18,46 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
 )
 
+// Planner 是规划器核心，负责生成执行计划。
 type Planner struct {
-	runner *adk.Runner
-	runFn  func(context.Context, Input, func(string)) (Decision, error)
+	runner *adk.Runner                                              // ADK 运行器
+	runFn  func(context.Context, Input, func(string)) (Decision, error) // 执行函数
 }
 
+// Input 是规划器的输入结构。
 type Input struct {
-	Message string
-	Rewrite rewrite.Output
+	Message string        // 用户原始消息
+	Rewrite rewrite.Output // Rewrite 阶段的输出
 }
 
+// DecisionType 定义决策类型。
 type DecisionType string
 
 const (
-	DecisionClarify     DecisionType = "clarify"
-	DecisionReject      DecisionType = "reject"
-	DecisionDirectReply DecisionType = "direct_reply"
-	DecisionPlan        DecisionType = "plan"
+	DecisionClarify     DecisionType = "clarify"      // 需要用户澄清
+	DecisionReject      DecisionType = "reject"       // 拒绝执行
+	DecisionDirectReply DecisionType = "direct_reply" // 直接回复
+	DecisionPlan        DecisionType = "plan"         // 生成执行计划
 )
 
+// Decision 表示规划器的决策输出。
 type Decision struct {
-	Type       DecisionType     `json:"type"`
-	Message    string           `json:"message,omitempty"`
-	Reason     string           `json:"reason,omitempty"`
-	Candidates []map[string]any `json:"candidates,omitempty"`
-	Plan       *ExecutionPlan   `json:"plan,omitempty"`
-	Narrative  string           `json:"narrative"`
+	Type       DecisionType     `json:"type"`                // 决策类型
+	Message    string           `json:"message,omitempty"`   // 消息内容
+	Reason     string           `json:"reason,omitempty"`    // 原因说明
+	Candidates []map[string]any `json:"candidates,omitempty"` // 候选项 (澄清时使用)
+	Plan       *ExecutionPlan   `json:"plan,omitempty"`      // 执行计划
+	Narrative  string           `json:"narrative"`           // 自然语言描述
 }
 
+// PlanningError 表示规划错误。
 type PlanningError struct {
-	Code              string
-	UserVisibleReason string
-	Cause             error
+	Code              string // 错误码
+	UserVisibleReason string // 用户可见原因
+	Cause             error  // 原始错误
 }
 
+// Error 实现 error 接口。
 func (e *PlanningError) Error() string {
 	if e == nil {
 		return ""
@@ -58,6 +68,7 @@ func (e *PlanningError) Error() string {
 	return firstNonEmpty(e.Code, "planning_unavailable")
 }
 
+// Unwrap 返回原始错误。
 func (e *PlanningError) Unwrap() error {
 	if e == nil {
 		return nil
@@ -65,6 +76,7 @@ func (e *PlanningError) Unwrap() error {
 	return e.Cause
 }
 
+// UserVisibleMessage 返回用户可见的错误消息。
 func (e *PlanningError) UserVisibleMessage() string {
 	if e == nil {
 		return availability.UnavailableMessage(availability.LayerPlanner)
@@ -72,82 +84,90 @@ func (e *PlanningError) UserVisibleMessage() string {
 	return firstNonEmpty(e.UserVisibleReason, availability.UnavailableMessage(availability.LayerPlanner))
 }
 
+// ExecutionPlan 表示执行计划。
 type ExecutionPlan struct {
-	PlanID    string            `json:"plan_id"`
-	Goal      string            `json:"goal"`
-	Resolved  ResolvedResources `json:"resolved"`
-	Narrative string            `json:"narrative"`
-	Steps     []PlanStep        `json:"steps"`
+	PlanID    string            `json:"plan_id"`       // 计划唯一标识
+	Goal      string            `json:"goal"`          // 执行目标
+	Resolved  ResolvedResources `json:"resolved"`      // 已解析的资源
+	Narrative string            `json:"narrative"`     // 自然语言描述
+	Steps     []PlanStep        `json:"steps"`         // 执行步骤列表
 }
 
+// ResourceRef 表示资源引用。
 type ResourceRef struct {
-	ID   int    `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
+	ID   int    `json:"id,omitempty"`   // 资源 ID
+	Name string `json:"name,omitempty"` // 资源名称
 }
 
+// PodRef 表示 Pod 引用。
 type PodRef struct {
-	Name      string `json:"name,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	ClusterID int    `json:"cluster_id,omitempty"`
+	Name      string `json:"name,omitempty"`      // Pod 名称
+	Namespace string `json:"namespace,omitempty"` // 命名空间
+	ClusterID int    `json:"cluster_id,omitempty"` // 集群 ID
 }
 
+// ResourceScope 表示资源范围。
 type ResourceScope struct {
-	Kind         string         `json:"kind,omitempty"`
-	ResourceType string         `json:"resource_type,omitempty"`
-	Selector     map[string]any `json:"selector,omitempty"`
+	Kind         string         `json:"kind,omitempty"`         // 范围类型 (all/filtered/single)
+	ResourceType string         `json:"resource_type,omitempty"` // 资源类型
+	Selector     map[string]any `json:"selector,omitempty"`     // 选择器
 }
 
+// ResolvedResources 表示已解析的资源引用。
 type ResolvedResources struct {
-	ServiceName string         `json:"service_name,omitempty"`
-	ServiceID   int            `json:"service_id,omitempty"`
-	ClusterName string         `json:"cluster_name,omitempty"`
-	ClusterID   int            `json:"cluster_id,omitempty"`
-	HostNames   []string       `json:"host_names,omitempty"`
-	HostIDs     []int          `json:"host_ids,omitempty"`
-	Namespace   string         `json:"namespace,omitempty"`
-	PodName     string         `json:"pod_name,omitempty"`
-	Services    []ResourceRef  `json:"services,omitempty"`
-	Clusters    []ResourceRef  `json:"clusters,omitempty"`
-	Hosts       []ResourceRef  `json:"hosts,omitempty"`
-	Pods        []PodRef       `json:"pods,omitempty"`
-	Scope       *ResourceScope `json:"scope,omitempty"`
+	ServiceName string         `json:"service_name,omitempty"` // 服务名称
+	ServiceID   int            `json:"service_id,omitempty"`   // 服务 ID
+	ClusterName string         `json:"cluster_name,omitempty"` // 集群名称
+	ClusterID   int            `json:"cluster_id,omitempty"`   // 集群 ID
+	HostNames   []string       `json:"host_names,omitempty"`   // 主机名称列表
+	HostIDs     []int          `json:"host_ids,omitempty"`     // 主机 ID 列表
+	Namespace   string         `json:"namespace,omitempty"`     // 命名空间
+	PodName     string         `json:"pod_name,omitempty"`      // Pod 名称
+	Services    []ResourceRef  `json:"services,omitempty"`      // 服务引用列表
+	Clusters    []ResourceRef  `json:"clusters,omitempty"`      // 集群引用列表
+	Hosts       []ResourceRef  `json:"hosts,omitempty"`         // 主机引用列表
+	Pods        []PodRef       `json:"pods,omitempty"`          // Pod 引用列表
+	Scope       *ResourceScope `json:"scope,omitempty"`         // 资源范围
 }
 
+// PlanStep 表示执行计划中的单个步骤。
 type PlanStep struct {
-	StepID    string         `json:"step_id"`
-	Title     string         `json:"title"`
-	Expert    string         `json:"expert"`
-	Intent    string         `json:"intent"`
-	Task      string         `json:"task"`
-	Input     map[string]any `json:"input,omitempty"`
-	DependsOn []string       `json:"depends_on,omitempty"`
-	Mode      string         `json:"mode"`
-	Risk      string         `json:"risk"`
-	Narrative string         `json:"narrative,omitempty"`
+	StepID    string         `json:"step_id"`              // 步骤唯一标识
+	Title     string         `json:"title"`                // 步骤标题
+	Expert    string         `json:"expert"`               // 专家名称
+	Intent    string         `json:"intent"`               // 意图
+	Task      string         `json:"task"`                 // 任务描述
+	Input     map[string]any `json:"input,omitempty"`      // 输入参数
+	DependsOn []string       `json:"depends_on,omitempty"` // 依赖的步骤 ID
+	Mode      string         `json:"mode"`                 // 操作模式 (readonly/mutating)
+	Risk      string         `json:"risk"`                 // 风险等级 (low/medium/high)
+	Narrative string         `json:"narrative,omitempty"`  // 自然语言描述
 }
 
+// New 创建新的规划器实例。
 func New(runner *adk.Runner) *Planner {
 	return &Planner{runner: runner}
 }
 
+// NewWithFunc 使用自定义执行函数创建规划器。
 func NewWithFunc(runFn func(context.Context, Input, func(string)) (Decision, error)) *Planner {
 	return &Planner{runFn: runFn}
 }
 
+// Plan 执行规划，返回决策结果。
 func (p *Planner) Plan(ctx context.Context, in Input) (Decision, error) {
 	return p.plan(ctx, in, nil)
 }
 
+// PlanStream 执行规划并支持流式输出。
 func (p *Planner) PlanStream(ctx context.Context, in Input, onDelta func(string)) (Decision, error) {
 	return p.plan(ctx, in, onDelta)
 }
 
+// plan 执行规划的核心逻辑。
 func (p *Planner) plan(ctx context.Context, in Input, onDelta func(string)) (Decision, error) {
 	if p != nil && p.runFn != nil {
 		return p.runFn(ctx, in, onDelta)
-	}
-	if ambiguity := buildAmbiguityDecision(in.Rewrite); ambiguity.Type != "" {
-		return ambiguity, nil
 	}
 	if p == nil || p.runner == nil {
 		return Decision{}, &PlanningError{
@@ -175,6 +195,7 @@ func (p *Planner) plan(ctx context.Context, in Input, onDelta func(string)) (Dec
 	return normalizeDecision(buildBasePlanContext(in), parsed)
 }
 
+// ParseDecision 解析规划器输出的 JSON 字符串。
 func ParseDecision(raw string) (Decision, error) {
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
@@ -203,19 +224,7 @@ func ParseDecision(raw string) (Decision, error) {
 	return out, nil
 }
 
-func buildAmbiguityDecision(rewritten rewrite.Output) Decision {
-	ambiguities := dedupe(append(append([]string(nil), rewritten.AmbiguityFlags...), rewritten.Ambiguities...))
-	if len(ambiguities) == 0 {
-		return Decision{}
-	}
-	return Decision{
-		Type:       DecisionClarify,
-		Message:    "我需要先确认目标资源后再继续规划。",
-		Narrative:  "Rewrite 输出仍有未消解歧义，Planner 先请求补充信息。",
-		Candidates: buildClarifyCandidates(ambiguities),
-	}
-}
-
+// buildBasePlanContext 从输入构建基础计划上下文。
 func buildBasePlanContext(in Input) *ExecutionPlan {
 	rewritten := in.Rewrite
 	goal := firstNonEmpty(rewritten.NormalizedGoal, strings.TrimSpace(in.Message))
@@ -334,7 +343,15 @@ func canonicalizePlan(base, parsed *ExecutionPlan) (*ExecutionPlan, error) {
 		if strings.TrimSpace(step.StepID) == "" {
 			step.StepID = fmt.Sprintf("step-%d", i+1)
 		}
-		step.Mode, step.Risk = normalizeModeRisk(step.Mode, step.Risk)
+		mode, risk, err := normalizeModeRisk(step.Mode, step.Risk)
+		if err != nil {
+			return nil, &PlanningError{
+				Code:              "planning_invalid",
+				UserVisibleReason: "AI 规划结果包含无效的步骤模式或风险等级，当前无法执行。",
+				Cause:             fmt.Errorf("planner step %s has invalid mode/risk: %w", strings.TrimSpace(step.StepID), err),
+			}
+		}
+		step.Mode, step.Risk = mode, risk
 		if len(step.DependsOn) > 0 {
 			step.DependsOn = dedupe(step.DependsOn)
 		}
@@ -343,41 +360,6 @@ func canonicalizePlan(base, parsed *ExecutionPlan) (*ExecutionPlan, error) {
 		parsed.Steps[i] = step
 	}
 	return parsed, nil
-}
-
-func normalizeFleetHostStep(step PlanStep, resolved ResolvedResources) PlanStep {
-	if step.Expert != "hostops" || step.Mode != "readonly" {
-		return step
-	}
-	if !hasResolvedScope(step, resolved, "host") {
-		return step
-	}
-	if strings.TrimSpace(step.Intent) == "" || step.Intent == "handle_request" {
-		step.Intent = "list_host_inventory"
-	}
-	if strings.TrimSpace(step.Title) == "" || step.Title == "处理用户请求" {
-		step.Title = "查询主机清单与状态"
-	}
-	if strings.TrimSpace(step.Task) == "" || step.Task == resolvedScopeTaskPlaceholder(step.Task) {
-		step.Task = "列出目标范围内主机的当前状态、CPU、内存和磁盘资源摘要"
-	}
-	if step.Input == nil {
-		step.Input = map[string]any{}
-	}
-	if step.Input["query_mode"] == nil {
-		step.Input["query_mode"] = "inventory"
-	}
-	return step
-}
-
-func resolvedScopeTaskPlaceholder(task string) string {
-	task = strings.TrimSpace(task)
-	switch task {
-	case "", "query all hosts", "查看所有主机状态", "查看所有主机的状态":
-		return task
-	default:
-		return ""
-	}
 }
 
 func baseStepInput(base *ExecutionPlan) map[string]any {
@@ -638,36 +620,14 @@ func mapSliceValue(value any) []map[string]any {
 	return out
 }
 
-func normalizeExpertName(expert string, steps []PlanStep, index int) string {
-	switch strings.ToLower(strings.TrimSpace(expert)) {
-	case "host", "hostops", "os":
-		return "hostops"
-	case "k8s", "kubernetes", "cluster", "pod":
-		return "k8s"
-	case "service", "app", "application":
-		return "service"
-	case "delivery", "deploy", "deployment", "cicd", "pipeline":
-		return "delivery"
-	case "observability", "monitor", "metrics", "topology", "audit":
-		return "observability"
-	case "analysis":
-		if index > 0 && strings.TrimSpace(steps[index-1].Expert) != "" {
-			return normalizeExpertName(steps[index-1].Expert, steps, index-1)
-		}
-		return "observability"
-	default:
-		return strings.TrimSpace(expert)
-	}
-}
-
-func normalizeModeRisk(mode, risk string) (string, string) {
+func normalizeModeRisk(mode, risk string) (string, string, error) {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "mutating", "mutate", "write", "apply", "edit":
-		return "mutating", normalizedRisk(risk, "high")
+		return "mutating", normalizedRisk(risk, "high"), nil
 	case "analysis", "query", "inspect", "read", "readonly", "":
-		return "readonly", normalizedRisk(risk, "low")
+		return "readonly", normalizedRisk(risk, "low"), nil
 	default:
-		return "readonly", normalizedRisk(risk, "low")
+		return "", "", fmt.Errorf("unsupported mode %q", strings.TrimSpace(mode))
 	}
 }
 
@@ -760,6 +720,27 @@ func validatePlanPrerequisites(plan *ExecutionPlan) error {
 				Code:              "planning_invalid",
 				UserVisibleReason: "AI 规划结果缺少必要步骤字段，当前无法执行。",
 				Cause:             fmt.Errorf("planner step %s missing title, expert, or task", strings.TrimSpace(step.StepID)),
+			}
+		}
+		if !isSupportedExpert(step.Expert) {
+			return &PlanningError{
+				Code:              "planning_invalid",
+				UserVisibleReason: "AI 规划结果包含未知专家类型，当前无法执行。",
+				Cause:             fmt.Errorf("planner step %s has unsupported expert %q", strings.TrimSpace(step.StepID), strings.TrimSpace(step.Expert)),
+			}
+		}
+		if !isSupportedMode(step.Mode) {
+			return &PlanningError{
+				Code:              "planning_invalid",
+				UserVisibleReason: "AI 规划结果包含无效的步骤模式，当前无法执行。",
+				Cause:             fmt.Errorf("planner step %s has unsupported mode %q", strings.TrimSpace(step.StepID), strings.TrimSpace(step.Mode)),
+			}
+		}
+		if !isSupportedRisk(step.Risk) {
+			return &PlanningError{
+				Code:              "planning_invalid",
+				UserVisibleReason: "AI 规划结果包含无效的风险等级，当前无法执行。",
+				Cause:             fmt.Errorf("planner step %s has unsupported risk %q", strings.TrimSpace(step.StepID), strings.TrimSpace(step.Risk)),
 			}
 		}
 		switch step.Expert {
@@ -937,68 +918,26 @@ func targetNameForType(step PlanStep, want string) string {
 	return ""
 }
 
-func buildClarifyCandidates(ambiguities []string) []map[string]any {
-	out := make([]map[string]any, 0, len(ambiguities))
-	for _, item := range ambiguities {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		out = append(out, map[string]any{
-			"kind":    "ambiguity",
-			"message": item,
-		})
+func isSupportedExpert(expert string) bool {
+	switch strings.TrimSpace(expert) {
+	case "hostops", "k8s", "service", "delivery", "observability":
+		return true
+	default:
+		return false
 	}
-	return out
 }
 
-func normalizeStepMode(mode string) (string, string) {
-	if strings.TrimSpace(mode) == "mutate" {
-		return "mutating", "high"
-	}
-	return "readonly", "low"
+func isSupportedMode(mode string) bool {
+	return strings.TrimSpace(mode) == "readonly" || strings.TrimSpace(mode) == "mutating"
 }
 
-func pickPrimaryExpert(r rewrite.Output) string {
-	if r.ResourceHints.HostID > 0 || strings.TrimSpace(r.ResourceHints.HostName) != "" {
-		return "hostops"
+func isSupportedRisk(risk string) bool {
+	switch strings.TrimSpace(risk) {
+	case "low", "medium", "high":
+		return true
+	default:
+		return false
 	}
-	if r.ResourceHints.ClusterID > 0 || strings.TrimSpace(r.ResourceHints.ClusterName) != "" || strings.TrimSpace(r.ResourceHints.Namespace) != "" {
-		for _, target := range r.NormalizedRequest.Targets {
-			switch strings.TrimSpace(target.Type) {
-			case "pod", "deployment", "cluster", "namespace":
-				return "k8s"
-			}
-		}
-	}
-	for _, domain := range r.DomainHints {
-		domain = strings.TrimSpace(domain)
-		switch domain {
-		case "host", "hostops", "os":
-			return "hostops"
-		case "k8s", "kubernetes", "cluster", "pod", "namespace":
-			return "k8s"
-		case "service", "app", "application":
-			return "service"
-		case "delivery", "cicd", "pipeline":
-			return "delivery"
-		case "observability", "monitoring":
-			return "observability"
-		}
-	}
-	for _, target := range r.NormalizedRequest.Targets {
-		switch strings.TrimSpace(target.Type) {
-		case "host":
-			return "hostops"
-		case "cluster", "namespace", "pod", "deployment":
-			return "k8s"
-		case "pipeline":
-			return "delivery"
-		case "service":
-			return "service"
-		}
-	}
-	return "service"
 }
 
 func collectHostNames(r rewrite.Output) []string {

@@ -1,3 +1,7 @@
+// Package utils 提供通用工具函数。
+//
+// 本文件实现 AES-GCM 加密和解密功能，用于敏感数据的加密存储。
+// 如 SSH 私钥、API 密钥等。
 package utils
 
 import (
@@ -10,6 +14,10 @@ import (
 	"io"
 )
 
+// EncryptText 使用 AES-GCM 加密文本。
+//
+// 使用 SHA256 对密钥进行规范化，生成随机 nonce，
+// 返回 Base64 编码的密文。
 func EncryptText(plainText string, key string) (string, error) {
 	if key == "" {
 		return "", errors.New("encryption key is empty")
@@ -30,6 +38,13 @@ func EncryptText(plainText string, key string) (string, error) {
 	return base64.StdEncoding.EncodeToString(cipherData), nil
 }
 
+// DecryptText 使用 AES-GCM 解密文本。
+//
+// 参数:
+//   - cipherTextB64: Base64 编码的密文
+//   - key: 加密密钥
+//
+// 返回解密后的明文。
 func DecryptText(cipherTextB64 string, key string) (string, error) {
 	if key == "" {
 		return "", errors.New("encryption key is empty")
@@ -58,6 +73,7 @@ func DecryptText(cipherTextB64 string, key string) (string, error) {
 	return string(plain), nil
 }
 
+// normalizeKey 使用 SHA256 将密钥规范化为 32 字节。
 func normalizeKey(key string) []byte {
 	sum := sha256.Sum256([]byte(key))
 	return sum[:]

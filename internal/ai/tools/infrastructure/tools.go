@@ -1,3 +1,8 @@
+// Package infrastructure 提供基础设施相关的工具实现。
+//
+// 本文件实现基础设施操作工具集，包括：
+//   - 集群凭证列表查询
+//   - 凭证连通性测试
 package infrastructure
 
 import (
@@ -11,19 +16,23 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// CredentialListInput 凭证列表查询输入。
 type CredentialListInput struct {
 	Type    string `json:"type,omitempty" jsonschema_description:"credential type or runtime type"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/endpoint"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max credentials,default=50"`
 }
 
+// CredentialTestInput 凭证测试输入。
 type CredentialTestInput struct {
 	CredentialID int `json:"credential_id" jsonschema_description:"required,credential id"`
 }
 
-// NewInfrastructureTools returns all infrastructure tools.
+// NewInfrastructureTools 创建所有基础设施工具。
 func NewInfrastructureTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		CredentialList(ctx, deps),

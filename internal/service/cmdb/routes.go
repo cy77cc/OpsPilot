@@ -1,3 +1,11 @@
+// Package cmdb 提供配置管理数据库服务的路由注册。
+//
+// 本文件注册 CMDB 相关的 HTTP 路由，包括：
+//   - 资产管理
+//   - 关系管理
+//   - 拓扑查询
+//   - 同步任务
+//   - 变更和审计记录
 package cmdb
 
 import (
@@ -6,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterCMDBHandlers 注册 CMDB 服务路由到 v1 组。
 func RegisterCMDBHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 	g := v1.Group("/cmdb", middleware.JWTAuth())

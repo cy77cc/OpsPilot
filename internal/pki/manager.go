@@ -1,3 +1,7 @@
+// Package pki 提供 PKI 证书管理功能。
+//
+// 本文件实现 PKI 管理器，用于管理 Kubernetes 集群的 CA 证书、
+// 节点证书和 kubeconfig 文件。
 package pki
 
 import (
@@ -12,24 +16,27 @@ import (
 	"path/filepath"
 )
 
+// PKI 文件名常量。
 const (
-	CACertName            = "ca.crt"
-	CAKeyName             = "ca.key"
-	EtcdCACertName        = "etcd/ca.crt"
-	EtcdCAKeyName         = "etcd/ca.key"
-	FrontProxyCAName      = "front-proxy-ca.crt"
-	FrontProxyCAKeyName   = "front-proxy-ca.key"
-	ServiceAccountKeyName = "sa.key"
-	ServiceAccountPubName = "sa.pub"
+	CACertName            = "ca.crt"            // Kubernetes CA 证书
+	CAKeyName             = "ca.key"            // Kubernetes CA 私钥
+	EtcdCACertName        = "etcd/ca.crt"       // etcd CA 证书
+	EtcdCAKeyName         = "etcd/ca.key"       // etcd CA 私钥
+	FrontProxyCAName      = "front-proxy-ca.crt" // 前端代理 CA 证书
+	FrontProxyCAKeyName   = "front-proxy-ca.key" // 前端代理 CA 私钥
+	ServiceAccountKeyName = "sa.key"            // Service Account 私钥
+	ServiceAccountPubName = "sa.pub"            // Service Account 公钥
 )
 
+// Manager 是 PKI 管理器，管理证书的生成和存储。
 type Manager struct {
-	PKIPath           string
-	APIServerEndpoint string // e.g., "192.168.1.10:6443" or "loadbalancer:6443"
-	ClusterDomain     string // e.g., "cluster.local"
-	ServiceCIDR       string // e.g., "10.96.0.0/12"
+	PKIPath           string // PKI 目录路径
+	APIServerEndpoint string // API Server 端点 (如 "192.168.1.10:6443")
+	ClusterDomain     string // 集群域名 (如 "cluster.local")
+	ServiceCIDR       string // Service CIDR (如 "10.96.0.0/12")
 }
 
+// NewManager 创建 PKI 管理器实例。
 func NewManager(pkiPath, apiEndpoint, clusterDomain, serviceCIDR string) *Manager {
 	return &Manager{
 		PKIPath:           pkiPath,
@@ -39,7 +46,9 @@ func NewManager(pkiPath, apiEndpoint, clusterDomain, serviceCIDR string) *Manage
 	}
 }
 
-// EnsureCAs ensures all CA certificates exist
+// EnsureCAs 确保所有 CA 证书存在。
+//
+// 创建 Kubernetes CA、etcd CA、前端代理 CA 和 Service Account 密钥对。
 func (m *Manager) EnsureCAs() error {
 	// K8s CA
 	if err := m.ensureCA("kubernetes-ca", m.PKIPath, CACertName, CAKeyName); err != nil {
@@ -60,6 +69,7 @@ func (m *Manager) EnsureCAs() error {
 	return nil
 }
 
+// ensureCA 确保指定的 CA 证书和私钥存在。
 func (m *Manager) ensureCA(cn, dir, certName, keyName string) error {
 	certPath := filepath.Join(dir, certName)
 	keyPath := filepath.Join(dir, keyName)
@@ -89,6 +99,7 @@ func (m *Manager) ensureCA(cn, dir, certName, keyName string) error {
 	return nil
 }
 
+// ensureSAKeys 确保 Service Account 密钥对存在。
 func (m *Manager) ensureSAKeys() error {
 	keyPath := filepath.Join(m.PKIPath, ServiceAccountKeyName)
 	pubPath := filepath.Join(m.PKIPath, ServiceAccountPubName)
@@ -116,7 +127,10 @@ func (m *Manager) ensureSAKeys() error {
 	return nil
 }
 
-// CreateMasterCerts generates certs for a master node
+// CreateMasterCerts 为 Master 节点生成证书。
+//
+// 包括：kube-apiserver、apiserver-kubelet-client、front-proxy-client、
+// etcd server/peer/healthcheck、apiserver-etcd-client 以及 kubeconfig 文件。
 func (m *Manager) CreateMasterCerts(nodeName, nodeIP string) error {
 	caCert, caKey, err := m.loadCA(filepath.Join(m.PKIPath, CACertName), filepath.Join(m.PKIPath, CAKeyName))
 	if err != nil {
@@ -244,7 +258,9 @@ func (m *Manager) CreateMasterCerts(nodeName, nodeIP string) error {
 	return nil
 }
 
-// CreateWorkerCerts generates certs for a worker node (mainly kubelet)
+// CreateWorkerCerts 为 Worker 节点生成证书。
+//
+// 主要生成 kubelet 的 kubeconfig 文件。
 func (m *Manager) CreateWorkerCerts(nodeName string) error {
 	caCert, caKey, err := m.loadCA(filepath.Join(m.PKIPath, CACertName), filepath.Join(m.PKIPath, CAKeyName))
 	if err != nil {
@@ -260,8 +276,11 @@ func (m *Manager) CreateWorkerCerts(nodeName string) error {
 	return nil
 }
 
-// Helper methods
+// =============================================================================
+// 辅助方法
+// =============================================================================
 
+// loadCA 加载 CA 证书和私钥。
 func (m *Manager) loadCA(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
 	certData, err := os.ReadFile(certPath)
 	if err != nil {
@@ -282,6 +301,7 @@ func (m *Manager) loadCA(certPath, keyPath string) (*x509.Certificate, *rsa.Priv
 	return cert, key, nil
 }
 
+// issueAndWrite 签发证书并写入文件。
 func (m *Manager) issueAndWrite(caCert *x509.Certificate, caKey *rsa.PrivateKey, spec CertSpec, name string) error {
 	certPEM, keyPEM, err := IssueCert(caCert, caKey, spec)
 	if err != nil {
@@ -296,6 +316,7 @@ func (m *Manager) issueAndWrite(caCert *x509.Certificate, caKey *rsa.PrivateKey,
 	return nil
 }
 
+// createKubeConfig 创建 kubeconfig 文件。
 func (m *Manager) createKubeConfig(caCert *x509.Certificate, caKey *rsa.PrivateKey, cn string, orgs []string, fileName string) error {
 	certPEM, keyPEM, err := IssueCert(caCert, caKey, CertSpec{
 		CommonName:  cn,
@@ -340,6 +361,7 @@ users:
 	return WriteFile(filepath.Join(m.PKIPath, fileName), []byte(config))
 }
 
+// getServiceIP 获取 Service CIDR 中的第一个 IP。
 func (m *Manager) getServiceIP() net.IP {
 	ip, _, err := net.ParseCIDR(m.ServiceCIDR)
 	if err != nil {
@@ -355,6 +377,7 @@ func (m *Manager) getServiceIP() net.IP {
 	return ip
 }
 
+// parseIPs 从字符串列表中解析 IP 地址。
 func parseIPs(sans []string) []net.IP {
 	var ips []net.IP
 	for _, s := range sans {
@@ -365,6 +388,7 @@ func parseIPs(sans []string) []net.IP {
 	return ips
 }
 
+// fileExists 检查文件是否存在。
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

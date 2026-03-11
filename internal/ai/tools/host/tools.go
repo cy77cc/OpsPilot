@@ -1,3 +1,10 @@
+// Package host 提供主机运维相关的工具实现。
+//
+// 本文件实现主机操作工具集，包括：
+//   - SSH 命令执行（只读和批量）
+//   - 主机清单查询
+//   - 系统诊断（CPU、内存、磁盘、网络、进程）
+//   - 日志和容器运行时查询
 package host
 
 import (
@@ -7,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
@@ -17,82 +25,115 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/utils"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// HostSSHReadonlyInput SSH 只读命令执行输入。
 type HostSSHReadonlyInput struct {
 	HostID  int    `json:"host_id" jsonschema_description:"required,host id"`
 	Command string `json:"command" jsonschema_description:"required,readonly command"`
 }
 
+// HostExecInput 主机命令执行输入。
 type HostExecInput struct {
 	HostID  int    `json:"host_id" jsonschema_description:"required,host id"`
 	Command string `json:"command" jsonschema_description:"required,readonly command"`
 }
 
+// HostExecByTargetInput 主机语义化命令执行输入。
+type HostExecByTargetInput struct {
+	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
+	Command string `json:"command" jsonschema_description:"required,readonly command"`
+}
+
+// HostInventoryInput 主机清单查询输入。
 type HostInventoryInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional host status filter"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/ip/hostname"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max hosts,default=50"`
 }
 
+// HostBatchExecPreviewInput 批量执行预览输入。
 type HostBatchExecPreviewInput struct {
 	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
 	Command string `json:"command" jsonschema_description:"required,shell command to run"`
 	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
+// HostBatchExecApplyInput 批量执行应用输入。
 type HostBatchExecApplyInput struct {
 	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
 	Command string `json:"command" jsonschema_description:"required,shell command to run"`
 	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
+// HostBatchInput 批量执行输入。
 type HostBatchInput struct {
 	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
 	Command string `json:"command" jsonschema_description:"required,shell command to run"`
 	Reason  string `json:"reason,omitempty" jsonschema_description:"execution reason for audit context"`
 }
 
+// HostBatchStatusInput 批量状态更新输入。
 type HostBatchStatusInput struct {
 	HostIDs []int  `json:"host_ids" jsonschema_description:"required,target host ids"`
 	Action  string `json:"action" jsonschema_description:"required,status action: online/offline/maintenance"`
 	Reason  string `json:"reason,omitempty" jsonschema_description:"change reason for audit context"`
 }
 
+// OSCPUMemInput CPU/内存诊断输入。
 type OSCPUMemInput struct {
 	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
+// OSDiskInput 磁盘诊断输入。
 type OSDiskInput struct {
 	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
+// OSNetInput 网络诊断输入。
 type OSNetInput struct {
 	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
+// OSProcessTopInput 进程排行输入。
 type OSProcessTopInput struct {
 	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 	Limit  int    `json:"limit,omitempty" jsonschema_description:"top process count,default=10"`
 }
 
+// OSJournalInput 日志查询输入。
 type OSJournalInput struct {
 	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 	Service string `json:"service" jsonschema_description:"required,systemd service unit"`
 	Lines   int    `json:"lines,omitempty" jsonschema_description:"log lines,default=200"`
 }
 
+// OSContainerRuntimeInput 容器运行时查询输入。
 type OSContainerRuntimeInput struct {
 	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
 }
 
+// serviceUnitRegexp 服务单元名称正则表达式，用于验证输入安全性。
 var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 
-// NewHostTools returns all host tools.
+// =============================================================================
+// 工具入口
+// =============================================================================
+
+// NewHostTools 创建所有主机工具。
+//
+// 返回工具列表包括：
+//   - SSH 只读执行、主机命令执行
+//   - 主机清单查询、批量执行
+//   - 系统诊断：CPU/内存、磁盘、网络、进程
+//   - 日志查询、容器运行时
 func NewHostTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		HostSSHReadonly(ctx, deps),
 		HostExec(ctx, deps),
+		HostExecByTarget(ctx, deps),
 		HostListInventory(ctx, deps),
 		HostBatch(ctx, deps),
 		HostBatchExecPreview(ctx, deps),
@@ -186,6 +227,66 @@ func HostExec(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool 
 			}
 			return &HostExecOutput{
 				HostID:   hostID,
+				Command:  cmd,
+				Stdout:   out,
+				Stderr:   "",
+				ExitCode: 0,
+			}, nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func HostExecByTarget(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+	t, err := einoutils.InferOptionableTool(
+		"host_exec_by_target",
+		"Resolve a host by target string and execute a readonly command. Target may be a host id, IP, hostname, name, or localhost. command is required. Only safe readonly commands are allowed. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"df -h\"}.",
+		func(ctx context.Context, input *HostExecByTargetInput, opts ...tool.Option) (*HostExecOutput, error) {
+			cmd := strings.TrimSpace(input.Command)
+			if cmd == "" {
+				return nil, fmt.Errorf("command is required")
+			}
+			if !isReadonlyHostCommand(cmd) {
+				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
+			}
+			node, err := resolveNodeByTarget(deps, input.Target)
+			if err != nil {
+				return nil, err
+			}
+			if node == nil {
+				out, err := runLocalCommand(ctx, 6*time.Second, "sh", []string{"-c", cmd}...)
+				if err != nil {
+					return &HostExecOutput{
+						HostID:   0,
+						Command:  cmd,
+						Stdout:   out,
+						Stderr:   err.Error(),
+						ExitCode: 1,
+					}, nil
+				}
+				return &HostExecOutput{
+					HostID:   0,
+					Command:  cmd,
+					Stdout:   out,
+					Stderr:   "",
+					ExitCode: 0,
+				}, nil
+			}
+			out, err := executeHostCommand(deps, node, cmd)
+			if err != nil {
+				return &HostExecOutput{
+					HostID:   int(node.ID),
+					Command:  cmd,
+					Stdout:   out,
+					Stderr:   err.Error(),
+					ExitCode: 1,
+				}, nil
+			}
+			return &HostExecOutput{
+				HostID:   int(node.ID),
 				Command:  cmd,
 				Stdout:   out,
 				Stderr:   "",
@@ -698,6 +799,13 @@ func OSGetContainerRuntime(ctx context.Context, deps common.PlatformDeps) tool.I
 	return t
 }
 
+// =============================================================================
+// 辅助函数
+// =============================================================================
+
+// executeHostCommand 在指定主机上执行命令。
+//
+// 通过 SSH 连接到目标主机并执行命令，支持密钥和密码认证。
 func executeHostCommand(deps common.PlatformDeps, node *model.Node, command string) (string, error) {
 	privateKey, passphrase, err := loadNodePrivateKey(deps, node)
 	if err != nil {
@@ -715,6 +823,9 @@ func executeHostCommand(deps common.PlatformDeps, node *model.Node, command stri
 	return sshclient.RunCommand(cli, command)
 }
 
+// loadNodePrivateKey 加载节点的 SSH 私钥。
+//
+// 从数据库加载私钥，如果加密则先解密。
 func loadNodePrivateKey(deps common.PlatformDeps, node *model.Node) (string, string, error) {
 	if deps.DB == nil || node == nil || node.SSHKeyID == nil {
 		return "", "", nil
@@ -735,6 +846,7 @@ func loadNodePrivateKey(deps common.PlatformDeps, node *model.Node) (string, str
 	return decrypted, pp, nil
 }
 
+// normalizeHostIDs 标准化并去重主机 ID 列表。
 func normalizeHostIDs(raw []int) ([]uint64, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("host_ids is required")
@@ -758,6 +870,9 @@ func normalizeHostIDs(raw []int) ([]uint64, error) {
 	return out, nil
 }
 
+// loadHostNodesMap 批量加载主机节点并构建映射。
+//
+// 返回节点映射和缺失的 ID 列表。
 func loadHostNodesMap(deps common.PlatformDeps, hostIDs []uint64) (map[uint64]*model.Node, []uint64, error) {
 	if deps.DB == nil {
 		return nil, nil, fmt.Errorf("db unavailable")
@@ -779,6 +894,7 @@ func loadHostNodesMap(deps common.PlatformDeps, hostIDs []uint64) (map[uint64]*m
 	return byID, missing, nil
 }
 
+// loadHostBatchTargets 加载批量执行目标信息。
 func loadHostBatchTargets(deps common.PlatformDeps, hostIDs []uint64) ([]map[string]any, []int, error) {
 	byID, _, err := loadHostNodesMap(deps, hostIDs)
 	if err != nil {
@@ -803,6 +919,12 @@ func loadHostBatchTargets(deps common.PlatformDeps, hostIDs []uint64) ([]map[str
 	return targets, missing, nil
 }
 
+// classifyHostCommand 分类命令的风险等级。
+//
+// 返回：
+//   - class: 命令类别（readonly/mutating/dangerous）
+//   - risk: 风险等级（low/medium/high）
+//   - blocked: 是否被阻止
 func classifyHostCommand(cmd string) (class string, risk string, blocked bool) {
 	trimmed := strings.ToLower(strings.TrimSpace(cmd))
 	if isReadonlyHostCommand(cmd) {
@@ -820,6 +942,9 @@ func classifyHostCommand(cmd string) (class string, risk string, blocked bool) {
 	return "mutating", "medium", false
 }
 
+// parseHostLabels 解析主机标签字符串。
+//
+// 支持 JSON 数组和逗号分隔两种格式。
 func parseHostLabels(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -847,6 +972,7 @@ func parseHostLabels(raw string) []string {
 	return out
 }
 
+// isReadonlyHostCommand 检查命令是否为安全的只读命令。
 func isReadonlyHostCommand(cmd string) bool {
 	switch strings.TrimSpace(cmd) {
 	case "hostname", "uptime", "df -h", "free -m", "ps aux --sort=-%cpu":
@@ -856,6 +982,9 @@ func isReadonlyHostCommand(cmd string) bool {
 	}
 }
 
+// detectNodeAuthType 检测节点的认证类型。
+//
+// 返回 "key"（密钥认证）、"password"（密码认证）或 "unknown"。
 func detectNodeAuthType(node *model.Node) string {
 	if node == nil {
 		return "unknown"

@@ -1,3 +1,10 @@
+// Package cicd 提供 CI/CD 和作业管理相关的工具实现。
+//
+// 本文件实现 CI/CD 操作工具集，包括：
+//   - 流水线列表查询和状态检查
+//   - 流水线触发执行
+//   - 作业列表查询和执行状态
+//   - 作业手动触发
 package cicd
 
 import (
@@ -12,41 +19,49 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// CICDPipelineListInput 流水线列表查询输入。
 type CICDPipelineListInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional status filter"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on repo/branch"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max pipelines,default=50"`
 }
 
+// CICDPipelineStatusInput 流水线状态查询输入。
 type CICDPipelineStatusInput struct {
 	PipelineID int `json:"pipeline_id" jsonschema_description:"required,pipeline config id"`
 }
 
+// CICDPipelineTriggerInput 流水线触发输入。
 type CICDPipelineTriggerInput struct {
 	PipelineID int               `json:"pipeline_id" jsonschema_description:"required,pipeline config id"`
 	Branch     string            `json:"branch" jsonschema_description:"required,branch to build"`
 	Params     map[string]string `json:"params,omitempty" jsonschema_description:"optional trigger params"`
 }
 
+// JobListInput 作业列表查询输入。
 type JobListInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional status filter"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/type"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max jobs,default=50"`
 }
 
+// JobExecutionStatusInput 作业执行状态查询输入。
 type JobExecutionStatusInput struct {
 	JobID       int `json:"job_id" jsonschema_description:"required,job id"`
 	ExecutionID int `json:"execution_id,omitempty" jsonschema_description:"optional execution id"`
 }
 
+// JobRunInput 作业触发输入。
 type JobRunInput struct {
 	JobID  int            `json:"job_id" jsonschema_description:"required,job id"`
 	Params map[string]any `json:"params,omitempty" jsonschema_description:"optional run params"`
 }
 
-// NewCICDTools returns all CICD tools.
+// NewCICDTools 创建所有 CI/CD 工具。
 func NewCICDTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		CICDPipelineList(ctx, deps),

@@ -1,9 +1,17 @@
+// Package service 提供服务管理相关的工具实现。
+//
+// 本文件实现服务操作工具集，包括：
+//   - 服务详情和状态查询
+//   - 服务部署预览和应用
+//   - 服务目录和分类查询
+//   - 服务可见性检查
 package service
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -12,22 +20,28 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// ServiceDetailInput 服务详情查询输入。
 type ServiceDetailInput struct {
 	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
+// ServiceDeployPreviewInput 部署预览输入。
 type ServiceDeployPreviewInput struct {
 	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 	ClusterID int `json:"cluster_id" jsonschema_description:"required,cluster id"`
 }
 
+// ServiceDeployApplyInput 部署应用输入。
 type ServiceDeployApplyInput struct {
 	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 	ClusterID int `json:"cluster_id" jsonschema_description:"required,cluster id"`
 }
 
+// ServiceDeployInput 统一部署输入。
 type ServiceDeployInput struct {
 	ServiceID int  `json:"service_id" jsonschema_description:"required,service id"`
 	ClusterID int  `json:"cluster_id" jsonschema_description:"required,cluster id"`
@@ -35,25 +49,34 @@ type ServiceDeployInput struct {
 	Apply     bool `json:"apply,omitempty" jsonschema_description:"apply deploy after approval"`
 }
 
+// ServiceStatusInput 服务状态查询输入。
 type ServiceStatusInput struct {
 	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
+// ServiceStatusByTargetInput 语义化服务状态查询输入。
+type ServiceStatusByTargetInput struct {
+	Target string `json:"target" jsonschema_description:"required,service id or service name"`
+}
+
+// ServiceCatalogListInput 服务目录查询输入。
 type ServiceCatalogListInput struct {
 	Keyword    string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name/owner"`
 	CategoryID int    `json:"category_id,omitempty" jsonschema_description:"optional category id: 1 middleware, 2 business"`
 	Limit      int    `json:"limit,omitempty" jsonschema_description:"max services,default=50"`
 }
 
+// ServiceVisibilityCheckInput 可见性检查输入。
 type ServiceVisibilityCheckInput struct {
 	ServiceID int `json:"service_id" jsonschema_description:"required,service id"`
 }
 
-// NewServiceTools returns all service tools.
+// NewServiceTools 创建所有服务工具。
 func NewServiceTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		ServiceGetDetail(ctx, deps),
 		ServiceStatus(ctx, deps),
+		ServiceStatusByTarget(ctx, deps),
 		ServiceDeployPreview(ctx, deps),
 		ServiceDeployApply(ctx, deps),
 		ServiceDeploy(ctx, deps),
@@ -110,6 +133,33 @@ func ServiceStatus(ctx context.Context, deps common.PlatformDeps) tool.Invokable
 			}
 			var svc model.Service
 			if err := deps.DB.First(&svc, input.ServiceID).Error; err != nil {
+				return nil, err
+			}
+			return &ServiceStatusOutput{
+				ServiceID:   svc.ID,
+				Name:        svc.Name,
+				Status:      svc.Status,
+				Env:         svc.Env,
+				RuntimeType: svc.RuntimeType,
+				Image:       svc.Image,
+				Replicas:    svc.Replicas,
+				UpdatedAt:   svc.UpdatedAt.Format("2006-01-02 15:04:05"),
+			}, nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func ServiceStatusByTarget(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+	t, err := einoutils.InferOptionableTool(
+		"service_status_by_target",
+		"Resolve a service by target string and get current status. target may be a service id or exact service name. Returns the same runtime status fields as service_status. Example: {\"target\":\"payment-service\"}.",
+		func(ctx context.Context, input *ServiceStatusByTargetInput, opts ...tool.Option) (*ServiceStatusOutput, error) {
+			svc, err := resolveServiceByTarget(deps, input.Target)
+			if err != nil {
 				return nil, err
 			}
 			return &ServiceStatusOutput{
@@ -426,4 +476,24 @@ func ServiceVisibilityCheck(ctx context.Context, deps common.PlatformDeps) tool.
 		panic(err)
 	}
 	return t
+}
+
+func resolveServiceByTarget(deps common.PlatformDeps, target string) (*model.Service, error) {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return nil, fmt.Errorf("target is required")
+	}
+	if deps.DB == nil {
+		return nil, fmt.Errorf("db unavailable")
+	}
+	var svc model.Service
+	if id, err := strconv.ParseUint(trimmed, 10, 64); err == nil {
+		if err := deps.DB.First(&svc, id).Error; err == nil {
+			return &svc, nil
+		}
+	}
+	if err := deps.DB.Where("name = ?", trimmed).First(&svc).Error; err == nil {
+		return &svc, nil
+	}
+	return nil, fmt.Errorf("service target not found")
 }

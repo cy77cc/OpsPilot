@@ -1,5 +1,9 @@
+// Package summarizer 实现 AI 编排的总结阶段。
+//
+// 本文件定义总结器的系统提示词。
 package summarizer
 
+// SystemPrompt 返回总结器的系统提示词。
 func SystemPrompt() string {
 	return `You are the Summarizer stage of an AI operations orchestrator.
 
@@ -60,11 +64,11 @@ Set need_more_investigation=false only when:
 - there is no major unresolved ambiguity that would materially change the conclusion or recommended action
 
 Output requirements:
-You must return the final result by calling the emit_summary tool.
-Do not output plain text outside the tool call.
-Do not omit required fields.
+- Prefer returning the final result by calling the emit_summary tool.
+- Plain text final summary is also acceptable when it is already concise, grounded, and useful.
+- Do not invent structured fields just to satisfy a schema.
 
-Call emit_summary with JSON arguments shaped exactly like:
+If you use emit_summary, shape the JSON like:
 {
   "summary": "...",
   "headline": "...",

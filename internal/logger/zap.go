@@ -1,3 +1,7 @@
+// Package logger 提供统一的日志接口和实现。
+//
+// 本文件实现基于 zap 的 Logger，支持 JSON 和文本格式输出。
+// 配置从 config.CFG.Log 读取。
 package logger
 
 import (
@@ -11,10 +15,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// zapLogger 是基于 zap 的 Logger 实现。
 type zapLogger struct {
 	l *zap.Logger
 }
 
+// MustNewZapLogger 创建 zap Logger 实例，失败则 panic。
+//
+// 根据配置初始化日志级别、编码格式、输出路径等。
+// 使用 AddCallerSkip(1) 确保调用者信息显示正确的文件和行号。
 func MustNewZapLogger() Logger {
 
 	if config.CFG.Log.File.Path != "" {
@@ -55,44 +64,54 @@ func MustNewZapLogger() Logger {
 	return &zapLogger{l: logger}
 }
 
+// Info 记录信息级别日志。
 func (z *zapLogger) Info(msg string, fields ...Field) {
 	z.l.Info(msg, toZapFields(fields)...)
 }
 
+// Infof 记录格式化信息日志。
 func (z *zapLogger) Infof(format string, a []any, fields ...Field) {
 	z.l.Info(fmt.Sprintf(format, a...), toZapFields(fields)...)
 }
 
+// Error 记录错误级别日志。
 func (z *zapLogger) Error(msg string, fields ...Field) {
 	z.l.Error(msg, toZapFields(fields)...)
 }
 
+// Errorf 记录格式化错误日志。
 func (z *zapLogger) Errorf(format string, a []any, fields ...Field) {
 	z.l.Error(fmt.Sprintf(format, a...), toZapFields(fields)...)
 }
 
+// Debug 记录调试级别日志。
 func (z *zapLogger) Debug(msg string, fields ...Field) {
 	z.l.Debug(msg, toZapFields(fields)...)
 }
 
+// Debugf 记录格式化调试日志。
 func (z *zapLogger) Debugf(format string, a []any, fields ...Field) {
 	z.l.Debug(fmt.Sprintf(format, a...), toZapFields(fields)...)
 }
 
+// Warn 记录警告级别日志。
 func (z *zapLogger) Warn(msg string, fields ...Field) {
 	z.l.Warn(msg, toZapFields(fields)...)
 }
 
+// Warnf 记录格式化警告日志。
 func (z *zapLogger) Warnf(format string, a []any, fields ...Field) {
 	z.l.Warn(fmt.Sprintf(format, a...), toZapFields(fields)...)
 }
 
+// With 创建带有固定字段的子 Logger。
 func (z *zapLogger) With(fields ...Field) Logger {
 	return &zapLogger{
 		l: z.l.With(toZapFields(fields)...),
 	}
 }
 
+// toZapFields 将 Field 列表转换为 zap.Field 列表。
 func toZapFields(fields []Field) []zap.Field {
 	zfs := make([]zap.Field, 0, len(fields))
 	for _, f := range fields {

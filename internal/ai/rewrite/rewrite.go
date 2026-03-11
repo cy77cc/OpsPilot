@@ -1,3 +1,7 @@
+// Package rewrite 实现 AI 编排的改写阶段。
+//
+// Rewriter 负责将用户口语化输入改写为结构化的任务表达。
+// 输出包含归一化目标、操作模式、资源提示和检索信息。
 package rewrite
 
 import (
@@ -10,24 +14,26 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/availability"
 )
 
+// Output 表示改写阶段的输出。
 type Output struct {
-	RawUserInput      string            `json:"raw_user_input,omitempty"`
-	NormalizedRequest NormalizedRequest `json:"normalized_request,omitempty"`
-	Ambiguities       []string          `json:"ambiguities,omitempty"`
-	Assumptions       []string          `json:"assumptions,omitempty"`
-	NormalizedGoal    string            `json:"normalized_goal"`
-	OperationMode     string            `json:"operation_mode"`
-	ResourceHints     ResourceHints     `json:"resource_hints,omitempty"`
-	DomainHints       []string          `json:"domain_hints,omitempty"`
-	AmbiguityFlags    []string          `json:"ambiguity_flags,omitempty"`
-	RetrievalIntent   string            `json:"retrieval_intent,omitempty"`
-	RetrievalQueries  []string          `json:"retrieval_queries,omitempty"`
-	RetrievalKeywords []string          `json:"retrieval_keywords,omitempty"`
-	KnowledgeScope    []string          `json:"knowledge_scope,omitempty"`
-	RequiresRAG       bool              `json:"requires_rag,omitempty"`
-	Narrative         string            `json:"narrative"`
+	RawUserInput      string            `json:"raw_user_input,omitempty"`   // 原始用户输入
+	NormalizedRequest NormalizedRequest `json:"normalized_request,omitempty"` // 归一化请求
+	Ambiguities       []string          `json:"ambiguities,omitempty"`       // 歧义列表
+	Assumptions       []string          `json:"assumptions,omitempty"`       // 假设列表
+	NormalizedGoal    string            `json:"normalized_goal"`             // 归一化目标
+	OperationMode     string            `json:"operation_mode"`              // 操作模式
+	ResourceHints     ResourceHints     `json:"resource_hints,omitempty"`    // 资源提示
+	DomainHints       []string          `json:"domain_hints,omitempty"`      // 领域提示
+	AmbiguityFlags    []string          `json:"ambiguity_flags,omitempty"`   // 歧义标志
+	RetrievalIntent   string            `json:"retrieval_intent,omitempty"`  // 检索意图
+	RetrievalQueries  []string          `json:"retrieval_queries,omitempty"` // 检索查询
+	RetrievalKeywords []string          `json:"retrieval_keywords,omitempty"` // 检索关键词
+	KnowledgeScope    []string          `json:"knowledge_scope,omitempty"`   // 知识范围
+	RequiresRAG       bool              `json:"requires_rag,omitempty"`      // 是否需要 RAG
+	Narrative         string            `json:"narrative"`                   // 自然语言描述
 }
 
+// SemanticContract 定义改写阶段的语义契约。
 type SemanticContract struct {
 	RawUserInput      string            `json:"raw_user_input,omitempty"`
 	NormalizedGoal    string            `json:"normalized_goal,omitempty"`
@@ -44,10 +50,11 @@ type SemanticContract struct {
 	RequiresRAG       bool              `json:"requires_rag,omitempty"`
 }
 
+// ModelUnavailableError 表示模型不可用错误。
 type ModelUnavailableError struct {
-	Code              string
-	UserVisibleReason string
-	Cause             error
+	Code              string // 错误码
+	UserVisibleReason string // 用户可见原因
+	Cause             error  // 原始错误
 }
 
 func (e *ModelUnavailableError) Error() string {
@@ -173,15 +180,11 @@ func buildBaseOutput(in Input) Output {
 	message := strings.TrimSpace(in.Message)
 	hints := detectResourceHints(in.SelectedResources)
 	return Output{
-		RawUserInput:   message,
-		NormalizedGoal: message,
-		OperationMode:  "query",
-		ResourceHints:  hints,
+		RawUserInput:  message,
+		ResourceHints: hints,
 		NormalizedRequest: NormalizedRequest{
-			Intent:  "user_request",
 			Targets: buildTargets(in.SelectedResources),
 		},
-		Narrative: buildNarrative(message, "query", hints, nil, nil),
 	}
 }
 
@@ -268,11 +271,8 @@ func mergeNormalizedRequest(parsed, base NormalizedRequest) NormalizedRequest {
 }
 
 func normalizeOutput(base, parsed Output) Output {
-	if strings.TrimSpace(parsed.NormalizedGoal) == "" {
-		parsed.NormalizedGoal = base.NormalizedGoal
-	}
 	parsed.RawUserInput = firstNonEmpty(parsed.RawUserInput, base.RawUserInput)
-	parsed.OperationMode = normalizeMode(parsed.OperationMode, base.OperationMode)
+	parsed.OperationMode = normalizeMode(parsed.OperationMode, "")
 	if parsed.ResourceHints == (ResourceHints{}) {
 		parsed.ResourceHints = base.ResourceHints
 	}
@@ -285,7 +285,7 @@ func normalizeOutput(base, parsed Output) Output {
 	parsed.RetrievalQueries = dedupe(parsed.RetrievalQueries)
 	parsed.RetrievalKeywords = dedupe(parsed.RetrievalKeywords)
 	parsed.KnowledgeScope = dedupe(parsed.KnowledgeScope)
-	parsed.Narrative = buildNarrative(parsed.NormalizedGoal, parsed.OperationMode, parsed.ResourceHints, parsed.DomainHints, parsed.AmbiguityFlags)
+	parsed.Narrative = strings.TrimSpace(parsed.Narrative)
 	return parsed
 }
 
@@ -320,26 +320,6 @@ func detectResourceHints(resources []SelectedResource) ResourceHints {
 		}
 	}
 	return hints
-}
-
-func buildNarrative(goal, mode string, hints ResourceHints, domains, ambiguity []string) string {
-	parts := []string{"用户请求已被规整为可执行任务。", "目标：" + goal + "。", "模式：" + mode + "。"}
-	if hints.ServiceName != "" {
-		parts = append(parts, "服务线索："+hints.ServiceName+"。")
-	}
-	if hints.ClusterName != "" {
-		parts = append(parts, "集群线索："+hints.ClusterName+"。")
-	}
-	if hints.ClusterID > 0 {
-		parts = append(parts, "集群ID线索："+itoa(hints.ClusterID)+"。")
-	}
-	if len(domains) > 0 {
-		parts = append(parts, "涉及领域："+strings.Join(domains, " / ")+"。")
-	}
-	if len(ambiguity) > 0 {
-		parts = append(parts, "当前仍存在歧义："+strings.Join(ambiguity, ", ")+"。")
-	}
-	return strings.Join(parts, " ")
 }
 
 func normalizeMode(value, fallback string) string {
@@ -382,18 +362,6 @@ func parseResourceID(raw string) int {
 		value = value*10 + int(r-'0')
 	}
 	return value
-}
-
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	buf := make([]byte, 0, 12)
-	for value > 0 {
-		buf = append([]byte{byte('0' + value%10)}, buf...)
-		value /= 10
-	}
-	return string(buf)
 }
 
 func firstNonEmpty(values ...string) string {

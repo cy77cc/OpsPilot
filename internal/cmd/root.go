@@ -1,3 +1,7 @@
+// Package cmd 提供命令行入口。
+//
+// 本文件实现根命令，是应用程序的主入口点。
+// 支持配置文件路径和调试模式标志。
 package cmd
 
 import (
@@ -16,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// rootCMD 是根命令，启动应用程序。
 var (
 	rootCMD = &cobra.Command{
 		Use:     "OpsPilot",
@@ -33,6 +38,9 @@ var (
 	}
 )
 
+// runBootstrapMigrations 执行启动时的数据库迁移。
+//
+// 包括版本化迁移和开发模式的自动迁移（如果启用）。
 func runBootstrapMigrations() error {
 	db := storage.MustNewDB()
 	sqlDB, err := db.DB()
@@ -52,6 +60,10 @@ func runBootstrapMigrations() error {
 	return nil
 }
 
+// Execute 是命令行入口函数。
+//
+// 注册信号处理，支持优雅关闭。
+// 配置文件默认为 configs/config.yaml。
 func Execute() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTRAP)
 	defer stop()

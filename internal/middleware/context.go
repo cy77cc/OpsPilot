@@ -1,3 +1,7 @@
+// Package middleware 提供 HTTP 中间件实现。
+//
+// 本文件实现上下文注入中间件，将自定义上下文注入到请求上下文中。
+// 这样后续的 Service 层即使只拿到了 context.Context，也能取出追踪信息。
 package middleware
 
 import (
@@ -8,6 +12,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// ContextMiddleware 返回上下文注入中间件。
+//
+// 功能：
+//   - 初始化自定义上下文（xctx.Context）
+//   - 生成或复用追踪 ID
+//   - 将上下文注入到 gin.Context 中
 func ContextMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 初始化自定义 Context

@@ -1,3 +1,7 @@
+// Package pki 提供 PKI 证书管理功能。
+//
+// 本文件实现 CA 证书生成、终端证书签发、证书解析等功能，
+// 用于 Kubernetes 集群的证书管理。
 package pki
 
 import (
@@ -13,21 +17,24 @@ import (
 	"time"
 )
 
+// CertSpec 是证书规格定义。
 type CertSpec struct {
-	CommonName string
-	Orgs       []string
+	CommonName string          // 通用名称 (CN)
+	Orgs       []string        // 组织 (O)
 
-	DNSNames []string
-	IPs      []net.IP
+	DNSNames []string          // DNS 名称列表
+	IPs      []net.IP          // IP 地址列表
 
-	IsCA       bool
-	ValidYears int
+	IsCA       bool            // 是否为 CA 证书
+	ValidYears int             // 有效年限
 
-	KeyUsage    x509.KeyUsage
-	ExtKeyUsage []x509.ExtKeyUsage
+	KeyUsage    x509.KeyUsage     // 密钥用途
+	ExtKeyUsage []x509.ExtKeyUsage // 扩展密钥用途
 }
 
-// GenerateCA 生成CA证书
+// GenerateCA 生成自签名 CA 证书。
+//
+// 返回证书对象、私钥、PEM 编码的证书和私钥。
 func GenerateCA(spec CertSpec) (*x509.Certificate, *rsa.PrivateKey, []byte, []byte, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
@@ -59,30 +66,13 @@ func GenerateCA(spec CertSpec) (*x509.Certificate, *rsa.PrivateKey, []byte, []by
 	return cert, key, certPEM, keyPEM, nil
 }
 
-// IssueCert 用这个生成证书
-/*
-	subject:
-	kube-apiserver:
-		ExtKeyUsage = serverAuth
-		SAN 包含：
-		所有 master IP
-		LB / VIP
-		kubernetes
-		kubernetes.default
-		kubernetes.default.svc
-		Service IP（如 10.96.0.1）
-	kubelet:
-		subject:
-			CN = system:node:<nodeName>
-			O = system:nodes
-	controller/scheduler:
-		subject:
-			CN = system:kube-controller-manager
-			CN = system:kube-scheduler
-	kubectl:
-		CN = admin
-		O  = system:masters
-*/
+// IssueCert 使用 CA 证书签发终端证书。
+//
+// 典型用途：
+//   - kube-apiserver: ExtKeyUsage = serverAuth, SAN 包含所有 master IP、LB、kubernetes 等
+//   - kubelet: CN = system:node:<nodeName>, O = system:nodes
+//   - controller/scheduler: CN = system:kube-controller-manager / system:kube-scheduler
+//   - kubectl: CN = admin, O = system:masters
 func IssueCert(
 	caCert *x509.Certificate,
 	caKey *rsa.PrivateKey,
@@ -121,12 +111,12 @@ func IssueCert(
 	return certPEM, keyPEM, nil
 }
 
-// WriteFile writes data to file with 0600 permissions
+// WriteFile 写入文件，权限为 0600。
 func WriteFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// ParseCert parses a PEM encoded certificate
+// ParseCert 解析 PEM 编码的证书。
 func ParseCert(pemData []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
@@ -135,7 +125,7 @@ func ParseCert(pemData []byte) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
-// ParseRSAKey parses a PEM encoded RSA private key
+// ParseRSAKey 解析 PEM 编码的 RSA 私钥。
 func ParseRSAKey(pemData []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {

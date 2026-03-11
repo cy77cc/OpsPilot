@@ -1,3 +1,6 @@
+// Package utils 提供通用工具函数。
+//
+// 本文件实现 JWT Token 的生成和解析功能，使用 HMAC-SHA256 签名算法。
 package utils
 
 import (
@@ -9,13 +12,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// MyClaims Id为微信openid
+// MyClaims 自定义 JWT 声明，包含用户 ID。
 type MyClaims struct {
-	Uid uint `json:"uid"`
+	Uid uint `json:"uid"` // 用户 ID
 	jwt.RegisteredClaims
 }
 
-// 常量
+// JWT 错误定义。
 var (
 	ErrTokenExpired     = errors.New("Token is expired")
 	ErrTokenInvalid     = errors.New("Token is invalid")
@@ -23,10 +26,14 @@ var (
 	ErrTokenNotValidYet = errors.New("Token is not valid yet")
 	ErrTokenNotValidId  = errors.New("Token is not valid id")
 	ErrTokenSignature   = errors.New("Token signature is invalid")
-	MySecret            = []byte(config.CFG.JWT.Secret)
+	MySecret            = []byte(config.CFG.JWT.Secret) // JWT 签名密钥
 )
 
-// GenToken 使用hsa256加密生成token, 传递weixinopenid
+// GenToken 使用 HMAC-SHA256 生成 JWT Token。
+//
+// 参数:
+//   - id: 用户 ID
+//   - isRefreshToken: 是否为刷新 Token
 func GenToken(id uint, isRefreshToken bool) (string, error) {
 
 	var tokenExpireDuration = config.CFG.JWT.Expire

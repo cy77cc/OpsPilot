@@ -1,3 +1,7 @@
+// Package executor 实现 AI 编排的执行阶段。
+//
+// 本文件实现专家步骤运行器 (AgentStepRunner)，负责调用专家 Agent 执行单个步骤。
+// 使用 Eino ADK 构建专家 Agent，支持工具调用和结构化输出。
 package executor
 
 import (
@@ -19,18 +23,53 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 )
 
+// AgentStepRunner 是专家步骤运行器，负责调用专家 Agent 执行步骤。
 type AgentStepRunner struct {
-	agents map[string]adk.Agent
+	agents map[string]adk.Agent // 专家名称到 Agent 的映射
 }
 
+// expertResult 表示专家执行的输出结果。
 type expertResult struct {
-	Summary       string   `json:"summary"`
-	ObservedFacts []string `json:"observed_facts,omitempty"`
-	Inferences    []string `json:"inferences,omitempty"`
-	NextActions   []string `json:"next_actions,omitempty"`
-	Narrative     string   `json:"narrative,omitempty"`
+	Summary       string   `json:"summary"`                  // 执行摘要
+	ObservedFacts []string `json:"observed_facts,omitempty"` // 观察到的事实
+	Inferences    []string `json:"inferences,omitempty"`     // 推断结论
+	NextActions   []string `json:"next_actions,omitempty"`   // 建议的后续动作
+	Narrative     string   `json:"narrative,omitempty"`      // 详细叙述
 }
 
+type expertRequestEnvelope struct {
+	UserMessage     string                 `json:"user_message"`
+	PlanGoal        string                 `json:"plan_goal,omitempty"`
+	Step            expertRequestStep      `json:"step"`
+	RuntimeContext  map[string]any         `json:"runtime_context,omitempty"`
+	HostConstraints expertHostConstraints  `json:"host_constraints"`
+}
+
+type expertRequestStep struct {
+	ID        string         `json:"id"`
+	Title     string         `json:"title,omitempty"`
+	Expert    string         `json:"expert,omitempty"`
+	Intent    string         `json:"intent,omitempty"`
+	Task      string         `json:"task,omitempty"`
+	Mode      string         `json:"mode,omitempty"`
+	Risk      string         `json:"risk,omitempty"`
+	Input     map[string]any `json:"input,omitempty"`
+	DependsOn []string       `json:"depends_on,omitempty"`
+}
+
+type expertHostConstraints struct {
+	ApprovalAlreadyDecided bool `json:"approval_already_decided"`
+	UseOnlyProvidedTools   bool `json:"use_only_provided_tools"`
+	StayInAssignedDomain   bool `json:"stay_in_assigned_domain"`
+}
+
+// NewAgentStepRunner 创建新的专家步骤运行器。
+// 从注册表中加载所有专家并为每个专家构建 Agent。
+//
+// 参数:
+//   - ctx: 上下文
+//   - model: 聊天模型
+//   - registry: 专家注册表
 func NewAgentStepRunner(ctx context.Context, model einomodel.BaseChatModel, registry *experts.Registry) (*AgentStepRunner, error) {
 	if model == nil {
 		return nil, fmt.Errorf("expert model is required")
@@ -53,6 +92,14 @@ func NewAgentStepRunner(ctx context.Context, model einomodel.BaseChatModel, regi
 	return &AgentStepRunner{agents: items}, nil
 }
 
+// RunStep 执行单个步骤，调用对应的专家 Agent。
+//
+// 参数:
+//   - ctx: 上下文
+//   - req: 执行请求
+//   - step: 计划步骤
+//
+// 返回: 步骤结果和可能的错误
 func (r *AgentStepRunner) RunStep(ctx context.Context, req Request, step planner.PlanStep) (StepResult, error) {
 	if r == nil {
 		return StepResult{}, &ExecutionError{
@@ -95,13 +142,23 @@ func (r *AgentStepRunner) RunStep(ctx context.Context, req Request, step planner
 					"inferences":     out.Inferences,
 					"next_actions":   out.NextActions,
 					"narrative":      out.Narrative,
+					"structured_result": map[string]any{
+						"summary":        out.Summary,
+						"observed_facts": out.ObservedFacts,
+						"inferences":     out.Inferences,
+						"next_actions":   out.NextActions,
+						"narrative":      out.Narrative,
+					},
 					"raw_output":     strings.TrimSpace(raw),
+					"input_envelope": buildExpertRequestEnvelope(req, step),
 				},
 			},
 		},
 	}, nil
 }
 
+// buildExpertAgent 为单个专家构建 Agent。
+// 将专家的工具集和系统提示配置到 Agent 中。
 func buildExpertAgent(ctx context.Context, model einomodel.BaseChatModel, exp expertspec.Expert) (adk.Agent, error) {
 	baseTools := exp.Tools(ctx)
 	toolset := make([]tool.BaseTool, 0, len(baseTools)+1)
@@ -133,6 +190,8 @@ func buildExpertAgent(ctx context.Context, model einomodel.BaseChatModel, exp ex
 	return agent, nil
 }
 
+// expertSystemPrompt 生成专家的系统提示词。
+// 包含专家能力描述、执行约束和领域特定规则。
 func expertSystemPrompt(exp expertspec.Expert) string {
 	caps, _ := json.Marshal(exp.Capabilities())
 	extra := ""
@@ -166,25 +225,52 @@ Expert capabilities:
 The executor has already decided whether approval is required. You only execute the authorized step and report the result.`, exp.Name(), exp.Name(), string(caps), extra)
 }
 
+// buildExpertRequest 构建发送给专家 Agent 的结构化 envelope。
 func buildExpertRequest(req Request, step planner.PlanStep) string {
-	input, _ := json.Marshal(step.Input)
-	runtimeCtx, _ := json.Marshal(req.RuntimeContext)
-	return fmt.Sprintf(
-		"message: %s\nplan_goal: %s\nstep_id: %s\nstep_title: %s\nexpert: %s\nintent: %s\ntask: %s\nmode: %s\nrisk: %s\nstep_input: %s\nruntime_context: %s",
-		strings.TrimSpace(req.Message),
-		strings.TrimSpace(req.Plan.Goal),
-		strings.TrimSpace(step.StepID),
-		strings.TrimSpace(step.Title),
-		strings.TrimSpace(step.Expert),
-		strings.TrimSpace(step.Intent),
-		strings.TrimSpace(step.Task),
-		strings.TrimSpace(step.Mode),
-		strings.TrimSpace(step.Risk),
-		string(input),
-		string(runtimeCtx),
-	)
+	payload, _ := json.Marshal(buildExpertRequestEnvelope(req, step))
+	return string(payload)
 }
 
+func buildExpertRequestEnvelope(req Request, step planner.PlanStep) expertRequestEnvelope {
+	runtimeCtx, _ := json.Marshal(req.RuntimeContext)
+	var runtimeMap map[string]any
+	_ = json.Unmarshal(runtimeCtx, &runtimeMap)
+	return expertRequestEnvelope{
+		UserMessage: strings.TrimSpace(req.Message),
+		PlanGoal:    strings.TrimSpace(req.Plan.Goal),
+		Step: expertRequestStep{
+			ID:        strings.TrimSpace(step.StepID),
+			Title:     strings.TrimSpace(step.Title),
+			Expert:    strings.TrimSpace(step.Expert),
+			Intent:    strings.TrimSpace(step.Intent),
+			Task:      strings.TrimSpace(step.Task),
+			Mode:      strings.TrimSpace(step.Mode),
+			Risk:      strings.TrimSpace(step.Risk),
+			Input:     cloneExpertInput(step.Input),
+			DependsOn: append([]string(nil), step.DependsOn...),
+		},
+		RuntimeContext: runtimeMap,
+		HostConstraints: expertHostConstraints{
+			ApprovalAlreadyDecided: true,
+			UseOnlyProvidedTools:   true,
+			StayInAssignedDomain:   true,
+		},
+	}
+}
+
+func cloneExpertInput(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+// parseExpertResult 解析专家返回的 JSON 结果。
+// 如果解析失败，尝试从半结构化文本中恢复。
 func parseExpertResult(raw string) (expertResult, error) {
 	if strings.TrimSpace(raw) == "" {
 		return expertResult{}, fmt.Errorf("expert returned an empty result")
@@ -207,6 +293,8 @@ func parseExpertResult(raw string) (expertResult, error) {
 	return out, nil
 }
 
+// recoverHalfStructuredExpertResult 从半结构化文本中恢复专家结果。
+// 尝试识别 observed_facts、inferences、next_actions 等部分。
 func recoverHalfStructuredExpertResult(raw string) (expertResult, error) {
 	lines := splitNonEmptyLines(raw)
 	if len(lines) == 0 {
@@ -272,6 +360,7 @@ func trimSectionPrefix(value string) string {
 	return value
 }
 
+// expertDecision 是专家决策工具，用于输出结构化结果。
 type expertDecision struct {
 	info *schema.ToolInfo
 }
@@ -284,6 +373,8 @@ func (t expertDecision) InvokableRun(_ context.Context, argumentsInJSON string, 
 	return argumentsInJSON, nil
 }
 
+// expertDecisionTool 创建专家决策工具。
+// 专家通过调用此工具输出结构化的执行结果。
 func expertDecisionTool() tool.BaseTool {
 	return expertDecision{
 		info: &schema.ToolInfo{
@@ -334,6 +425,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// runExpertAgent 运行专家 Agent 并收集最终输出。
 func runExpertAgent(ctx context.Context, agent adk.Agent, request string) (string, error) {
 	iter := agent.Run(ctx, &adk.AgentInput{
 		Messages: []adk.Message{
@@ -369,6 +461,8 @@ func runExpertAgent(ctx context.Context, agent adk.Agent, request string) (strin
 	return strings.TrimSpace(last), nil
 }
 
+// classifyExpertRunError 对专家执行错误进行分类和包装。
+// 将原始错误转换为用户友好的 ExecutionError。
 func classifyExpertRunError(step planner.PlanStep, err error) error {
 	if err == nil {
 		return nil
@@ -397,6 +491,7 @@ func classifyExpertRunError(step planner.PlanStep, err error) error {
 	}
 }
 
+// compactToolError 压缩工具错误消息，移除冗余信息。
 func compactToolError(message string) string {
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -414,6 +509,7 @@ func compactToolError(message string) string {
 	return message
 }
 
+// isProviderTimeoutError 判断是否为模型提供商超时错误。
 func isProviderTimeoutError(message string) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" {
@@ -424,6 +520,8 @@ func isProviderTimeoutError(message string) bool {
 		strings.Contains(lower, "timeout exceeded while awaiting headers")
 }
 
+// summarizeMissingPrerequisite 从错误消息中提取缺失的前置条件。
+// 返回用户友好的摘要和缺失字段名。
 func summarizeMissingPrerequisite(message string) (string, string, bool) {
 	message = compactToolError(message)
 	switch {

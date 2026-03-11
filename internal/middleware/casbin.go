@@ -1,3 +1,7 @@
+// Package middleware 提供 HTTP 中间件实现。
+//
+// 本文件实现 Casbin 权限控制中间件，用于基于角色的访问控制。
+// 支持特权角色（admin、super-admin）自动放行。
 package middleware
 
 import (
@@ -12,7 +16,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CasbinAuth returns a middleware that enforces Casbin authorization using a specific permission code.
+// CasbinAuth 返回 Casbin 权限控制中间件。
+//
+// 参数:
+//   - enforcer: Casbin 执行器
+//   - permissionCode: 需要的权限码
+//
+// 特权角色（admin、super-admin、root）自动放行。
+// 拒绝访问时会记录审计日志。
 func CasbinAuth(enforcer *casbin.Enforcer, permissionCode string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if enforcer == nil {

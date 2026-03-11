@@ -178,6 +178,7 @@ function resolveThoughtStageTitle(stage: string | undefined): ThoughtStageItem['
 const AssistantMessage: React.FC<{
   content: string;
   thinking?: string;
+  summaryOutput?: Record<string, unknown>;
   recommendations?: EmbeddedRecommendation[];
   thoughtChain?: ThoughtStageItem[];
   rawEvidence?: string[];
@@ -186,15 +187,16 @@ const AssistantMessage: React.FC<{
   onRegenerate?: () => void;
   onRecommendationSelect?: (prompt: string) => void;
   isLoading?: boolean;
-}> = ({ content, thinking, recommendations, thoughtChain, rawEvidence, isStreaming, showActions = true, onRegenerate, onRecommendationSelect, isLoading }) => {
+}> = ({ content, thinking, summaryOutput, recommendations, thoughtChain, rawEvidence, isStreaming, showActions = true, onRegenerate, onRecommendationSelect, isLoading }) => {
   const { token } = theme.useToken();
   const blocks = useMemo(() => normalizeAssistantMessage({
     content,
     thinking,
+    summaryOutput,
     rawEvidence,
     recommendations,
     isStreaming,
-  }), [content, thinking, rawEvidence, recommendations, isStreaming]);
+  }), [content, thinking, summaryOutput, rawEvidence, recommendations, isStreaming]);
 
   return (
     <div>
@@ -900,6 +902,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       <AssistantMessage
         content={msg.content}
         thinking={msg.thinking}
+        summaryOutput={msg.summaryOutput}
         recommendations={msg.recommendations}
         thoughtChain={msg.thoughtChain}
         rawEvidence={msg.rawEvidence}

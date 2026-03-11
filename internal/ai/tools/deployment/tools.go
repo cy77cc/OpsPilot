@@ -1,3 +1,9 @@
+// Package deployment 提供部署管理相关的工具实现。
+//
+// 本文件实现部署操作工具集，包括：
+//   - 部署目标查询和管理
+//   - 配置项读取和对比
+//   - 集群和服务清单查询
 package deployment
 
 import (
@@ -12,8 +18,11 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
-// Input types
+// =============================================================================
+// 输入类型定义
+// =============================================================================
 
+// DeploymentTargetListInput 部署目标列表查询输入。
 type DeploymentTargetListInput struct {
 	Env     string `json:"env,omitempty" jsonschema_description:"optional environment filter"`
 	Status  string `json:"status,omitempty" jsonschema_description:"optional target status filter"`
@@ -21,38 +30,45 @@ type DeploymentTargetListInput struct {
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max targets,default=50"`
 }
 
+// DeploymentTargetDetailInput 部署目标详情查询输入。
 type DeploymentTargetDetailInput struct {
 	TargetID int `json:"target_id" jsonschema_description:"required,deployment target id"`
 }
 
+// DeploymentBootstrapStatusInput 引导状态查询输入。
 type DeploymentBootstrapStatusInput struct {
 	TargetID int `json:"target_id" jsonschema_description:"required,deployment target id"`
 }
 
+// ConfigAppListInput 配置应用列表查询输入。
 type ConfigAppListInput struct {
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name"`
 	Env     string `json:"env,omitempty" jsonschema_description:"optional env filter"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max apps,default=50"`
 }
 
+// ConfigItemGetInput 配置项查询输入。
 type ConfigItemGetInput struct {
 	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
 	Key   string `json:"key" jsonschema_description:"required,config key"`
 	Env   string `json:"env,omitempty" jsonschema_description:"optional env"`
 }
 
+// ConfigDiffInput 配置对比输入。
 type ConfigDiffInput struct {
 	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
 	EnvA  string `json:"env_a" jsonschema_description:"required,compare env a"`
 	EnvB  string `json:"env_b" jsonschema_description:"required,compare env b"`
 }
 
+// ClusterInventoryInput 集群清单查询输入。
 type ClusterInventoryInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional cluster status filter"`
 	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on name/endpoint"`
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max clusters,default=50"`
 }
 
+// ServiceInventoryInput 服务清单查询输入。
 type ServiceInventoryInput struct {
 	Keyword     string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name/owner"`
 	RuntimeType string `json:"runtime_type,omitempty" jsonschema_description:"optional runtime type filter,k8s/compose/helm"`
@@ -61,7 +77,7 @@ type ServiceInventoryInput struct {
 	Limit       int    `json:"limit,omitempty" jsonschema_description:"max services,default=50"`
 }
 
-// NewDeploymentTools returns all deployment tools.
+// NewDeploymentTools 创建所有部署工具。
 func NewDeploymentTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		DeploymentTargetList(ctx, deps),

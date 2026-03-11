@@ -1,3 +1,11 @@
+// Package rbac 提供基于角色的访问控制服务的路由注册。
+//
+// 本文件注册 RBAC 相关的 HTTP 路由，包括：
+//   - 用户管理
+//   - 角色管理
+//   - 权限管理
+//   - 权限检查
+//   - 迁移事件记录
 package rbac
 
 import (
@@ -7,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterRBACHandlers 注册 RBAC 服务路由到 v1 组。
 func RegisterRBACHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := rbachandler.NewHandler(svcCtx)
 	g := v1.Group("/rbac", middleware.JWTAuth())

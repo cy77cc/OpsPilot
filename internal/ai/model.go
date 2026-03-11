@@ -1,3 +1,7 @@
+// Package ai 提供 AI 模型的初始化和健康检查功能。
+//
+// 本文件负责根据配置创建不同类型的聊天模型，支持 Ollama 和 Qwen 两种 Provider。
+// 不同阶段使用不同的模型配置以优化性能和成本。
 package ai
 
 import (
@@ -13,22 +17,25 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/config"
 )
 
+// 模型超时配置常量。
 const (
-	defaultChatModelTimeout = 30 * time.Second
-	rewriteChatModelTimeout = 60 * time.Second
-	summaryChatModelTimeout = 45 * time.Second
+	defaultChatModelTimeout = 30 * time.Second  // 默认聊天模型超时
+	rewriteChatModelTimeout = 60 * time.Second  // 改写模型超时 (较长，因为需要结构化输出)
+	summaryChatModelTimeout = 45 * time.Second  // 总结模型超时
 )
 
+// StartupModelHealthResult 表示启动时模型健康检查的结果。
 type StartupModelHealthResult struct {
-	Name  string
-	Model string
-	Err   error
+	Name  string // 模型名称 (planner/rewrite/expert/summarizer)
+	Model string // 模型标识
+	Err   error  // 健康检查错误，nil 表示健康
 }
 
+// chatModelOptions 定义聊天模型的创建选项。
 type chatModelOptions struct {
-	timeout  time.Duration
-	thinking bool
-	temp     float32
+	timeout  time.Duration // 请求超时时间
+	thinking bool          // 是否启用思考模式 (Qwen 专用)
+	temp     float32       // 温度参数
 }
 
 // NewToolCallingChatModel 创建支持工具调用的聊天模型。
@@ -48,14 +55,18 @@ func NewToolCallingChatModel(ctx context.Context) (einomodel.ToolCallingChatMode
 	})
 }
 
+// NewRewriteChatModel 创建用于改写阶段的聊天模型。
+// 温度设为 0 以获得更稳定的结构化输出。
 func NewRewriteChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	return newChatModel(ctx, chatModelOptions{
 		timeout:  rewriteChatModelTimeout,
-		thinking: true,
+		thinking: false,
 		temp:     0,
 	})
 }
 
+// NewSummarizerChatModel 创建用于总结阶段的聊天模型。
+// 使用配置文件中的温度参数。
 func NewSummarizerChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	return newChatModel(ctx, chatModelOptions{
 		timeout:  summaryChatModelTimeout,
@@ -64,6 +75,8 @@ func NewSummarizerChatModel(ctx context.Context) (einomodel.BaseChatModel, error
 	})
 }
 
+// NewAnswerChatModel 创建用于直接回答的聊天模型。
+// 禁用思考模式以获得更直接的回答。
 func NewAnswerChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	return newChatModel(ctx, chatModelOptions{
 		timeout:  summaryChatModelTimeout,
@@ -72,6 +85,8 @@ func NewAnswerChatModel(ctx context.Context) (einomodel.BaseChatModel, error) {
 	})
 }
 
+// newChatModel 根据配置创建聊天模型实例。
+// 支持 Ollama 和 Qwen 两种 Provider。
 func newChatModel(ctx context.Context, opts chatModelOptions) (einomodel.ToolCallingChatModel, error) {
 	if !config.CFG.LLM.Enable {
 		return nil, fmt.Errorf("llm disabled")
@@ -116,6 +131,7 @@ func CheckModelHealth(ctx context.Context, model einomodel.ToolCallingChatModel)
 	return err
 }
 
+// CheckBaseModelHealth 检查基础聊天模型的健康状态。
 func CheckBaseModelHealth(ctx context.Context, model einomodel.BaseChatModel) error {
 	if model == nil {
 		return fmt.Errorf("chat model not initialized")
@@ -124,6 +140,9 @@ func CheckBaseModelHealth(ctx context.Context, model einomodel.BaseChatModel) er
 	return err
 }
 
+// CheckStartupModelHealth 在启动时检查所有模型的健康状态。
+// 检查 planner、rewrite、expert、summarizer 四个模型。
+// 返回每个模型的健康检查结果。
 func CheckStartupModelHealth(ctx context.Context) []StartupModelHealthResult {
 	checks := []struct {
 		name    string
