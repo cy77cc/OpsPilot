@@ -1,3 +1,28 @@
+// Package ai 实现 AI 编排核心逻辑。
+//
+// 架构概览:
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                      Orchestrator                           │
+//	│                                                             │
+//	│   ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌───────────┐ │
+//	│   │ Rewrite │──▶│ Planner │──▶│ Executor │──▶│ Summarizer│ │
+//	│   └─────────┘   └─────────┘   └──────────┘   └───────────┘ │
+//	│        │             │             │              │        │
+//	│        ▼             ▼             ▼              ▼        │
+//	│   normalize      plan+tools    expert agents    answer     │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// 执行流程:
+//   1. Rewrite: 将口语化输入改写为结构化目标
+//   2. Plan: 解析资源并生成执行计划
+//   3. Execute: 调用专家 Agent 执行各步骤
+//   4. Summarize: 汇总结果生成最终答案
+//
+// 主要入口:
+//   - NewOrchestrator: 创建编排器实例
+//   - Run: 执行完整流水线
+//   - Resume: 恢复等待审批的执行
 package ai
 
 import (
@@ -22,21 +47,47 @@ import (
 	"github.com/google/uuid"
 )
 
+// StreamEmitter 定义流式事件回调函数类型。
+// 返回 true 继续执行，false 表示客户端断开。
 type StreamEmitter func(StreamEvent) bool
 
+// Orchestrator 是 AI 编排核心，管理执行流水线的状态和依赖。
+//
+// 字段说明:
+//   - sessions: 会话状态存储，用于持久化聊天历史
+//   - executions: 执行状态存储，用于追踪计划和步骤状态
+//   - rewriter: 输入改写阶段，将口语化输入标准化
+//   - planner: 任务规划阶段，生成执行计划
+//   - executor: 任务执行阶段，调用专家 Agent
+//   - summarizer: 结果总结阶段，生成最终答案
+//   - renderer: 最终答案渲染器，格式化输出
+//   - metrics: 指标收集器，用于监控和统计
+//   - maxIters: 最大迭代次数，防止无限重规划
+//   - heartbeatInterval: 心跳间隔，保持长连接活跃
 type Orchestrator struct {
-	sessions          *state.SessionState
-	executions        *runtime.ExecutionStore
-	rewriter          *rewrite.Rewriter
-	planner           *planner.Planner
-	executor          *executor.Executor
-	summarizer        *summarizer.Summarizer
-	renderer          *finalAnswerRenderer
-	metrics           *AIMetrics
-	maxIters          int
-	heartbeatInterval time.Duration
+	sessions          *state.SessionState    // 会话状态存储
+	executions        *runtime.ExecutionStore // 执行状态存储
+	rewriter          *rewrite.Rewriter      // 输入改写阶段
+	planner           *planner.Planner       // 任务规划阶段
+	executor          *executor.Executor     // 任务执行阶段
+	summarizer        *summarizer.Summarizer // 结果总结阶段
+	renderer          *finalAnswerRenderer   // 最终答案渲染器
+	metrics           *AIMetrics             // 指标收集器
+	maxIters          int                    // 最大迭代次数
+	heartbeatInterval time.Duration          // 心跳间隔
 }
 
+// NewOrchestrator 创建编排器实例，初始化所有阶段。
+//
+// 参数:
+//   - sessions: 会话状态存储，用于持久化聊天历史
+//   - executions: 执行状态存储，用于追踪执行状态
+//   - deps: 平台依赖，包含各种服务客户端
+//
+// 注意: 各阶段使用不同的模型配置:
+//   - Rewrite: 使用 RewriteChatModel (轻量级，快速响应)
+//   - Planner: 使用 ToolCallingChatModel (支持工具调用)
+//   - Summarizer: 使用 SummarizerChatModel (总结能力强)
 func NewOrchestrator(sessions *state.SessionState, executions *runtime.ExecutionStore, deps common.PlatformDeps) *Orchestrator {
 	out := &Orchestrator{
 		sessions:          sessions,
@@ -69,6 +120,25 @@ func NewOrchestrator(sessions *state.SessionState, executions *runtime.Execution
 	return out
 }
 
+// Run 启动编排流水线，处理用户消息并返回结果。
+//
+// 参数:
+//   - ctx: 上下文，用于取消和超时控制
+//   - req: 请求参数，包含用户消息和会话信息
+//   - emit: 流式事件回调，用于向前端推送实时状态
+//
+// 返回: 成功返回 nil，失败返回错误
+//
+// 执行流程:
+//  1. 参数校验和初始化 (sessionID, traceID)
+//  2. 指标收集包装
+//  3. 会话消息持久化
+//  4. 执行状态初始化
+//  5. 调用 Rewrite 阶段
+//  6. 调用 Plan 阶段
+//  7. 调用 Execute 阶段 (如果有计划)
+//  8. 调用 Summarize 阶段
+//  9. 清理和完成
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest, emit StreamEmitter) error {
 	message := strings.TrimSpace(req.Message)
 	if message == "" {
@@ -230,6 +300,21 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest, emit StreamEmitt
 	return nil
 }
 
+// Resume 恢复等待审批的执行流程。
+//
+// 当执行计划中某个步骤需要用户审批时，执行会暂停等待。
+// 用户确认后调用此方法继续执行。
+//
+// 参数:
+//   - ctx: 上下文
+//   - req: 恢复请求，包含 sessionID、stepID 和审批结果
+//
+// 返回: 恢复结果，包含执行状态信息
+//
+// 特殊状态:
+//   - idempotent: 重复的审批请求被忽略
+//   - noop: 当前会话没有待审批步骤
+//   - missing: 找不到对应的执行状态
 func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (*ResumeResult, error) {
 	sessionID := strings.TrimSpace(req.SessionID)
 	if sessionID == "" {
@@ -331,6 +416,8 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (*ResumeRe
 	return res, nil
 }
 
+// MetricsSnapshot 返回当前指标快照。
+// 用于监控和统计 AI 编排器的运行状态。
 func (o *Orchestrator) MetricsSnapshot() AIMetricsSnapshot {
 	if o == nil || o.metrics == nil {
 		return AIMetricsSnapshot{}
@@ -338,6 +425,23 @@ func (o *Orchestrator) MetricsSnapshot() AIMetricsSnapshot {
 	return o.metrics.Snapshot()
 }
 
+// planAndReply 执行规划和回复生成。
+//
+// 参数:
+//   - ctx: 上下文
+//   - message: 用户原始消息
+//   - rewritten: Rewrite 阶段的输出
+//   - runtimeCtx: 运行时上下文 (场景、路由、资源等)
+//   - meta: 事件元数据
+//   - emit: 流式事件回调
+//   - sessionID: 会话 ID
+//
+// 返回: 回复文本和可能的错误
+//
+// 决策类型:
+//   - clarify: 需要用户澄清，返回澄清消息
+//   - direct_reply: 直接回复，无需执行计划
+//   - plan: 生成执行计划，调用 executor 执行
 func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritten rewrite.Output, runtimeCtx RuntimeContext, meta events.EventMeta, emit StreamEmitter, sessionID string) (string, error) {
 	if o.planner == nil {
 		reply := plannerFailureMessage(&planner.PlanningError{
@@ -473,25 +577,8 @@ func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritt
 	return "", nil
 }
 
-func (o *Orchestrator) generateReply(ctx context.Context, message string) (string, error) {
-	model, err := NewToolCallingChatModel(ctx)
-	if err != nil {
-		return "", err
-	}
-	resp, err := model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage("You are the OpsPilot AI assistant. Keep answers concise, factual, and action-oriented."),
-		schema.UserMessage(message),
-	})
-	if err != nil {
-		return "", err
-	}
-	content := strings.TrimSpace(resp.Content)
-	if content == "" {
-		return "我已经接收到你的请求，但当前没有生成可展示的回答。", nil
-	}
-	return content, nil
-}
-
+// renderAndEmitFinalAnswer 渲染并发送最终答案。
+// 将执行计划和结果格式化为用户可读的回复文本。
 func (o *Orchestrator) renderAndEmitFinalAnswer(plan *planner.ExecutionPlan, result *executor.Result, summaryOut summarizer.SummaryOutput, emit StreamEmitter, meta events.EventMeta) string {
 	if o == nil || o.renderer == nil {
 		body := firstNonEmpty(summaryOut.Headline, summaryOut.Conclusion, summaryOut.Summary)
@@ -521,6 +608,8 @@ func (o *Orchestrator) renderAndEmitFinalAnswer(plan *planner.ExecutionPlan, res
 	return strings.TrimSpace(builder.String())
 }
 
+// sessionMessages 获取会话的所有消息列表。
+// 用于在完成时返回完整的会话状态给前端。
 func (o *Orchestrator) sessionMessages(ctx context.Context, sessionID string) []map[string]any {
 	if o.sessions == nil {
 		return []map[string]any{}
@@ -541,6 +630,8 @@ func (o *Orchestrator) sessionMessages(ctx context.Context, sessionID string) []
 	return out
 }
 
+// emitEvent 发送流式事件到客户端。
+// 如果 emit 为 nil 则什么都不做。
 func emitEvent(emit StreamEmitter, name events.Name, meta events.EventMeta, data map[string]any) {
 	if emit == nil {
 		return
@@ -553,6 +644,9 @@ func emitEvent(emit StreamEmitter, name events.Name, meta events.EventMeta, data
 	})
 }
 
+// startHeartbeat 启动心跳 goroutine，定期发送心跳事件。
+// 返回停止心跳的函数，应在 Run 结束时调用。
+// 心跳用于保持长连接活跃，防止连接超时断开。
 func (o *Orchestrator) startHeartbeat(ctx context.Context, emit StreamEmitter, meta events.EventMeta) func() {
 	if emit == nil || o == nil || o.heartbeatInterval <= 0 {
 		return func() {}
@@ -580,6 +674,15 @@ func (o *Orchestrator) startHeartbeat(ctx context.Context, emit StreamEmitter, m
 	}
 }
 
+// emitStageDelta 发送阶段增量事件。
+// 用于向前端推送各阶段 (rewrite/plan/execute/summary) 的实时进度。
+//
+// 参数:
+//   - stage: 阶段名称 (rewrite/plan/execute/summary)
+//   - status: 状态 (loading/success/error)
+//   - chunk: 内容片段
+//   - stepID: 步骤 ID (执行阶段使用)
+//   - expert: 专家名称 (执行阶段使用)
 func emitStageDelta(emit StreamEmitter, meta events.EventMeta, stage, status, chunk, stepID, expert string) {
 	chunk = strings.TrimSpace(chunk)
 	if emit == nil || stage == "" || chunk == "" {
@@ -599,6 +702,8 @@ func emitStageDelta(emit StreamEmitter, meta events.EventMeta, stage, status, ch
 	emitEvent(emit, events.StageDelta, meta, payload)
 }
 
+// emitExecuteStageDelta 将执行阶段的事件转换为阶段增量事件。
+// 处理 StepUpdate、ToolCall、ToolResult 三种事件类型。
 func emitExecuteStageDelta(emit StreamEmitter, meta events.EventMeta, name string, data map[string]any) {
 	switch name {
 	case string(events.StepUpdate):
@@ -638,6 +743,10 @@ func emitExecuteStageDelta(emit StreamEmitter, meta events.EventMeta, name strin
 	}
 }
 
+// stageStatusFromValue 将步骤状态值转换为阶段状态。
+// completed/success -> success
+// failed/error/blocked/cancelled/rejected -> error
+// 其他 -> loading
 func stageStatusFromValue(value any) string {
 	switch strings.TrimSpace(stringValue(value)) {
 	case "completed", "success":
@@ -649,6 +758,8 @@ func stageStatusFromValue(value any) string {
 	}
 }
 
+// emitDeltaChunks 将内容分块发送。
+// 用于流式输出大段文本，每块 24 个字符。
 func emitDeltaChunks(emit StreamEmitter, meta events.EventMeta, content string) {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -669,6 +780,7 @@ func emitDeltaChunks(emit StreamEmitter, meta events.EventMeta, content string) 
 	}
 }
 
+// rewriteFailureMessage 根据错误类型生成用户可见的失败消息。
 func rewriteFailureMessage(err error) string {
 	var unavailable *rewrite.ModelUnavailableError
 	if errors.As(err, &unavailable) {
@@ -677,6 +789,7 @@ func rewriteFailureMessage(err error) string {
 	return availability.UnavailableMessage(availability.LayerRewrite)
 }
 
+// rewriteFailureCode 从错误中提取错误码，用于前端错误处理。
 func rewriteFailureCode(err error) string {
 	var unavailable *rewrite.ModelUnavailableError
 	if errors.As(err, &unavailable) && strings.TrimSpace(unavailable.Code) != "" {
@@ -685,6 +798,7 @@ func rewriteFailureCode(err error) string {
 	return "rewrite_unavailable"
 }
 
+// plannerFailureMessage 根据规划错误类型生成用户可见的失败消息。
 func plannerFailureMessage(err error) string {
 	var unavailable *planner.PlanningError
 	if errors.As(err, &unavailable) {
@@ -693,6 +807,7 @@ func plannerFailureMessage(err error) string {
 	return availability.UnavailableMessage(availability.LayerPlanner)
 }
 
+// plannerFailureCode 从规划错误中提取错误码。
 func plannerFailureCode(err error) string {
 	var unavailable *planner.PlanningError
 	if errors.As(err, &unavailable) && strings.TrimSpace(unavailable.Code) != "" {
@@ -701,6 +816,7 @@ func plannerFailureCode(err error) string {
 	return "planner_unavailable"
 }
 
+// eventsJSON 将对象序列化为 JSON 字符串。
 func eventsJSON(v any) (string, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -709,6 +825,8 @@ func eventsJSON(v any) (string, error) {
 	return string(data), nil
 }
 
+// deriveSessionTitle 从用户消息中派生会话标题。
+// 取消息的前 24 个字符作为标题。
 func deriveSessionTitle(message string) string {
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -721,6 +839,8 @@ func deriveSessionTitle(message string) string {
 	return message
 }
 
+// firstNonEmpty 返回第一个非空字符串。
+// 用于从多个候选值中选择有效值。
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -730,6 +850,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// stringValue 安全地将任意值转换为字符串。
 func stringValue(value any) string {
 	if text, ok := value.(string); ok {
 		return strings.TrimSpace(text)
@@ -737,6 +858,7 @@ func stringValue(value any) string {
 	return ""
 }
 
+// resumeStatusMessage 根据恢复状态生成用户可见的消息。
 func resumeStatusMessage(status string, approved bool) string {
 	switch strings.TrimSpace(status) {
 	case "approved", "approval_granted":
@@ -764,16 +886,17 @@ func resumeStatusMessage(status string, approved bool) string {
 	}
 }
 
+// summarizeExecution 调用 Summarizer 阶段生成执行总结。
+//
+// 参数:
+//   - ctx: 上下文
+//   - message: 用户原始消息
+//   - plan: 执行计划
+//   - result: 执行结果
+//   - onDelta: 流式输出回调
+//
+// 返回: 总结输出和可能的错误
 func (o *Orchestrator) summarizeExecution(ctx context.Context, message string, plan *planner.ExecutionPlan, result *executor.Result, onDelta func(string)) (summarizer.SummaryOutput, error) {
-	if result == nil {
-		return summarizer.SummaryOutput{
-			Summary:         "当前执行结果不可用。",
-			Headline:        "当前没有可用的执行结果",
-			Conclusion:      "当前无法生成 AI 总结，因为执行结果本身不可用。",
-			RawOutputPolicy: "summary_only",
-			Narrative:       "Summarizer 未拿到 executor result。",
-		}, errors.New("executor_result_unavailable")
-	}
 	if o.summarizer == nil {
 		return summarizerUnavailableSummary(nil), &summarizer.UnavailableError{
 			Code:              "summarizer_runner_unavailable",
@@ -792,6 +915,8 @@ func (o *Orchestrator) summarizeExecution(ctx context.Context, message string, p
 	return out, nil
 }
 
+// summarizerUnavailableSummary 当 Summarizer 不可用时生成降级总结。
+// 提示用户查看原始执行证据。
 func summarizerUnavailableSummary(err error) summarizer.SummaryOutput {
 	message := availability.UnavailableMessage(availability.LayerSummarizer)
 	var unavailable *summarizer.UnavailableError
@@ -809,6 +934,7 @@ func summarizerUnavailableSummary(err error) summarizer.SummaryOutput {
 	}
 }
 
+// summaryStageStatus 根据错误判断总结阶段状态。
 func summaryStageStatus(err error) string {
 	if err != nil {
 		return "error"
@@ -816,6 +942,7 @@ func summaryStageStatus(err error) string {
 	return "success"
 }
 
+// toRewriteResources 将 SelectedResource 列表转换为 rewrite 模块的资源格式。
 func toRewriteResources(items []SelectedResource) []rewrite.SelectedResource {
 	out := make([]rewrite.SelectedResource, 0, len(items))
 	for _, item := range items {
@@ -828,6 +955,7 @@ func toRewriteResources(items []SelectedResource) []rewrite.SelectedResource {
 	return out
 }
 
+// selectedResourceIDs 从 SelectedResource 列表中提取非空的 ID 列表。
 func selectedResourceIDs(items []SelectedResource) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {
