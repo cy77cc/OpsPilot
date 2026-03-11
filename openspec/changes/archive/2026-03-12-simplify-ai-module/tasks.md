@@ -21,22 +21,22 @@
 
 ## Phase 3 — 简化 ResolvedResources（A）
 
-- [ ] 3.1 在 `planner/types.go` 中修改 `ResolvedResources`：删除平铺字段 `ServiceName`、`ServiceID`、`ClusterName`、`ClusterID`、`HostNames []string`、`HostIDs []int`、`PodName`；保留 `Services []ResourceRef`、`Clusters []ResourceRef`、`Hosts []ResourceRef`、`Pods []PodRef`、`Namespace string`、`Scope *ResourceScope`
-- [ ] 3.2 在 `planner/normalize.go`（或新建 `planner/helpers.go`）中添加包级 helper：`primaryID(refs []ResourceRef) int`、`primaryName(refs []ResourceRef) string`、`allIDs(refs []ResourceRef) []int`
-- [ ] 3.3 更新 `planner/parse.go` 的 `parseResolvedResources`：继续从 LLM JSON 读取平铺字段（`service_id`、`service_name`、`cluster_id` 等），但将其归并到 `Services`/`Clusters`/`Hosts`/`Pods` 列表字段中，不再赋值到已删除的平铺字段
-- [ ] 3.4 更新 `planner/normalize.go` 的 `canonicalizePlan`：将原来的 11 个 fallback 块替换为 5 个（`Services`、`Clusters`、`Hosts`、`Pods`、`Namespace`），删除平铺字段的 fallback
-- [ ] 3.5 更新 `planner/normalize.go` 的 `populateStepInput`：用 `primaryID(resolved.Services)`、`primaryID(resolved.Clusters)` 等替换 `resolved.ServiceID`、`resolved.ClusterID` 等直接引用
-- [ ] 3.6 更新 `planner/normalize.go` 的所有 `resolved*` helper 函数（`resolvedServiceID`、`resolvedClusterID`、`resolvedHostIDs`、`resolvedPodName`）：使用列表字段和新 helper 函数
-- [ ] 3.7 更新 `planner/normalize.go` 的 `requiresHostTarget`：移除对 `resolved.HostIDs`、`resolved.HostNames` 的引用，改用 `resolved.Hosts`
-- [ ] 3.8 更新 `planner/collect.go` 的 `buildBasePlanContext`：构造 `ResolvedResources` 时只赋值列表字段
-- [ ] 3.9 检索全项目是否有其他地方访问 `ResolvedResources` 的平铺字段（`grep -r "\.ServiceID\|\.ClusterID\|\.HostIDs\|\.HostNames\|\.PodName\|\.ServiceName\|\.ClusterName" internal/ai/`），逐一更新
-- [ ] 3.10 更新相关测试（`planner_test.go`、`support_test.go`）中构造 `ResolvedResources` 的地方，移除平铺字段赋值
-- [ ] 3.11 验证：`go build ./internal/ai/...` 通过，`go test ./internal/ai/planner/... ./internal/ai/executor/...` 通过
+- [x] 3.1 在 `planner/types.go` 中修改 `ResolvedResources`：删除平铺字段 `ServiceName`、`ServiceID`、`ClusterName`、`ClusterID`、`HostNames []string`、`HostIDs []int`、`PodName`；保留 `Services []ResourceRef`、`Clusters []ResourceRef`、`Hosts []ResourceRef`、`Pods []PodRef`、`Namespace string`、`Scope *ResourceScope`
+- [x] 3.2 在 `planner/normalize.go`（或新建 `planner/helpers.go`）中添加包级 helper：`primaryID(refs []ResourceRef) int`、`primaryName(refs []ResourceRef) string`、`allIDs(refs []ResourceRef) []int`
+- [x] 3.3 更新 `planner/parse.go` 的 `parseResolvedResources`：继续从 LLM JSON 读取平铺字段（`service_id`、`service_name`、`cluster_id` 等），但将其归并到 `Services`/`Clusters`/`Hosts`/`Pods` 列表字段中，不再赋值到已删除的平铺字段
+- [x] 3.4 更新 `planner/normalize.go` 的 `canonicalizePlan`：将原来的 11 个 fallback 块替换为 5 个（`Services`、`Clusters`、`Hosts`、`Pods`、`Namespace`），删除平铺字段的 fallback
+- [x] 3.5 更新 `planner/normalize.go` 的 `populateStepInput`：用 `primaryID(resolved.Services)`、`primaryID(resolved.Clusters)` 等替换 `resolved.ServiceID`、`resolved.ClusterID` 等直接引用
+- [x] 3.6 更新 `planner/normalize.go` 的所有 `resolved*` helper 函数（`resolvedServiceID`、`resolvedClusterID`、`resolvedHostIDs`、`resolvedPodName`）：使用列表字段和新 helper 函数
+- [x] 3.7 更新 `planner/normalize.go` 的 `requiresHostTarget`：移除对 `resolved.HostIDs`、`resolved.HostNames` 的引用，改用 `resolved.Hosts`
+- [x] 3.8 更新 `planner/collect.go` 的 `buildBasePlanContext`：构造 `ResolvedResources` 时只赋值列表字段
+- [x] 3.9 检索全项目是否有其他地方访问 `ResolvedResources` 的平铺字段（`grep -r "\.ServiceID\|\.ClusterID\|\.HostIDs\|\.HostNames\|\.PodName\|\.ServiceName\|\.ClusterName" internal/ai/`），逐一更新
+- [x] 3.10 更新相关测试（`planner_test.go`、`support_test.go`）中构造 `ResolvedResources` 的地方，移除平铺字段赋值
+- [x] 3.11 验证：`go build ./internal/ai/...` 通过，`go test ./internal/ai/planner/... ./internal/ai/executor/...` 通过
 
 ## Phase 4 — 最终验证
 
-- [ ] 4.1 运行 `go build ./internal/... ./api/...` 确认整体编译通过
-- [ ] 4.2 运行 `go test ./internal/ai/...` 确认所有 AI 模块测试通过
-- [ ] 4.3 检查 `planner/planner.go` 行数 ≤ 120，`planner/parse.go`、`planner/normalize.go`、`planner/collect.go` 各自 ≤ 450 行
-- [ ] 4.4 运行 `grep -r "executor\.EventMeta" internal/` 确认无残留引用
-- [ ] 4.5 运行 `grep -r "\.ServiceID\|\.ClusterID\b" internal/ai/` 确认 `planner` 包内无平铺字段残留（orchestrator 等外层不持有 `ResolvedResources` 故无影响）
+- [x] 4.1 运行 `go build ./internal/... ./api/...` 确认整体编译通过
+- [x] 4.2 运行 `go test ./internal/ai/...` 确认所有 AI 模块测试通过
+- [x] 4.3 检查 `planner/planner.go` 行数 ≤ 120，`planner/parse.go`、`planner/normalize.go`、`planner/collect.go` 各自 ≤ 450 行
+- [x] 4.4 运行 `grep -r "executor\.EventMeta" internal/` 确认无残留引用
+- [x] 4.5 运行 `grep -r "\.ServiceID\|\.ClusterID\b" internal/ai/` 确认 `planner` 包内无平铺字段残留（orchestrator 等外层不持有 `ResolvedResources` 故无影响）

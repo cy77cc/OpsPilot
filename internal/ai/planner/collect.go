@@ -46,31 +46,6 @@ func buildPromptInput(in Input) string {
 	return "message: " + strings.TrimSpace(in.Message) + "\nrewrite: " + string(data)
 }
 
-func collectHostNames(r rewrite.Output) []string {
-	if strings.TrimSpace(r.ResourceHints.HostName) != "" {
-		return []string{strings.TrimSpace(r.ResourceHints.HostName)}
-	}
-	hosts := make([]string, 0, len(r.NormalizedRequest.Targets))
-	for _, target := range r.NormalizedRequest.Targets {
-		if strings.TrimSpace(target.Type) != "host" {
-			continue
-		}
-		name := strings.TrimSpace(target.Name)
-		if name == "" {
-			continue
-		}
-		hosts = append(hosts, name)
-	}
-	return dedupe(hosts)
-}
-
-func collectHostIDs(r rewrite.Output) []int {
-	if r.ResourceHints.HostID > 0 {
-		return []int{r.ResourceHints.HostID}
-	}
-	return nil
-}
-
 func collectPodName(r rewrite.Output) string {
 	for _, target := range r.NormalizedRequest.Targets {
 		if !strings.EqualFold(strings.TrimSpace(target.Type), "pod") {

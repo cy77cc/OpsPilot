@@ -336,7 +336,7 @@ func TestBuildBaseDecisionCarriesPodTargetIntoResolvedResources(t *testing.T) {
 	if out == nil {
 		t.Fatalf("base plan is nil")
 	}
-	if got := out.Resolved.PodName; got != "cilium-87f2m" {
+	if got := primaryPodName(out.Resolved.Pods); got != "cilium-87f2m" {
 		t.Fatalf("pod name = %q, want cilium-87f2m", got)
 	}
 	if len(out.Resolved.Pods) != 1 || out.Resolved.Pods[0].Name != "cilium-87f2m" {
@@ -349,7 +349,7 @@ func TestValidatePlanPrerequisitesUsesStructuredTargetTypeInsteadOfKeyword(t *te
 		PlanID: "plan-4",
 		Goal:   "读取最近 100 条日志",
 		Resolved: ResolvedResources{
-			ClusterID: 3,
+			Clusters: []ResourceRef{{ID: 3}},
 		},
 		Steps: []PlanStep{{
 			StepID: "step-1",
@@ -407,8 +407,7 @@ func TestParseDecisionAcceptsResolvedScopeForFleetTargets(t *testing.T) {
 func TestPopulateStepInputPropagatesMultipleHostsAsHostIDs(t *testing.T) {
 	step := PlanStep{Expert: "hostops", Input: map[string]any{}}
 	out := populateStepInput(step, ResolvedResources{
-		HostIDs: []int{1, 2, 3},
-		Hosts:   []ResourceRef{{ID: 1, Name: "n1"}, {ID: 2, Name: "n2"}, {ID: 3, Name: "n3"}},
+		Hosts: []ResourceRef{{ID: 1, Name: "n1"}, {ID: 2, Name: "n2"}, {ID: 3, Name: "n3"}},
 	})
 	got := intSliceValue(out["host_ids"])
 	if len(got) != 3 || got[0] != 1 || got[2] != 3 {
