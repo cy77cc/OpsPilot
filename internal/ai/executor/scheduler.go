@@ -208,6 +208,9 @@ func executeStep(ctx context.Context, state *runtime.ExecutionState, stepID stri
 			}
 			errMessage = firstNonEmpty(execErr.Message, errMessage)
 			err = errors.New(strings.TrimSpace(execErr.Message))
+		} else if isProviderTimeoutError(errMessage) {
+			code = "expert_tool_stream_failed"
+			userSummary = fmt.Sprintf("专家 %s 调用模型超时，请稍后重试。", strings.TrimSpace(step.Expert))
 		} else if summary, field, ok := summarizeMissingPrerequisite(errMessage); ok {
 			code = "missing_execution_prerequisite"
 			userSummary = fmt.Sprintf("%s。缺少前置上下文：%s", summary, field)

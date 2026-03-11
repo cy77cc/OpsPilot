@@ -134,6 +134,15 @@ func buildExpertAgent(ctx context.Context, model einomodel.BaseChatModel, exp ex
 
 func expertSystemPrompt(exp expertspec.Expert) string {
 	caps, _ := json.Marshal(exp.Capabilities())
+	extra := ""
+	if strings.TrimSpace(exp.Name()) == "hostops" {
+		extra = `
+
+Host-specific rules:
+- If step_input.scope.kind is "all" or "filtered" for resource_type "host" and the step is readonly status/inventory work, use host_list_inventory first.
+- Do NOT use host_batch for fleet status summaries unless step_input.host_ids is explicitly present and the task clearly requires running the same command on each host.
+- If the user asks for all hosts / fleet status / host inventory, prefer inventory facts over remote command execution.`
+	}
 	return fmt.Sprintf(`You are the %s expert in an AI operations orchestrator.
 
 Your responsibility is to execute exactly one executor step using only your own domain tools.
@@ -151,7 +160,9 @@ Guardrails:
 Expert capabilities:
 %s
 
-The executor has already decided whether approval is required. You only execute the authorized step and report the result.`, exp.Name(), exp.Name(), string(caps))
+%s
+
+The executor has already decided whether approval is required. You only execute the authorized step and report the result.`, exp.Name(), exp.Name(), string(caps), extra)
 }
 
 func buildExpertRequest(req Request, step planner.PlanStep) string {
@@ -298,11 +309,11 @@ func classifyExpertRunError(step planner.PlanStep, err error) error {
 			UserSummary: fmt.Sprintf("%s。缺少前置上下文：%s", summary, field),
 		}
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || isProviderTimeoutError(err.Error()) {
 		return &ExecutionError{
 			Code:        "expert_tool_stream_failed",
 			Message:     compactToolError(err.Error()),
-			UserSummary: fmt.Sprintf("专家 %s 的执行流意外中断。", strings.TrimSpace(step.Expert)),
+			UserSummary: fmt.Sprintf("专家 %s 调用模型超时，请稍后重试。", strings.TrimSpace(step.Expert)),
 		}
 	}
 	return &ExecutionError{
@@ -317,6 +328,9 @@ func compactToolError(message string) string {
 	if message == "" {
 		return ""
 	}
+	if isProviderTimeoutError(message) {
+		return "调用模型超时"
+	}
 	if idx := strings.Index(message, "err="); idx >= 0 {
 		message = strings.TrimSpace(message[idx+4:])
 	}
@@ -324,6 +338,16 @@ func compactToolError(message string) string {
 		message = strings.TrimSpace(message[:idx])
 	}
 	return message
+}
+
+func isProviderTimeoutError(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "context deadline exceeded") ||
+		strings.Contains(lower, "client.timeout exceeded while awaiting headers") ||
+		strings.Contains(lower, "timeout exceeded while awaiting headers")
 }
 
 func summarizeMissingPrerequisite(message string) (string, string, bool) {

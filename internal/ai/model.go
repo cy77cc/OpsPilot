@@ -19,6 +19,12 @@ const (
 	summaryChatModelTimeout = 45 * time.Second
 )
 
+type StartupModelHealthResult struct {
+	Name  string
+	Model string
+	Err   error
+}
+
 type chatModelOptions struct {
 	timeout  time.Duration
 	thinking bool
@@ -108,4 +114,54 @@ func CheckModelHealth(ctx context.Context, model einomodel.ToolCallingChatModel)
 	}
 	_, err := model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
 	return err
+}
+
+func CheckBaseModelHealth(ctx context.Context, model einomodel.BaseChatModel) error {
+	if model == nil {
+		return fmt.Errorf("chat model not initialized")
+	}
+	_, err := model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
+	return err
+}
+
+func CheckStartupModelHealth(ctx context.Context) []StartupModelHealthResult {
+	checks := []struct {
+		name    string
+		factory func(context.Context) (einomodel.BaseChatModel, error)
+	}{
+		{
+			name: "planner",
+			factory: func(ctx context.Context) (einomodel.BaseChatModel, error) {
+				return NewToolCallingChatModel(ctx)
+			},
+		},
+		{
+			name:    "rewrite",
+			factory: NewRewriteChatModel,
+		},
+		{
+			name:    "summarizer",
+			factory: NewSummarizerChatModel,
+		},
+	}
+
+	results := make([]StartupModelHealthResult, 0, len(checks))
+	for _, check := range checks {
+		model, err := check.factory(ctx)
+		if err != nil {
+			results = append(results, StartupModelHealthResult{
+				Name:  check.name,
+				Model: strings.TrimSpace(config.CFG.LLM.Model),
+				Err:   err,
+			})
+			continue
+		}
+		err = CheckBaseModelHealth(ctx, model)
+		results = append(results, StartupModelHealthResult{
+			Name:  check.name,
+			Model: strings.TrimSpace(config.CFG.LLM.Model),
+			Err:   err,
+		})
+	}
+	return results
 }

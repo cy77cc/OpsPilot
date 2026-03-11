@@ -40,24 +40,19 @@ func MustNewServiceContext() *ServiceContext {
 	if err != nil {
 		logger.L().Warn("Failed to initialize devops", logger.Error(err))
 	}
-	chatModel, err := ai.NewToolCallingChatModel(ctx)
-	if err != nil {
-		logger.L().Warn("Failed to initialize AI chat model",
+	for _, result := range ai.CheckStartupModelHealth(ctx) {
+		fields := []logger.Field{
+			logger.String("stage", result.Name),
 			logger.String("provider", config.CFG.LLM.Provider),
 			logger.String("base_url", aiBaseURL()),
-			logger.String("model", aiModel()),
-			logger.Error(err),
-		)
-	}
-	if err == nil {
-		if healthErr := ai.CheckModelHealth(ctx, chatModel); healthErr != nil {
-			logger.L().Warn("AI chat model health check failed",
-				logger.String("provider", config.CFG.LLM.Provider),
-				logger.String("base_url", aiBaseURL()),
-				logger.String("model", aiModel()),
-				logger.Error(healthErr),
-			)
+			logger.String("model", firstNonEmpty(result.Model, aiModel())),
 		}
+		if result.Err != nil {
+			fields = append(fields, logger.Error(result.Err))
+			logger.L().Warn("AI model startup health check failed", fields...)
+			continue
+		}
+		logger.L().Info("AI model startup health check passed", fields...)
 	}
 
 	clientset := MustNewClientset()
@@ -106,6 +101,15 @@ func aiBaseURL() string {
 
 func aiModel() string {
 	return config.CFG.LLM.Model
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func initPrometheusClient() prominfra.Client {

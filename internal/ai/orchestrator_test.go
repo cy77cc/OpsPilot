@@ -213,11 +213,13 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 		planner:    planner.New(nil),
 		executor:   executor.New(store, executor.WithStepRunner(runner)),
 		summarizer: summarizer.New(nil),
+		renderer:   newFinalAnswerRenderer(),
 		maxIters:   2,
 	}
 
 	var names []string
 	var stages []string
+	var deltas []string
 	err := orch.Run(context.Background(), RunRequest{
 		Message: "查看 payment-api 的状态",
 		RuntimeContext: RuntimeContext{
@@ -230,6 +232,9 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 		names = append(names, string(evt.Type))
 		if evt.Type == events.StageDelta {
 			stages = append(stages, strings.TrimSpace(stringValue(evt.Data["stage"])))
+		}
+		if evt.Type == events.Delta {
+			deltas = append(deltas, stringValue(evt.Data["content_chunk"]))
 		}
 		return true
 	})
@@ -250,6 +255,12 @@ func TestOrchestratorRunMainFlowEmitsExpectedEvents(t *testing.T) {
 	assertStageSeen(t, stages, "plan")
 	assertStageSeen(t, stages, "execute")
 	assertStageSeen(t, stages, "summary")
+	if len(deltas) == 0 {
+		t.Fatalf("delta events = %v, want streamed final answer", deltas)
+	}
+	if deltaIndex, doneIndex := firstEventIndex(names, "delta"), firstEventIndex(names, "done"); deltaIndex < 0 || doneIndex < 0 || deltaIndex > doneIndex {
+		t.Fatalf("events = %v, want delta before done", names)
+	}
 }
 
 func TestOrchestratorPlanAndReplyClarifyFlow(t *testing.T) {
@@ -410,6 +421,7 @@ func TestOrchestratorEmitsReplanStartedWhenSummaryNeedsMoreInvestigation(t *test
 		planner:    planner.New(nil),
 		executor:   executor.New(store, executor.WithStepRunner(runner)),
 		summarizer: summarizer.New(nil),
+		renderer:   newFinalAnswerRenderer(),
 		maxIters:   2,
 	}
 
@@ -471,4 +483,13 @@ func containsEvent(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func firstEventIndex(items []string, target string) int {
+	for i, item := range items {
+		if item == target {
+			return i
+		}
+	}
+	return -1
 }

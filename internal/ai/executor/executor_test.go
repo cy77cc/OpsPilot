@@ -376,6 +376,44 @@ func TestExecutorCompactsMissingPrerequisiteErrors(t *testing.T) {
 	}
 }
 
+func TestExecutorCompactsProviderTimeoutErrors(t *testing.T) {
+	store := newExecutionStore(t)
+	runner := &stubStepRunner{err: fmt.Errorf("[NodeRunError] failed to create chat completion: Post \"https://coding.dashscope.aliyuncs.com/v1/chat/completions\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)")}
+	exec := New(store, WithStepRunner(runner))
+	ctx := context.Background()
+
+	result, err := exec.Run(ctx, Request{
+		TraceID:   "trace-timeout",
+		SessionID: "session-timeout",
+		Message:   "在火山云服务器上执行 df -h 并完整返回结果",
+		Plan: planner.ExecutionPlan{
+			PlanID: "plan-timeout",
+			Goal:   "在火山云服务器上执行 df -h 并完整返回结果",
+			Steps: []planner.PlanStep{{
+				StepID: "step-1",
+				Title:  "执行主机命令",
+				Expert: "hostops",
+				Task:   "在火山云服务器上执行 df -h",
+				Mode:   "readonly",
+				Risk:   "low",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	step := result.State.Steps["step-1"]
+	if step.ErrorCode != "expert_tool_stream_failed" {
+		t.Fatalf("error code = %q", step.ErrorCode)
+	}
+	if got := step.UserVisibleSummary; got != "专家 hostops 调用模型超时，请稍后重试。" {
+		t.Fatalf("user summary = %q", got)
+	}
+	if got := step.ErrorMessage; got != "调用模型超时" {
+		t.Fatalf("error message = %q, want compact timeout message", got)
+	}
+}
+
 func TestExecutorSupportsMultiExpertPlanExecution(t *testing.T) {
 	store := newExecutionStore(t)
 	runner := &stubStepRunner{result: StepResult{Summary: "expert completed step"}}

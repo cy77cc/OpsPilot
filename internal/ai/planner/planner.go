@@ -168,46 +168,47 @@ func buildBaseDecision(in Input) Decision {
 	goal := firstNonEmpty(rewritten.NormalizedGoal, strings.TrimSpace(in.Message))
 	mode, risk := normalizeStepMode(rewritten.OperationMode)
 	expert := pickPrimaryExpert(rewritten)
+	resolved := ResolvedResources{
+		ServiceName: rewritten.ResourceHints.ServiceName,
+		ServiceID:   rewritten.ResourceHints.ServiceID,
+		ClusterName: rewritten.ResourceHints.ClusterName,
+		ClusterID:   rewritten.ResourceHints.ClusterID,
+		Namespace:   rewritten.ResourceHints.Namespace,
+		PodName:     collectPodName(rewritten),
+		HostNames:   collectHostNames(rewritten),
+		HostIDs:     collectHostIDs(rewritten),
+		Services:    collectServices(rewritten),
+		Clusters:    collectClusters(rewritten),
+		Hosts:       collectHosts(rewritten),
+		Pods:        collectPods(rewritten),
+		Scope:       detectScope(rewritten),
+	}
+	step := PlanStep{
+		StepID:    "step-1",
+		Title:     "处理用户请求",
+		Expert:    expert,
+		Intent:    "handle_request",
+		Task:      goal,
+		Mode:      mode,
+		Risk:      risk,
+		Narrative: goal,
+		Input: map[string]any{
+			"message":            strings.TrimSpace(in.Message),
+			"normalized_request": rewritten.NormalizedRequest,
+			"resource_hints":     rewritten.ResourceHints,
+			"scope":              scopeToMap(detectScope(rewritten)),
+		},
+	}
+	step = normalizeFleetHostStep(step, resolved)
 	return Decision{
 		Type:      DecisionPlan,
 		Narrative: "Planner 模型不可用时，使用最小结构化计划继续交给执行层处理。",
 		Plan: &ExecutionPlan{
-			PlanID: planID,
-			Goal:   goal,
-			Resolved: ResolvedResources{
-				ServiceName: rewritten.ResourceHints.ServiceName,
-				ServiceID:   rewritten.ResourceHints.ServiceID,
-				ClusterName: rewritten.ResourceHints.ClusterName,
-				ClusterID:   rewritten.ResourceHints.ClusterID,
-				Namespace:   rewritten.ResourceHints.Namespace,
-				PodName:     collectPodName(rewritten),
-				HostNames:   collectHostNames(rewritten),
-				HostIDs:     collectHostIDs(rewritten),
-				Services:    collectServices(rewritten),
-				Clusters:    collectClusters(rewritten),
-				Hosts:       collectHosts(rewritten),
-				Pods:        collectPods(rewritten),
-				Scope:       detectScope(rewritten),
-			},
+			PlanID:    planID,
+			Goal:      goal,
+			Resolved:  resolved,
 			Narrative: "该计划是 Planner 失败时的最小兜底结构，保留用户目标与已知资源线索。",
-			Steps: []PlanStep{
-				{
-					StepID:    "step-1",
-					Title:     "处理用户请求",
-					Expert:    expert,
-					Intent:    "handle_request",
-					Task:      goal,
-					Mode:      mode,
-					Risk:      risk,
-					Narrative: goal,
-					Input: map[string]any{
-						"message":            strings.TrimSpace(in.Message),
-						"normalized_request": rewritten.NormalizedRequest,
-						"resource_hints":     rewritten.ResourceHints,
-						"scope":              scopeToMap(detectScope(rewritten)),
-					},
-				},
-			},
+			Steps:     []PlanStep{step},
 		},
 	}
 }
@@ -319,6 +320,7 @@ func canonicalizePlan(base, parsed *ExecutionPlan) *ExecutionPlan {
 		}
 		step.Expert = normalizeExpertName(step.Expert, parsed.Steps, i)
 		step.Mode, step.Risk = normalizeModeRisk(step.Mode, step.Risk)
+		step = normalizeFleetHostStep(step, parsed.Resolved)
 		if len(step.DependsOn) > 0 {
 			step.DependsOn = dedupe(step.DependsOn)
 		}
@@ -330,6 +332,41 @@ func canonicalizePlan(base, parsed *ExecutionPlan) *ExecutionPlan {
 		parsed.Steps[i] = step
 	}
 	return parsed
+}
+
+func normalizeFleetHostStep(step PlanStep, resolved ResolvedResources) PlanStep {
+	if step.Expert != "hostops" || step.Mode != "readonly" {
+		return step
+	}
+	if !hasResolvedScope(step, resolved, "host") {
+		return step
+	}
+	if strings.TrimSpace(step.Intent) == "" || step.Intent == "handle_request" {
+		step.Intent = "list_host_inventory"
+	}
+	if strings.TrimSpace(step.Title) == "" || step.Title == "处理用户请求" {
+		step.Title = "查询主机清单与状态"
+	}
+	if strings.TrimSpace(step.Task) == "" || step.Task == resolvedScopeTaskPlaceholder(step.Task) {
+		step.Task = "列出目标范围内主机的当前状态、CPU、内存和磁盘资源摘要"
+	}
+	if step.Input == nil {
+		step.Input = map[string]any{}
+	}
+	if step.Input["query_mode"] == nil {
+		step.Input["query_mode"] = "inventory"
+	}
+	return step
+}
+
+func resolvedScopeTaskPlaceholder(task string) string {
+	task = strings.TrimSpace(task)
+	switch task {
+	case "", "query all hosts", "查看所有主机状态", "查看所有主机的状态":
+		return task
+	default:
+		return ""
+	}
 }
 
 func baseStepInput(base *ExecutionPlan) map[string]any {
@@ -894,10 +931,30 @@ func normalizeStepMode(mode string) (string, string) {
 }
 
 func pickPrimaryExpert(r rewrite.Output) string {
+	if r.ResourceHints.HostID > 0 || strings.TrimSpace(r.ResourceHints.HostName) != "" {
+		return "hostops"
+	}
+	if r.ResourceHints.ClusterID > 0 || strings.TrimSpace(r.ResourceHints.ClusterName) != "" || strings.TrimSpace(r.ResourceHints.Namespace) != "" {
+		for _, target := range r.NormalizedRequest.Targets {
+			switch strings.TrimSpace(target.Type) {
+			case "pod", "deployment", "cluster", "namespace":
+				return "k8s"
+			}
+		}
+	}
 	for _, domain := range r.DomainHints {
 		domain = strings.TrimSpace(domain)
-		if domain != "" {
-			return domain
+		switch domain {
+		case "host", "hostops", "os":
+			return "hostops"
+		case "k8s", "kubernetes", "cluster", "pod", "namespace":
+			return "k8s"
+		case "service", "app", "application":
+			return "service"
+		case "delivery", "cicd", "pipeline":
+			return "delivery"
+		case "observability", "monitoring":
+			return "observability"
 		}
 	}
 	for _, target := range r.NormalizedRequest.Targets {

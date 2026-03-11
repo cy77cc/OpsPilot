@@ -92,8 +92,12 @@ func TestSummarizerRequestsInvestigationWhenCompletedStepsLackEvidence(t *testin
 func TestNormalizeSummaryQualifiesUncertainConclusions(t *testing.T) {
 	base := SummaryOutput{
 		Summary:               "证据不足",
+		Headline:              "证据仍不充分",
 		Conclusion:            "当前只能给出初步判断，仍需进一步调查。",
 		Narrative:             "当前叙述仅基于已完成步骤和现有证据，不足部分仍待补充确认。",
+		KeyFindings:           []string{"已完成步骤 1 个"},
+		Recommendations:       []string{"补充关键证据"},
+		RawOutputPolicy:       "summary_only",
 		NeedMoreInvestigation: true,
 		ReplanHint: &ReplanHint{
 			Reason:          "evidence_missing",
@@ -117,7 +121,16 @@ func TestNormalizeSummaryQualifiesUncertainConclusions(t *testing.T) {
 	if out.Conclusion == "服务已经恢复" {
 		t.Fatalf("Conclusion should be qualified, got %q", out.Conclusion)
 	}
+	if out.Headline == "" {
+		t.Fatalf("Headline should not be empty")
+	}
 	if out.Narrative == "根据结果可以确认服务恢复" {
 		t.Fatalf("Narrative should be qualified, got %q", out.Narrative)
+	}
+	if len(out.KeyFindings) == 0 || len(out.Recommendations) == 0 {
+		t.Fatalf("summary fields should be preserved: %#v", out)
+	}
+	if out.RawOutputPolicy != "summary_only" {
+		t.Fatalf("RawOutputPolicy = %q, want summary_only", out.RawOutputPolicy)
 	}
 }

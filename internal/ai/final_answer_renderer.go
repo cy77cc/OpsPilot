@@ -17,10 +17,11 @@ func newFinalAnswerRenderer() *finalAnswerRenderer {
 }
 
 func (r *finalAnswerRenderer) Render(message string, plan *planner.ExecutionPlan, result *executor.Result, summaryOut summarizer.SummaryOutput) []string {
+	_ = message
 	if result == nil {
 		return compactParagraphs([]string{
-			firstNonEmpty(summaryOut.Headline, "本轮执行已结束"),
-			firstNonEmpty(summaryOut.Conclusion, summaryOut.Summary),
+			sanitizeAnswerText(firstNonEmpty(summaryOut.Headline, "本轮执行已结束")),
+			sanitizeAnswerText(firstNonEmpty(summaryOut.Conclusion, summaryOut.Summary)),
 		})
 	}
 	if looksLikeFleetHostStatus(plan, result) {
@@ -30,18 +31,20 @@ func (r *finalAnswerRenderer) Render(message string, plan *planner.ExecutionPlan
 }
 
 func (r *finalAnswerRenderer) renderGeneric(summaryOut summarizer.SummaryOutput, result *executor.Result) []string {
-	paragraphs := []string{firstNonEmpty(summaryOut.Headline, summaryOut.Summary)}
+	paragraphs := []string{sanitizeAnswerText(firstNonEmpty(summaryOut.Headline, summaryOut.Summary))}
 	findings := append([]string(nil), summaryOut.KeyFindings...)
+	findings = append(findings, summaryOut.ResourceSummaries...)
 	findings = append(findings, importantObservedFacts(result, 3)...)
+	findings = sanitizeLines(findings)
 	if len(findings) > 0 {
-		paragraphs = append(paragraphs, "关键依据：\n- "+strings.Join(dedupeStrings(findings), "\n- "))
+		paragraphs = append(paragraphs, "关键依据：\n- "+strings.Join(findings, "\n- "))
 	}
-	recommendations := summaryOut.Recommendations
+	recommendations := sanitizeLines(summaryOut.Recommendations)
 	if len(recommendations) == 0 {
-		recommendations = summaryOut.NextActions
+		recommendations = sanitizeLines(summaryOut.NextActions)
 	}
 	if len(recommendations) > 0 {
-		paragraphs = append(paragraphs, "建议：\n- "+strings.Join(dedupeStrings(recommendations), "\n- "))
+		paragraphs = append(paragraphs, "建议：\n- "+strings.Join(recommendations, "\n- "))
 	}
 	return compactParagraphs(paragraphs)
 }
@@ -59,7 +62,7 @@ func (r *finalAnswerRenderer) renderFleetHostStatus(summaryOut summarizer.Summar
 		}
 	}
 
-	headline := firstNonEmpty(summaryOut.Headline, "已完成主机状态汇总")
+	headline := sanitizeAnswerText(firstNonEmpty(summaryOut.Headline, "已完成主机状态汇总"))
 	if abnormal == 0 {
 		headline = fmt.Sprintf("共检查 %d 台主机，当前均运行正常。", total)
 	} else {
@@ -73,7 +76,7 @@ func (r *finalAnswerRenderer) renderFleetHostStatus(summaryOut summarizer.Summar
 		paragraphs = append(paragraphs, "关键依据：\n- "+strings.Join(top, "\n- "))
 	}
 
-	recommendations := summaryOut.Recommendations
+	recommendations := sanitizeLines(summaryOut.Recommendations)
 	if abnormal == 0 {
 		recommendations = filterRoutineRestartAdvice(recommendations)
 		if len(recommendations) == 0 {
@@ -81,10 +84,10 @@ func (r *finalAnswerRenderer) renderFleetHostStatus(summaryOut summarizer.Summar
 		}
 	}
 	if len(recommendations) == 0 {
-		recommendations = summaryOut.NextActions
+		recommendations = sanitizeLines(summaryOut.NextActions)
 	}
 	if len(recommendations) > 0 {
-		paragraphs = append(paragraphs, "建议：\n- "+strings.Join(dedupeStrings(recommendations), "\n- "))
+		paragraphs = append(paragraphs, "建议：\n- "+strings.Join(recommendations, "\n- "))
 	}
 	return compactParagraphs(paragraphs)
 }
@@ -251,6 +254,39 @@ func importantObservedFacts(result *executor.Result, limit int) []string {
 		}
 	}
 	return dedupeStrings(out)
+}
+
+func sanitizeLines(items []string) []string {
+	cleaned := make([]string, 0, len(items))
+	for _, item := range items {
+		item = sanitizeAnswerText(item)
+		if item == "" {
+			continue
+		}
+		cleaned = append(cleaned, item)
+	}
+	return dedupeStrings(cleaned)
+}
+
+func sanitizeAnswerText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	if strings.Contains(text, "```") {
+		return ""
+	}
+	if strings.Contains(lower, "完整输出如下") || strings.Contains(lower, "raw output") {
+		return ""
+	}
+	if strings.Contains(lower, "filesystem") && strings.Contains(lower, "mounted on") {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "`", "")
+	text = strings.ReplaceAll(text, "***", "")
+	text = strings.ReplaceAll(text, "**", "")
+	return strings.TrimSpace(text)
 }
 
 func compactParagraphs(in []string) []string {

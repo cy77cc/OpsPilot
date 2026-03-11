@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
@@ -33,8 +34,8 @@ func TestPlanFallsBackToMinimalPlan(t *testing.T) {
 	if out.Plan.Steps[0].Expert != "hostops" {
 		t.Fatalf("Expert = %q, want hostops", out.Plan.Steps[0].Expert)
 	}
-	if out.Plan.Steps[0].Task != "查看所有主机的状态" {
-		t.Fatalf("Task = %q", out.Plan.Steps[0].Task)
+	if !strings.Contains(out.Plan.Steps[0].Task, "主机") || !strings.Contains(out.Plan.Steps[0].Task, "状态") {
+		t.Fatalf("Task = %q, want canonical host inventory task", out.Plan.Steps[0].Task)
 	}
 	if out.Plan.Resolved.Scope == nil {
 		t.Fatalf("Resolved.Scope is nil")
@@ -44,6 +45,12 @@ func TestPlanFallsBackToMinimalPlan(t *testing.T) {
 	}
 	if got := looseStringValue(out.Plan.Steps[0].Input["scope"].(map[string]any)["resource_type"]); got != "host" {
 		t.Fatalf("step scope resource_type = %q, want host", got)
+	}
+	if got := looseStringValue(out.Plan.Steps[0].Input["query_mode"]); got != "inventory" {
+		t.Fatalf("step query_mode = %q, want inventory", got)
+	}
+	if got := out.Plan.Steps[0].Intent; got != "list_host_inventory" {
+		t.Fatalf("step intent = %q, want list_host_inventory", got)
 	}
 }
 
@@ -245,6 +252,75 @@ func TestNormalizeDecisionKeepsValidK8sPlanFromModelOutput(t *testing.T) {
 	}
 	if got := looseStringValue(out.Plan.Steps[0].Input["pod"]); got != "cilium-87f2m" {
 		t.Fatalf("step 1 pod = %q, want cilium-87f2m", got)
+	}
+}
+
+func TestNormalizeDecisionCanonicalizesFleetHostStatusStep(t *testing.T) {
+	base := buildBaseDecision(Input{
+		Message: "查看所有主机状态",
+		Rewrite: rewrite.Output{
+			NormalizedGoal: "查看所有主机状态",
+			OperationMode:  "query",
+			NormalizedRequest: rewrite.NormalizedRequest{
+				Targets: []rewrite.RequestTarget{
+					{Type: "host", Name: "all"},
+				},
+			},
+		},
+	})
+	parsed := Decision{
+		Type: DecisionPlan,
+		Plan: &ExecutionPlan{
+			PlanID: "plan-host-fleet",
+			Goal:   "查看所有主机状态",
+			Resolved: ResolvedResources{
+				Scope: &ResourceScope{Kind: "all", ResourceType: "host"},
+			},
+			Steps: []PlanStep{{
+				StepID: "step-1",
+				Title:  "处理用户请求",
+				Expert: "hostops",
+				Intent: "handle_request",
+				Task:   "query all hosts",
+				Mode:   "readonly",
+				Risk:   "low",
+				Input: map[string]any{
+					"scope": map[string]any{"kind": "all", "resource_type": "host"},
+				},
+			}},
+		},
+	}
+
+	out := normalizeDecision(base, parsed)
+	if out.Type != DecisionPlan || out.Plan == nil {
+		t.Fatalf("unexpected decision: %#v", out)
+	}
+	step := out.Plan.Steps[0]
+	if got := step.Intent; got != "list_host_inventory" {
+		t.Fatalf("step intent = %q, want list_host_inventory", got)
+	}
+	if got := looseStringValue(step.Input["query_mode"]); got != "inventory" {
+		t.Fatalf("step query_mode = %q, want inventory", got)
+	}
+	if strings.TrimSpace(step.Task) == "query all hosts" {
+		t.Fatalf("step task = %q, want canonical inventory task", step.Task)
+	}
+}
+
+func TestPickPrimaryExpertPrefersHostContextOverMisleadingDomainHint(t *testing.T) {
+	got := pickPrimaryExpert(rewrite.Output{
+		ResourceHints: rewrite.ResourceHints{
+			HostName: "火山云服务器",
+		},
+		DomainHints: []string{"service"},
+		NormalizedRequest: rewrite.NormalizedRequest{
+			Targets: []rewrite.RequestTarget{
+				{Type: "host", Name: "火山云服务器"},
+			},
+		},
+	})
+	if got != "hostops" {
+		t.Fatalf("pickPrimaryExpert() = %q, want hostops", got)
 	}
 }
 
