@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { theme } from 'antd';
 import { Think, CodeHighlighter } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
@@ -59,7 +59,11 @@ const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => (
 );
 
 const ThinkingMessageBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ content, isStreaming }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(isStreaming));
+
+  useEffect(() => {
+    setExpanded(Boolean(isStreaming));
+  }, [isStreaming]);
 
   // 动态标题：思考中时显示渐变色动画效果
   const title = isStreaming ? (

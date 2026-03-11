@@ -14,10 +14,10 @@ describe('thoughtChainMetrics', () => {
       { type: 'stage_delta', data: { stage: 'summary' } },
     ]);
 
-    expect(result.expectedKeys).toEqual(['rewrite', 'plan', 'execute', 'summary']);
-    expect(result.deliveredKeys).toEqual(['rewrite', 'plan', 'summary']);
+    expect(result.expectedKeys).toEqual(['rewrite', 'plan', 'execute']);
+    expect(result.deliveredKeys).toEqual(['rewrite', 'plan']);
     expect(result.missingKeys).toEqual(['execute']);
-    expect(result.completenessRate).toBe(0.75);
+    expect(result.completenessRate).toBeCloseTo(2 / 3);
   });
 
   it('treats clarify as a delivered user action stage', () => {
@@ -48,9 +48,9 @@ describe('thoughtChainMetrics', () => {
       { type: 'summary' },
     ], rendered);
 
-    expect(result.expectedKeys).toEqual(['rewrite', 'plan', 'execute', 'summary']);
-    expect(result.renderedKeys).toEqual(['rewrite', 'plan', 'summary']);
+    expect(result.expectedKeys).toEqual(['rewrite', 'plan', 'execute']);
+    expect(result.renderedKeys).toEqual(['rewrite', 'plan']);
     expect(result.missingKeys).toEqual(['execute']);
-    expect(result.consistencyRate).toBe(0.75);
+    expect(result.consistencyRate).toBeCloseTo(2 / 3);
   });
 });

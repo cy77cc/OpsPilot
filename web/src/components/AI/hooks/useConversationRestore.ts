@@ -96,17 +96,21 @@ function toRestoredConversation(session: AISession): RestoredConversation {
   return {
     id: session.id,
     title: session.title || 'AI Session',
-    messages: (session.messages || []).map(m => ({
-      id: m.id,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      thinking: m.thinking,
-      traceId: m.traceId,
-      thoughtChain: (m.thoughtChain || []) as ThoughtStageItem[],
-      recommendations: (m.recommendations || []) as EmbeddedRecommendation[],
-      rawEvidence: (m.rawEvidence || []) as string[],
-      status: m.status,
-      createdAt: m.timestamp,
-    })),
+    messages: (session.messages || []).map(m => {
+      const thoughtChain = ((m.thoughtChain || []) as ThoughtStageItem[]);
+      const summaryStage = thoughtChain.find((item) => item.key === 'summary');
+      return {
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        thinking: m.thinking || summaryStage?.content || undefined,
+        traceId: m.traceId,
+        thoughtChain: thoughtChain.filter((item) => item.key !== 'summary'),
+        recommendations: (m.recommendations || []) as EmbeddedRecommendation[],
+        rawEvidence: (m.rawEvidence || []) as string[],
+        status: m.status,
+        createdAt: m.timestamp,
+      };
+    }),
   };
 }

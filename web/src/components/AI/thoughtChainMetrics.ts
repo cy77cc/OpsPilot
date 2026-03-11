@@ -40,9 +40,6 @@ export function expectedThoughtChainStages(events: ThoughtChainEventRecord[]): T
       case 'clarify_required':
         expected.add('user_action');
         break;
-      case 'summary':
-        expected.add('summary');
-        break;
       default:
         break;
     }
@@ -55,7 +52,7 @@ export function deliveredThoughtChainStages(events: ThoughtChainEventRecord[]): 
   for (const event of events) {
     if (event.type === 'stage_delta') {
       const stage = String(event.data?.stage || '').trim() as ThoughtStageKey;
-      if (stage) {
+      if (stage && stage !== 'summary') {
         delivered.add(stage);
       }
       continue;
@@ -85,7 +82,7 @@ export function computeThoughtChainRenderConsistency(
   thoughtChain: ThoughtStageItem[] | undefined
 ): ThoughtChainRenderConsistency {
   const expectedKeys = expectedThoughtChainStages(events);
-  const renderedKeys = Array.from(new Set((thoughtChain || []).map((item) => item.key)));
+  const renderedKeys = Array.from(new Set((thoughtChain || []).map((item) => item.key).filter((key) => key !== 'summary')));
   const renderedSet = new Set(renderedKeys);
   const missingKeys = expectedKeys.filter((key) => !renderedSet.has(key));
   return {

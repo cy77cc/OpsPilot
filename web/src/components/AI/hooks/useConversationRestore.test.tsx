@@ -20,6 +20,7 @@ describe('useConversationRestore', () => {
           id: 'msg-1',
           role: 'assistant',
           content: 'final answer',
+          thoughtChain: [{ key: 'summary', title: '生成结论', status: 'success', content: 'summary thinking' }],
           rawEvidence: ['tool output'],
           timestamp: '2026-03-11T00:00:01Z',
         }],
@@ -39,6 +40,8 @@ describe('useConversationRestore', () => {
         messages: [
           expect.objectContaining({
             content: 'final answer',
+            thinking: 'summary thinking',
+            thoughtChain: [],
             rawEvidence: ['tool output'],
           }),
         ],
