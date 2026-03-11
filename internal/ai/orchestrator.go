@@ -519,30 +519,10 @@ func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritt
 						CurrentPage: runtimeCtx.CurrentPage,
 						ResourceIDs: selectedResourceIDs(runtimeCtx.SelectedResources),
 					},
-					EventMeta: executor.EventMeta{
-						SessionID: meta.SessionID,
-						TraceID:   meta.TraceID,
-						PlanID:    meta.PlanID,
-						Iteration: meta.Iteration,
-						Timestamp: meta.Timestamp,
-					},
-					EmitEvent: func(name string, eventMeta executor.EventMeta, data map[string]any) bool {
-						emitEvent(emit, events.Name(name), events.EventMeta{
-							SessionID: eventMeta.SessionID,
-							TraceID:   eventMeta.TraceID,
-							PlanID:    eventMeta.PlanID,
-							StepID:    eventMeta.StepID,
-							Iteration: eventMeta.Iteration,
-							Timestamp: eventMeta.Timestamp,
-						}, data)
-						emitExecuteStageDelta(emit, events.EventMeta{
-							SessionID: eventMeta.SessionID,
-							TraceID:   eventMeta.TraceID,
-							PlanID:    eventMeta.PlanID,
-							StepID:    eventMeta.StepID,
-							Iteration: eventMeta.Iteration,
-							Timestamp: eventMeta.Timestamp,
-						}, name, data)
+					EventMeta: meta,
+					EmitEvent: func(name string, eventMeta events.EventMeta, data map[string]any) bool {
+						emitEvent(emit, events.Name(name), eventMeta, data)
+						emitExecuteStageDelta(emit, eventMeta, name, data)
 						return true
 					},
 				})

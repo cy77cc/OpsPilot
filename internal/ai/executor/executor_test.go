@@ -9,6 +9,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
@@ -261,12 +262,12 @@ func TestExecutorEmitsRealtimeStepAndToolEvents(t *testing.T) {
 		TraceID:   "trace-4",
 		SessionID: "session-4",
 		Message:   "check mysql-0 logs",
-		EventMeta: EventMeta{
+		EventMeta: events.EventMeta{
 			SessionID: "session-4",
 			TraceID:   "trace-4",
 			PlanID:    "plan-4",
 		},
-		EmitEvent: func(name string, _ EventMeta, _ map[string]any) bool {
+		EmitEvent: func(name string, _ events.EventMeta, _ map[string]any) bool {
 			names = append(names, name)
 			return true
 		},

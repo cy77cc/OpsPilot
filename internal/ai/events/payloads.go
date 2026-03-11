@@ -5,7 +5,6 @@
 package events
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/ai/executor"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
@@ -49,17 +48,24 @@ type StepUpdatePayload struct {
 	UserVisibleSummary string             `json:"user_visible_summary,omitempty"`
 }
 
+// ApprovalResumeHint 审批回调的恢复信息。
+type ApprovalResumeHint struct {
+	SessionID string `json:"session_id"`
+	PlanID    string `json:"plan_id"`
+	StepID    string `json:"step_id"`
+}
+
 // ApprovalRequiredPayload 审批请求事件载荷。
 type ApprovalRequiredPayload struct {
-	SessionID          string                 `json:"session_id,omitempty"`
-	PlanID             string                 `json:"plan_id,omitempty"`
-	StepID             string                 `json:"step_id,omitempty"`
-	Title              string                 `json:"title,omitempty"`
-	Risk               string                 `json:"risk,omitempty"`
-	Mode               string                 `json:"mode,omitempty"`
-	Status             string                 `json:"status,omitempty"`
-	UserVisibleSummary string                 `json:"user_visible_summary,omitempty"`
-	Resume             executor.ResumeRequest `json:"resume"`
+	SessionID          string             `json:"session_id,omitempty"`
+	PlanID             string             `json:"plan_id,omitempty"`
+	StepID             string             `json:"step_id,omitempty"`
+	Title              string             `json:"title,omitempty"`
+	Risk               string             `json:"risk,omitempty"`
+	Mode               string             `json:"mode,omitempty"`
+	Status             string             `json:"status,omitempty"`
+	UserVisibleSummary string             `json:"user_visible_summary,omitempty"`
+	Resume             ApprovalResumeHint `json:"resume"`
 }
 
 // ClarifyRequiredPayload 澄清请求事件载荷。

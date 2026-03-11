@@ -111,7 +111,7 @@ func TestParseDecisionAcceptsNumericStepIDsAndNormalizesPlan(t *testing.T) {
 	if out.Plan == nil {
 		t.Fatalf("normalized plan is nil")
 	}
-	if got := out.Plan.Resolved.ClusterID; got != 1 {
+	if got := primaryID(out.Plan.Resolved.Clusters); got != 1 {
 		t.Fatalf("cluster id = %d, want %d", got, 1)
 	}
 	if got := out.Plan.Steps[0].StepID; got != "1" {

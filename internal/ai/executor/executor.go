@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
@@ -21,7 +22,7 @@ type Request struct {
 	Message        string              // 用户原始消息
 	Plan           planner.ExecutionPlan // 执行计划
 	RuntimeContext runtime.ContextSnapshot // 运行时上下文
-	EventMeta      EventMeta           // 事件元数据
+	EventMeta      events.EventMeta    // 事件元数据
 	EmitEvent      EventEmitter        // 事件发射器
 }
 
@@ -79,29 +80,8 @@ type StepRunner interface {
 	RunStep(ctx context.Context, req Request, step planner.PlanStep) (StepResult, error)
 }
 
-// EventMeta 包含事件元数据。
-type EventMeta struct {
-	SessionID string    // 会话 ID
-	TraceID   string    // 追踪 ID
-	PlanID    string    // 计划 ID
-	StepID    string    // 步骤 ID
-	Iteration int       // 迭代次数
-	Timestamp time.Time // 时间戳
-}
-
-// WithDefaults 填充默认值。
-func (m EventMeta) WithDefaults() EventMeta {
-	if m.Timestamp.IsZero() {
-		m.Timestamp = time.Now().UTC()
-	}
-	if m.Iteration == 0 {
-		m.Iteration = 1
-	}
-	return m
-}
-
 // EventEmitter 定义事件发射器函数类型。
-type EventEmitter func(name string, meta EventMeta, data map[string]any) bool
+type EventEmitter func(name string, meta events.EventMeta, data map[string]any) bool
 
 // ExecutionError 表示执行错误。
 type ExecutionError struct {

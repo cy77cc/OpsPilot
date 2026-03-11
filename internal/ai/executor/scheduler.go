@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
@@ -171,7 +172,7 @@ func advanceAfterApproval(ctx context.Context, store *runtime.ExecutionStore, st
 		Message:        state.Message,
 		Plan:           planner.ExecutionPlan{PlanID: state.PlanID},
 		RuntimeContext: state.RuntimeContext,
-		EventMeta: EventMeta{
+		EventMeta: events.EventMeta{
 			SessionID: state.SessionID,
 			TraceID:   state.TraceID,
 			PlanID:    state.PlanID,
