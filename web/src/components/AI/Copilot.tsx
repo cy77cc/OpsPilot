@@ -170,6 +170,33 @@ function buildApprovalBlockID(payload: Record<string, unknown>): string {
   return 'approval:active';
 }
 
+function buildToolDetailID(data: Record<string, unknown>): string {
+  const callID = String(data.call_id || '').trim();
+  if (callID) {
+    return callID;
+  }
+  const stepID = String(data.step_id || '').trim();
+  const toolName = String(data.tool_name || data.tool || data.expert || 'tool').trim();
+  const summary = String(data.summary || data.error || '').trim();
+  return [stepID || 'step', toolName || 'tool', summary || 'event'].join(':');
+}
+
+function buildApprovalStatusPayload(
+  base: Record<string, unknown>,
+  title: string,
+  summary: string,
+  status: 'waiting_user' | 'submitting' | 'failed',
+  errorMessage?: string,
+): Record<string, unknown> {
+  return {
+    ...base,
+    title,
+    summary,
+    status,
+    error_message: errorMessage,
+  };
+}
+
 function upsertThoughtStage(
   stages: ThoughtStageItem[],
   patch: Partial<ThoughtStageItem> & Pick<ThoughtStageItem, 'key' | 'title' | 'status'>
@@ -836,6 +863,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       },
       onToolCall: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
+          const detailID = buildToolDetailID(data);
           const nextStages = upsertThoughtStage(message.thoughtChain || [], {
             key: 'execute',
             title: '调用专家执行',
@@ -849,7 +877,7 @@ export const Copilot: React.FC<CopilotProps> = ({
           return {
             ...message,
             thoughtChain: upsertThoughtDetail(nextStages, 'execute', {
-              id: String(data.call_id || data.tool_name || Date.now()),
+              id: detailID,
               label: String(data.tool_name || data.expert || 'tool'),
               status: 'loading',
               content: String(data.summary || ''),
@@ -859,12 +887,13 @@ export const Copilot: React.FC<CopilotProps> = ({
       },
       onToolResult: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
+          const detailID = buildToolDetailID(data);
           const result = data.result as Record<string, unknown> | undefined;
           const status = data.status === 'error' || result?.ok === false ? 'error' : 'success';
           return {
             ...message,
             thoughtChain: upsertThoughtDetail(message.thoughtChain || [], 'execute', {
-              id: String(data.call_id || data.tool_name || Date.now()),
+              id: detailID,
               label: String(data.tool_name || data.expert || 'tool'),
               status,
               content: String(data.error || data.summary || ''),
@@ -1114,17 +1143,31 @@ export const Copilot: React.FC<CopilotProps> = ({
     approved: boolean,
   ) => {
     setIsLoading(true);
+    const turnID = String(payload.turn_id || '');
+    const approvalBlockID = buildApprovalBlockID(payload);
     patchAssistantMessage(activeKey, assistantId, (message) => {
       if (!message.turn) {
         return message;
       }
+      const submittingTurn = applyBlockReplace(message.turn, {
+        turn_id: turnID || message.turn.id,
+        block_id: approvalBlockID,
+        block_type: 'approval',
+        payload: buildApprovalStatusPayload(
+          payload,
+          String(payload.title || '正在提交'),
+          approved ? '正在提交确认，马上继续执行。' : '正在提交取消请求。',
+          'submitting',
+        ),
+      });
       return {
         ...message,
-        turn: applyTurnState(message.turn, {
-          turn_id: message.turn.id,
+        turn: applyTurnState(submittingTurn, {
+          turn_id: submittingTurn.id,
           status: approved ? 'streaming' : 'completed',
-          phase: approved ? 'execute' : 'done',
+          phase: 'execute',
         }),
+        thoughtChain: finalizeThoughtStage(message.thoughtChain || [], 'user_action', approved ? 'success' : 'abort', approved ? '已确认，继续执行' : '已取消执行'),
       };
     });
 
@@ -1139,11 +1182,37 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(activeKey, assistantId, (message) => ({
           ...message,
           content: message.content || '已取消该操作。',
-          turn: message.turn ? applyTurnDone(message.turn, { turn_id: message.turn.id, status: 'completed', phase: 'done' }) : message.turn,
+          turn: message.turn ? applyTurnDone(
+            applyBlockReplace(message.turn, {
+              turn_id: message.turn.id,
+              block_id: approvalBlockID,
+              block_type: 'status',
+              payload: {
+                title: '审批已取消',
+                summary: '已取消执行，当前变更不会继续推进。',
+                status: 'cancelled',
+              },
+            }),
+            { turn_id: message.turn.id, status: 'completed', phase: 'done' },
+          ) : message.turn,
         }));
         setIsLoading(false);
         return;
       }
+
+      patchAssistantMessage(activeKey, assistantId, (message) => ({
+        ...message,
+        turn: message.turn ? applyBlockReplace(message.turn, {
+          turn_id: message.turn.id,
+          block_id: approvalBlockID,
+          block_type: 'status',
+          payload: {
+            title: '已确认，继续执行',
+            summary: '审批已通过，正在继续执行当前步骤。',
+            status: 'approved',
+          },
+        }) : message.turn,
+      }));
 
       await aiApi.respondApprovalStream(
         {
@@ -1155,6 +1224,27 @@ export const Copilot: React.FC<CopilotProps> = ({
         createStreamHandlers(activeKey, assistantId),
       );
     } catch {
+      patchAssistantMessage(activeKey, assistantId, (message) => ({
+        ...message,
+        turn: message.turn ? applyBlockReplace(message.turn, {
+          turn_id: message.turn.id,
+          block_id: approvalBlockID,
+          block_type: 'approval',
+          payload: buildApprovalStatusPayload(
+            payload,
+            String(payload.title || '等待你确认'),
+            String(payload.user_visible_summary || payload.title || '当前步骤需要确认后继续执行'),
+            'failed',
+            '审批结果提交失败，请重试。',
+          ),
+        }) : message.turn,
+        thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+          key: 'user_action',
+          title: '等待你确认',
+          status: 'error',
+          description: '审批结果提交失败，请重试。',
+        }),
+      }));
       message.error('确认操作失败');
       setIsLoading(false);
     }

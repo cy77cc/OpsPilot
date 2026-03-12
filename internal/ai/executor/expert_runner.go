@@ -202,6 +202,11 @@ Host-specific rules:
 - If step_input.scope.kind is "all" or "filtered" for resource_type "host" and the step is readonly status/inventory work, use host_list_inventory first.
 - Do NOT use host_batch for fleet status summaries unless step_input.host_ids is explicitly present and the task clearly requires running the same command on each host.
 - If the user asks for all hosts / fleet status / host inventory, prefer inventory facts over remote command execution.`
+		extra += `
+- If step.mode is "mutating", do NOT use host_exec or host_exec_by_target.
+- For mutating host commands, always use host_batch_exec_preview first and then host_batch_exec_apply.
+- For a single approved host mutation, still use the batch preview/apply flow with a one-element host_ids array.
+- Never downgrade an approved mutating host step into a readonly diagnostic tool call.`
 	}
 	return fmt.Sprintf(`You are the %s expert in an AI operations orchestrator.
 

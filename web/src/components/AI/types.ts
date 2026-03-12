@@ -70,6 +70,8 @@ export interface ConfirmationRequest {
   title: string;
   description: string;
   risk: RiskLevel;
+  status?: 'waiting_user' | 'submitting' | 'failed';
+  errorMessage?: string;
   details?: Record<string, unknown>;
   onConfirm: () => void;
   onCancel: () => void;

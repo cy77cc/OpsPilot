@@ -2,10 +2,13 @@ package executor
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/cy77cc/OpsPilot/internal/ai/experts/hostops"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 )
 
 func TestParseExpertResultRecoversHalfStructuredOutput(t *testing.T) {
@@ -75,5 +78,19 @@ func TestBuildExpertRequestUsesStructuredEnvelope(t *testing.T) {
 	}
 	if envelope.RuntimeContext["scene"] != "scene:service" {
 		t.Fatalf("RuntimeContext = %#v", envelope.RuntimeContext)
+	}
+}
+
+func TestHostopsExpertPromptRequiresMutatingApplyFlow(t *testing.T) {
+	prompt := expertSystemPrompt(hostops.New(common.PlatformDeps{}))
+
+	for _, expected := range []string{
+		`If step.mode is "mutating", do NOT use host_exec or host_exec_by_target.`,
+		`always use host_batch_exec_preview first and then host_batch_exec_apply`,
+		`Never downgrade an approved mutating host step into a readonly diagnostic tool call.`,
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("hostops expert prompt missing %q\nprompt=%s", expected, prompt)
+		}
 	}
 }

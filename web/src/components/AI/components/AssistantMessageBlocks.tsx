@@ -206,6 +206,8 @@ const ApprovalMessageBlock: React.FC<{ block: ApprovalBlock; onApprovalDecision?
     title: String(payload.title || block.title || '等待确认'),
     description: String(payload.user_visible_summary || payload.summary || '此操作需要你的确认后继续执行'),
     risk: (payload.risk || 'high') as 'low' | 'medium' | 'high',
+    status: (payload.status || 'waiting_user') as 'waiting_user' | 'submitting' | 'failed',
+    errorMessage: typeof payload.error_message === 'string' ? payload.error_message : undefined,
     details: payload,
     onConfirm: () => onApprovalDecision?.(payload, true),
     onCancel: () => onApprovalDecision?.(payload, false),
