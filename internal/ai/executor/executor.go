@@ -149,6 +149,11 @@ func riskPolicy(mode, risk string) RiskPolicy {
 	}
 }
 
+// StepRequiresApproval reports whether a step with the given mode/risk must be gated for approval.
+func StepRequiresApproval(mode, risk string) bool {
+	return riskPolicy(mode, risk).RequiresApproval
+}
+
 // PrepareState 准备执行状态，初始化所有步骤。
 // 根据依赖关系确定初始状态，无依赖的步骤设为 Ready。
 func (e *Executor) PrepareState(_ context.Context, req Request) (runtime.ExecutionState, []StepResult, error) {
@@ -200,6 +205,7 @@ func (e *Executor) PrepareState(_ context.Context, req Request) (runtime.Executi
 		TraceID:        req.TraceID,
 		SessionID:      req.SessionID,
 		PlanID:         planID,
+		Plan:           req.Plan,
 		TurnID:         req.EventMeta.TurnID,
 		Message:        strings.TrimSpace(req.Message),
 		Status:         runtime.ExecutionStatusRunning,
@@ -210,6 +216,54 @@ func (e *Executor) PrepareState(_ context.Context, req Request) (runtime.Executi
 		UpdatedAt:      now,
 	}
 	return state, results, nil
+}
+
+// PrepareApprovalGate creates and persists a pre-execution approval gate for the specified ready step.
+func (e *Executor) PrepareApprovalGate(ctx context.Context, req Request, stepID string) (*Result, error) {
+	prepared, err := e.SavePreparedState(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(stepID) == "" {
+		return nil, fmt.Errorf("step_id is required")
+	}
+	step, ok := prepared.State.Steps[stepID]
+	if !ok {
+		return nil, fmt.Errorf("step %s not found", stepID)
+	}
+	if !StepRequiresApproval(step.Mode, step.Risk) {
+		return prepared, nil
+	}
+	if step.Status != runtime.StepReady {
+		return nil, fmt.Errorf("step %s is not ready for approval gate", stepID)
+	}
+	if err := transitionStep(&prepared.State, stepID, runtime.StepWaitingApproval, "step requires approval before execution"); err != nil {
+		return nil, err
+	}
+	waitingStep := prepared.State.Steps[stepID]
+	policy := riskPolicy(step.Mode, step.Risk)
+	prepared.State.PendingApproval = &runtime.PendingApproval{
+		PlanID:      prepared.State.PlanID,
+		StepID:      stepID,
+		ApprovalKey: fmt.Sprintf("%s:%s", prepared.State.PlanID, stepID),
+		Status:      "pending",
+		Title:       waitingStep.Title,
+		Mode:        waitingStep.Mode,
+		Risk:        waitingStep.Risk,
+		Summary:     waitingStep.UserVisibleSummary,
+		RequestedAt: time.Now().UTC(),
+	}
+	prepared.State.Status = runtime.ExecutionStatusWaitingApproval
+	prepared.State.Phase = fmt.Sprintf("approval_gate:%s", approvalStageName(policy))
+	if e != nil && e.store != nil {
+		if err := e.store.Save(ctx, prepared.State); err != nil {
+			return nil, err
+		}
+	}
+	emitStepUpdate(req, &prepared.State, waitingStep)
+	emitApprovalRequired(req, &prepared.State, prepared.State.PendingApproval, waitingStep)
+	prepared.Steps = append(prepared.Steps, snapshotResult(waitingStep))
+	return prepared, nil
 }
 
 // SavePreparedState 准备并保存执行状态到存储。

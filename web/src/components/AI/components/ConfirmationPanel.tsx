@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Space, Spin } from 'antd';
+import { Button, Space, Spin } from 'antd';
 import type { ConfirmationRequest, RiskLevel } from '../types';
 
 interface ConfirmationPanelProps {
@@ -16,17 +16,52 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
   const submitting = status === 'submitting';
   const failed = status === 'failed';
 
+  if (submitting) {
+    return (
+      <div className="ai-confirmation-compact submitting">
+        <Space size={10}>
+          <Spin size="small" />
+          <div>
+            <div className="confirmation-compact-title">正在提交确认</div>
+            <div className="confirmation-compact-text">审批结果已发送，正在继续处理当前步骤。</div>
+          </div>
+        </Space>
+      </div>
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="ai-confirmation-compact failed">
+        <div className="confirmation-compact-copy">
+          <div className="confirmation-compact-title">审批提交失败</div>
+          <div className="confirmation-compact-text">
+            {confirmation.errorMessage || '审批结果提交失败，请重试。'}
+          </div>
+        </div>
+        <div className="confirmation-compact-actions">
+          <Button type="link" onClick={() => confirmation.onConfirm()}>
+            重试
+          </Button>
+          <Button type="text" onClick={() => confirmation.onCancel()}>
+            取消
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`ai-confirmation-panel ${status}`}>
       <div className="confirmation-header">
         <div className="confirmation-heading">
+          <span className="confirmation-kicker">执行前确认</span>
           <span className="confirmation-title">{confirmation.title}</span>
           <span className="confirmation-subtitle">
-            {submitting ? '正在提交你的操作结果' : '该步骤会在确认后继续执行'}
+            该步骤会在确认后继续执行
           </span>
         </div>
         <Space size={8}>
-          {submitting ? <Spin size="small" /> : null}
           <span className={`confirmation-risk ${confirmation.risk}`}>
             {riskConfig.label}
           </span>
@@ -37,16 +72,6 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
         {confirmation.description}
       </div>
 
-      {failed && confirmation.errorMessage ? (
-        <Alert
-          className="confirmation-alert"
-          type="error"
-          showIcon
-          message={confirmation.errorMessage}
-        />
-      ) : null}
-
-      {/* 详情预览 */}
       {confirmation.details && (
         <details className="confirmation-details">
           <summary>查看详情</summary>
@@ -58,19 +83,16 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
 
       <div className="confirmation-actions">
         <Button
-          type={failed ? 'default' : 'primary'}
+          type="primary"
           aria-label={`${confirmation.title}，确认执行`}
           style={{ minHeight: 44 }}
-          loading={submitting}
-          disabled={submitting}
           onClick={() => confirmation.onConfirm()}
         >
-          {failed ? '重试确认' : '确认执行'}
+          确认执行
         </Button>
         <Button
           aria-label={`${confirmation.title}，取消`}
           style={{ minHeight: 44 }}
-          disabled={submitting}
           onClick={() => confirmation.onCancel()}
         >
           取消

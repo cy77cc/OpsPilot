@@ -7,13 +7,13 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	appconfig "github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/executor"
 	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/ai/summarizer"
+	appconfig "github.com/cy77cc/OpsPilot/internal/config"
 )
 
 type stubOrchestratorStepRunner struct {
@@ -61,11 +61,21 @@ func TestOrchestratorRunEmitsNativeAndCompatibilityStreamEvents(t *testing.T) {
 	}
 
 	orch := &Orchestrator{
-		executions:        store,
-		rewriter:          rewrite.NewWithFunc(func(_ context.Context, _ rewrite.Input, onDelta func(string)) (rewrite.Output, error) { onDelta("rewrite"); return rewrite.Output{Narrative: "rewrite ok"}, nil }),
-		planner:           planner.NewWithFunc(func(_ context.Context, _ planner.Input, onDelta func(string)) (planner.Decision, error) { onDelta("plan"); return planner.Decision{Type: planner.DecisionPlan, Narrative: "plan ok", Plan: &planner.ExecutionPlan{PlanID: "plan-1", Narrative: "plan ok", Steps: []planner.PlanStep{{StepID: "step-1", Title: "检查服务", Expert: "service", Mode: "readonly", Risk: "low"}}}}, nil }),
-		executor:          executor.New(store, executor.WithStepRunner(stubOrchestratorStepRunner{result: executor.StepResult{Summary: "service expert completed"}})),
-		summarizer:        summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) { onThinkingDelta("thinking"); onAnswerDelta("answer"); return "answer", nil }),
+		executions: store,
+		rewriter: rewrite.NewWithFunc(func(_ context.Context, _ rewrite.Input, onDelta func(string)) (rewrite.Output, error) {
+			onDelta("rewrite")
+			return rewrite.Output{Narrative: "rewrite ok"}, nil
+		}),
+		planner: planner.NewWithFunc(func(_ context.Context, _ planner.Input, onDelta func(string)) (planner.Decision, error) {
+			onDelta("plan")
+			return planner.Decision{Type: planner.DecisionPlan, Narrative: "plan ok", Plan: &planner.ExecutionPlan{PlanID: "plan-1", Narrative: "plan ok", Steps: []planner.PlanStep{{StepID: "step-1", Title: "检查服务", Expert: "service", Mode: "readonly", Risk: "low"}}}}, nil
+		}),
+		executor: executor.New(store, executor.WithStepRunner(stubOrchestratorStepRunner{result: executor.StepResult{Summary: "service expert completed"}})),
+		summarizer: summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
+			onThinkingDelta("thinking")
+			onAnswerDelta("answer")
+			return "answer", nil
+		}),
 		heartbeatInterval: 0,
 	}
 
@@ -101,11 +111,21 @@ func TestOrchestratorRunEmitsApprovalRequiredStreamState(t *testing.T) {
 	}
 
 	orch := &Orchestrator{
-		executions:        store,
-		rewriter:          rewrite.NewWithFunc(func(_ context.Context, _ rewrite.Input, onDelta func(string)) (rewrite.Output, error) { onDelta("rewrite"); return rewrite.Output{Narrative: "rewrite ok"}, nil }),
-		planner:           planner.NewWithFunc(func(_ context.Context, _ planner.Input, onDelta func(string)) (planner.Decision, error) { onDelta("plan"); return planner.Decision{Type: planner.DecisionPlan, Narrative: "plan ok", Plan: &planner.ExecutionPlan{PlanID: "plan-approval", Narrative: "plan ok", Steps: []planner.PlanStep{{StepID: "step-1", Title: "重启服务", Expert: "hostops", Mode: "mutating", Risk: "high"}}}}, nil }),
-		executor:          executor.New(store, executor.WithStepRunner(stubOrchestratorStepRunner{})),
-		summarizer:        summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) { onThinkingDelta("thinking"); onAnswerDelta("answer"); return "answer", nil }),
+		executions: store,
+		rewriter: rewrite.NewWithFunc(func(_ context.Context, _ rewrite.Input, onDelta func(string)) (rewrite.Output, error) {
+			onDelta("rewrite")
+			return rewrite.Output{Narrative: "rewrite ok"}, nil
+		}),
+		planner: planner.NewWithFunc(func(_ context.Context, _ planner.Input, onDelta func(string)) (planner.Decision, error) {
+			onDelta("plan")
+			return planner.Decision{Type: planner.DecisionPlan, Narrative: "plan ok", Plan: &planner.ExecutionPlan{PlanID: "plan-approval", Narrative: "plan ok", Steps: []planner.PlanStep{{StepID: "step-1", Title: "重启服务", Expert: "hostops", Mode: "mutating", Risk: "high"}}}}, nil
+		}),
+		executor: executor.New(store, executor.WithStepRunner(stubOrchestratorStepRunner{})),
+		summarizer: summarizer.NewWithFunc(func(_ context.Context, _ summarizer.Input, onThinkingDelta func(string), onAnswerDelta func(string)) (string, error) {
+			onThinkingDelta("thinking")
+			onAnswerDelta("answer")
+			return "answer", nil
+		}),
 		heartbeatInterval: 0,
 	}
 
@@ -114,6 +134,9 @@ func TestOrchestratorRunEmitsApprovalRequiredStreamState(t *testing.T) {
 	}
 
 	assertContainsEvent(t, eventsSeen, events.ApprovalRequired)
+	if findEvent(eventsSeen, events.ToolCall) != nil {
+		t.Fatalf("approval-gated flow should not emit tool_call before approval: %#v", eventTypes(eventsSeen))
+	}
 	if !containsTurnState(eventsSeen, "waiting_user") {
 		t.Fatalf("expected waiting_user turn_state in stream: %#v", eventTypes(eventsSeen))
 	}

@@ -43,15 +43,6 @@ func advanceScheduler(ctx context.Context, store *runtime.ExecutionStore, state 
 					progress = true
 				}
 			case runtime.StepReady:
-				if err := transitionStep(state, stepID, runtime.StepRunning, "step entered executor runtime"); err != nil {
-					return nil, err
-				}
-				runningStep := state.Steps[stepID]
-				results = append(results, snapshotResult(runningStep))
-				emitStepUpdate(req, state, runningStep)
-				progress = true
-
-				step = state.Steps[stepID]
 				if needsApproval(step) {
 					policy := riskPolicy(step.Mode, step.Risk)
 					pending := &runtime.PendingApproval{
@@ -67,7 +58,7 @@ func advanceScheduler(ctx context.Context, store *runtime.ExecutionStore, state 
 					}
 					state.PendingApproval = pending
 					state.Status = runtime.ExecutionStatusWaitingApproval
-					state.Phase = fmt.Sprintf("waiting_approval:%s", approvalStageName(policy))
+					state.Phase = fmt.Sprintf("approval_gate:%s", approvalStageName(policy))
 					if err := transitionStep(state, stepID, runtime.StepWaitingApproval, "step requires approval before execution"); err != nil {
 						return nil, err
 					}
@@ -82,6 +73,14 @@ func advanceScheduler(ctx context.Context, store *runtime.ExecutionStore, state 
 					}
 					return &Result{State: *state, Steps: results}, nil
 				}
+
+				if err := transitionStep(state, stepID, runtime.StepRunning, "step entered executor runtime"); err != nil {
+					return nil, err
+				}
+				runningStep := state.Steps[stepID]
+				results = append(results, snapshotResult(runningStep))
+				emitStepUpdate(req, state, runningStep)
+				progress = true
 
 				executed, err := executeStep(ctx, state, stepID, req, stepRunner)
 				if err != nil {
@@ -413,7 +412,7 @@ func validTransition(from, to runtime.StepStatus) bool {
 	case runtime.StepPending:
 		return to == runtime.StepReady || to == runtime.StepBlocked
 	case runtime.StepReady:
-		return to == runtime.StepRunning || to == runtime.StepCancelled
+		return to == runtime.StepRunning || to == runtime.StepWaitingApproval || to == runtime.StepCancelled
 	case runtime.StepRunning:
 		return to == runtime.StepCompleted || to == runtime.StepFailed || to == runtime.StepWaitingApproval || to == runtime.StepCancelled
 	case runtime.StepWaitingApproval:

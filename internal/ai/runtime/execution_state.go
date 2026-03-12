@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/ai/planner"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -87,19 +88,20 @@ type PendingApproval struct {
 }
 
 type ExecutionState struct {
-	TraceID         string               `json:"trace_id"`
-	SessionID       string               `json:"session_id"`
-	PlanID          string               `json:"plan_id,omitempty"`
-	TurnID          string               `json:"turn_id,omitempty"`
-	Message         string               `json:"message,omitempty"`
-	Status          ExecutionStatus      `json:"status"`
-	Phase           string               `json:"phase,omitempty"`
-	RuntimeContext  ContextSnapshot      `json:"runtime_context,omitempty"`
-	Steps           map[string]StepState `json:"steps,omitempty"`
-	ActiveBlockIDs  []string             `json:"active_block_ids,omitempty"`
-	PendingApproval *PendingApproval     `json:"pending_approval,omitempty"`
-	CreatedAt       time.Time            `json:"created_at"`
-	UpdatedAt       time.Time            `json:"updated_at"`
+	TraceID         string                `json:"trace_id"`
+	SessionID       string                `json:"session_id"`
+	PlanID          string                `json:"plan_id,omitempty"`
+	Plan            planner.ExecutionPlan `json:"plan,omitempty"`
+	TurnID          string                `json:"turn_id,omitempty"`
+	Message         string                `json:"message,omitempty"`
+	Status          ExecutionStatus       `json:"status"`
+	Phase           string                `json:"phase,omitempty"`
+	RuntimeContext  ContextSnapshot       `json:"runtime_context,omitempty"`
+	Steps           map[string]StepState  `json:"steps,omitempty"`
+	ActiveBlockIDs  []string              `json:"active_block_ids,omitempty"`
+	PendingApproval *PendingApproval      `json:"pending_approval,omitempty"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
 type ExecutionStore struct {

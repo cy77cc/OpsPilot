@@ -133,70 +133,15 @@ func newChatModel(ctx context.Context, opts chatModelOptions) (einomodel.ToolCal
 //
 // 返回:
 //   - error: 健康检查错误。
-func CheckModelHealth(ctx context.Context, model einomodel.ToolCallingChatModel) error {
-	if model == nil {
-		return fmt.Errorf("chat model not initialized")
+func CheckModelHealth(ctx context.Context) error {
+	model, err := newChatModel(ctx, chatModelOptions{
+		timeout: 10*time.Second,
+		thinking: false,
+		temp: 0,
+	})
+	if err != nil {
+		return err
 	}
-	_, err := model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
+	_, err = model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
 	return err
-}
-
-// CheckBaseModelHealth 检查基础聊天模型的健康状态。
-func CheckBaseModelHealth(ctx context.Context, model einomodel.BaseChatModel) error {
-	if model == nil {
-		return fmt.Errorf("chat model not initialized")
-	}
-	_, err := model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
-	return err
-}
-
-// CheckStartupModelHealth 在启动时检查所有模型的健康状态。
-// 检查 planner、rewrite、expert、summarizer 四个模型。
-// 返回每个模型的健康检查结果。
-func CheckStartupModelHealth(ctx context.Context) []StartupModelHealthResult {
-	checks := []struct {
-		name    string
-		factory func(context.Context) (einomodel.BaseChatModel, error)
-	}{
-		{
-			name: "planner",
-			factory: func(ctx context.Context) (einomodel.BaseChatModel, error) {
-				return NewToolCallingChatModel(ctx)
-			},
-		},
-		{
-			name:    "rewrite",
-			factory: NewRewriteChatModel,
-		},
-		{
-			name: "expert",
-			factory: func(ctx context.Context) (einomodel.BaseChatModel, error) {
-				return NewToolCallingChatModel(ctx)
-			},
-		},
-		{
-			name:    "summarizer",
-			factory: NewSummarizerChatModel,
-		},
-	}
-
-	results := make([]StartupModelHealthResult, 0, len(checks))
-	for _, check := range checks {
-		model, err := check.factory(ctx)
-		if err != nil {
-			results = append(results, StartupModelHealthResult{
-				Name:  check.name,
-				Model: strings.TrimSpace(config.CFG.LLM.Model),
-				Err:   err,
-			})
-			continue
-		}
-		err = CheckBaseModelHealth(ctx, model)
-		results = append(results, StartupModelHealthResult{
-			Name:  check.name,
-			Model: strings.TrimSpace(config.CFG.LLM.Model),
-			Err:   err,
-		})
-	}
-	return results
 }

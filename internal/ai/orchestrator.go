@@ -544,6 +544,16 @@ func (o *Orchestrator) ResumeStream(ctx context.Context, req ResumeRequest, emit
 	res := buildResumeResult(req, result)
 	if !req.Approved || res.Status == "noop" || res.Status == "missing" || res.Status == "idempotent" || res.Status == "unavailable" {
 		emitDeltaChunks(emit, projector, meta, res.Message)
+	} else if result != nil {
+		approval := result.Approval()
+		if approval == nil || strings.TrimSpace(approval.Status) == "" || strings.TrimSpace(approval.Status) == "approved" {
+			planSnapshot := planFromExecutionState(result.State)
+			if planSnapshot != nil {
+				if _, summaryErr := o.emitExecutionSummary(ctx, result.State.Message, planSnapshot, result, emit, projector, meta); summaryErr != nil {
+					projector.SetState("error", "summary")
+				}
+			}
+		}
 	}
 	projector.SetState(turnStateStatus(result.State.Status), firstNonEmpty(resultPhase(result), "execute"))
 	projector.Done(turnStateStatus(result.State.Status), firstNonEmpty(resultPhase(result), "execute"))
@@ -758,6 +768,37 @@ func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritt
 			projector.SetState("streaming", "execute")
 			emitStageDelta(emit, projector, meta, "plan", "success", firstNonEmpty(decision.Narrative, decision.Plan.Narrative), "", "")
 			if o.executor != nil {
+				if gatedStepID := firstGateablePlanStep(*decision.Plan); gatedStepID != "" {
+					gated, gateErr := o.executor.PrepareApprovalGate(ctx, executor.Request{
+						TraceID:   meta.TraceID,
+						SessionID: sessionID,
+						Message:   message,
+						Plan:      *decision.Plan,
+						RuntimeContext: runtime.ContextSnapshot{
+							Scene:       runtimeCtx.Scene,
+							Route:       runtimeCtx.Route,
+							ProjectID:   runtimeCtx.ProjectID,
+							CurrentPage: runtimeCtx.CurrentPage,
+							ResourceIDs: selectedResourceIDs(runtimeCtx.SelectedResources),
+						},
+						EventMeta: meta,
+						EmitEvent: func(name string, eventMeta events.EventMeta, data map[string]any) bool {
+							projector.ExecutionEvent(name, eventMeta, data)
+							emitEvent(emit, events.Name(name), eventMeta, data)
+							emitExecuteStageDelta(emit, projector, eventMeta, name, data)
+							return true
+						},
+					}, gatedStepID)
+					if gateErr != nil {
+						return "", gateErr
+					}
+					if gated != nil && gated.Approval() != nil && strings.TrimSpace(gated.Approval().Status) == "pending" {
+						projector.SetState("waiting_user", "execute")
+						waitingSummary := "此步骤需要你确认后继续执行。"
+						emitDeltaChunks(emit, projector, meta, waitingSummary)
+						return waitingSummary, nil
+					}
+				}
 				executed, execErr := o.executor.Run(ctx, executor.Request{
 					TraceID:   meta.TraceID,
 					SessionID: sessionID,
@@ -785,30 +826,11 @@ func (o *Orchestrator) planAndReply(ctx context.Context, message string, rewritt
 						emitDeltaChunks(emit, projector, meta, waitingSummary)
 						return waitingSummary, nil
 					}
-					projector.SetState("streaming", "summary")
-					emitStageDelta(emit, projector, meta, "summary", "loading", "正在思考并整理最终回答。", "", "")
-					summaryText, summaryErr := o.summarizeExecution(ctx, message, decision.Plan, executed, func(chunk string) {
-						projector.TextDelta("thinking:summary", "thinking", "summary", chunk)
-						emitEvent(emit, events.ThinkingDelta, meta, map[string]any{
-							"content_chunk": chunk,
-							"contentChunk":  chunk,
-						})
-					}, func(chunk string) {
-						projector.TextDelta("text:final", "text", "summary", chunk)
-						emitEvent(emit, events.Delta, meta, map[string]any{
-							"content_chunk": chunk,
-							"contentChunk":  chunk,
-						})
-					})
-					projector.CloseText("thinking:summary", summaryStageStatus(summaryErr))
-					projector.CloseText("text:final", summaryStageStatus(summaryErr))
-					emitEvent(emit, events.Summary, meta, map[string]any{
-						"status":  summaryStageStatus(summaryErr),
-						"summary": summaryText,
-					})
+					summaryText, summaryErr := o.emitExecutionSummary(ctx, message, decision.Plan, executed, emit, projector, meta)
 					if body := o.renderAndEmitFinalAnswer(decision.Plan, executed, summaryText, emit, meta); body != "" {
 						return body, nil
 					}
+					_ = summaryErr
 				}
 			}
 		}
@@ -824,6 +846,80 @@ func (o *Orchestrator) renderAndEmitFinalAnswer(plan *planner.ExecutionPlan, res
 	_ = emit
 	_ = meta
 	return strings.TrimSpace(summaryText)
+}
+
+func (o *Orchestrator) emitExecutionSummary(
+	ctx context.Context,
+	message string,
+	plan *planner.ExecutionPlan,
+	executed *executor.Result,
+	emit StreamEmitter,
+	projector *turnProjector,
+	meta events.EventMeta,
+) (string, error) {
+	projector.SetState("streaming", "summary")
+	emitStageDelta(emit, projector, meta, "summary", "loading", "正在思考并整理最终回答。", "", "")
+	summaryText, summaryErr := o.summarizeExecution(ctx, message, plan, executed, func(chunk string) {
+		projector.TextDelta("thinking:summary", "thinking", "summary", chunk)
+		emitEvent(emit, events.ThinkingDelta, meta, map[string]any{
+			"content_chunk": chunk,
+			"contentChunk":  chunk,
+		})
+	}, func(chunk string) {
+		projector.TextDelta("text:final", "text", "summary", chunk)
+		emitEvent(emit, events.Delta, meta, map[string]any{
+			"content_chunk": chunk,
+			"contentChunk":  chunk,
+		})
+	})
+	projector.CloseText("thinking:summary", summaryStageStatus(summaryErr))
+	projector.CloseText("text:final", summaryStageStatus(summaryErr))
+	emitEvent(emit, events.Summary, meta, map[string]any{
+		"status":  summaryStageStatus(summaryErr),
+		"summary": summaryText,
+	})
+	return summaryText, summaryErr
+}
+
+func firstGateablePlanStep(plan planner.ExecutionPlan) string {
+	for _, step := range plan.Steps {
+		if len(step.DependsOn) != 0 {
+			continue
+		}
+		if executor.StepRequiresApproval(step.Mode, step.Risk) {
+			return strings.TrimSpace(step.StepID)
+		}
+	}
+	return ""
+}
+
+func planFromExecutionState(state runtime.ExecutionState) *planner.ExecutionPlan {
+	if strings.TrimSpace(state.Plan.PlanID) != "" {
+		planCopy := state.Plan
+		return &planCopy
+	}
+	if strings.TrimSpace(state.PlanID) == "" {
+		return nil
+	}
+	steps := make([]planner.PlanStep, 0, len(state.Steps))
+	for _, step := range state.Steps {
+		steps = append(steps, planner.PlanStep{
+			StepID:    step.StepID,
+			Title:     step.Title,
+			Expert:    step.Expert,
+			Intent:    step.Intent,
+			Task:      step.Task,
+			Input:     step.Input,
+			DependsOn: append([]string(nil), step.DependsOn...),
+			Mode:      step.Mode,
+			Risk:      step.Risk,
+		})
+	}
+	return &planner.ExecutionPlan{
+		PlanID: state.PlanID,
+		Goal:   state.Plan.Goal,
+		Steps:  steps,
+	}
 }
 
 // sessionMessages 获取会话的所有消息列表。

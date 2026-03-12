@@ -137,9 +137,15 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
     return [];
   }
 
+  type RenderableBlock = AssistantMessageBlock & {
+    __renderOrder: number;
+    __position: number;
+  };
+
   return [...turnBlocks]
     .sort((a, b) => a.position - b.position)
-    .map((block) => {
+    .map<RenderableBlock>((block) => {
+      const renderOrder = blockRenderOrder(block.type);
       switch (block.type) {
         case 'text':
           return {
@@ -147,14 +153,18 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             type: 'markdown',
             content: block.content || '',
             streaming: block.streaming,
-          } satisfies MarkdownBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'thinking':
           return {
             id: block.id,
             type: 'thinking',
             content: block.content || '',
             isStreaming: block.streaming,
-          } satisfies ThinkingBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'status':
           return {
             id: block.id,
@@ -162,7 +172,9 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             content: block.content || stringifyBlockPayload(block.data),
             status: block.status,
-          } satisfies StatusBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'plan':
           return {
             id: block.id,
@@ -170,7 +182,9 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             content: block.content,
             payload: block.data,
-          } satisfies PlanBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'tool':
           return {
             id: block.id,
@@ -178,14 +192,18 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             status: block.status,
             payload: block.data,
-          } satisfies ToolExecutionBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'approval':
           return {
             id: block.id,
             type: 'approval',
             title: block.title,
             payload: block.data,
-          } satisfies ApprovalBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'evidence':
           return {
             id: block.id,
@@ -193,27 +211,45 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             items: extractEvidenceItems(block),
             payload: block.data,
-          } satisfies EvidenceBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'error':
           return {
             id: block.id,
             type: 'error',
             title: block.title,
             content: block.content || stringifyBlockPayload(block.data),
-          } satisfies ErrorBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         case 'recommendations':
           return {
             id: block.id,
             type: 'recommendations',
             recommendations: ((block.data?.recommendations || block.data?.items || []) as EmbeddedRecommendation[]),
-          } satisfies RecommendationsBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
         default:
           return {
             id: block.id,
             type: 'fallback',
             content: block.content || stringifyBlockPayload(block.data),
-          } satisfies FallbackBlock;
+            __renderOrder: renderOrder,
+            __position: block.position,
+          };
       }
+    })
+    .sort((a, b) => (
+      a.__renderOrder - b.__renderOrder
+      || (a.__position - b.__position)
+    ))
+    .map((block) => {
+      const next = { ...block };
+      delete next.__renderOrder;
+      delete next.__position;
+      return next as AssistantMessageBlock;
     });
 }
 
@@ -244,4 +280,28 @@ function extractEvidenceItems(block: TurnBlock): string[] {
   }
   const payload = stringifyBlockPayload(block.data);
   return payload ? [payload] : [];
+}
+
+function blockRenderOrder(type: TurnBlock['type']): number {
+  switch (type) {
+    case 'approval':
+      return 10;
+    case 'status':
+    case 'plan':
+      return 20;
+    case 'tool':
+      return 30;
+    case 'evidence':
+      return 40;
+    case 'error':
+      return 45;
+    case 'text':
+      return 50;
+    case 'recommendations':
+      return 60;
+    case 'thinking':
+      return 70;
+    default:
+      return 99;
+  }
 }

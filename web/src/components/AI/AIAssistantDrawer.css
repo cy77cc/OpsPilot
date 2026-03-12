@@ -267,6 +267,161 @@
   }
 }
 
+.ai-confirmation-panel {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 168, 0, 0.22);
+  background: linear-gradient(180deg, rgba(255, 251, 230, 0.98) 0%, rgba(255, 247, 209, 0.92) 100%);
+  box-shadow: 0 10px 28px rgba(54, 63, 82, 0.08);
+}
+
+.confirmation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.confirmation-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.confirmation-kicker {
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ad6800;
+}
+
+.confirmation-title {
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: #3b2f00;
+}
+
+.confirmation-subtitle {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(59, 47, 0, 0.72);
+}
+
+.confirmation-risk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c2d12;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(124, 45, 18, 0.12);
+}
+
+.confirmation-risk.high {
+  color: #9f1239;
+  border-color: rgba(159, 18, 57, 0.14);
+}
+
+.confirmation-risk.medium {
+  color: #9a3412;
+}
+
+.confirmation-risk.low {
+  color: #166534;
+}
+
+.confirmation-description {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #43320b;
+}
+
+.confirmation-details {
+  margin-top: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 10px 12px;
+}
+
+.confirmation-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a5a00;
+}
+
+.confirmation-details-content {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #5b4a18;
+}
+
+.confirmation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ai-confirmation-compact {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.ai-confirmation-compact.submitting {
+  border-color: rgba(24, 144, 255, 0.18);
+  background: rgba(240, 247, 255, 0.98);
+}
+
+.ai-confirmation-compact.failed {
+  border-color: rgba(255, 77, 79, 0.2);
+  background: rgba(255, 241, 240, 0.98);
+}
+
+.confirmation-compact-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.confirmation-compact-title {
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.confirmation-compact-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(31, 41, 55, 0.72);
+}
+
+.confirmation-compact-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* 确认面板 */
 .ai-confirmation-panel {
   margin: 6px 0 12px;

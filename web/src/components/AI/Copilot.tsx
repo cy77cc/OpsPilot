@@ -177,8 +177,16 @@ function buildToolDetailID(data: Record<string, unknown>): string {
   }
   const stepID = String(data.step_id || '').trim();
   const toolName = String(data.tool_name || data.tool || data.expert || 'tool').trim();
-  const summary = String(data.summary || data.error || '').trim();
-  return [stepID || 'step', toolName || 'tool', summary || 'event'].join(':');
+  return ['tool', stepID || 'step', toolName || 'tool'].join(':');
+}
+
+function buildStepDetailID(data: Record<string, unknown>): string {
+  const stepID = String(data.step_id || '').trim();
+  if (stepID) {
+    return `step:${stepID}`;
+  }
+  const title = String(data.title || data.summary || '').trim();
+  return `step:${title || 'current'}`;
 }
 
 function buildApprovalStatusPayload(
@@ -237,6 +245,64 @@ function renderThoughtContent(content?: string, details?: ThoughtStageDetailItem
   });
   const segments = [summary, ...detailLines].filter(Boolean);
   return segments.length > 0 ? segments.join('\n') : undefined;
+}
+
+function buildExecutionDetailContent(
+  type: 'step' | 'tool_call' | 'tool_result',
+  data: Record<string, unknown>,
+): string | undefined {
+  const lines: string[] = [];
+  const title = String(data.title || data.summary || data.user_visible_summary || '').trim();
+  const target = String(data.target || data.host_id || data.resource || '').trim();
+  const toolName = String(data.tool_name || data.tool || '').trim();
+  const expert = String(data.expert || '').trim();
+  const status = String(data.status || '').trim();
+  const error = String(data.error || '').trim();
+  const result = data.result && typeof data.result === 'object' ? data.result as Record<string, unknown> : undefined;
+  const latency = typeof result?.latency_ms === 'number' ? `${result.latency_ms}ms` : '';
+  const resultError = typeof result?.error === 'string' ? result.error : '';
+
+  if (type === 'step' && title) {
+    lines.push(`步骤: ${title}`);
+  }
+  if (type !== 'step' && toolName) {
+    lines.push(`工具: ${toolName}`);
+  }
+  if (target) {
+    lines.push(`目标: ${target}`);
+  }
+  if (expert && type === 'step') {
+    lines.push(`专家: ${expert}`);
+  }
+  if (status && type === 'step') {
+    lines.push(`状态: ${status}`);
+  }
+  if (title && type !== 'step') {
+    lines.push(title);
+  }
+  if (error) {
+    lines.push(`结果: ${error}`);
+  } else if (resultError) {
+    lines.push(`结果: ${resultError}`);
+  } else if (type === 'tool_result') {
+    lines.push(`结果: ${result?.ok === false ? '执行失败' : '执行完成'}`);
+  }
+  if (latency) {
+    lines.push(`耗时: ${latency}`);
+  }
+
+  return lines.filter(Boolean).join('\n') || undefined;
+}
+
+function resolveDefaultExpandedThoughtKeys(
+  stages: ThoughtStageItem[],
+  opts: { restored?: boolean; streaming?: boolean },
+): string[] {
+  if (opts.restored || !opts.streaming) {
+    return [];
+  }
+  const active = stages.filter((item) => item.status === 'loading').map((item) => item.key);
+  return active.length > 0 ? [active[active.length - 1]] : [];
 }
 
 function upsertThoughtDetail(
@@ -309,6 +375,7 @@ const AssistantMessage: React.FC<{
   thoughtChain?: ThoughtStageItem[];
   rawEvidence?: string[];
   isStreaming?: boolean;
+  restored?: boolean;
   showActions?: boolean;
   displayMode: DisplayMode;
   reducedMotion: boolean;
@@ -324,6 +391,7 @@ const AssistantMessage: React.FC<{
   thoughtChain,
   rawEvidence,
   isStreaming,
+  restored,
   showActions = true,
   displayMode,
   reducedMotion,
@@ -336,6 +404,10 @@ const AssistantMessage: React.FC<{
   const chainItems = useMemo(
     () => visibleThoughtChain(thoughtChain),
     [thoughtChain],
+  );
+  const defaultExpandedKeys = useMemo(
+    () => resolveDefaultExpandedThoughtKeys(chainItems, { restored, streaming: Boolean(isStreaming) }),
+    [chainItems, isStreaming, restored],
   );
   const showThinking = useMemo(
     () => Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading')),
@@ -370,7 +442,7 @@ const AssistantMessage: React.FC<{
               collapsible: item.collapsible,
               blink: item.blink,
             }))}
-            defaultExpandedKeys={[]}
+            defaultExpandedKeys={defaultExpandedKeys}
           />
         </div>
       )}
@@ -847,19 +919,28 @@ export const Copilot: React.FC<CopilotProps> = ({
         }));
       },
       onStepUpdate: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+        patchAssistantMessage(conversationKey, assistantId, (message) => {
+          const nextStatus = normalizeThoughtStatus(data.status as string | undefined, 'loading');
+          const nextStage = upsertThoughtStage(message.thoughtChain || [], {
             key: 'execute',
             title: '调用专家执行',
-            status: normalizeThoughtStatus(data.status as string | undefined, 'loading'),
-            description: buildStageDescription('execute', normalizeThoughtStatus(data.status as string | undefined, 'loading'), data),
+            status: nextStatus,
+            description: buildStageDescription('execute', nextStatus, data),
             content: appendStageContent(
               (message.thoughtChain || []).find((item) => item.key === 'execute')?.content,
               buildStageMilestone('execute', 'event', data),
             ),
-          }),
-        }));
+          });
+          return {
+            ...message,
+            thoughtChain: upsertThoughtDetail(nextStage, 'execute', {
+              id: buildStepDetailID(data),
+              label: String(data.title || '当前步骤'),
+              status: nextStatus,
+              content: buildExecutionDetailContent('step', data),
+            }),
+          };
+        });
       },
       onToolCall: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
@@ -871,7 +952,7 @@ export const Copilot: React.FC<CopilotProps> = ({
             description: buildStageDescription('execute', 'loading', data),
             content: appendStageContent(
               (message.thoughtChain || []).find((item) => item.key === 'execute')?.content,
-              String(data.summary || ''),
+              String(data.summary || data.user_visible_summary || ''),
             ),
           });
           return {
@@ -880,7 +961,7 @@ export const Copilot: React.FC<CopilotProps> = ({
               id: detailID,
               label: String(data.tool_name || data.expert || 'tool'),
               status: 'loading',
-              content: String(data.summary || ''),
+              content: buildExecutionDetailContent('tool_call', data),
             }),
           };
         });
@@ -896,7 +977,7 @@ export const Copilot: React.FC<CopilotProps> = ({
               id: detailID,
               label: String(data.tool_name || data.expert || 'tool'),
               status,
-              content: String(data.error || data.summary || ''),
+              content: buildExecutionDetailContent('tool_result', data),
             }),
           };
         });
@@ -1072,6 +1153,30 @@ export const Copilot: React.FC<CopilotProps> = ({
     };
   }, [patchAssistantMessage]);
 
+  const streamAssistantReply = useCallback(async (
+    conversationKey: string,
+    assistantId: string,
+    messageText: string,
+  ) => {
+    abortControllerRef.current = new AbortController();
+    try {
+      await aiApi.chatStream(
+        {
+          sessionId,
+          message: messageText,
+          context: { scene },
+        },
+        createStreamHandlers(conversationKey, assistantId),
+        abortControllerRef.current.signal,
+      );
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        message.error('请求失败，请稍后重试');
+      }
+      setIsLoading(false);
+    }
+  }, [createStreamHandlers, scene, sessionId]);
+
   // 发送消息
   const handleSubmit = useCallback(async (val: string) => {
     if (!val.trim() || isLoading) return;
@@ -1109,27 +1214,8 @@ export const Copilot: React.FC<CopilotProps> = ({
         },
       ],
     });
-
-    // 创建 AbortController
-    abortControllerRef.current = new AbortController();
-
-    try {
-      await aiApi.chatStream(
-        {
-          sessionId,
-          message: trimmed,
-          context: { scene },
-        },
-        createStreamHandlers(conversationKey, assistantId),
-        abortControllerRef.current.signal,
-      );
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        message.error('请求失败，请稍后重试');
-      }
-      setIsLoading(false);
-    }
-  }, [activeConversation?.label, activeKey, createStreamHandlers, isLoading, scene, sessionId]);
+    await streamAssistantReply(conversationKey, assistantId, trimmed);
+  }, [activeConversation?.label, activeKey, isLoading, streamAssistantReply]);
 
   // 中止请求
   const handleAbort = useCallback(() => {
@@ -1352,12 +1438,21 @@ export const Copilot: React.FC<CopilotProps> = ({
       return;
     }
 
-    // 移除当前助手消息
-    dispatch({ type: 'remove_message', key: activeKey, messageId: assistantMsgId });
+    setIsLoading(true);
+    patchAssistantMessage(activeKey, assistantMsgId, (message) => ({
+      ...message,
+      content: '',
+      thinking: undefined,
+      recommendations: undefined,
+      rawEvidence: undefined,
+      thoughtChain: [],
+      traceId: undefined,
+      turn: createAssistantTurn(`pending-${assistantMsgId}`, { status: 'streaming', phase: 'rewrite' }),
+      restored: false,
+    }));
 
-    // 重新发送用户消息
-    await handleSubmit(userMessage.content);
-  }, [messages, activeKey, isLoading, handleSubmit]);
+    await streamAssistantReply(activeKey, assistantMsgId, userMessage.content);
+  }, [activeKey, isLoading, messages, patchAssistantMessage, streamAssistantReply]);
 
   // 处理推荐点击
   const handleRecommendationSelect = useCallback((prompt: string) => {
@@ -1387,6 +1482,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         recommendations={msg.recommendations}
         thoughtChain={msg.thoughtChain}
         rawEvidence={msg.rawEvidence}
+        restored={msg.restored}
         displayMode={displayMode}
         reducedMotion={reducedMotion}
         isStreaming={isStreaming || (isCurrentStreaming && !!msg.thinking && !msg.content)}

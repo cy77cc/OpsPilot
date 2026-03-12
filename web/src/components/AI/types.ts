@@ -137,6 +137,7 @@ export interface ChatMessage {
   thoughtChain?: ThoughtStageItem[];
   traceId?: string;
   turn?: ChatTurn;
+  restored?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

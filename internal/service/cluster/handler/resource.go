@@ -395,9 +395,6 @@ func (h *Handler) getClient(cluster *model.Cluster) (*kubernetes.Clientset, stri
 		}
 		return cli, "live", nil
 	}
-	if h.svcCtx.Clientset != nil {
-		return h.svcCtx.Clientset, "live", nil
-	}
 	return nil, "none", fmt.Errorf("kubernetes client unavailable")
 }
 

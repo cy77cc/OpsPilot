@@ -100,4 +100,27 @@ describe('AssistantMessageBlocks', () => {
     expect(screen.getByRole('button', { name: /需要确认，确认执行/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /需要确认，取消/i })).toBeInTheDocument();
   });
+
+  it('renders a lightweight retry state when approval submission fails', () => {
+    render(
+      <AssistantMessageBlocks
+        blocks={[
+          {
+            id: 'approval-failed',
+            type: 'approval',
+            payload: {
+              title: '需要确认',
+              summary: '扩容 deployment',
+              risk: 'high',
+              status: 'failed',
+              error_message: '审批提交失败',
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText('审批提交失败').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+  });
 });

@@ -18,6 +18,7 @@ export interface RestoredConversation {
     rawEvidence?: string[];
     status?: string;
     turn?: ChatTurn;
+    restored?: boolean;
     createdAt: string;
   }>;
 }
@@ -112,6 +113,7 @@ function toRestoredConversation(session: AISession): RestoredConversation {
           rawEvidence: turn.role === 'assistant' ? summary.rawEvidence : undefined,
           status: hydratedTurn.status,
           turn: hydratedTurn,
+          restored: true,
           createdAt: turn.createdAt,
         };
       }),
@@ -134,6 +136,7 @@ function toRestoredConversation(session: AISession): RestoredConversation {
         recommendations: (m.recommendations || []) as EmbeddedRecommendation[],
         rawEvidence: (m.rawEvidence || []) as string[],
         status: m.status,
+        restored: true,
         createdAt: m.timestamp,
       };
     }),

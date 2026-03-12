@@ -43,6 +43,7 @@ describe('useConversationRestore', () => {
             thinking: 'summary thinking',
             thoughtChain: [],
             rawEvidence: ['tool output'],
+            restored: true,
           }),
         ],
       }));
@@ -172,6 +173,7 @@ describe('useConversationRestore', () => {
           expect.objectContaining({
             role: 'assistant',
             content: '扩容完成',
+            restored: true,
             turn: expect.objectContaining({ id: 'turn-assistant' }),
           }),
         ],

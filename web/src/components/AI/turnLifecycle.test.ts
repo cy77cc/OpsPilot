@@ -7,6 +7,7 @@ import {
   getTurnBlocksForDisplay,
   projectTurnSummary,
 } from './turnLifecycle';
+import { normalizeTurnBlocks } from './messageBlocks';
 
 describe('turnLifecycle', () => {
   it('projects block deltas into the same assistant turn summary', () => {
@@ -115,5 +116,39 @@ describe('turnLifecycle', () => {
         summary: '请确认创建定时任务',
       },
     });
+  });
+
+  it('orders approval, execution, and final answer blocks by conversation hierarchy', () => {
+    const turn = {
+      id: 'turn-5',
+      role: 'assistant' as const,
+      status: 'streaming' as const,
+      phase: 'execute',
+      blocks: [
+        {
+          id: 'text-1',
+          type: 'text' as const,
+          position: 3,
+          content: '任务已创建',
+        },
+        {
+          id: 'tool-1',
+          type: 'tool' as const,
+          position: 2,
+          data: { tool_name: 'host_batch_exec_apply' },
+        },
+        {
+          id: 'approval-1',
+          type: 'approval' as const,
+          position: 1,
+          data: { title: '执行前确认' },
+        },
+      ],
+      createdAt: '2026-03-12T00:00:00Z',
+      updatedAt: '2026-03-12T00:00:00Z',
+    };
+
+    const blocks = normalizeTurnBlocks(getTurnBlocksForDisplay(turn, 'normal', false));
+    expect(blocks.map((block) => block.type)).toEqual(['approval', 'tool', 'markdown']);
   });
 });

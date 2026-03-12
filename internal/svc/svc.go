@@ -6,7 +6,6 @@ package svc
 
 import (
 	"context"
-	"path/filepath"
 	"time"
 
 	"github.com/casbin/casbin/v2"
@@ -21,15 +20,10 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 // ServiceContext 封装应用程序运行时依赖。
 type ServiceContext struct {
-	Clientset      *kubernetes.Clientset       // K8s 客户端
 	DB             *gorm.DB                    // GORM 数据库实例
 	Rdb            redis.UniversalClient       // Redis 客户端
 	Cache          *expirable.LRU[string, any] // 本地缓存 (LRU)
@@ -55,22 +49,14 @@ func MustNewServiceContext() *ServiceContext {
 	if err != nil {
 		logger.L().Warn("Failed to initialize devops", logger.Error(err))
 	}
-	for _, result := range ai.CheckStartupModelHealth(ctx) {
-		fields := []logger.Field{
-			logger.String("stage", result.Name),
-			logger.String("provider", config.CFG.LLM.Provider),
-			logger.String("base_url", aiBaseURL()),
-			logger.String("model", firstNonEmpty(result.Model, aiModel())),
-		}
-		if result.Err != nil {
-			fields = append(fields, logger.Error(result.Err))
-			logger.L().Warn("AI model startup health check failed", fields...)
-			continue
-		}
-		logger.L().Info("AI model startup health check passed", fields...)
-	}
 
-	clientset := MustNewClientset()
+	if err := ai.CheckModelHealth(ctx); err != nil {
+		logger.L().Warn("Failed to check AI model health",
+			logger.String("base_url", aiBaseURL()),
+			logger.String("model", aiModel()),
+			logger.Error(err),
+		)
+	}
 
 	db := storage.MustNewDB()
 	rdb := storage.MustNewRdb()
@@ -101,7 +87,6 @@ func MustNewServiceContext() *ServiceContext {
 	metricsPusher := initMetricsPusher()
 
 	return &ServiceContext{
-		Clientset:      clientset,
 		DB:             db,
 		Rdb:            rdb,
 		Cache:          l1,
@@ -120,16 +105,6 @@ func aiBaseURL() string {
 // aiModel 返回 AI 模型名称。
 func aiModel() string {
 	return config.CFG.LLM.Model
-}
-
-// firstNonEmpty 返回第一个非空字符串。
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 // initPrometheusClient 初始化 Prometheus 客户端。
@@ -169,37 +144,4 @@ func initMetricsPusher() *prominfra.MetricsPusher {
 	}
 	logger.L().Info("MetricsPusher initialized", logger.String("pushgateway_url", pushgatewayURL))
 	return pusher
-}
-
-// MustNewClientset 创建 K8s 客户端，如果失败则返回 nil。
-//
-// 尝试顺序：
-//  1. 从 ~/.kube/config 加载 kubeconfig
-//  2. 使用集群内配置（Pod 内运行时）
-func MustNewClientset() *kubernetes.Clientset {
-	// Try to load kubeconfig from home directory
-	var kubeconfig string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = filepath.Join(home, ".kube", "config")
-	}
-
-	// Try to build config from flags (defaulting to kubeconfig path)
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		// Fallback to in-cluster config
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			logger.L().Warn("Failed to create K8s config (neither kubeconfig nor in-cluster)", logger.Error(err))
-			return nil
-		}
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		logger.L().Warn("Failed to create K8s clientset", logger.Error(err))
-		return nil
-	}
-
-	logger.L().Info("Kubernetes Clientset initialized successfully")
-	return clientset
 }
