@@ -58,6 +58,7 @@ const authMethodConfig = {
 const ClusterImportWizard: React.FC = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
+  const [messageApi, messageContextHolder] = message.useMessage();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -77,10 +78,10 @@ const ClusterImportWizard: React.FC = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       form.setFieldsValue({ [field]: content });
-      message.success('文件已加载');
+      messageApi.success('文件已加载');
     };
     reader.onerror = () => {
-      message.error('读取文件失败');
+      messageApi.error('读取文件失败');
     };
     reader.readAsText(file);
     return false;
@@ -121,15 +122,15 @@ const ClusterImportWizard: React.FC = () => {
 
       // 基本验证
       if (isBlank(values.name)) {
-        message.error('请输入集群名称');
+        messageApi.error('请输入集群名称');
         return;
       }
       if (authMethod === 'kubeconfig' && isBlank(values.kubeconfig)) {
-        message.error('请输入或上传 kubeconfig');
+        messageApi.error('请输入或上传 kubeconfig');
         return;
       }
       if ((authMethod === 'certificate' || authMethod === 'token') && isBlank(values.endpoint)) {
-        message.error('请输入 API Server 地址');
+        messageApi.error('请输入 API Server 地址');
         return;
       }
 
@@ -138,13 +139,13 @@ const ClusterImportWizard: React.FC = () => {
       setValidationResult(res.data);
 
       if (res.data.valid) {
-        message.success('连接验证成功');
+        messageApi.success('连接验证成功');
       } else {
-        message.error(res.data.message);
+        messageApi.error(res.data.message);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '验证失败';
-      message.error(errorMsg);
+      messageApi.error(errorMsg);
       setValidationResult({ valid: false, message: errorMsg });
     } finally {
       setValidating(false);
@@ -156,7 +157,7 @@ const ClusterImportWizard: React.FC = () => {
       setLoading(true);
       const values = form.getFieldsValue(true);
       if (isBlank(values.name)) {
-        message.error('请输入集群名称');
+        messageApi.error('请输入集群名称');
         return;
       }
 
@@ -169,14 +170,14 @@ const ClusterImportWizard: React.FC = () => {
       switch (authMethod) {
         case 'kubeconfig':
           if (isBlank(values.kubeconfig)) {
-            message.error('请输入或上传 kubeconfig');
+            messageApi.error('请输入或上传 kubeconfig');
             return;
           }
           payload.kubeconfig = values.kubeconfig;
           break;
         case 'certificate':
           if (isBlank(values.endpoint) || isBlank(values.ca_cert) || isBlank(values.cert) || isBlank(values.key)) {
-            message.error('请完整填写证书认证所需参数');
+            messageApi.error('请完整填写证书认证所需参数');
             return;
           }
           payload.endpoint = values.endpoint;
@@ -186,7 +187,7 @@ const ClusterImportWizard: React.FC = () => {
           break;
         case 'token':
           if (isBlank(values.endpoint) || isBlank(values.token)) {
-            message.error('请完整填写 Token 认证所需参数');
+            messageApi.error('请完整填写 Token 认证所需参数');
             return;
           }
           payload.endpoint = values.endpoint;
@@ -199,9 +200,9 @@ const ClusterImportWizard: React.FC = () => {
       const res = await Api.cluster.importCluster(payload);
       setImportedCluster(res.data);
       setCurrentStep(5);
-      message.success('集群导入成功');
+      messageApi.success('集群导入成功');
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '导入失败');
+      messageApi.error(err instanceof Error ? err.message : '导入失败');
     } finally {
       setLoading(false);
     }
@@ -628,6 +629,7 @@ const ClusterImportWizard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {messageContextHolder}
       <div className="flex items-center gap-4">
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
           返回

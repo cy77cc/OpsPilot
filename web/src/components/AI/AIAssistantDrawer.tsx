@@ -49,7 +49,7 @@ export function AIAssistantDrawer({
       open={open}
       onClose={onClose}
       placement="right"
-      width={width}
+      size={width}
       closable={false}
       maskClosable
       rootClassName="ai-assistant-drawer"

@@ -35,6 +35,11 @@ import PageTransition from '../PageTransition';
 const { Header, Sider, Content } = Layout;
 type MenuItem = Required<MenuProps>['items'][number];
 
+const menuRouteOverrides: Record<string, string> = {
+  '/services/all': '/services',
+  '/deployment/history': '/deployment',
+};
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -90,7 +95,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       icon: <CloudServerOutlined />,
       label: t('menu.services'),
       children: [
-        { key: '/services', label: '全部服务' },
+        { key: '/services/all', label: '全部服务' },
         { key: '/services?service_kind=middleware', label: '中间件服务' },
         { key: '/services?service_kind=business', label: '业务服务' },
       ],
@@ -129,7 +134,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           children: [
             { key: '/deployment/overview', label: '发布概览' },
             { key: '/deployment/create', label: '创建发布' },
-            { key: '/deployment', label: '发布历史' },
+            { key: '/deployment/history', label: '发布历史' },
             { key: '/deployment/approvals', label: '审批中心' },
           ],
         },
@@ -221,7 +226,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   };
 
   const handleMenuClick = (key: string) => {
-    navigate(key);
+    navigate(menuRouteOverrides[key] || key);
     if (isMobile) {
       setMobileDrawerOpen(false);
     }
