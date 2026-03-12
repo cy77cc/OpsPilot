@@ -6,6 +6,7 @@ package rewrite
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -29,7 +30,7 @@ func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Rewriter, 
 		return nil, err
 	}
 	return &Rewriter{
-		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}),
+		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true}),
 	}, nil
 }
 
@@ -37,8 +38,8 @@ func runADKRewrite(ctx context.Context, runner *adk.Runner, input string, onDelt
 	if runner == nil {
 		return "", fmt.Errorf("rewrite ADK runner is not configured")
 	}
-	iter := runner.Query(ctx, input)
-	var last string
+	iter := runner.Run(ctx, []adk.Message{schema.UserMessage(input)})
+	var final string
 	var streamed string
 	for {
 		event, ok := iter.Next()
@@ -51,37 +52,66 @@ func runADKRewrite(ctx context.Context, runner *adk.Runner, input string, onDelt
 		if event.Err != nil {
 			return "", event.Err
 		}
-		msg, _, err := adk.GetMessage(event)
-		if err != nil || msg == nil {
+		if event.Output == nil || event.Output.MessageOutput == nil {
 			continue
 		}
-		if msg.Role == schema.Assistant {
-			content := strings.TrimSpace(msg.Content)
-			last = content
+		output := event.Output.MessageOutput
+		if output.IsStreaming && output.MessageStream != nil {
+			for {
+				msg, err := output.MessageStream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					return "", err
+				}
+				if msg == nil || msg.Role != schema.Assistant {
+					continue
+				}
+				content := msg.Content
+				final = mergeStreamContent(final, content)
+				streamed = emitContentDelta(streamed, content, onDelta)
+			}
+			continue
+		}
+		msg := output.Message
+		if msg != nil && msg.Role == schema.Assistant {
+			content := msg.Content
+			final = mergeStreamContent(final, content)
 			streamed = emitContentDelta(streamed, content, onDelta)
 		}
 	}
-	if last == "" {
+	final = strings.TrimSpace(final)
+	if final == "" {
 		return "", fmt.Errorf("rewrite stage produced empty output")
 	}
-	return last, nil
+	return final, nil
 }
 
 func emitContentDelta(previous, current string, onDelta func(string)) string {
 	if onDelta == nil {
 		return current
 	}
-	current = strings.TrimSpace(current)
-	previous = strings.TrimSpace(previous)
 	if current == "" || current == previous {
 		return current
 	}
 	if previous != "" && strings.HasPrefix(current, previous) {
-		if delta := strings.TrimSpace(current[len(previous):]); delta != "" {
-			onDelta(delta)
-		}
+		onDelta(current[len(previous):])
 		return current
 	}
 	onDelta(current)
 	return current
+}
+
+func mergeStreamContent(previous, current string) string {
+	if current == "" {
+		return previous
+	}
+	if previous == "" {
+		return current
+	}
+	if strings.HasPrefix(current, previous) {
+		return current
+	}
+	return previous + current
 }

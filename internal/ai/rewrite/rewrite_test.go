@@ -6,6 +6,56 @@ import (
 	"testing"
 )
 
+func TestEmitContentDeltaSupportsIncrementalChunks(t *testing.T) {
+	var emitted []string
+	aggregated := ""
+	aggregated = emitContentDelta(aggregated, "先看", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	aggregated = emitContentDelta(aggregated, "执行证据", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	if aggregated != "执行证据" {
+		t.Fatalf("aggregated = %q, want latest chunk snapshot", aggregated)
+	}
+	if len(emitted) != 2 || emitted[0] != "先看" || emitted[1] != "执行证据" {
+		t.Fatalf("emitted = %#v", emitted)
+	}
+}
+
+func TestEmitContentDeltaSupportsCumulativeSnapshotsWithWhitespace(t *testing.T) {
+	var emitted []string
+	aggregated := ""
+	aggregated = emitContentDelta(aggregated, "hello", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	aggregated = emitContentDelta(aggregated, "hello world", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	if aggregated != "hello world" {
+		t.Fatalf("aggregated = %q", aggregated)
+	}
+	if len(emitted) != 2 || emitted[0] != "hello" || emitted[1] != " world" {
+		t.Fatalf("emitted = %#v", emitted)
+	}
+}
+
+func TestMergeStreamContentSupportsIncrementalAndSnapshotChunks(t *testing.T) {
+	aggregated := ""
+	aggregated = mergeStreamContent(aggregated, "hello")
+	aggregated = mergeStreamContent(aggregated, " world")
+	if aggregated != "hello world" {
+		t.Fatalf("incremental aggregated = %q", aggregated)
+	}
+
+	aggregated = ""
+	aggregated = mergeStreamContent(aggregated, "hello")
+	aggregated = mergeStreamContent(aggregated, "hello world")
+	if aggregated != "hello world" {
+		t.Fatalf("snapshot aggregated = %q", aggregated)
+	}
+}
+
 func TestRewriteFailsExplicitlyWhenRunnerUnavailable(t *testing.T) {
 	_, err := New(nil).Rewrite(context.Background(), Input{Message: "查看所有主机的状态"})
 	if err == nil {

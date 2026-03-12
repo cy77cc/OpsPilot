@@ -9,6 +9,56 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/rewrite"
 )
 
+func TestEmitPlannerDeltaSupportsIncrementalChunks(t *testing.T) {
+	var emitted []string
+	aggregated := ""
+	aggregated = emitPlannerDelta(aggregated, "先看", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	aggregated = emitPlannerDelta(aggregated, "执行计划", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	if aggregated != "执行计划" {
+		t.Fatalf("aggregated = %q, want latest chunk snapshot", aggregated)
+	}
+	if len(emitted) != 2 || emitted[0] != "先看" || emitted[1] != "执行计划" {
+		t.Fatalf("emitted = %#v", emitted)
+	}
+}
+
+func TestEmitPlannerDeltaSupportsCumulativeSnapshotsWithWhitespace(t *testing.T) {
+	var emitted []string
+	aggregated := ""
+	aggregated = emitPlannerDelta(aggregated, "plan", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	aggregated = emitPlannerDelta(aggregated, "plan next step", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	if aggregated != "plan next step" {
+		t.Fatalf("aggregated = %q", aggregated)
+	}
+	if len(emitted) != 2 || emitted[0] != "plan" || emitted[1] != " next step" {
+		t.Fatalf("emitted = %#v", emitted)
+	}
+}
+
+func TestMergeDecisionOutputSupportsIncrementalAndSnapshotChunks(t *testing.T) {
+	aggregated := ""
+	aggregated = mergeDecisionOutput(aggregated, `{"type":"plan"`)
+	aggregated = mergeDecisionOutput(aggregated, `,"plan":{"plan_id":"p-1"}}`)
+	if aggregated != `{"type":"plan","plan":{"plan_id":"p-1"}}` {
+		t.Fatalf("incremental aggregated = %q", aggregated)
+	}
+
+	aggregated = ""
+	aggregated = mergeDecisionOutput(aggregated, `{"type":"plan"`)
+	aggregated = mergeDecisionOutput(aggregated, `{"type":"plan","plan":{"plan_id":"p-1"}}`)
+	if aggregated != `{"type":"plan","plan":{"plan_id":"p-1"}}` {
+		t.Fatalf("snapshot aggregated = %q", aggregated)
+	}
+}
+
 func TestPlanReturnsUnavailableWhenRunnerMissing(t *testing.T) {
 	_, err := New(nil).Plan(context.Background(), Input{
 		Message: "查看所有主机的状态",

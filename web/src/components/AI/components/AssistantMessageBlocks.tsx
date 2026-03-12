@@ -96,11 +96,7 @@ const StreamingMarkdownBlock: React.FC<{ content: string; streaming?: boolean }>
 };
 
 const ThinkingMessageBlock: React.FC<{ content: string; isStreaming?: boolean }> = ({ content, isStreaming }) => {
-  const [expanded, setExpanded] = useState(Boolean(isStreaming));
-
-  useEffect(() => {
-    setExpanded(Boolean(isStreaming));
-  }, [isStreaming]);
+  const [expanded, setExpanded] = useState(false);
 
   // 动态标题：思考中时显示渐变色动画效果
   const title = isStreaming ? (

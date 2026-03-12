@@ -210,6 +210,16 @@ export interface SSEPlanCreatedEvent {
   user_visible_summary?: string;
 }
 
+export interface SSEStageDeltaEvent {
+  stage?: string;
+  status?: string;
+  content_chunk?: string;
+  contentChunk?: string;
+  summary?: string;
+  title?: string;
+  replace?: boolean;
+}
+
 export interface SSEStepUpdateEvent {
   plan_id?: string;
   step_id?: string;
@@ -298,6 +308,7 @@ export interface AIChatStreamHandlers {
   onRewriteResult?: (payload: SSERewriteResultEvent) => void;
   onPlannerState?: (payload: SSEPlannerStateEvent) => void;
   onPlanCreated?: (payload: SSEPlanCreatedEvent) => void;
+  onStageDelta?: (payload: SSEStageDeltaEvent) => void;
   onStepUpdate?: (payload: SSEStepUpdateEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
@@ -570,6 +581,8 @@ export const aiApi = {
         handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
       } else if (eventType === 'plan_created') {
         handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
+      } else if (eventType === 'stage_delta') {
+        handlers.onStageDelta?.(payload as SSEStageDeltaEvent);
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(payload as SSEStepUpdateEvent);
       } else if (eventType === 'delta' || eventType === 'message') {
@@ -798,6 +811,8 @@ export const aiApi = {
         handlers.onTurnState?.(payload as SSETurnStateEvent);
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
+      } else if (eventType === 'stage_delta') {
+        handlers.onStageDelta?.(payload as SSEStageDeltaEvent);
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(payload as SSEStepUpdateEvent);
       } else if (eventType === 'tool_call') {

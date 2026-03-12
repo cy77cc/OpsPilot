@@ -6,6 +6,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -40,12 +41,12 @@ func NewWithADK(ctx context.Context, model einomodel.BaseChatModel, deps common.
 			},
 		},
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
 	return &Planner{
-		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}),
+		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true}),
 	}, nil
 }
 
@@ -54,8 +55,8 @@ func runADKPlanner(ctx context.Context, runner *adk.Runner, input string, onDelt
 	if runner == nil {
 		return "", fmt.Errorf("planner ADK runner is not configured")
 	}
-	iter := runner.Query(ctx, input)
-	var last string
+	iter := runner.Run(ctx, []adk.Message{schema.UserMessage(input)})
+	var final string
 	var streamed string
 	for {
 		event, ok := iter.Next()
@@ -68,36 +69,58 @@ func runADKPlanner(ctx context.Context, runner *adk.Runner, input string, onDelt
 		if event.Err != nil {
 			return "", event.Err
 		}
-		msg, _, err := adk.GetMessage(event)
-		if err != nil || msg == nil {
+		if event.Output == nil || event.Output.MessageOutput == nil {
+			continue
+		}
+		output := event.Output.MessageOutput
+		if output.IsStreaming && output.MessageStream != nil {
+			for {
+				msg, err := output.MessageStream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					return "", err
+				}
+				if msg == nil {
+					continue
+				}
+				if msg.Role == schema.Assistant {
+					streamed = emitPlannerDelta(streamed, msg.Content, onDelta)
+				}
+				if isDecisionOutput(msg) {
+					final = mergeDecisionOutput(final, msg.Content)
+				}
+			}
+			continue
+		}
+		msg := output.Message
+		if msg == nil {
 			continue
 		}
 		if msg.Role == schema.Assistant {
 			streamed = emitPlannerDelta(streamed, msg.Content, onDelta)
 		}
 		if isDecisionOutput(msg) {
-			last = strings.TrimSpace(msg.Content)
+			final = mergeDecisionOutput(final, msg.Content)
 		}
 	}
-	if last == "" {
+	final = strings.TrimSpace(final)
+	if final == "" {
 		return "", fmt.Errorf("planner stage produced empty output")
 	}
-	return last, nil
+	return final, nil
 }
 
 func emitPlannerDelta(previous, current string, onDelta func(string)) string {
 	if onDelta == nil {
-		return strings.TrimSpace(current)
+		return current
 	}
-	current = strings.TrimSpace(current)
-	previous = strings.TrimSpace(previous)
 	if current == "" || current == previous {
 		return current
 	}
 	if previous != "" && strings.HasPrefix(current, previous) {
-		if delta := strings.TrimSpace(current[len(previous):]); delta != "" {
-			onDelta(delta)
-		}
+		onDelta(current[len(previous):])
 		return current
 	}
 	onDelta(current)
@@ -129,4 +152,17 @@ func isDecisionToolName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func mergeDecisionOutput(previous, current string) string {
+	if current == "" {
+		return previous
+	}
+	if previous == "" {
+		return current
+	}
+	if strings.HasPrefix(current, previous) {
+		return current
+	}
+	return previous + current
 }

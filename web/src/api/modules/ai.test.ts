@@ -47,6 +47,7 @@ describe('aiApi.chatStream', () => {
       ok: true,
       body: buildStream([
         'event: rewrite_result\ndata: {"user_visible_summary":"rewrite ok"}\n\n',
+        'event: stage_delta\ndata: {"stage":"rewrite","status":"loading","content_chunk":"正在理解"}\n\n',
         'event: plan_created\ndata: {"user_visible_summary":"plan ok"}\n\n',
         'event: step_update\ndata: {"step_id":"step-1","status":"running","user_visible_summary":"executing"}\n\n',
         'event: thinking_delta\ndata: {"contentChunk":"thinking"}\n\n',
@@ -55,6 +56,7 @@ describe('aiApi.chatStream', () => {
     } as Response);
 
     const onRewriteResult = vi.fn();
+    const onStageDelta = vi.fn();
     const onPlanCreated = vi.fn();
     const onStepUpdate = vi.fn();
     const onThinkingDelta = vi.fn();
@@ -62,10 +64,11 @@ describe('aiApi.chatStream', () => {
 
     await aiApi.chatStream(
       { message: 'hi', context: { scene: 'global' } },
-      { onRewriteResult, onPlanCreated, onStepUpdate, onThinkingDelta, onSummary }
+      { onRewriteResult, onStageDelta, onPlanCreated, onStepUpdate, onThinkingDelta, onSummary }
     );
 
     expect(onRewriteResult).toHaveBeenCalledWith(expect.objectContaining({ user_visible_summary: 'rewrite ok' }));
+    expect(onStageDelta).toHaveBeenCalledWith(expect.objectContaining({ stage: 'rewrite', status: 'loading', content_chunk: '正在理解' }));
     expect(onPlanCreated).toHaveBeenCalledWith(expect.objectContaining({ user_visible_summary: 'plan ok' }));
     expect(onStepUpdate).toHaveBeenCalledWith(expect.objectContaining({ step_id: 'step-1', status: 'running' }));
     expect(onThinkingDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: 'thinking' }));

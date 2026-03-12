@@ -30,7 +30,7 @@ func NewWithADK(ctx context.Context, model einomodel.BaseChatModel) (*Summarizer
 		return nil, err
 	}
 	return &Summarizer{
-		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}),
+		runner: adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true}),
 	}, nil
 }
 
@@ -88,14 +88,12 @@ func runADKSummarizer(ctx context.Context, runner *adk.Runner, input []*schema.M
 }
 
 func emitSummaryDelta(previous, current string, onDelta func(string)) string {
-	current = strings.TrimSpace(current)
-	previous = strings.TrimSpace(previous)
 	if current == "" {
 		return previous
 	}
 	if onDelta == nil {
 		if previous != "" && !strings.HasPrefix(current, previous) {
-			return strings.TrimSpace(previous + current)
+			return previous + current
 		}
 		return current
 	}
@@ -103,11 +101,9 @@ func emitSummaryDelta(previous, current string, onDelta func(string)) string {
 		return current
 	}
 	if previous != "" && strings.HasPrefix(current, previous) {
-		if delta := strings.TrimSpace(current[len(previous):]); delta != "" {
-			onDelta(delta)
-		}
+		onDelta(current[len(previous):])
 		return current
 	}
 	onDelta(current)
-	return strings.TrimSpace(previous + current)
+	return previous + current
 }

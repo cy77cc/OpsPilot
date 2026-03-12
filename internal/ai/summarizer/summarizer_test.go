@@ -131,3 +131,20 @@ func TestEmitSummaryDeltaSupportsCumulativeSnapshots(t *testing.T) {
 		t.Fatalf("emitted = %#v", emitted)
 	}
 }
+
+func TestEmitSummaryDeltaPreservesWhitespaceInCumulativeSnapshots(t *testing.T) {
+	var emitted []string
+	aggregated := ""
+	aggregated = emitSummaryDelta(aggregated, "hello", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	aggregated = emitSummaryDelta(aggregated, "hello world", func(chunk string) {
+		emitted = append(emitted, chunk)
+	})
+	if aggregated != "hello world" {
+		t.Fatalf("aggregated = %q", aggregated)
+	}
+	if len(emitted) != 2 || emitted[0] != "hello" || emitted[1] != " world" {
+		t.Fatalf("emitted = %#v", emitted)
+	}
+}

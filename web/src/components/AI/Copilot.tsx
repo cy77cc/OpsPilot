@@ -26,7 +26,7 @@ import type { BubbleListRef } from '@ant-design/x/es/bubble';
 import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
-import type { ApprovalTicket, SSEDoneEvent } from '../../api/modules/ai';
+import type { ApprovalTicket, SSEDoneEvent, SSEStageDeltaEvent } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
 import type { ChatMessage, ChatTurn, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
@@ -136,6 +136,24 @@ function appendStageContent(current: string | undefined, next: string | undefine
 
 function visibleThoughtChain(stages: ThoughtStageItem[] | undefined): ThoughtStageItem[] {
   return (stages || []).filter((item) => item.key !== 'summary');
+}
+
+function finalizeThoughtStage(
+  stages: ThoughtStageItem[] | undefined,
+  key: ThoughtStageItem['key'],
+  status: ThoughtStageStatus,
+  description?: string,
+): ThoughtStageItem[] {
+  return (stages || []).map((item) => (
+    item.key === key
+      ? {
+          ...item,
+          status,
+          blink: false,
+          description: description ?? item.description,
+        }
+      : item
+  ));
 }
 
 function upsertThoughtStage(
@@ -275,8 +293,8 @@ const AssistantMessage: React.FC<{
 }) => {
   const { token } = theme.useToken();
   const chainItems = useMemo(
-    () => (displayMode === 'debug' && !turn ? visibleThoughtChain(thoughtChain) : []),
-    [displayMode, thoughtChain, turn],
+    () => visibleThoughtChain(thoughtChain),
+    [thoughtChain],
   );
   const showThinking = useMemo(
     () => Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading')),
@@ -288,8 +306,8 @@ const AssistantMessage: React.FC<{
     }
     return normalizeAssistantMessage({
       content,
-      thinking: displayMode === 'debug' ? thinking : undefined,
-      showThinking: displayMode === 'debug' ? showThinking : false,
+      thinking,
+      showThinking,
       rawEvidence: displayMode === 'debug' ? rawEvidence : undefined,
       recommendations,
       isStreaming,
@@ -588,6 +606,18 @@ export const Copilot: React.FC<CopilotProps> = ({
       setLiveAnnouncement(value.trim());
     };
 
+    const syncMessageFromBuffers = (
+      message: ExtendedChatMessage,
+      overrides: Partial<ExtendedChatMessage> = {},
+    ): ExtendedChatMessage => ({
+      ...message,
+      ...overrides,
+      content: overrides.content !== undefined ? overrides.content : (message.content || assistantContent),
+      thinking: overrides.thinking !== undefined ? overrides.thinking : (message.thinking || assistantThinking || undefined),
+      recommendations: overrides.recommendations ?? message.recommendations ?? assistantRecommendations,
+      traceId: overrides.traceId ?? assistantTraceId ?? message.traceId,
+    });
+
     return {
       onMeta: (data: { sessionId?: string; traceId?: string; turn_id?: string }) => {
         if (data.sessionId) {
@@ -600,15 +630,13 @@ export const Copilot: React.FC<CopilotProps> = ({
           patchAssistantMessage(conversationKey, assistantId, (message) => {
             const nextTurn = applyTurnStarted(message.turn, { turn_id: data.turn_id!, phase: 'rewrite', status: 'streaming' }, assistantTraceId);
             const summary = projectTurnSummary(nextTurn);
-            return {
-              ...message,
+            return syncMessageFromBuffers(message, {
               turn: nextTurn,
-              traceId: assistantTraceId || message.traceId,
               content: summary.content || message.content,
               thinking: summary.thinking || message.thinking,
               rawEvidence: summary.rawEvidence || message.rawEvidence,
               recommendations: summary.recommendations || message.recommendations,
-            };
+            });
           });
         }
       },
@@ -617,92 +645,119 @@ export const Copilot: React.FC<CopilotProps> = ({
           const nextTurn = applyTurnStarted(message.turn, data, assistantTraceId || message.traceId);
           const summary = projectTurnSummary(nextTurn);
           refreshAnnouncement(resolveThoughtStageTitle(nextTurn.phase));
-          return {
-            ...message,
-            turn: nextTurn,
-            traceId: assistantTraceId || message.traceId,
-            content: summary.content,
-            thinking: summary.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          };
+            return syncMessageFromBuffers(message, {
+              turn: nextTurn,
+              content: summary.content || message.content,
+              thinking: summary.thinking || message.thinking,
+              rawEvidence: summary.rawEvidence,
+              recommendations: summary.recommendations,
+            });
         });
       },
       onBlockOpen: (data: { turn_id: string; block_id: string; block_type: string; position?: number; status?: string; title?: string; payload?: Record<string, unknown> }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextTurn = applyBlockOpen(message.turn, data);
           const summary = projectTurnSummary(nextTurn);
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             turn: nextTurn,
-            content: summary.content,
-            thinking: summary.thinking,
+            content: summary.content || message.content,
+            thinking: summary.thinking || message.thinking,
             rawEvidence: summary.rawEvidence,
             recommendations: summary.recommendations,
-          };
+          });
         });
       },
       onBlockDelta: (data: { turn_id: string; block_id: string; block_type?: string; patch?: Record<string, unknown> }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextTurn = applyBlockDelta(message.turn, data);
           const summary = projectTurnSummary(nextTurn);
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             turn: nextTurn,
-            content: summary.content,
-            thinking: summary.thinking,
+            content: summary.content || message.content,
+            thinking: summary.thinking || message.thinking,
             rawEvidence: summary.rawEvidence,
             recommendations: summary.recommendations,
-          };
+          });
         });
       },
       onBlockReplace: (data: { turn_id: string; block_id: string; block_type?: string; payload?: Record<string, unknown> }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextTurn = applyBlockReplace(message.turn, data);
           const summary = projectTurnSummary(nextTurn);
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             turn: nextTurn,
-            content: summary.content,
-            thinking: summary.thinking,
+            content: summary.content || message.content,
+            thinking: summary.thinking || message.thinking,
             rawEvidence: summary.rawEvidence,
             recommendations: summary.recommendations,
-          };
+          });
         });
       },
       onBlockClose: (data: { turn_id: string; block_id: string; status?: string }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextTurn = applyBlockClose(message.turn, data);
           const summary = projectTurnSummary(nextTurn);
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             turn: nextTurn,
-            content: summary.content,
-            thinking: summary.thinking,
+            content: summary.content || message.content,
+            thinking: summary.thinking || message.thinking,
             rawEvidence: summary.rawEvidence,
             recommendations: summary.recommendations,
-          };
+          });
         });
       },
       onTurnState: (data: { turn_id: string; status?: string; phase?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          turn: applyTurnState(message.turn, data),
-        }));
+        patchAssistantMessage(conversationKey, assistantId, (message) => {
+          let nextThoughtChain = message.thoughtChain || [];
+          if (data.phase === 'summary') {
+            nextThoughtChain = finalizeThoughtStage(
+              nextThoughtChain,
+              'execute',
+              'success',
+              buildStageDescription('execute', 'success'),
+            );
+          }
+          return {
+            ...message,
+            turn: applyTurnState(message.turn, data),
+            thoughtChain: nextThoughtChain,
+          };
+        });
         refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
       },
       onTurnDone: (data: { turn_id: string; status?: string; phase?: string }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextTurn = applyTurnDone(message.turn, data);
           const summary = projectTurnSummary(nextTurn);
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             turn: nextTurn,
-            content: summary.content,
-            thinking: summary.thinking,
+            content: summary.content || message.content,
+            thinking: summary.thinking || message.thinking,
             rawEvidence: summary.rawEvidence,
             recommendations: summary.recommendations,
-          };
+          });
+        });
+      },
+      onStageDelta: (data: SSEStageDeltaEvent) => {
+        const stageKey = String(data.stage || '').trim() as ThoughtStageItem['key'];
+        if (!stageKey) {
+          return;
+        }
+        patchAssistantMessage(conversationKey, assistantId, (message) => {
+          const currentStage = (message.thoughtChain || []).find((item) => item.key === stageKey);
+          const status = normalizeThoughtStatus(data.status as string | undefined, 'loading');
+          return syncMessageFromBuffers(message, {
+            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+              key: stageKey,
+              title: resolveThoughtStageTitle(stageKey),
+              status,
+              description: buildStageDescription(stageKey, status, data as unknown as Record<string, unknown>) || currentStage?.description,
+              content: appendStageContent(
+                data.replace ? '' : currentStage?.content,
+                buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>),
+              ),
+            }),
+          });
         });
       },
       onRewriteResult: (data: Record<string, unknown>) => {
@@ -805,9 +860,37 @@ export const Copilot: React.FC<CopilotProps> = ({
       },
       onDelta: (data: { contentChunk: string }) => {
         assistantContent += data.contentChunk || '';
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          content: assistantContent,
+          thoughtChain: finalizeThoughtStage(
+            finalizeThoughtStage(
+              message.thoughtChain || [],
+              'execute',
+              'success',
+              buildStageDescription('execute', 'success'),
+            ),
+            'summary',
+            'loading',
+          ),
+        }));
       },
       onThinkingDelta: (data: { contentChunk: string }) => {
         assistantThinking += data.contentChunk || '';
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          thinking: assistantThinking,
+          thoughtChain: upsertThoughtStage(finalizeThoughtStage(
+            message.thoughtChain || [],
+            'execute',
+            'success',
+            buildStageDescription('execute', 'success'),
+          ), {
+            key: 'summary',
+            title: '整理最终回答',
+            status: 'loading',
+            description: '正在思考并整理最终回答',
+            content: assistantThinking,
+          }),
+        }));
       },
       onApprovalRequired: (data: ApprovalTicket & {
         turn_id?: string;
@@ -839,11 +922,23 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
         assistantContent ||= String(data.message || '');
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          content: assistantContent,
+        }));
       },
       onSummary: () => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
-          thoughtChain: (message.thoughtChain || []).filter((item) => item.key !== 'summary'),
+          thoughtChain: finalizeThoughtStage(
+            finalizeThoughtStage(
+              (message.thoughtChain || []).filter((item) => item.key !== 'summary'),
+              'execute',
+              'success',
+              buildStageDescription('execute', 'success'),
+            ),
+            'user_action',
+            'success',
+          ),
         }));
       },
       onDone: (data: SSEDoneEvent) => {
@@ -863,11 +958,12 @@ export const Copilot: React.FC<CopilotProps> = ({
           }
         }
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
+          ...syncMessageFromBuffers(message, {
           content: message.turn ? projectTurnSummary(message.turn).content || assistantContent : assistantContent,
           thinking: message.turn ? projectTurnSummary(message.turn).thinking || assistantThinking || undefined : assistantThinking || undefined,
           recommendations: assistantRecommendations || message.recommendations,
           traceId: assistantTraceId || message.traceId,
+          }),
           thoughtChain: (message.thoughtChain || []).map((item) => ({
             ...item,
             blink: false,
