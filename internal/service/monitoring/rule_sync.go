@@ -46,6 +46,13 @@ type promRule struct {
 func NewRuleSyncService(db *gorm.DB) *RuleSyncService {
 	cfg := config.CFG.Prometheus
 	address := strings.TrimSpace(cfg.Address)
+
+	// 如果 address 已设置但没有 scheme，添加 http:// 前缀
+	if address != "" && !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://") {
+		address = "http://" + address
+	}
+
+	// 如果 address 为空，使用 host:port 构建
 	if address == "" && strings.TrimSpace(cfg.Host) != "" {
 		port := strings.TrimSpace(cfg.Port)
 		if port == "" {

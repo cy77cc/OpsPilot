@@ -7,12 +7,12 @@ The system SHALL emit Server-Sent Events (SSE) that preserve model-stage output 
 Required compatibility event categories:
 
 - `meta`: session metadata at stream start
-- `stage_delta`: incremental model-stage output for rewrite, plan, execute, and summary stages
+- `stage_delta`: incremental model-stage output for rewrite, plan, approval-gate messaging, execute, and summary stages
 - `delta`: incremental final answer content
 - `thinking_delta`: model reasoning/thinking content when available
 - `tool_call`: tool invocation with name and arguments
 - `tool_result`: tool execution completion with result
-- `approval_required`: high-risk tool requiring user approval
+- `approval_required`: approval gate requiring user confirmation before execution starts
 - `heartbeat`: periodic keep-alive event
 - `done`: stream completion
 - `error`: error notification
@@ -30,7 +30,7 @@ Required turn/block-native event categories:
 The system MUST treat `stage_delta` and `delta` as model-facing content channels rather than code-generated template placeholders, and the turn/block-native events MUST be the semantic source of truth for new UI consumers.
 
 #### Scenario: successful chat stream preserves model-stage output
-- **WHEN** user sends a message that triggers rewrite, planning, execution, and summarization
+- **WHEN** user sends a message that triggers rewrite, planning, approval gating, execution, and summarization
 - **THEN** the system MUST emit `stage_delta` events as stage content becomes available
 - **AND** the system MUST emit `delta` events for the final answer before `done`
 - **AND** the system MUST NOT wait until the entire request finishes before exposing all model-stage content
@@ -46,11 +46,11 @@ The system MUST treat `stage_delta` and `delta` as model-facing content channels
 - **THEN** the system MUST emit an explicit user-visible failure or unavailability signal for that stage
 - **AND** the stream MUST NOT substitute code-generated semantic content pretending the stage completed successfully
 
-#### Scenario: high-risk tool requires approval
-- **WHEN** AI attempts to execute a tool marked as high-risk
-- **THEN** system emits `approval_required` event with tool name, arguments, and preview
+#### Scenario: approval gate appears before execution
+- **WHEN** AI identifies a planned step that requires approval
+- **THEN** the stream MUST emit `approval_required` before the gated step produces `tool_call` or `tool_result`
 - **AND** the system MUST also surface a block-native approval update bound to the active turn
-- **AND** stream pauses with runtime step identity for later resume
+- **AND** the stream MUST pause in a resumable gate state with runtime step identity for later resume
 
 #### Scenario: heartbeat maintains connection
 - **WHEN** streaming session lasts longer than 10 seconds
@@ -60,7 +60,7 @@ The system MUST treat `stage_delta` and `delta` as model-facing content channels
 
 ### Requirement: Checkpoint-based Resume
 
-The system SHALL support resuming interrupted sessions by stable runtime identity rather than model-specific checkpoint semantics, and resumed execution MUST continue the original assistant turn lifecycle.
+The system SHALL support resuming interrupted sessions by stable runtime identity rather than model-specific checkpoint semantics, and resumed execution MUST continue the original assistant turn lifecycle through execution and summary.
 
 Resume inputs MUST be based on:
 
@@ -76,6 +76,7 @@ Compatibility aliases MAY exist for legacy clients, but runtime semantics MUST b
 - **THEN** system resumes execution for the specific `session_id + plan_id + step_id`
 - **AND** continues emitting SSE events from that runtime point
 - **AND** resumed events MUST continue on the previously active assistant `turn_id`
+- **AND** if execution completes successfully the resumed stream MUST continue into summary before terminal completion
 
 #### Scenario: resume after rejection
 - **WHEN** user rejects approval for an interrupted session

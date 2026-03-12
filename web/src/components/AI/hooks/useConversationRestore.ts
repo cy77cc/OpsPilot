@@ -23,10 +23,22 @@ export interface RestoredConversation {
   }>;
 }
 
+export interface RestoredConversationSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RestoredConversationState {
+  conversations: RestoredConversationSummary[];
+  activeConversation: RestoredConversation | null;
+}
+
 interface UseConversationRestoreOptions {
   scene: string;
   enabled?: boolean;
-  onRestore?: (conversation: RestoredConversation) => void;
+  onRestore?: (state: RestoredConversationState) => void;
 }
 
 interface UseConversationRestoreResult {
@@ -54,26 +66,45 @@ export function useConversationRestore(options: UseConversationRestoreOptions): 
     setError(null);
 
     try {
+      const listRes = await aiApi.getSessions(scene);
+      const summaries = normalizeConversationSummaries(listRes.data || []);
+
       // 1. 尝试获取当前活跃会话
       const currentRes = await aiApi.getCurrentSession(scene);
       if (currentRes.data) {
         const session = currentRes.data;
         setRestoredSessionId(session.id);
-        onRestore?.(toRestoredConversation(session));
+        onRestore?.({
+          conversations: summaries,
+          activeConversation: toRestoredConversation(session),
+        });
         return;
       }
 
       // 2. 如果没有当前会话，尝试获取最近的会话列表
-      const listRes = await aiApi.getSessions(scene);
-      if (listRes.data && listRes.data.length > 0) {
-        const recentSession = listRes.data[0];
+      if (summaries.length > 0) {
+        const recentSession = summaries[0];
         const detailRes = await aiApi.getSessionDetail(recentSession.id, scene);
         if (detailRes.data) {
           const session = detailRes.data;
           setRestoredSessionId(session.id);
-          onRestore?.(toRestoredConversation(session));
+          onRestore?.({
+            conversations: summaries,
+            activeConversation: toRestoredConversation(session),
+          });
+        } else {
+          onRestore?.({
+            conversations: summaries,
+            activeConversation: null,
+          });
         }
+        return;
       }
+
+      onRestore?.({
+        conversations: summaries,
+        activeConversation: null,
+      });
     } catch (err) {
       console.error('Failed to restore conversation:', err);
       setError((err as Error).message || '恢复会话失败');
@@ -95,18 +126,29 @@ export function useConversationRestore(options: UseConversationRestoreOptions): 
   };
 }
 
+export async function loadRestoredConversationDetail(id: string, scene: string): Promise<RestoredConversation | null> {
+  const detailRes = await aiApi.getSessionDetail(id, scene);
+  if (!detailRes.data) {
+    return null;
+  }
+  return toRestoredConversation(detailRes.data);
+}
+
 function toRestoredConversation(session: AISession): RestoredConversation {
   if (session.turns && session.turns.length > 0) {
     return {
       id: session.id,
       title: session.title || 'AI Session',
-      messages: session.turns.map((turn) => {
+      messages: normalizeReplayTurns(session.turns).map((turn) => {
         const hydratedTurn = turnFromReplay(turn);
         const summary = projectTurnSummary(hydratedTurn);
+        const fallbackContent = turn.role === 'assistant'
+          ? resolveReplayAssistantContent(turn, summary.content)
+          : resolveUserTurnContent(turn, summary.content);
         return {
           id: turn.id,
           role: turn.role,
-          content: turn.role === 'user' ? summary.content : summary.content,
+          content: fallbackContent,
           thinking: turn.role === 'assistant' ? summary.thinking : undefined,
           traceId: hydratedTurn.traceId,
           recommendations: turn.role === 'assistant' ? summary.recommendations : undefined,
@@ -123,14 +165,15 @@ function toRestoredConversation(session: AISession): RestoredConversation {
   return {
     id: session.id,
     title: session.title || 'AI Session',
-    messages: (session.messages || []).map(m => {
+    messages: normalizeLegacyMessages(session.messages || []).map(m => {
       const thoughtChain = ((m.thoughtChain || []) as ThoughtStageItem[]);
       const summaryStage = thoughtChain.find((item) => item.key === 'summary');
+      const content = resolveLegacyAssistantContent(m.content, summaryStage);
       return {
         id: m.id,
         role: m.role as 'user' | 'assistant',
-        content: m.content,
-        thinking: m.thinking || summaryStage?.content || undefined,
+        content,
+        thinking: undefined,
         traceId: m.traceId,
         thoughtChain: thoughtChain.filter((item) => item.key !== 'summary'),
         recommendations: (m.recommendations || []) as EmbeddedRecommendation[],
@@ -141,4 +184,109 @@ function toRestoredConversation(session: AISession): RestoredConversation {
       };
     }),
   };
+}
+
+function normalizeConversationSummaries(sessions: AISession[]): RestoredConversationSummary[] {
+  return [...sessions]
+    .map((session) => ({
+      id: session.id,
+      title: session.title || 'AI Session',
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    }))
+    .sort((a, b) => (
+      new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+    ));
+}
+
+function normalizeReplayTurns(turns: NonNullable<AISession['turns']>) {
+  return [...turns].sort((a, b) => {
+    const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+    if (a.parentTurnId && a.parentTurnId === b.id) {
+      return 1;
+    }
+    if (b.parentTurnId && b.parentTurnId === a.id) {
+      return -1;
+    }
+    if (a.role !== b.role) {
+      return a.role === 'user' ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function normalizeLegacyMessages(messages: AISession['messages']) {
+  return [...messages].sort((a, b) => {
+    const timeDiff = new Date(String(a.timestamp || '')).getTime() - new Date(String(b.timestamp || '')).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+    if (a.role !== b.role) {
+      return a.role === 'user' ? -1 : 1;
+    }
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+}
+
+function resolveUserTurnContent(turn: NonNullable<AISession['turns']>[number], fallback: string): string {
+  return firstNonEmpty(
+    turn.blocks.find((block) => block.blockType === 'text')?.contentText,
+    fallback,
+  );
+}
+
+function resolveReplayAssistantContent(
+  turn: NonNullable<AISession['turns']>[number],
+  fallback: string,
+): string {
+  const textBlock = turn.blocks.find((block) => block.blockType === 'text' && block.contentText?.trim());
+  if (textBlock?.contentText?.trim()) {
+    return textBlock.contentText;
+  }
+
+  if (fallback.trim()) {
+    return fallback;
+  }
+
+  const statusCandidate = [...turn.blocks]
+    .filter((block) => block.blockType === 'status' && block.contentText?.trim())
+    .sort((a, b) => b.position - a.position)
+    .find((block) => looksLikeMarkdownAnswer(block.contentText || ''));
+  return statusCandidate?.contentText || '';
+}
+
+function looksLikeMarkdownAnswer(content: string): boolean {
+  const text = content.trim();
+  if (!text) {
+    return false;
+  }
+  return /(^|\n)\s{0,3}#{1,6}\s+\S/.test(text)
+    || /(^|\n)\s*[-*]\s+\S/.test(text)
+    || /(^|\n)\s*\d+\.\s+\S/.test(text)
+    || /```/.test(text)
+    || /\|.+\|/.test(text);
+}
+
+function resolveLegacyAssistantContent(rawContent: string, summaryStage: ThoughtStageItem | undefined): string {
+  const direct = (rawContent || '').trim();
+  if (direct) {
+    return rawContent;
+  }
+  const summaryContent = summaryStage?.content || summaryStage?.description || '';
+  if (summaryContent.trim()) {
+    return summaryContent;
+  }
+  return rawContent;
+}
+
+function firstNonEmpty(...values: Array<string | undefined>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return '';
 }

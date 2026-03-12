@@ -37,6 +37,28 @@ export interface MetricSeries {
   data: MetricPoint[];
 }
 
+export interface AIStatsSummary {
+  sessionCount: number;
+  tokenCount: number;
+  avgDurationMs: number;
+  successRate: number;
+  previousChange?: string;
+}
+
+export interface AISessionItem {
+  id: string;
+  scene: string;
+  title: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface AIActivity {
+  stats: AIStatsSummary;
+  sessions: AISessionItem[];
+  byScene: Record<string, number>;
+}
+
 export interface OverviewResponse {
   hosts: HealthStats;
   clusters: HealthStats;
@@ -50,6 +72,7 @@ export interface OverviewResponse {
     cpu_usage: MetricSeries[];
     memory_usage: MetricSeries[];
   };
+  ai: AIActivity;
 }
 
 const normalizeHealthStats = (data: any): HealthStats => ({
@@ -86,6 +109,28 @@ const normalizeMetricSeries = (item: any): MetricSeries => ({
   data: Array.isArray(item?.data) ? item.data.map(normalizeMetricPoint) : [],
 });
 
+const normalizeAIStats = (data: any): AIStatsSummary => ({
+  sessionCount: Number(data?.sessionCount || 0),
+  tokenCount: Number(data?.tokenCount || 0),
+  avgDurationMs: Number(data?.avgDurationMs || 0),
+  successRate: Number(data?.successRate || 0),
+  previousChange: String(data?.previousChange || ''),
+});
+
+const normalizeAISession = (item: any): AISessionItem => ({
+  id: String(item?.id || ''),
+  scene: String(item?.scene || ''),
+  title: String(item?.title || ''),
+  status: String(item?.status || 'success'),
+  createdAt: String(item?.createdAt || item?.created_at || ''),
+});
+
+const normalizeAIActivity = (data: any): AIActivity => ({
+  stats: normalizeAIStats(data?.stats || {}),
+  sessions: Array.isArray(data?.sessions) ? data.sessions.map(normalizeAISession) : [],
+  byScene: data?.byScene || {},
+});
+
 export const dashboardApi = {
   async getOverview(timeRange: TimeRange = '1h'): Promise<ApiResponse<OverviewResponse>> {
     const response = await apiService.get<any>('/dashboard/overview', {
@@ -108,6 +153,7 @@ export const dashboardApi = {
           cpu_usage: Array.isArray(raw?.metrics?.cpu_usage) ? raw.metrics.cpu_usage.map(normalizeMetricSeries) : [],
           memory_usage: Array.isArray(raw?.metrics?.memory_usage) ? raw.metrics.memory_usage.map(normalizeMetricSeries) : [],
         },
+        ai: normalizeAIActivity(raw?.ai),
       },
     };
   },

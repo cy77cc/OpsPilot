@@ -16,6 +16,7 @@
 - **THEN** AI turn 靠左显示
 - **AND** turn MUST 先被规范化为可渲染的消息块集合
 - **AND** 支持 Markdown、状态、计划、工具、审批、证据、思考过程、推荐内容等独立块渲染
+- **AND** assistant turn MUST use a stable information hierarchy so process, actions, approvals, and conclusion do not compete for the same visual role
 
 #### Scenario: 富渲染块失败时安全降级
 - **GIVEN** AI turn 包含富渲染块
@@ -31,87 +32,95 @@
 - **AND** 最终回答文本块 MUST 显示打字效果
 - **AND** 状态、工具和审批类块 MUST 使用状态更新而非逐字打印
 
-#### Scenario: 默认展示策略限制内部噪音
-- **GIVEN** assistant turn 同时包含最终回答、thinking、证据细节和原始工具载荷
-- **WHEN** 抽屉以普通模式渲染该 turn
-- **THEN** 抽屉 MUST 默认展示最终回答、关键状态、审批信息和证据摘要
-- **AND** thinking 与原始工具 JSON MUST 默认折叠或隐藏
-- **AND** 用户无需阅读内部 agent 原始输出即可理解结论与下一步动作
+#### Scenario: approval is rendered as pre-execution confirmation
+- **GIVEN** assistant turn 命中一个需要审批的执行前 gate
+- **WHEN** 抽屉收到 approval block
+- **THEN** UI MUST 将其渲染为执行前确认交互，而不是“执行中断点”
+- **AND** 用户在批准或取消后，等待确认态 MUST 立即退出
+- **AND** 后续执行与总结内容 MUST 在同一 turn 中继续显示
 
-#### Scenario: 展示模式由显式用户偏好控制
-- **GIVEN** 用户首次打开 AI 抽屉
-- **WHEN** 前端初始化 turn/block 渲染设置
-- **THEN** 抽屉 MUST 默认使用普通模式
-- **AND** 抽屉 MUST 提供显式的展示模式切换入口
-- **AND** 用户切换到调试模式后，前端 MUST 持久化该偏好供后续打开复用
-- **AND** 展示模式切换 MUST 独立于后端 rollout flag
+#### Scenario: assistant turn uses four-layer information hierarchy
+- **GIVEN** assistant turn 同时包含过程反馈、审批、执行状态和最终回答
+- **WHEN** 抽屉渲染该 turn
+- **THEN** 信息 MUST 按 `thought chain -> approval gate -> execution cards -> final answer` 的顺序展示
+- **AND** 每一层 MUST 有明确职责，不得把相同内容在多个层级重复堆叠
 
-#### Scenario: application-card 事件渲染
-- **GIVEN** 后端产生计划、步骤、证据、审批或下一步动作等平台事件
-- **WHEN** 抽屉接收到这些事件
-- **THEN** 抽屉 MUST 能将其渲染为对应的应用卡片或消息块
-- **AND** 抽屉在兼容期内仍可继续消费现有聊天流事件
+#### Scenario: 历史对话中的 thought chain 默认折叠
+- **GIVEN** 抽屉恢复一段已完成的历史 AI 对话
+- **WHEN** assistant message 含有 thought chain
+- **THEN** 历史消息中的 thought chain MUST 默认折叠
+- **AND** 用户可以按消息粒度手动展开查看
 
-## MODIFIED Requirements
+#### Scenario: 当前流式对话展开活跃阶段
+- **GIVEN** 当前 assistant turn 正在流式执行
+- **WHEN** 抽屉渲染 thought chain
+- **THEN** 当前活跃阶段 SHOULD 默认展开
+- **AND** 已完成阶段 MAY 保持折叠以减少噪音
 
-### Requirement: 工具执行卡片
+#### Scenario: thought chain 展示结构化执行细节
+- **GIVEN** assistant turn 收到 step_update、tool_call 或 tool_result
+- **WHEN** 抽屉更新 execute 阶段
+- **THEN** thought chain MUST 展示步骤摘要以及结构化的工具调用与结果细节
+- **AND** 同一 step/tool 的重复更新 MUST 合并为单条持续更新记录
+- **AND** 不得将同一事件简单重复堆叠为多条文本日志
 
-系统 SHALL 显示工具执行卡片，并逐步扩展为更完整的操作步骤与证据卡片体系；工具卡片 MUST 作为 assistant turn 内的独立块进行创建、更新和完成。
+#### Scenario: 历史思维链不抢占结论阅读
+- **GIVEN** 用户正在查看恢复出来的历史 assistant 消息
+- **WHEN** thought chain 存在多阶段和多条细节
+- **THEN** 默认视图 MUST 优先让用户先看到最终回答
+- **AND** thought chain MUST 以折叠摘要形式出现，而不是完整展开占据主要阅读空间
 
-#### Scenario: 工具开始执行
-- **GIVEN** AI 调用工具
-- **WHEN** 收到工具开始事件
-- **THEN** 显示工具卡片
-- **AND** 状态显示为 "执行中"
-- **AND** 显示加载动画
+## ADDED Requirements
 
-#### Scenario: 工具执行成功
-- **GIVEN** 工具正在执行
-- **WHEN** 收到工具完成事件且成功
-- **THEN** 状态更新为 "成功"
-- **AND** 显示执行耗时
-- **AND** 图标变为绿色勾号
+### Requirement: 审批交互块 MUST be short-lived and coordinated with execution flow
 
-#### Scenario: 工具执行失败
-- **GIVEN** 工具正在执行
-- **WHEN** 收到工具完成事件且失败
-- **THEN** 状态更新为 "失败"
-- **AND** 图标变为红色叉号
+审批交互块 MUST 在等待决策时提供 CTA，并在用户作出决策后让出主展示位置。
 
-#### Scenario: control-plane steps render as richer cards
-- **GIVEN** 后端为某次 AIOps 任务生成计划步骤、证据、审批或下一步动作
-- **WHEN** 抽屉收到对应的平台事件
-- **THEN** UI MUST 能把这些状态渲染为操作步骤卡片、证据卡片、审批卡片或下一步动作卡片
-- **AND** 同一 assistant turn 中的多个卡片 MUST 保持稳定顺序和可回放状态
+#### Scenario: approval CTA exits waiting state after decision
+- **WHEN** 用户点击确认执行或取消
+- **THEN** 审批交互块 MUST 立即进入提交中或终止反馈状态
+- **AND** 成功后 MUST 不再保留可重复点击的等待确认 CTA
+- **AND** 批准后的主内容区域 MUST 由执行状态和最终总结接管
 
-#### Scenario: 调试模式允许查看深度细节
-- **GIVEN** 用户处于专家模式或调试模式
-- **WHEN** 抽屉渲染 assistant turn
-- **THEN** thinking、原始工具参数、原始工具结果和扩展证据细节 MAY 被显式展开
-- **AND** 这些调试细节 MUST 仍然附着于原有 turn/block 结构而不是单独生成另一条消息
+#### Scenario: approval gate uses coordinated bubble styling
+- **WHEN** 抽屉渲染等待审批的门控交互
+- **THEN** UI MUST 使用与聊天块协调的浅色气泡样式
+- **AND** 风险信息 MUST 通过 badge 和文案表达，而不是依赖大面积警报色背景
+- **AND** 审批块视觉权重 MUST 低于最终回答但高于普通状态文案
 
-#### Scenario: 动效遵守 reduced-motion 偏好
-- **GIVEN** 用户系统启用了 reduced-motion 偏好
-- **WHEN** 抽屉渲染流式 text、status 或卡片更新
-- **THEN** 最终回答块 MUST 关闭逐字动画并按 chunk 直接追加
-- **AND** 抽屉 MUST 禁用非必要的平滑滚动和卡片过渡动画
-- **AND** 状态变化与内容更新仍 MUST 保持可见
+#### Scenario: approval request failure remains actionable without restoring the old waiting card
+- **WHEN** 审批结果提交失败
+- **THEN** UI MUST 给出轻量失败反馈和可重试动作
+- **AND** 不得恢复成无限可点击的初始等待审批表单
 
-#### Scenario: 交互入口支持键盘与触控
-- **GIVEN** 抽屉中存在审批按钮、展开按钮、工具详情入口或跳转到最新操作
-- **WHEN** 用户通过键盘或触控设备操作这些入口
-- **THEN** 所有入口 MUST 可聚焦并可通过键盘触发
-- **AND** 触控目标 MUST 满足最小可点击尺寸
-- **AND** 焦点顺序 MUST 与视觉顺序一致
+### Requirement: 重新生成 MUST 保持原用户消息时序
 
-#### Scenario: 条件自动跟随不会抢走用户滚动位置
-- **GIVEN** assistant turn 正在持续流式更新
-- **WHEN** 用户仍停留在消息列表底部附近
-- **THEN** 抽屉 MAY 自动跟随到最新 block
+“重新生成” MUST 视为对同一用户问题的 assistant 重答，而不是新的用户提问。
 
-#### Scenario: 用户离开底部后显示回到底部入口
-- **GIVEN** assistant turn 正在持续流式更新
-- **WHEN** 用户主动上滑离开列表底部
-- **THEN** 后续增量更新 MUST NOT 强制把滚动位置拉回底部
-- **AND** 抽屉 MUST 显示明确的“跳转到最新”入口
-- **AND** 用户点击该入口后，抽屉 MUST 恢复对活跃 turn 的自动跟随
+#### Scenario: regenerate does not append duplicate user message
+- **WHEN** 用户对某条 assistant 回答点击重新生成
+- **THEN** 抽屉 MUST 保留原用户消息位置与内容
+- **AND** 不得在消息列表中追加一条重复的用户消息
+- **AND** 新的回答 MUST 作为原问题上下文下的再次作答显示
+
+#### Scenario: regenerate preserves conversational continuity
+- **WHEN** assistant 回答进入重新生成流程
+- **THEN** UI MUST 维持原消息顺序不变
+- **AND** 原回答 MAY 被原地替换或标记为上一版
+- **AND** 默认视图 MUST 只强调最新生成的回答
+
+### Requirement: 链路展示 MUST prioritize process clarity over raw log volume
+
+流程展示 MUST 明确区分阶段状态、执行细节和最终结论，避免内部噪音覆盖用户理解。
+
+#### Scenario: final answer, thought chain, and execution cards have clear roles
+- **WHEN** assistant turn 同时包含阶段状态、执行细节和最终回答
+- **THEN** thought chain MUST 主要承担过程反馈
+- **AND** 工具/执行卡片 MUST 承担动作状态和结果展示
+- **AND** 最终回答 MUST 承担结论与建议
+- **AND** 相同信息不得在三个区域中重复堆叠
+
+#### Scenario: final answer stays concise after rich execution flow
+- **WHEN** 上方已经展示了完整的审批和执行过程
+- **THEN** 最终回答 MUST 优先输出结论、关键事实和下一步建议
+- **AND** 不得再次逐条复述完整的工具日志或审批交互文案

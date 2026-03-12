@@ -8,15 +8,23 @@ let restoredConversation: any = null;
 
 vi.mock('@ant-design/x', () => ({
   Bubble: {
-    List: ({ items }: { items: Array<{ key: string; content: React.ReactNode }> }) => (
+    List: ({ items }: { items: Array<{ key: string; content: React.ReactNode; role?: string }> }) => (
       <div>
-        {items.map((item) => (
-          <div key={item.key}>{item.content}</div>
+        {items.map((item, index) => (
+          <div key={item.key} data-testid={`bubble-item-${index}`} data-role={item.role}>
+            {item.content}
+          </div>
         ))}
       </div>
     ),
   },
-  Conversations: () => null,
+  Conversations: ({ items }: { items: Array<{ key: string; label: string }> }) => (
+    <div>
+      {items.map((item) => (
+        <div key={item.key}>{item.label}</div>
+      ))}
+    </div>
+  ),
   Prompts: () => null,
   Sender: () => null,
   Welcome: () => null,
@@ -49,7 +57,7 @@ vi.mock('./hooks/useConversationRestore', () => ({
     return {
       isRestoring: false,
       error: null,
-      restoredSessionId: restoredConversation?.id || null,
+      restoredSessionId: restoredConversation?.activeConversation?.id || null,
       restore: vi.fn(),
     };
   },
@@ -76,53 +84,94 @@ describe('Copilot', () => {
     restoredConversation = null;
   });
 
-  it('keeps restored thought chain collapsed by default', async () => {
+  it('hides restored thought chain details and keeps only the summary content', async () => {
     restoredConversation = {
-      id: 'sess-restore',
-      title: '历史会话',
-      messages: [
-        {
-          id: 'msg-assistant',
-          role: 'assistant',
-          content: '历史回答',
-          thoughtChain: [
-            {
-              key: 'execute',
-              title: '调用专家执行',
-              status: 'success',
-              content: '步骤: 检查 deployment',
-            },
-          ],
-          restored: true,
-          createdAt: '2026-03-12T00:00:00Z',
-        },
-      ],
+      conversations: [{ id: 'sess-restore', title: '历史会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:00Z' }],
+      activeConversation: {
+        id: 'sess-restore',
+        title: '历史会话',
+        messages: [
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '历史回答',
+            thoughtChain: [
+              {
+                key: 'execute',
+                title: '工具调用链',
+                status: 'success',
+                content: '步骤: 检查 deployment',
+              },
+            ],
+            restored: true,
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+        ],
+      },
     };
 
     render(<Copilot open scene="global" />);
 
-    expect(await screen.findByText('调用专家执行')).toBeInTheDocument();
+    expect(await screen.findByText('历史回答')).toBeInTheDocument();
+    expect(screen.queryByText('工具调用链')).not.toBeInTheDocument();
     expect(screen.queryByText('步骤: 检查 deployment')).not.toBeInTheDocument();
+  });
+
+  it('renders restored assistant as summary-only markdown without process blocks', async () => {
+    restoredConversation = {
+      conversations: [{ id: 'sess-summary-only', title: '历史会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:00Z' }],
+      activeConversation: {
+        id: 'sess-summary-only',
+        title: '历史会话',
+        messages: [
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '## 最终结论\n- 配置已完成',
+            thoughtChain: [
+              {
+                key: 'execute',
+                title: '工具调用链',
+                status: 'success',
+                content: '步骤: 写入 crontab',
+              },
+            ],
+            restored: true,
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+        ],
+      },
+    };
+
+    render(<Copilot open scene="global" />);
+
+    expect(await screen.findByText('最终结论')).toBeInTheDocument();
+    expect(screen.getByText('配置已完成')).toBeInTheDocument();
+    expect(screen.queryByText('工具调用链')).not.toBeInTheDocument();
+    expect(screen.queryByText('步骤: 写入 crontab')).not.toBeInTheDocument();
   });
 
   it('regenerates in place without appending a duplicate user message', async () => {
     restoredConversation = {
-      id: 'sess-regenerate',
-      title: '当前会话',
-      messages: [
-        {
-          id: 'msg-user',
-          role: 'user',
-          content: '原始问题',
-          createdAt: '2026-03-12T00:00:00Z',
-        },
-        {
-          id: 'msg-assistant',
-          role: 'assistant',
-          content: '旧答案',
-          createdAt: '2026-03-12T00:00:01Z',
-        },
-      ],
+      conversations: [{ id: 'sess-regenerate', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:01Z' }],
+      activeConversation: {
+        id: 'sess-regenerate',
+        title: '当前会话',
+        messages: [
+          {
+            id: 'msg-user',
+            role: 'user',
+            content: '原始问题',
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '旧答案',
+            createdAt: '2026-03-12T00:00:01Z',
+          },
+        ],
+      },
     };
 
     vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
@@ -146,5 +195,39 @@ describe('Copilot', () => {
 
     expect(screen.queryByText('旧答案')).not.toBeInTheDocument();
     expect(screen.getAllByText('原始问题')).toHaveLength(1);
+  });
+
+  it('restores all historical conversations and keeps user message before assistant output', async () => {
+    restoredConversation = {
+      conversations: [
+        { id: 'sess-current', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:02Z' },
+        { id: 'sess-old', title: '更早会话', createdAt: '2026-03-11T00:00:00Z', updatedAt: '2026-03-11T00:00:01Z' },
+      ],
+      activeConversation: {
+        id: 'sess-current',
+        title: '当前会话',
+        messages: [
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '历史回答',
+            createdAt: '2026-03-12T00:00:01Z',
+          },
+          {
+            id: 'msg-user',
+            role: 'user',
+            content: '用户问题',
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+        ],
+      },
+    };
+
+    const view = render(<Copilot open scene="global" />);
+
+    expect(await screen.findByText('用户问题')).toBeInTheDocument();
+    const bubbleItems = view.container.querySelectorAll('[data-testid^="bubble-item-"]');
+    expect(bubbleItems[0]).toHaveAttribute('data-role', 'user');
+    expect(bubbleItems[1]).toHaveAttribute('data-role', 'assistant');
   });
 });

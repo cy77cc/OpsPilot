@@ -58,6 +58,31 @@ type MetricsSeries struct {
 	MemoryUsage []MetricSeries `json:"memory_usage"`
 }
 
+// AIStatsSummary AI 助手统计摘要。
+type AIStatsSummary struct {
+	SessionCount   int64   `json:"sessionCount"`   // 会话总数
+	TokenCount     int64   `json:"tokenCount"`     // Token 消耗总数
+	AvgDurationMs  int64   `json:"avgDurationMs"`  // 平均响应时间（毫秒）
+	SuccessRate    float64 `json:"successRate"`    // 成功率 (0-100)
+	PreviousChange string  `json:"previousChange"` // 与上一周期对比变化趋势
+}
+
+// AISessionItem 最近 AI 会话条目。
+type AISessionItem struct {
+	ID        string    `json:"id"`
+	Scene     string    `json:"scene"`     // 场景 (host/cluster/service/k8s)
+	Title     string    `json:"title"`     // 会话标题
+	Status    string    `json:"status"`    // 状态 (success/error)
+	CreatedAt time.Time `json:"createdAt"` // 创建时间
+}
+
+// AIActivity AI 活动面板数据。
+type AIActivity struct {
+	Stats    AIStatsSummary  `json:"stats"`    // 统计摘要
+	Sessions []AISessionItem `json:"sessions"` // 最近会话
+	ByScene  map[string]int  `json:"byScene"`  // 按场景分组统计
+}
+
 // OverviewResponse is the response of dashboard overview API.
 type OverviewResponse struct {
 	Hosts    HealthStats   `json:"hosts"`
@@ -66,4 +91,5 @@ type OverviewResponse struct {
 	Alerts   AlertSummary  `json:"alerts"`
 	Events   []EventItem   `json:"events"`
 	Metrics  MetricsSeries `json:"metrics"`
+	AI       AIActivity    `json:"ai"` // AI 助手活动数据
 }

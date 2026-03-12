@@ -145,10 +145,28 @@ func (l *Logic) GetMetrics(ctx context.Context, query MetricQuery) (*MetricQuery
 	if query.GranularitySec <= 0 {
 		query.GranularitySec = 60
 	}
+
+	// 映射前端指标名到 Prometheus 指标名
+	query.Metric = mapMetricName(query.Metric)
+
 	if l.svcCtx.Prometheus == nil {
 		return nil, fmt.Errorf("prometheus client unavailable")
 	}
 	return l.queryMetricsFromPrometheus(ctx, query)
+}
+
+// mapMetricName 将前端指标名映射到 Prometheus 指标名。
+func mapMetricName(metric string) string {
+	switch strings.TrimSpace(metric) {
+	case "cpu_usage":
+		return "host_cpu_load"
+	case "memory_usage":
+		return "host_memory_usage_percent"
+	case "disk_usage":
+		return "host_disk_usage_percent"
+	default:
+		return metric
+	}
 }
 
 func (l *Logic) queryMetricsFromPrometheus(ctx context.Context, query MetricQuery) (*MetricQueryResult, error) {

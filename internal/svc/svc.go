@@ -110,20 +110,37 @@ func aiModel() string {
 // initPrometheusClient 初始化 Prometheus 客户端。
 func initPrometheusClient() prominfra.Client {
 	if !config.CFG.Prometheus.Enable {
+		logger.L().Info("Prometheus integration is disabled")
 		return nil
 	}
-	c, err := prominfra.NewClient(prominfra.Config{
+
+	cfg := prominfra.Config{
 		Address:       config.CFG.Prometheus.Address,
 		Host:          config.CFG.Prometheus.Host,
 		Port:          config.CFG.Prometheus.Port,
 		Timeout:       config.CFG.Prometheus.Timeout,
 		MaxConcurrent: config.CFG.Prometheus.MaxConcurrent,
 		RetryCount:    config.CFG.Prometheus.RetryCount,
-	})
-	if err != nil {
-		logger.L().Warn("Failed to initialize Prometheus client", logger.Error(err))
+	}
+
+	// 规范化配置以获取最终地址
+	normalized := cfg.Normalize()
+	if normalized.Address == "" {
+		logger.L().Warn("Prometheus client initialization skipped: no address configured",
+			logger.String("hint", "set PROMETHEUS_ADDRESS or PROMETHEUS_HOST environment variable"))
 		return nil
 	}
+
+	c, err := prominfra.NewClient(cfg)
+	if err != nil {
+		logger.L().Warn("Failed to initialize Prometheus client",
+			logger.Error(err),
+			logger.String("address", normalized.Address))
+		return nil
+	}
+
+	logger.L().Info("Prometheus client initialized",
+		logger.String("address", normalized.Address))
 	return c
 }
 

@@ -23,6 +23,7 @@ import {
   ThoughtChain,
   Welcome,
 } from '@ant-design/x';
+import { XMarkdown } from '@ant-design/x-markdown';
 import type { BubbleListRef } from '@ant-design/x/es/bubble';
 import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
@@ -31,7 +32,12 @@ import type { ApprovalTicket, SSEDoneEvent, SSEStageDeltaEvent } from '../../api
 import { getSceneLabel } from './constants/sceneMapping';
 import type { ChatMessage, ChatTurn, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
-import { useConversationRestore, type RestoredConversation } from './hooks/useConversationRestore';
+import {
+  loadRestoredConversationDetail,
+  useConversationRestore,
+  type RestoredConversation,
+  type RestoredConversationState,
+} from './hooks/useConversationRestore';
 import { useScenePrompts } from './hooks/useScenePrompts';
 import { MessageActions } from './components/MessageActions';
 import { AssistantMessageBlocks } from './components/AssistantMessageBlocks';
@@ -378,27 +384,31 @@ const AssistantMessage: React.FC<{
   isLoading,
 }) => {
   const { token } = theme.useToken();
+  const isRestoredAssistant = Boolean(restored);
   const chainItems = useMemo(
-    () => visibleThoughtChain(thoughtChain),
-    [thoughtChain],
+    () => (isRestoredAssistant ? [] : visibleThoughtChain(thoughtChain)),
+    [isRestoredAssistant, thoughtChain],
   );
   const defaultExpandedKeys = useMemo(
     () => resolveDefaultExpandedThoughtKeys(chainItems, { restored, streaming: Boolean(isStreaming) }),
     [chainItems, isStreaming, restored],
   );
   const showThinking = useMemo(
-    () => Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading')),
-    [thinking, thoughtChain],
+    () => !isRestoredAssistant && (Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading'))),
+    [isRestoredAssistant, thinking, thoughtChain],
   );
   const blocks = useMemo(() => {
     const fallbackBlocks = normalizeAssistantMessage({
       content,
-      thinking,
-      showThinking,
+      thinking: isRestoredAssistant ? undefined : thinking,
+      showThinking: isRestoredAssistant ? false : showThinking,
       rawEvidence: displayMode === 'debug' ? rawEvidence : undefined,
       recommendations,
       isStreaming,
     });
+    if (isRestoredAssistant) {
+      return fallbackBlocks;
+    }
     if (turn && turn.blocks.length > 0) {
       return mergeAssistantBlocks(
         normalizeTurnBlocks(getTurnBlocksForDisplay(turn, displayMode, reducedMotion)),
@@ -406,45 +416,64 @@ const AssistantMessage: React.FC<{
       );
     }
     return fallbackBlocks;
-  }, [content, displayMode, isStreaming, rawEvidence, recommendations, reducedMotion, showThinking, thinking, turn]);
+  }, [content, displayMode, isRestoredAssistant, isStreaming, rawEvidence, recommendations, reducedMotion, showThinking, thinking, turn]);
 
   return (
     <div>
-      {chainItems.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <ThoughtChain
-            items={chainItems.map((item) => ({
-              key: item.key,
-              title: item.title,
-              description: item.description,
-              content: item.content,
-              footer: item.footer,
-              status: item.status,
-              collapsible: item.collapsible,
-              blink: item.blink,
-            }))}
-            defaultExpandedKeys={defaultExpandedKeys}
-          />
-        </div>
-      )}
-      {blocks.length > 0 ? (
-        <AssistantMessageBlocks
-          blocks={blocks}
-          onRecommendationSelect={onRecommendationSelect}
-          onApprovalDecision={onApprovalDecision}
-        />
-      ) : isStreaming ? (
-        <span style={{ color: token.colorTextSecondary }}>正在输入...</span>
-      ) : null}
+      {isRestoredAssistant ? (
+        <>
+          {content ? (
+            <div className="ai-markdown-content">
+              <XMarkdown>{content}</XMarkdown>
+            </div>
+          ) : null}
+          {showActions && !isStreaming && content && (
+            <MessageActions
+              content={content}
+              messageId=""
+              isLoading={isLoading}
+              onRegenerate={onRegenerate}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          {chainItems.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <ThoughtChain
+                items={chainItems.map((item) => ({
+                  key: item.key,
+                  title: item.title,
+                  description: item.description,
+                  content: item.content,
+                  footer: item.footer,
+                  status: item.status,
+                  collapsible: item.collapsible,
+                  blink: item.blink,
+                }))}
+                defaultExpandedKeys={defaultExpandedKeys}
+              />
+            </div>
+          )}
+          {blocks.length > 0 ? (
+            <AssistantMessageBlocks
+              blocks={blocks}
+              onRecommendationSelect={onRecommendationSelect}
+              onApprovalDecision={onApprovalDecision}
+            />
+          ) : isStreaming ? (
+            <span style={{ color: token.colorTextSecondary }}>正在输入...</span>
+          ) : null}
 
-      {/* 消息操作按钮 */}
-      {showActions && !isStreaming && content && (
-        <MessageActions
-        content={content}
-        messageId=""
-          isLoading={isLoading}
-          onRegenerate={onRegenerate}
-        />
+          {showActions && !isStreaming && content && (
+            <MessageActions
+              content={content}
+              messageId=""
+              isLoading={isLoading}
+              onRegenerate={onRegenerate}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -464,6 +493,9 @@ interface ConversationItem {
   label: string;
   group: string;
   messages: ExtendedChatMessage[];
+  restored?: boolean;
+  hydrated?: boolean;
+  updatedAt?: string;
 }
 
 interface ConversationState {
@@ -473,7 +505,8 @@ interface ConversationState {
 
 type ConversationAction =
   | { type: 'reset' }
-  | { type: 'restore'; conversation: ConversationItem }
+  | { type: 'restore'; conversations: ConversationItem[]; activeKey: string }
+  | { type: 'merge_conversation'; conversation: ConversationItem; activate?: boolean }
   | { type: 'set_active'; key: string }
   | { type: 'new'; key: string }
   | { type: 'append_messages'; key: string; label?: string; messages: ExtendedChatMessage[] }
@@ -481,6 +514,42 @@ type ConversationAction =
   | { type: 'remove_message'; key: string; messageId: string };
 
 const DEFAULT_CONVERSATION: ConversationItem = { key: 'default', label: '新对话', group: '今天', messages: [] };
+
+function buildConversationItem(restored: RestoredConversation, hydrated: boolean): ConversationItem {
+  return {
+    key: restored.id,
+    label: restored.title,
+    group: '最近',
+    restored: true,
+    hydrated,
+    updatedAt: restored.messages[restored.messages.length - 1]?.createdAt,
+    messages: normalizeConversationMessages(restored.messages).map((message) => ({
+      ...message,
+      createdAt: message.createdAt || new Date().toISOString(),
+    })),
+  };
+}
+
+function normalizeConversationMessages(messages: RestoredConversation['messages']): ExtendedChatMessage[] {
+  return [...messages].sort((a, b) => {
+    const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+    const aParent = a.turn?.parentTurnId;
+    const bParent = b.turn?.parentTurnId;
+    if (a.id === bParent) {
+      return -1;
+    }
+    if (b.id === aParent) {
+      return 1;
+    }
+    if (a.role !== b.role) {
+      return a.role === 'user' ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
 
 function conversationReducer(state: ConversationState, action: ConversationAction): ConversationState {
   switch (action.type) {
@@ -491,9 +560,27 @@ function conversationReducer(state: ConversationState, action: ConversationActio
       };
     case 'restore':
       return {
-        conversations: [action.conversation],
-        activeKey: action.conversation.key,
+        conversations: action.conversations.length > 0 ? action.conversations : [DEFAULT_CONVERSATION],
+        activeKey: action.activeKey,
       };
+    case 'merge_conversation': {
+      const existingIndex = state.conversations.findIndex((conversation) => conversation.key === action.conversation.key);
+      const nextConversations = existingIndex === -1
+        ? [action.conversation, ...state.conversations]
+        : state.conversations.map((conversation, index) => (
+            index === existingIndex
+              ? {
+                  ...conversation,
+                  ...action.conversation,
+                  messages: action.conversation.messages.length > 0 ? action.conversation.messages : conversation.messages,
+                }
+              : conversation
+          ));
+      return {
+        conversations: nextConversations,
+        activeKey: action.activate ? action.conversation.key : state.activeKey,
+      };
+    }
     case 'set_active':
       return {
         ...state,
@@ -613,19 +700,31 @@ export const Copilot: React.FC<CopilotProps> = ({
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
 
   // 恢复会话的回调
-  const handleRestoreConversation = useCallback((restored: RestoredConversation) => {
-    // 创建恢复的会话
-    const restoredItem: ConversationItem = {
-      key: restored.id,
-      label: restored.title,
+  const handleRestoreConversation = useCallback((restoredState: RestoredConversationState) => {
+    const summaryItems: ConversationItem[] = restoredState.conversations.map((item) => ({
+      key: item.id,
+      label: item.title,
       group: '最近',
-      messages: restored.messages.map(m => ({
-        ...m,
-        createdAt: m.createdAt || new Date().toISOString(),
-      })),
-    };
-    dispatch({ type: 'restore', conversation: restoredItem });
-    setSessionId(restored.id);
+      messages: [],
+      restored: true,
+      hydrated: false,
+      updatedAt: item.updatedAt,
+    }));
+    const active = restoredState.activeConversation
+      ? buildConversationItem(restoredState.activeConversation, true)
+      : undefined;
+    const merged = active
+      ? summaryItems.map((item) => (item.key === active.key ? active : item))
+      : summaryItems;
+    const fallbackActiveKey = active?.key || merged[0]?.key || DEFAULT_CONVERSATION.key;
+    dispatch({
+      type: 'restore',
+      conversations: merged.length > 0 ? merged : [DEFAULT_CONVERSATION],
+      activeKey: fallbackActiveKey,
+    });
+    if (active?.key) {
+      setSessionId(active.key);
+    }
   }, []);
 
   useEffect(() => {
@@ -669,6 +768,34 @@ export const Copilot: React.FC<CopilotProps> = ({
 
   // 当前会话的消息
   const messages = activeConversation.messages;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (!activeConversation || !activeConversation.restored || activeConversation.hydrated || activeConversation.key === DEFAULT_CONVERSATION.key) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const restored = await loadRestoredConversationDetail(activeConversation.key, scene);
+        if (!restored || cancelled) {
+          return;
+        }
+        dispatch({
+          type: 'merge_conversation',
+          conversation: buildConversationItem(restored, true),
+        });
+        setSessionId(restored.id);
+      } catch (err) {
+        console.error('Failed to hydrate restored conversation:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation, open, scene]);
 
   // 是否正在请求
   const [isLoading, setIsLoading] = useState(false);

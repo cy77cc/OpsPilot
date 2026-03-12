@@ -9,6 +9,26 @@ describe('useConversationRestore', () => {
   });
 
   it('restores the current scene session with content and raw evidence', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({
+      code: 0,
+      data: [
+        {
+          id: 'sess-older',
+          title: 'Older session',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:01Z',
+          messages: [],
+        },
+        {
+          id: 'sess-1',
+          title: 'Current session',
+          createdAt: '2026-03-11T00:00:00Z',
+          updatedAt: '2026-03-11T00:00:01Z',
+          messages: [],
+        },
+      ],
+      msg: 'ok',
+    } as any);
     vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
       code: 0,
       data: {
@@ -36,16 +56,22 @@ describe('useConversationRestore', () => {
 
     await waitFor(() => {
       expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sess-1',
-        messages: [
-          expect.objectContaining({
-            content: 'final answer',
-            thinking: 'summary thinking',
-            thoughtChain: [],
-            rawEvidence: ['tool output'],
-            restored: true,
-          }),
+        conversations: [
+          expect.objectContaining({ id: 'sess-1' }),
+          expect.objectContaining({ id: 'sess-older' }),
         ],
+        activeConversation: expect.objectContaining({
+          id: 'sess-1',
+          messages: [
+            expect.objectContaining({
+              content: 'final answer',
+              thinking: undefined,
+              thoughtChain: [],
+              rawEvidence: ['tool output'],
+              restored: true,
+            }),
+          ],
+        }),
       }));
     });
   });
@@ -93,13 +119,17 @@ describe('useConversationRestore', () => {
     await waitFor(() => {
       expect(aiApi.getSessionDetail).toHaveBeenCalledWith('sess-2', 'scene:k8s');
       expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sess-2',
-        messages: [expect.objectContaining({ content: 'restored answer' })],
+        conversations: [expect.objectContaining({ id: 'sess-2' })],
+        activeConversation: expect.objectContaining({
+          id: 'sess-2',
+          messages: [expect.objectContaining({ content: 'restored answer' })],
+        }),
       }));
     });
   });
 
   it('prefers structured turns when replay contract is available', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
     vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
       code: 0,
       data: {
@@ -167,16 +197,130 @@ describe('useConversationRestore', () => {
 
     await waitFor(() => {
       expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sess-turn',
-        messages: [
-          expect.objectContaining({ role: 'user', content: 'scale deployment' }),
-          expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          id: 'sess-turn',
+          messages: [
+            expect.objectContaining({ role: 'user', content: 'scale deployment' }),
+            expect.objectContaining({
+              role: 'assistant',
+              content: '扩容完成',
+              restored: true,
+              turn: expect.objectContaining({ id: 'turn-assistant' }),
+            }),
+          ],
+        }),
+      }));
+    });
+  });
+
+  it('uses markdown-like status content as assistant fallback when replay text block is missing', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
+    vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'sess-markdown',
+        title: 'Markdown restore',
+        createdAt: '2026-03-11T00:00:00Z',
+        updatedAt: '2026-03-11T00:00:01Z',
+        messages: [],
+        turns: [
+          {
+            id: 'turn-assistant',
             role: 'assistant',
-            content: '扩容完成',
-            restored: true,
-            turn: expect.objectContaining({ id: 'turn-assistant' }),
-          }),
+            status: 'completed',
+            phase: 'done',
+            blocks: [
+              {
+                id: 'status-1',
+                blockType: 'status',
+                position: 1,
+                title: '整理最终结论',
+                contentText: '## 结果\n- 项目正常',
+                createdAt: '2026-03-11T00:00:01Z',
+                updatedAt: '2026-03-11T00:00:01Z',
+              },
+            ],
+            createdAt: '2026-03-11T00:00:01Z',
+            updatedAt: '2026-03-11T00:00:01Z',
+          },
         ],
+      },
+      msg: 'ok',
+    } as any);
+
+    const onRestore = vi.fn();
+    renderHook(() => useConversationRestore({ scene: 'global', onRestore }));
+
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          messages: [expect.objectContaining({ content: '## 结果\n- 项目正常' })],
+        }),
+      }));
+    });
+  });
+
+  it('falls back to summary thought stage content when legacy assistant content is empty', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
+    vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'sess-legacy-summary',
+        title: 'Legacy summary session',
+        createdAt: '2026-03-11T00:00:00Z',
+        updatedAt: '2026-03-11T00:00:01Z',
+        messages: [{
+          id: 'msg-1',
+          role: 'assistant',
+          content: '',
+          thoughtChain: [{ key: 'summary', title: '整理最终结论', status: 'success', content: '## 最终结论\n- 已完成' }],
+          timestamp: '2026-03-11T00:00:01Z',
+        }],
+      },
+      msg: 'ok',
+    } as any);
+
+    const onRestore = vi.fn();
+    renderHook(() => useConversationRestore({ scene: 'global', onRestore }));
+
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          messages: [expect.objectContaining({ content: '## 最终结论\n- 已完成', thinking: undefined })],
+        }),
+      }));
+    });
+  });
+
+  it('preserves raw restored assistant markdown content for direct XMarkdown rendering', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
+    vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'sess-bad-md',
+        title: 'Bad markdown session',
+        createdAt: '2026-03-11T00:00:00Z',
+        updatedAt: '2026-03-11T00:00:01Z',
+        messages: [{
+          id: 'msg-1',
+          role: 'assistant',
+          content: '##服务器状态查询结果\n---###系统分析结论',
+          timestamp: '2026-03-11T00:00:01Z',
+        }],
+      },
+      msg: 'ok',
+    } as any);
+
+    const onRestore = vi.fn();
+    renderHook(() => useConversationRestore({ scene: 'global', onRestore }));
+
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          messages: [expect.objectContaining({
+            content: '##服务器状态查询结果\n---###系统分析结论',
+          })],
+        }),
       }));
     });
   });

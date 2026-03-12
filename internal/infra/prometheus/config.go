@@ -28,6 +28,13 @@ type Config struct {
 //   - 重试次数: 3
 func (c Config) Normalize() Config {
 	out := c
+
+	// 如果 Address 已设置但没有 scheme，添加 http:// 前缀
+	if out.Address != "" && !strings.HasPrefix(out.Address, "http://") && !strings.HasPrefix(out.Address, "https://") {
+		out.Address = "http://" + out.Address
+	}
+
+	// 如果 Address 为空，尝试从 Host:Port 构建
 	if strings.TrimSpace(out.Address) == "" {
 		h := strings.TrimSpace(out.Host)
 		p := strings.TrimSpace(out.Port)
@@ -38,6 +45,7 @@ func (c Config) Normalize() Config {
 			out.Address = fmt.Sprintf("http://%s:%s", h, p)
 		}
 	}
+
 	if out.Timeout <= 0 {
 		out.Timeout = 10 * time.Second
 	}

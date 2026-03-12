@@ -9,6 +9,7 @@ import HealthCard from '../../components/Dashboard/HealthCard';
 import TimeseriesChart from '../../components/Dashboard/TimeseriesChart';
 import AlertPanel from '../../components/Dashboard/AlertPanel';
 import EventStream from '../../components/Dashboard/EventStream';
+import AIActivityCard from '../../components/Dashboard/AIActivityCard';
 
 const emptyOverview: OverviewResponse = {
   hosts: { total: 0, healthy: 0, degraded: 0, unhealthy: 0, offline: 0 },
@@ -19,6 +20,11 @@ const emptyOverview: OverviewResponse = {
   metrics: {
     cpu_usage: [],
     memory_usage: [],
+  },
+  ai: {
+    stats: { sessionCount: 0, tokenCount: 0, avgDurationMs: 0, successRate: 0 },
+    sessions: [],
+    byScene: {},
   },
 };
 
@@ -101,6 +107,12 @@ const Dashboard: React.FC = () => {
         </Col>
         <Col xs={24} xl={12}>
           <EventStream events={overview.events} loading={loading} />
+        </Col>
+      </Row>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24}>
+          <AIActivityCard data={overview.ai} loading={loading} />
         </Col>
       </Row>
     </div>

@@ -164,7 +164,6 @@ func (p *turnProjector) StageDelta(stage, status, chunk, stepID, expert string) 
 }
 
 func (p *turnProjector) TextDelta(blockID, blockType, phase, chunk string) {
-	chunk = strings.TrimSpace(chunk)
 	if !p.enabled || chunk == "" {
 		return
 	}

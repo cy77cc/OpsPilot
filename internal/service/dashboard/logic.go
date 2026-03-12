@@ -87,6 +87,15 @@ func (l *Logic) GetOverview(ctx context.Context, timeRange string) (*dashboardv1
 		return nil
 	})
 
+	group.Go(func() error {
+		aiActivity, err := l.getAIActivity(gctx, since, now)
+		if err != nil {
+			return err
+		}
+		out.AI = aiActivity
+		return nil
+	})
+
 	if err := group.Wait(); err != nil {
 		return nil, err
 	}
@@ -285,6 +294,104 @@ func (l *Logic) getRecentEvents(ctx context.Context) ([]dashboardv1.EventItem, e
 		events = events[:10]
 	}
 	return events, nil
+}
+
+// getAIActivity 获取 AI 助手活动统计数据。
+func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashboardv1.AIActivity, error) {
+	out := dashboardv1.AIActivity{
+		ByScene: make(map[string]int),
+	}
+
+	// 查询时间范围内的会话统计
+	type spanStats struct {
+		TotalCount  int64
+		TotalTokens int64
+		TotalMs     int64
+		SuccessCount int64
+	}
+
+	var stats spanStats
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Model(&model.AITraceSpan{}).
+		Where("start_time >= ? AND start_time <= ?", since, now).
+		Select("COUNT(*) as total_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms").
+		Scan(&stats).Error; err != nil {
+		return out, err
+	}
+
+	// 查询成功数量
+	var successCount int64
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Model(&model.AITraceSpan{}).
+		Where("start_time >= ? AND start_time <= ?", since, now).
+		Where("status = ?", "success").
+		Count(&successCount).Error; err != nil {
+		return out, err
+	}
+
+	// 计算成功率
+	var successRate float64
+	if stats.TotalCount > 0 {
+		successRate = float64(successCount) / float64(stats.TotalCount) * 100
+	}
+
+	// 计算平均响应时间
+	var avgDuration int64
+	if stats.TotalCount > 0 {
+		avgDuration = stats.TotalMs / stats.TotalCount
+	}
+
+	out.Stats = dashboardv1.AIStatsSummary{
+		SessionCount:  stats.TotalCount,
+		TokenCount:    stats.TotalTokens,
+		AvgDurationMs: avgDuration,
+		SuccessRate:   successRate,
+	}
+
+	// 查询按场景分组的会话数量
+	var sceneCounts []struct {
+		Scene string
+		Count int64
+	}
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Model(&model.AIChatSession{}).
+		Where("created_at >= ? AND created_at <= ?", since, now).
+		Select("scene, COUNT(*) as count").
+		Group("scene").
+		Find(&sceneCounts).Error; err != nil {
+		return out, err
+	}
+	for _, sc := range sceneCounts {
+		if sc.Scene != "" {
+			out.ByScene[sc.Scene] = int(sc.Count)
+		}
+	}
+
+	// 查询最近的 AI 会话
+	sessions := make([]model.AIChatSession, 0, 5)
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Order("created_at DESC").
+		Limit(5).
+		Find(&sessions).Error; err != nil {
+		return out, err
+	}
+
+	out.Sessions = make([]dashboardv1.AISessionItem, 0, len(sessions))
+	for _, s := range sessions {
+		title := s.Title
+		if title == "" {
+			title = fmt.Sprintf("%s 场景对话", s.Scene)
+		}
+		out.Sessions = append(out.Sessions, dashboardv1.AISessionItem{
+			ID:        s.ID,
+			Scene:     s.Scene,
+			Title:     title,
+			Status:    "success", // 默认成功，后续可从消息状态推断
+			CreatedAt: s.CreatedAt,
+		})
+	}
+
+	return out, nil
 }
 
 func (l *Logic) getMetricsSeries(ctx context.Context, since, now time.Time) (dashboardv1.MetricsSeries, error) {

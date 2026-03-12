@@ -131,9 +131,9 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 			"content": firstString(payload["error"], payload["summary"]),
 		})
 	case events.Delta:
-		r.assistant.Content += firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
+		r.assistant.Content += firstRawString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
 	case events.ThinkingDelta:
-		r.assistant.Thinking += firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
+		r.assistant.Thinking += firstRawString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
 	case events.ApprovalRequired:
 		r.upsertStage(map[string]any{
 			"key":         "user_action",
@@ -450,6 +450,30 @@ func firstString(values ...any) string {
 	for _, value := range values {
 		if text := strings.TrimSpace(toString(value)); text != "" {
 			return text
+		}
+	}
+	return ""
+}
+
+func firstRawString(values ...any) string {
+	for _, value := range values {
+		switch v := value.(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case []byte:
+			if len(v) > 0 {
+				return string(v)
+			}
+		default:
+			if value == nil {
+				continue
+			}
+			text := fmt.Sprint(value)
+			if text != "" && text != "<nil>" {
+				return text
+			}
 		}
 	}
 	return ""
