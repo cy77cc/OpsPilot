@@ -45,3 +45,17 @@ func NewCommonTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTo
 		service.ServiceCatalogList(ctx, deps),
 	}
 }
+
+func NewAllTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTool {
+	return []tool.BaseTool{
+		cicd.CICDPipelineList(ctx, deps),
+		deployment.ClusterListInventory(ctx, deps),
+		governance.AuditLogSearch(ctx, deps),
+		governance.PermissionCheck(ctx, deps),
+		host.HostListInventory(ctx, deps),
+		infrastructure.CredentialList(ctx, deps),
+		kubernetes.K8sListResources(ctx, deps),
+		monitor.MonitorAlertRuleList(ctx, deps),
+		service.ServiceCatalogList(ctx, deps),
+	}
+}

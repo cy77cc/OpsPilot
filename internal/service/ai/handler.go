@@ -18,11 +18,11 @@ import (
 
 	v1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	coreai "github.com/cy77cc/OpsPilot/internal/ai"
-	aiv2 "github.com/cy77cc/OpsPilot/internal/aiv2"
 	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	aistate "github.com/cy77cc/OpsPilot/internal/ai/state"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	aiv2 "github.com/cy77cc/OpsPilot/internal/aiv2"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
