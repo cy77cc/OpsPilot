@@ -8,6 +8,8 @@ import (
 	"context"
 
 	"github.com/cloudwego/eino/components/tool"
+	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
+	approvaltools "github.com/cy77cc/OpsPilot/internal/ai/tools/approval"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/cicd"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/deployment"
@@ -47,7 +49,7 @@ func NewCommonTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTo
 }
 
 func NewAllTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTool {
-	return []tool.BaseTool{
+	base := []tool.BaseTool{
 		cicd.CICDPipelineList(ctx, deps),
 		deployment.ClusterListInventory(ctx, deps),
 		governance.AuditLogSearch(ctx, deps),
@@ -58,4 +60,50 @@ func NewAllTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTool 
 		monitor.MonitorAlertRuleList(ctx, deps),
 		service.ServiceCatalogList(ctx, deps),
 	}
+	registry := NewRegistry(deps)
+	decisionMaker := airuntime.NewApprovalDecisionMaker(airuntime.ApprovalDecisionMakerOptions{
+		ResolveScene: airuntime.NewSceneConfigResolver(nil).Resolve,
+		LookupTool: func(name string) (airuntime.ApprovalToolSpec, bool) {
+			spec, ok := registry.Get(name)
+			if !ok {
+				return airuntime.ApprovalToolSpec{}, false
+			}
+			return airuntime.ApprovalToolSpec{
+				Name:        spec.Name,
+				DisplayName: spec.DisplayName,
+				Description: spec.Description,
+				Mode:        string(spec.Mode),
+				Risk:        string(spec.Risk),
+				Category:    spec.Category,
+			}, true
+		},
+	})
+	renderer := approvaltools.NewSummaryRenderer()
+	out := make([]tool.BaseTool, 0, len(base))
+	for _, current := range base {
+		invokable, ok := current.(tool.InvokableTool)
+		if !ok {
+			out = append(out, current)
+			continue
+		}
+		info, err := invokable.Info(ctx)
+		if err != nil || info == nil {
+			out = append(out, current)
+			continue
+		}
+		spec, ok := registry.Get(info.Name)
+		if !ok {
+			out = append(out, current)
+			continue
+		}
+		out = append(out, approvaltools.NewGate(invokable, airuntime.ApprovalToolSpec{
+			Name:        spec.Name,
+			DisplayName: spec.DisplayName,
+			Description: spec.Description,
+			Mode:        string(spec.Mode),
+			Risk:        string(spec.Risk),
+			Category:    spec.Category,
+		}, decisionMaker, renderer))
+	}
+	return out
 }

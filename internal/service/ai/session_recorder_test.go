@@ -57,13 +57,13 @@ func TestChatRecorderPreservesStreamingMarkdownFormatting(t *testing.T) {
 	if assistant.Content != "## 结果\n- 正常\n" {
 		t.Fatalf("content = %q, want preserved markdown", assistant.Content)
 	}
-	if len(session.Turns) < 2 || len(session.Turns[1].Blocks) == 0 {
+	if len(session.Turns) < 1 || len(session.Turns[0].Blocks) == 0 {
 		t.Fatalf("turn replay blocks = %#v", session.Turns)
 	}
 
 	var textBlockFound bool
 	var thinkingBlockFound bool
-	for _, block := range session.Turns[1].Blocks {
+	for _, block := range session.Turns[0].Blocks {
 		switch block.BlockType {
 		case "text":
 			textBlockFound = true

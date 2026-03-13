@@ -1,12 +1,120 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { message } from 'antd';
-import type { ChatMessage, Conversation, ConfirmationRequest, ToolExecution } from '../types';
+import type {
+  ChatMessage,
+  Conversation,
+  ConfirmationRequest,
+  ThoughtStageDetailItem,
+  ThoughtStageItem,
+  ThoughtStageKey,
+  ThoughtStageStatus,
+  ToolExecution,
+} from '../types';
 import { aiApi } from '../../../api/modules/ai';
-import type { ApprovalTicket } from '../../../api/modules/ai';
+import type { ApprovalRequiredEvent, SSEStageDeltaEvent, SSEStepUpdateEvent } from '../../../api/modules/ai';
 
 interface UseAIChatOptions {
   scene: string;
   sessionId?: string;
+}
+
+function normalizeThoughtStatus(status: string | undefined, fallback: ThoughtStageStatus = 'loading'): ThoughtStageStatus {
+  switch (status) {
+    case 'completed':
+    case 'success':
+      return 'success';
+    case 'failed':
+    case 'error':
+    case 'blocked':
+      return 'error';
+    case 'cancelled':
+    case 'rejected':
+      return 'abort';
+    default:
+      return fallback;
+  }
+}
+
+function resolveStageTitle(stage: ThoughtStageKey): string {
+  switch (stage) {
+    case 'rewrite':
+      return '识别目标与约束';
+    case 'plan':
+      return '整理执行步骤';
+    case 'execute':
+      return '工具调用链';
+    case 'user_action':
+      return '等待你确认';
+    case 'summary':
+      return '整理最终结论';
+    default:
+      return '处理中';
+  }
+}
+
+function upsertThoughtStage(
+  stages: ThoughtStageItem[] | undefined,
+  patch: Partial<ThoughtStageItem> & Pick<ThoughtStageItem, 'key' | 'status'>
+): ThoughtStageItem[] {
+  const currentStages = stages || [];
+  const index = currentStages.findIndex((item) => item.key === patch.key);
+  const next: ThoughtStageItem = {
+    key: patch.key,
+    title: patch.title || resolveStageTitle(patch.key),
+    status: patch.status,
+    description: patch.description,
+    content: patch.content,
+    details: patch.details,
+    footer: patch.footer,
+    collapsible: patch.collapsible ?? true,
+    blink: patch.blink ?? patch.status === 'loading',
+  };
+
+  if (index === -1) {
+    return [...currentStages, next];
+  }
+
+  return currentStages.map((item, itemIndex) => (
+    itemIndex === index
+      ? {
+          ...item,
+          ...next,
+          title: next.title || item.title,
+          details: next.details ?? item.details,
+          content: next.content ?? item.content,
+        }
+      : item
+  ));
+}
+
+function upsertThoughtDetail(
+  stages: ThoughtStageItem[] | undefined,
+  detail: ThoughtStageDetailItem,
+): ThoughtStageItem[] {
+  const currentStages = stages || [];
+  const executeStage = currentStages.find((item) => item.key === 'execute');
+  const details = [...(executeStage?.details || [])];
+  const index = details.findIndex((item) => item.id === detail.id);
+  if (index === -1) {
+    details.push(detail);
+  } else {
+    details[index] = { ...details[index], ...detail };
+  }
+
+  return upsertThoughtStage(currentStages, {
+    key: 'execute',
+    title: '工具调用链',
+    status: detail.status === 'error' ? 'error' : 'loading',
+    details,
+  });
+}
+
+function buildDetailLabel(payload: SSEStepUpdateEvent): string {
+  return String(payload.title || payload.tool_name || payload.tool || payload.expert || payload.step_id || '执行步骤');
+}
+
+function buildDetailContent(payload: SSEStepUpdateEvent): string | undefined {
+  return String(payload.user_visible_summary || payload.summary || payload.error || '').trim() || undefined;
 }
 
 /**
@@ -56,12 +164,12 @@ export function useAIChat(options: UseAIChatOptions) {
    * 处理审批请求
    */
   const handleApprovalRequired = useCallback(
-    (payload: ApprovalTicket & { turn_id?: string; approval_required?: boolean; previewDiff?: string }) => {
+    (payload: ApprovalRequiredEvent) => {
       const confirmation: ConfirmationRequest = {
-        id: String(payload.id || payload.turn_id || Date.now()),
-        title: String(payload.tool || '待确认操作'),
+        id: String(payload.id || payload.step_id || payload.checkpoint_id || Date.now()),
+        title: String(payload.title || payload.tool_name || payload.tool || '待确认操作'),
         description: '高风险操作需要审批后继续执行',
-        risk: payload.risk || 'high',
+        risk: payload.risk || payload.risk_level || 'high',
         details: payload as unknown as Record<string, unknown>,
         onConfirm: () => {
           void confirmApproval(true);
@@ -72,6 +180,22 @@ export function useAIChat(options: UseAIChatOptions) {
       };
 
       setPendingConfirmation(confirmation);
+      setIsLoading(false);
+      setMessages((prev) => prev.map((item) => (
+        item.id !== activeAssistantIdRef.current
+          ? item
+          : {
+              ...item,
+              confirmation,
+              thoughtChain: upsertThoughtStage(item.thoughtChain, {
+                key: 'user_action',
+                status: 'loading',
+                title: '等待你确认',
+                description: String(payload.title || payload.user_visible_summary || '当前步骤需要确认后继续执行'),
+                content: String(payload.user_visible_summary || ''),
+              }),
+            }
+      )));
     },
     []
   );
@@ -88,10 +212,25 @@ export function useAIChat(options: UseAIChatOptions) {
         session_id: details.session_id as string,
         plan_id: details.plan_id as string | undefined,
         step_id: details.step_id as string | undefined,
+        checkpoint_id: details.checkpoint_id as string | undefined,
         approved,
       });
 
       setPendingConfirmation(null);
+      setMessages((prev) => prev.map((item) => (
+        item.id !== activeAssistantIdRef.current
+          ? item
+          : {
+              ...item,
+              confirmation: undefined,
+              thoughtChain: upsertThoughtStage(item.thoughtChain, {
+                key: 'user_action',
+                status: approved ? 'success' : 'abort',
+                title: '等待你确认',
+                description: approved ? '已确认，继续执行' : '已取消执行',
+              }),
+            }
+      )));
 
       if (approved) {
         message.success('已确认，继续执行');
@@ -158,6 +297,50 @@ export function useAIChat(options: UseAIChatOptions) {
               contentRef.current += payload.contentChunk || '';
               emitAssistantMessage();
             },
+            onStageDelta: (payload: SSEStageDeltaEvent) => {
+              const stage = String(payload.stage || '').trim() as ThoughtStageKey;
+              if (!stage) {
+                return;
+              }
+              setMessages((prev) => prev.map((item) => (
+                item.id !== assistantId
+                  ? item
+                  : {
+                      ...item,
+                      thoughtChain: upsertThoughtStage(item.thoughtChain, {
+                        key: stage,
+                        status: normalizeThoughtStatus(payload.status, 'loading'),
+                        title: resolveStageTitle(stage),
+                        description: String(payload.summary || payload.user_visible_summary || payload.message || '').trim() || item.thoughtChain?.find((entry) => entry.key === stage)?.description,
+                        content: String(payload.contentChunk || payload.content_chunk || payload.detail || payload.summary || '').trim() || item.thoughtChain?.find((entry) => entry.key === stage)?.content,
+                      }),
+                    }
+              )));
+            },
+            onStepUpdate: (payload: SSEStepUpdateEvent) => {
+              const status = normalizeThoughtStatus(payload.status, 'loading');
+              setMessages((prev) => prev.map((item) => (
+                item.id !== assistantId
+                  ? item
+                  : {
+                      ...item,
+                      thoughtChain: upsertThoughtDetail(item.thoughtChain, {
+                        id: String(payload.step_id || payload.plan_id || payload.tool || Date.now()),
+                        label: buildDetailLabel(payload),
+                        status,
+                        content: buildDetailContent(payload),
+                        tool: payload.tool_name || payload.tool,
+                        params: payload.params,
+                        result: payload.result,
+                        risk: undefined,
+                        checkpoint_id: payload.checkpoint_id,
+                        session_id: payload.session_id,
+                        plan_id: payload.plan_id,
+                        step_id: payload.step_id,
+                      }),
+                    }
+              )));
+            },
             onThinkingDelta: (payload) => {
               thinkingRef.current += payload.contentChunk || '';
               emitAssistantMessage();
@@ -193,6 +376,22 @@ export function useAIChat(options: UseAIChatOptions) {
               if (payload.session?.id) {
                 setCurrentSessionId(payload.session.id);
               }
+              setMessages((prev) => prev.map((item) => (
+                item.id !== assistantId
+                  ? item
+                  : {
+                      ...item,
+                      thoughtChain: (item.thoughtChain || []).map((stage) => ({
+                        ...stage,
+                        blink: false,
+                        status: stage.status === 'loading' ? 'success' : stage.status,
+                        details: stage.details?.map((detail) => ({
+                          ...detail,
+                          status: detail.status === 'loading' ? 'success' : detail.status,
+                        })),
+                      })),
+                    }
+              )));
             },
             onError: (error) => {
               setIsLoading(false);

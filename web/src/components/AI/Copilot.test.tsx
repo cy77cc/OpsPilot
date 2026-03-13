@@ -230,4 +230,68 @@ describe('Copilot', () => {
     expect(bubbleItems[0]).toHaveAttribute('data-role', 'user');
     expect(bubbleItems[1]).toHaveAttribute('data-role', 'assistant');
   });
+
+  it('renders ThoughtChain stage details and checkpoint-based approval confirmation during regenerate', async () => {
+    restoredConversation = {
+      conversations: [{ id: 'sess-stream', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:01Z' }],
+      activeConversation: {
+        id: 'sess-stream',
+        title: '当前会话',
+        messages: [
+          {
+            id: 'msg-user',
+            role: 'user',
+            content: '把 nginx 扩容到 3 个副本',
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '旧答案',
+            createdAt: '2026-03-12T00:00:01Z',
+          },
+        ],
+      },
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ sessionId: 'sess-stream', createdAt: new Date().toISOString() });
+      handlers.onStageDelta?.({ stage: 'plan', status: 'loading', summary: '正在整理执行步骤' } as any);
+      handlers.onStepUpdate?.({
+        plan_id: 'plan-1',
+        step_id: 'step-1',
+        tool: 'scale_deployment',
+        title: '扩容 nginx',
+        status: 'loading',
+        user_visible_summary: '准备调用扩容工具',
+      } as any);
+      handlers.onApprovalRequired?.({
+        id: 'approval-1',
+        session_id: 'sess-stream',
+        plan_id: 'plan-1',
+        step_id: 'step-1',
+        checkpoint_id: 'cp-1',
+        tool: 'scale_deployment',
+        status: 'pending',
+        risk: 'medium',
+        title: '扩容 nginx 需要确认',
+        user_visible_summary: '该步骤会修改工作负载副本数',
+      } as any);
+      handlers.onDone?.({ stream_state: 'ok' } as any);
+    });
+
+    render(<Copilot open scene="global" />);
+
+    const regenerateButtons = await screen.findAllByRole('button', { name: '重新生成' });
+    fireEvent.click(regenerateButtons[regenerateButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(aiApi.chatStream).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText('整理执行步骤')).toBeInTheDocument();
+    expect(screen.getByText('当前步骤: 扩容 nginx')).toBeInTheDocument();
+    expect(screen.getByText('扩容 nginx 需要确认')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '扩容 nginx 需要确认，确认执行' })).toBeInTheDocument();
+  });
 });

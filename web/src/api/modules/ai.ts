@@ -73,6 +73,7 @@ export interface AIInterruptApprovalResponse {
   session_id?: string;
   plan_id?: string;
   step_id?: string;
+  checkpoint_id?: string;
   approved: boolean;
   reason?: string;
 }
@@ -85,6 +86,7 @@ export interface AIInterruptApprovalResult {
   session_id?: string;
   plan_id?: string;
   step_id?: string;
+  checkpoint_id?: string;
   status?: string;
   interrupt_targets?: string[];
   interrupt_contexts?: any[];
@@ -213,19 +215,41 @@ export interface SSEPlanCreatedEvent {
 export interface SSEStageDeltaEvent {
   stage?: string;
   status?: string;
+  session_id?: string;
+  plan_id?: string;
+  step_id?: string;
+  checkpoint_id?: string;
   content_chunk?: string;
   contentChunk?: string;
+  content?: string;
+  detail?: string;
+  details?: string[];
   summary?: string;
+  user_visible_summary?: string;
+  message?: string;
   title?: string;
   replace?: boolean;
 }
 
 export interface SSEStepUpdateEvent {
+  session_id?: string;
   plan_id?: string;
   step_id?: string;
+  checkpoint_id?: string;
   status?: string;
   title?: string;
   expert?: string;
+  tool?: string;
+  tool_name?: string;
+  params?: Record<string, unknown>;
+  result?: {
+    ok?: boolean;
+    data?: unknown;
+    error?: string;
+    latency_ms?: number;
+  };
+  error?: string;
+  summary?: string;
   user_visible_summary?: string;
 }
 
@@ -262,6 +286,47 @@ function toContentChunk(payload: unknown): string {
   } catch {
     return String(direct);
   }
+}
+
+function normalizeResumeIdentity<T extends Record<string, unknown>>(payload: T): T {
+  const resume = (payload.resume || {}) as Record<string, unknown>;
+  const sessionID = payload.session_id ?? resume.session_id;
+  const planID = payload.plan_id ?? resume.plan_id;
+  const stepID = payload.step_id ?? resume.step_id;
+  const checkpointID = payload.checkpoint_id ?? resume.checkpoint_id;
+
+  return {
+    ...payload,
+    ...(sessionID ? { session_id: String(sessionID) } : {}),
+    ...(planID ? { plan_id: String(planID) } : {}),
+    ...(stepID ? { step_id: String(stepID) } : {}),
+    ...(checkpointID ? { checkpoint_id: String(checkpointID) } : {}),
+  };
+}
+
+function normalizeStageDeltaEvent(payload: unknown): SSEStageDeltaEvent {
+  const base = typeof payload === 'object' && payload ? normalizeResumeIdentity(payload as Record<string, unknown>) : {};
+  const contentChunk = toContentChunk(base);
+  return {
+    ...(base as SSEStageDeltaEvent),
+    ...(contentChunk ? { contentChunk, content_chunk: typeof base.content_chunk === 'string' ? base.content_chunk : contentChunk } : {}),
+  };
+}
+
+function normalizeStepUpdateEvent(payload: unknown): SSEStepUpdateEvent {
+  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as SSEStepUpdateEvent;
+}
+
+function normalizeApprovalRequiredEvent(payload: unknown): ApprovalRequiredEvent {
+  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as unknown as ApprovalRequiredEvent;
+}
+
+function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
+  const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
+  if (!errorPayload.code && errorPayload.error_code) {
+    errorPayload.code = errorPayload.error_code;
+  }
+  return errorPayload;
 }
 
 export interface SSEDoneEvent {
@@ -319,7 +384,7 @@ export interface AIChatStreamHandlers {
   onThinkingDelta?: (payload: SSEThinkingEvent) => void;
   onToolCall?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; ts?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> }) => void;
   onToolResult?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; result?: { ok: boolean; data?: any; error?: string; error_code?: string; source?: string; latency_ms?: number }; ts?: string }) => void;
-  onApprovalRequired?: (payload: ApprovalTicket & { turn_id?: string; approval_required?: boolean; previewDiff?: string }) => void;
+  onApprovalRequired?: (payload: ApprovalRequiredEvent) => void;
   onHeartbeat?: (payload: { turn_id?: string; status?: string }) => void;
 }
 
@@ -367,6 +432,10 @@ export interface ToolCallTrace {
 
 export interface ApprovalTicket {
   id: string;
+  session_id?: string;
+  plan_id?: string;
+  step_id?: string;
+  checkpoint_id?: string;
   tool?: string;
   tool_name?: string;
   params?: Record<string, any>;
@@ -384,6 +453,20 @@ export interface ApprovalTicket {
   target_resource_id?: string;
   target_resource_name?: string;
   task_detail_json?: string;
+  resume?: {
+    session_id?: string;
+    plan_id?: string;
+    step_id?: string;
+    checkpoint_id?: string;
+  };
+}
+
+export interface ApprovalRequiredEvent extends ApprovalTicket {
+  turn_id?: string;
+  approval_required?: boolean;
+  previewDiff?: string;
+  title?: string;
+  user_visible_summary?: string;
 }
 
 export interface KnowledgeEntry {
@@ -582,9 +665,9 @@ export const aiApi = {
       } else if (eventType === 'plan_created') {
         handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
       } else if (eventType === 'stage_delta') {
-        handlers.onStageDelta?.(payload as SSEStageDeltaEvent);
+        handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
       } else if (eventType === 'step_update') {
-        handlers.onStepUpdate?.(payload as SSEStepUpdateEvent);
+        handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
         const contentChunk = toContentChunk(payload);
         if (contentChunk) {
@@ -598,12 +681,9 @@ export const aiApi = {
         toolPending = false;
         clearToolTimer();
       } else if (eventType === 'error') {
-        const errorPayload = payload as SSEErrorEvent;
-        if (!errorPayload.code && errorPayload.error_code) {
-          errorPayload.code = errorPayload.error_code;
-        }
+        const errorPayload = normalizeErrorEvent(payload);
         handlers.onError?.(errorPayload);
-        const err = payload as SSEErrorEvent;
+        const err = errorPayload;
         if (err.code !== 'tool_timeout_soft') {
           toolPending = false;
           clearToolTimer();
@@ -620,7 +700,7 @@ export const aiApi = {
         toolPending = false;
         clearToolTimer();
       } else if (eventType === 'approval_required') {
-        handlers.onApprovalRequired?.(payload as ApprovalTicket & { approval_required?: boolean; previewDiff?: string });
+        handlers.onApprovalRequired?.(normalizeApprovalRequiredEvent(payload));
         toolPending = false;
         clearToolTimer();
       } else if (eventType === 'clarify_required') {
@@ -705,7 +785,7 @@ export const aiApi = {
     return apiService.post('/ai/tools/preview', params);
   },
 
-  async executeTool(params: { tool: string; params?: Record<string, any>; approval_token?: string }): Promise<ApiResponse<AIToolExecution>> {
+  async executeTool(params: { tool: string; params?: Record<string, any>; approval_token?: string; checkpoint_id?: string }): Promise<ApiResponse<AIToolExecution>> {
     return apiService.post('/ai/tools/execute', params);
   },
 
@@ -812,15 +892,15 @@ export const aiApi = {
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
       } else if (eventType === 'stage_delta') {
-        handlers.onStageDelta?.(payload as SSEStageDeltaEvent);
+        handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
       } else if (eventType === 'step_update') {
-        handlers.onStepUpdate?.(payload as SSEStepUpdateEvent);
+        handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'tool_call') {
         handlers.onToolCall?.(payload as any);
       } else if (eventType === 'tool_result') {
         handlers.onToolResult?.(payload as any);
       } else if (eventType === 'approval_required') {
-        handlers.onApprovalRequired?.(payload as any);
+        handlers.onApprovalRequired?.(normalizeApprovalRequiredEvent(payload));
       } else if (eventType === 'thinking_delta') {
         handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
       } else if (eventType === 'delta' || eventType === 'message') {
@@ -834,7 +914,7 @@ export const aiApi = {
       } else if (eventType === 'done') {
         handlers.onDone?.(payload as SSEDoneEvent);
       } else if (eventType === 'error') {
-        handlers.onError?.(payload as SSEErrorEvent);
+        handlers.onError?.(normalizeErrorEvent(payload));
       }
     };
 

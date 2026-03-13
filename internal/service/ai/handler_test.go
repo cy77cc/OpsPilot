@@ -192,11 +192,11 @@ func TestSessionHandlersRespectSceneAndExposeThoughtChain(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("unmarshal response: %v", err)
 		}
-		if len(resp.Data.Turns) != 2 {
-			t.Fatalf("turn count = %#v, want 2", resp.Data.Turns)
+		if len(resp.Data.Turns) != 1 {
+			t.Fatalf("turn count = %#v, want 1 assistant replay turn", resp.Data.Turns)
 		}
-		if resp.Data.Turns[1]["id"] != "turn-global" {
-			t.Fatalf("assistant turn id = %#v, want turn-global", resp.Data.Turns[1]["id"])
+		if resp.Data.Turns[0]["id"] != "turn-global" {
+			t.Fatalf("assistant turn id = %#v, want turn-global", resp.Data.Turns[0]["id"])
 		}
 	})
 }

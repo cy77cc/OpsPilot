@@ -7,9 +7,10 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
+	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
 
-func NewPlanner(ctx context.Context) (adk.Agent, error) {
+func NewPlanner(ctx context.Context, processor *airuntime.ContextProcessor) (adk.Agent, error) {
 	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
 		Timeout:  60 * time.Second,
 		Thinking: false,
@@ -21,5 +22,11 @@ func NewPlanner(ctx context.Context) (adk.Agent, error) {
 
 	return planexecute.NewPlanner(ctx, &planexecute.PlannerConfig{
 		ToolCallingChatModel: model,
+		GenInputFn: func(ctx context.Context, userInput []adk.Message) ([]adk.Message, error) {
+			if processor == nil {
+				return userInput, nil
+			}
+			return processor.BuildPlannerInput(ctx, userInput)
+		},
 	})
 }

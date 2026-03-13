@@ -10,7 +10,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/cloudwego/eino-ext/devops"
-	"github.com/cy77cc/OpsPilot/internal/ai"
+	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/cache"
 	casbinadapter "github.com/cy77cc/OpsPilot/internal/component/casbin"
 	"github.com/cy77cc/OpsPilot/internal/config"
@@ -50,7 +50,7 @@ func MustNewServiceContext() *ServiceContext {
 		logger.L().Warn("Failed to initialize devops", logger.Error(err))
 	}
 
-	if err := ai.CheckModelHealth(ctx); err != nil {
+	if err := chatmodel.CheckModelHealth(ctx); err != nil {
 		logger.L().Warn("Failed to check AI model health",
 			logger.String("base_url", aiBaseURL()),
 			logger.String("model", aiModel()),

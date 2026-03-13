@@ -21,6 +21,7 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 // registerHandlers 注册具体的路由处理器。
 func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHTTPHandler(svcCtx)
+	g.Use(h.SceneContextMiddleware())
 	// 对话接口
 	g.POST("/chat", h.Chat)
 	g.POST("/chat/respond", h.Chat)
@@ -30,6 +31,22 @@ func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	g.POST("/resume/step/stream", h.ResumeStepStream)
 	g.POST("/approval/respond", h.ResumeStep)
 	g.POST("/adk/resume", h.ResumeADKApproval)
+	g.GET("/capabilities", h.Capabilities)
+	g.GET("/tools/:name/params/hints", h.ToolParamHints)
+	g.POST("/tools/preview", h.PreviewTool)
+	g.POST("/tools/execute", h.ExecuteTool)
+	g.GET("/executions/:id", h.ExecutionStatus)
+	g.POST("/approvals", h.CreateApproval)
+	g.GET("/approvals", h.ListApprovals)
+	g.GET("/approvals/:id", h.GetApproval)
+	g.POST("/approvals/:id/approve", h.ApproveApproval)
+	g.POST("/approvals/:id/reject", h.RejectApproval)
+	g.GET("/scene/:scene/tools", h.SceneTools)
+	g.GET("/scene/:scene/prompts", h.ScenePrompts)
+	g.GET("/scene/configs", h.ListSceneConfigs)
+	g.GET("/scene/configs/:scene", h.GetSceneConfig)
+	g.PUT("/scene/configs/:scene", h.UpdateSceneConfig)
+	g.DELETE("/scene/configs/:scene", h.DeleteSceneConfig)
 	// 会话管理接口
 	g.GET("/sessions", h.ListSessions)
 	g.GET("/sessions/current", h.CurrentSession)

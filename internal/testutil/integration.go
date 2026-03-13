@@ -113,9 +113,13 @@ func autoMigrateAll(db *gorm.DB) error {
 		&model.AIChatTurn{},
 		&model.AIChatBlock{},
 		&model.AIApprovalTask{},
+		&model.AIApproval{},
 		&model.ConfirmationRequest{},
 		&model.AICheckPoint{},
 		&model.AICommandExecution{},
+		&model.AISceneConfig{},
+		&model.AIScenePrompt{},
+		&model.AIExecution{},
 
 		// Jobs
 		&model.Job{},

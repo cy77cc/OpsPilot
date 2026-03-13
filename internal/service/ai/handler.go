@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,13 +22,16 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/events"
 	"github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	aistate "github.com/cy77cc/OpsPilot/internal/ai/state"
+	aitools "github.com/cy77cc/OpsPilot/internal/ai/tools"
+	approvaltools "github.com/cy77cc/OpsPilot/internal/ai/tools/approval"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
-	aiv2 "github.com/cy77cc/OpsPilot/internal/aiv2"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // HTTPHandler AI 服务的 HTTP 处理器。
@@ -36,7 +40,10 @@ type HTTPHandler struct {
 	sessions     *aistate.SessionState // 会话状态管理
 	chatStore    *aistate.ChatStore    // 聊天记录存储
 	orchestrator aiRuntime             // AI 编排器
-	aiv2         aiRuntime             // AIV2 单 agent 运行时
+	registry     *aitools.Registry
+	approvals    *runtime.ApprovalDecisionMaker
+	summaries    *approvaltools.SummaryRenderer
+	hintResolver *HintResolver
 }
 
 type aiRuntime interface {
@@ -80,7 +87,11 @@ type feedbackRequest struct {
 func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 	sessionState := aistate.NewSessionState(svcCtx.Rdb, "ai:session:")
 	executionStore := runtime.NewExecutionStore(svcCtx.Rdb, "ai:execution:")
-	return &HTTPHandler{
+	registry := aitools.NewRegistry(common.PlatformDeps{
+		DB:         svcCtx.DB,
+		Prometheus: svcCtx.Prometheus,
+	})
+	handler := &HTTPHandler{
 		svcCtx:    svcCtx,
 		sessions:  sessionState,
 		chatStore: aistate.NewChatStore(svcCtx.DB),
@@ -88,8 +99,28 @@ func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 			DB:         svcCtx.DB,
 			Prometheus: svcCtx.Prometheus,
 		}),
-		aiv2: aiv2.NewRuntime(svcCtx),
+		registry:     registry,
+		summaries:    approvaltools.NewSummaryRenderer(),
+		hintResolver: NewHintResolver(common.PlatformDeps{DB: svcCtx.DB, Prometheus: svcCtx.Prometheus}),
 	}
+	handler.approvals = runtime.NewApprovalDecisionMaker(runtime.ApprovalDecisionMakerOptions{
+		ResolveScene: handler.resolveApprovalScene,
+		LookupTool: func(name string) (runtime.ApprovalToolSpec, bool) {
+			spec, ok := registry.Get(name)
+			if !ok {
+				return runtime.ApprovalToolSpec{}, false
+			}
+			return runtime.ApprovalToolSpec{
+				Name:        spec.Name,
+				DisplayName: spec.DisplayName,
+				Description: spec.Description,
+				Mode:        string(spec.Mode),
+				Risk:        string(spec.Risk),
+				Category:    spec.Category,
+			}, true
+		},
+	})
+	return handler
 }
 
 // Chat 处理对话请求，返回 SSE 流式响应。
@@ -125,17 +156,11 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 		payload := evt.Data
 		if evt.Type == events.Meta {
 			payload = attachRolloutMetadata(cloneMap(payload), rollout)
-			if h.useAIV2() {
-				payload["runtime_mode"] = "aiv2"
-			}
 		}
 		if recorder != nil {
 			payload = cloneMap(evt.Data)
 			if evt.Type == events.Meta {
 				payload = attachRolloutMetadata(payload, rollout)
-				if h.useAIV2() {
-					payload["runtime_mode"] = "aiv2"
-				}
 			}
 			recorder.HandleEvent(c.Request.Context(), evt.Type, payload)
 			if evt.Type == events.Done {
@@ -193,9 +218,6 @@ func (h *HTTPHandler) ResumeStepStream(c *gin.Context) {
 		payload := cloneMap(evt.Data)
 		if evt.Type == events.Meta {
 			payload = attachRolloutMetadata(payload, rollout)
-			if h.useAIV2() {
-				payload["runtime_mode"] = "aiv2"
-			}
 		}
 		return writeSSE(c, flusher, string(evt.Type), payload)
 	}
@@ -229,45 +251,29 @@ func (h *HTTPHandler) ResumeADKApproval(c *gin.Context) {
 // buildResumeRequest 构建恢复请求对象。
 func buildResumeRequest(req approvalResponseRequest) coreai.ResumeRequest {
 	return coreai.ResumeRequest{
-		SessionID: req.SessionID,
-		PlanID:    req.PlanID,
-		StepID:    firstNonEmpty(req.StepID, req.Target, req.CheckpointID),
-		Target:    firstNonEmpty(req.Target, req.CheckpointID),
-		Approved:  req.Approved,
-		Reason:    req.Reason,
+		SessionID:    req.SessionID,
+		PlanID:       req.PlanID,
+		StepID:       firstNonEmpty(req.StepID, req.Target, req.CheckpointID),
+		CheckpointID: req.CheckpointID,
+		Target:       firstNonEmpty(req.Target, req.CheckpointID),
+		Approved:     req.Approved,
+		Reason:       req.Reason,
 	}
-}
-
-func (h *HTTPHandler) useAIV2() bool {
-	rollout := coreai.CurrentRolloutConfig()
-	return rollout.UseAssistantV2 && h.aiv2 != nil
 }
 
 func (h *HTTPHandler) runtimeModeHeader(rollout coreai.RolloutConfig) string {
-	if h.useAIV2() {
-		return "aiv2"
-	}
 	return rollout.RuntimeMode()
 }
 
 func (h *HTTPHandler) runRuntime(ctx context.Context, req coreai.RunRequest, emit coreai.StreamEmitter) error {
-	if h.useAIV2() {
-		return h.aiv2.Run(ctx, req, emit)
-	}
 	return h.orchestrator.Run(ctx, req, emit)
 }
 
 func (h *HTTPHandler) resumeRuntime(ctx context.Context, req coreai.ResumeRequest) (*coreai.ResumeResult, error) {
-	if h.useAIV2() {
-		return h.aiv2.Resume(ctx, req)
-	}
 	return h.orchestrator.Resume(ctx, req)
 }
 
 func (h *HTTPHandler) resumeRuntimeStream(ctx context.Context, req coreai.ResumeRequest, emit coreai.StreamEmitter) (*coreai.ResumeResult, error) {
-	if h.useAIV2() {
-		return h.aiv2.ResumeStream(ctx, req, emit)
-	}
 	return h.orchestrator.ResumeStream(ctx, req, emit)
 }
 
@@ -282,6 +288,7 @@ func buildResumeResponse(res *coreai.ResumeResult, legacyADK bool) gin.H {
 		"session_id":        res.SessionID,
 		"plan_id":           res.PlanID,
 		"step_id":           res.StepID,
+		"checkpoint_id":     res.StepID,
 		"turn_id":           res.TurnID,
 		"message":           res.Message,
 		"status":            res.Status,
@@ -408,15 +415,12 @@ func (h *HTTPHandler) DeleteSession(c *gin.Context) {
 }
 
 func (h *HTTPHandler) normalizeRuntimeContext(c *gin.Context, raw map[string]any) coreai.RuntimeContext {
-	ctx := coreai.RuntimeContext{
-		Route:       c.FullPath(),
-		ProjectID:   strings.TrimSpace(c.GetHeader("X-Project-ID")),
-		CurrentPage: c.Request.Referer(),
-		UserContext: map[string]any{
-			"uid":   httpx.UIDFromCtx(c),
-			"admin": httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c)),
-		},
-		Metadata: map[string]any{},
+	ctx := h.baseRuntimeContext(c)
+	if ctx.UserContext == nil {
+		ctx.UserContext = map[string]any{}
+	}
+	if ctx.Metadata == nil {
+		ctx.Metadata = map[string]any{}
 	}
 	if scene, ok := raw["scene"].(string); ok {
 		ctx.Scene = strings.TrimSpace(scene)
@@ -430,11 +434,28 @@ func (h *HTTPHandler) normalizeRuntimeContext(c *gin.Context, raw map[string]any
 	if page, ok := raw["currentPage"].(string); ok && strings.TrimSpace(page) != "" {
 		ctx.CurrentPage = strings.TrimSpace(page)
 	}
+	if projectID, ok := raw["project_id"].(string); ok && strings.TrimSpace(projectID) != "" {
+		ctx.ProjectID = strings.TrimSpace(projectID)
+		ctx.ProjectName = h.lookupProjectName(c.Request.Context(), ctx.ProjectID)
+	}
+	if projectID, ok := raw["projectId"].(string); ok && strings.TrimSpace(projectID) != "" {
+		ctx.ProjectID = strings.TrimSpace(projectID)
+		ctx.ProjectName = h.lookupProjectName(c.Request.Context(), ctx.ProjectID)
+	}
+	if projectName, ok := raw["project_name"].(string); ok && strings.TrimSpace(projectName) != "" {
+		ctx.ProjectName = strings.TrimSpace(projectName)
+	}
+	if projectName, ok := raw["projectName"].(string); ok && strings.TrimSpace(projectName) != "" {
+		ctx.ProjectName = strings.TrimSpace(projectName)
+	}
 	if resources, ok := raw["selected_resources"].([]any); ok {
 		ctx.SelectedResources = toSelectedResources(resources)
 	}
 	if resources, ok := raw["selectedResources"].([]any); ok && len(ctx.SelectedResources) == 0 {
 		ctx.SelectedResources = toSelectedResources(resources)
+	}
+	if ctx.Scene == "" {
+		ctx.Scene = "global"
 	}
 	for key, value := range raw {
 		ctx.Metadata[key] = value
@@ -450,10 +471,25 @@ func toSelectedResources(items []any) []coreai.SelectedResource {
 			continue
 		}
 		out = append(out, coreai.SelectedResource{
-			Type: stringify(row["type"]),
-			ID:   stringify(firstNonNil(row["id"], row["value"])),
-			Name: stringify(firstNonNil(row["name"], row["label"])),
+			Type:      stringify(row["type"]),
+			ID:        stringify(firstNonNil(row["id"], row["value"])),
+			Name:      stringify(firstNonNil(row["name"], row["label"])),
+			Namespace: stringify(firstNonNil(row["namespace"], row["ns"])),
 		})
+	}
+	return out
+}
+
+func mergeScenePayload(scene string, raw map[string]any) map[string]any {
+	if len(raw) == 0 && strings.TrimSpace(scene) == "" {
+		return nil
+	}
+	out := make(map[string]any, len(raw)+1)
+	for key, value := range raw {
+		out[key] = value
+	}
+	if strings.TrimSpace(scene) != "" {
+		out["scene"] = strings.TrimSpace(scene)
 	}
 	return out
 }
@@ -585,6 +621,93 @@ func attachRolloutMetadata(payload map[string]any, rollout coreai.RolloutConfig)
 	payload["compatibility_enabled"] = rollout.CompatibilityEnabled()
 	payload["turn_block_streaming_enabled"] = rollout.TurnBlockStreamingEnabled()
 	return payload
+}
+
+func (h *HTTPHandler) loadSceneConfigs(ctx context.Context) (map[string]aitools.SceneConfig, error) {
+	rows := make([]model.AISceneConfig, 0)
+	if err := h.svcCtx.DB.WithContext(ctx).Order("scene asc").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]aitools.SceneConfig, len(rows))
+	for _, row := range rows {
+		cfg := aitools.DecodeSceneConfig(row)
+		out[cfg.Scene] = cfg
+	}
+	return out, nil
+}
+
+func (h *HTTPHandler) sceneConfig(ctx context.Context, scene string) (*aitools.SceneConfig, error) {
+	scene = normalizedScene(scene)
+	configs, err := h.loadSceneConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cfg, ok := configs[scene]; ok {
+		return &cfg, nil
+	}
+	if cfg, ok := configs["global"]; ok {
+		return &cfg, nil
+	}
+	return nil, nil
+}
+
+func (h *HTTPHandler) resolveApprovalScene(scene string) runtime.ResolvedScene {
+	resolved := runtime.NewSceneConfigResolver(nil).Resolve(scene)
+	if h == nil {
+		return resolved
+	}
+	cfg, err := h.sceneConfig(context.Background(), scene)
+	if err != nil || cfg == nil {
+		return resolved
+	}
+	resolved.SceneKey = normalizedScene(scene)
+	resolved.SceneConfig.Name = firstNonEmpty(cfg.Name, resolved.SceneConfig.Name)
+	resolved.SceneConfig.Description = firstNonEmpty(cfg.Description, resolved.SceneConfig.Description)
+	resolved.SceneConfig.Constraints = append([]string(nil), cfg.Constraints...)
+	resolved.SceneConfig.AllowedTools = append([]string(nil), cfg.AllowedTools...)
+	resolved.SceneConfig.BlockedTools = append([]string(nil), cfg.BlockedTools...)
+	resolved.SceneConfig.Examples = append([]string(nil), cfg.Examples...)
+	resolved.AllowedTools = append([]string(nil), cfg.AllowedTools...)
+	resolved.BlockedTools = append([]string(nil), cfg.BlockedTools...)
+	resolved.Constraints = append([]string(nil), cfg.Constraints...)
+	resolved.SceneConfig.ApprovalConfig = decodeSceneApprovalConfig(cfg.ApprovalConfig)
+	return resolved
+}
+
+func decodeSceneApprovalConfig(raw map[string]any) *runtime.SceneApprovalConfig {
+	if len(raw) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var config runtime.SceneApprovalConfig
+	if err := json.Unmarshal(payload, &config); err != nil {
+		return nil
+	}
+	return &config
+}
+
+func sortedCapabilities(items []aitools.Capability) []aitools.Capability {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Category == items[j].Category {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].Category < items[j].Category
+	})
+	return items
+}
+
+func findApproval(db *gorm.DB, id string) (*model.AIApproval, error) {
+	var row model.AIApproval
+	if err := db.Where("id = ?", strings.TrimSpace(id)).First(&row).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &row, nil
 }
 
 func normalizedScene(raw any) string {

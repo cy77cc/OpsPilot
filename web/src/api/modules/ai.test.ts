@@ -138,27 +138,65 @@ describe('aiApi.chatStream', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: turn_started\ndata: {"turn_id":"turn-1","phase":"execute","status":"streaming"}\n\n',
-        'event: block_delta\ndata: {"turn_id":"turn-1","block_id":"text:final","patch":{"content_chunk":"继续执行"}}\n\n',
+        'event: stage_delta\ndata: {"stage":"execute","status":"loading","summary":"继续执行审批后的步骤"}\n\n',
+        'event: step_update\ndata: {"plan_id":"plan-1","step_id":"step-1","tool":"scale_deployment","status":"success","user_visible_summary":"扩容完成"}\n\n',
+        'event: delta\ndata: {"content":"继续执行"}\n\n',
         'event: done\ndata: {"stream_state":"ok"}\n\n',
       ]),
     } as Response);
 
-    const onTurnStarted = vi.fn();
-    const onBlockDelta = vi.fn();
+    const onStageDelta = vi.fn();
+    const onStepUpdate = vi.fn();
+    const onDelta = vi.fn();
     const onDone = vi.fn();
 
     await aiApi.respondApprovalStream(
-      { session_id: 'sess-1', plan_id: 'plan-1', step_id: 'step-1', approved: true },
-      { onTurnStarted, onBlockDelta, onDone },
+      { session_id: 'sess-1', plan_id: 'plan-1', step_id: 'step-1', checkpoint_id: 'cp-1', approved: true },
+      { onStageDelta, onStepUpdate, onDelta, onDone },
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/ai/resume/step/stream'),
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          session_id: 'sess-1',
+          plan_id: 'plan-1',
+          step_id: 'step-1',
+          checkpoint_id: 'cp-1',
+          approved: true,
+        }),
+      }),
     );
-    expect(onTurnStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1', phase: 'execute' }));
-    expect(onBlockDelta).toHaveBeenCalledWith(expect.objectContaining({ block_id: 'text:final' }));
+    expect(onStageDelta).toHaveBeenCalledWith(expect.objectContaining({ stage: 'execute', status: 'loading' }));
+    expect(onStepUpdate).toHaveBeenCalledWith(expect.objectContaining({ step_id: 'step-1', status: 'success' }));
+    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: '继续执行' }));
     expect(onDone).toHaveBeenCalled();
+  });
+
+  it('keeps checkpoint_id approval events while preserving canonical resume identity fields', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: approval_required\ndata: {"id":"approval-1","session_id":"sess-1","plan_id":"plan-1","step_id":"step-1","checkpoint_id":"cp-1","tool":"scale_deployment","status":"pending"}\n\n',
+      ]),
+    } as Response);
+
+    const onApprovalRequired = vi.fn();
+
+    await aiApi.chatStream(
+      { message: 'hi', context: { scene: 'global' } },
+      { onApprovalRequired }
+    );
+
+    expect(onApprovalRequired).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'approval-1',
+      session_id: 'sess-1',
+      plan_id: 'plan-1',
+      step_id: 'step-1',
+      checkpoint_id: 'cp-1',
+      tool: 'scale_deployment',
+      status: 'pending',
+    }));
   });
 });

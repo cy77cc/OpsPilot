@@ -28,9 +28,9 @@ import type { BubbleListRef } from '@ant-design/x/es/bubble';
 import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
-import type { ApprovalTicket, SSEDoneEvent, SSEStageDeltaEvent } from '../../api/modules/ai';
+import type { ApprovalRequiredEvent, SSEDoneEvent, SSEStageDeltaEvent, SSEStepUpdateEvent } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage, ChatTurn, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
+import type { ChatMessage, ConfirmationRequest, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
 import {
   loadRestoredConversationDetail,
@@ -40,21 +40,10 @@ import {
 } from './hooks/useConversationRestore';
 import { useScenePrompts } from './hooks/useScenePrompts';
 import { MessageActions } from './components/MessageActions';
-import { AssistantMessageBlocks } from './components/AssistantMessageBlocks';
-import { mergeAssistantBlocks, normalizeAssistantMessage, normalizeTurnBlocks } from './messageBlocks';
-import {
-  applyBlockClose,
-  applyBlockDelta,
-  applyBlockOpen,
-  applyBlockReplace,
-  applyTurnDone,
-  applyTurnStarted,
-  applyTurnState,
-  createAssistantTurn,
-  getTurnBlocksForDisplay,
-  type DisplayMode,
-  projectTurnSummary,
-} from './turnLifecycle';
+import { ApprovalConfirmationPanel } from './components/ApprovalConfirmationPanel';
+import { RecommendedActions } from './components/RecommendedActions';
+import { ThoughtChainStageCard } from './components/ThoughtChainStageCard';
+import type { DisplayMode } from './turnLifecycle';
 
 const { useToken } = theme;
 
@@ -173,19 +162,6 @@ function finalizeThoughtStage(
   ));
 }
 
-function buildApprovalBlockID(payload: Record<string, unknown>): string {
-  const resume = (payload.resume || {}) as Record<string, unknown>;
-  const stepID = String(payload.step_id || resume.step_id || '').trim();
-  if (stepID) {
-    return `approval:${stepID}`;
-  }
-  const planID = String(payload.plan_id || resume.plan_id || '').trim();
-  if (planID) {
-    return `approval:${planID}`;
-  }
-  return 'approval:active';
-}
-
 function buildToolDetailID(data: Record<string, unknown>): string {
   const callID = String(data.call_id || '').trim();
   if (callID) {
@@ -194,22 +170,6 @@ function buildToolDetailID(data: Record<string, unknown>): string {
   const stepID = String(data.step_id || '').trim();
   const toolName = String(data.tool_name || data.tool || data.expert || 'tool').trim();
   return ['tool', stepID || 'step', toolName || 'tool'].join(':');
-}
-
-function buildApprovalStatusPayload(
-  base: Record<string, unknown>,
-  title: string,
-  summary: string,
-  status: 'waiting_user' | 'submitting' | 'failed',
-  errorMessage?: string,
-): Record<string, unknown> {
-  return {
-    ...base,
-    title,
-    summary,
-    status,
-    error_message: errorMessage,
-  };
 }
 
 function upsertThoughtStage(
@@ -225,7 +185,7 @@ function upsertThoughtStage(
     title: patch.title,
     status: patch.status,
     description: patch.description ?? current?.description,
-    content: renderThoughtContent(nextContent, nextDetails),
+    content: nextContent,
     footer: patch.footer ?? current?.footer,
     details: nextDetails,
     collapsible: patch.collapsible ?? true,
@@ -237,21 +197,10 @@ function upsertThoughtStage(
   const merged = {
     ...current,
     ...next,
-    content: renderThoughtContent(nextContent, nextDetails),
+    content: nextContent,
     blink: patch.blink ?? next.status === 'loading',
   };
   return stages.map((item, itemIndex) => (itemIndex === index ? merged : item));
-}
-
-function renderThoughtContent(content?: string, details?: ThoughtStageDetailItem[]): string | undefined {
-  const summary = (content || '').trim();
-  const detailLines = (details || []).map((detail) => {
-    const prefix = detail.status === 'error' ? '[失败]' : detail.status === 'success' ? '[完成]' : '[执行中]';
-    const body = detail.content?.trim();
-    return body ? `${prefix} ${detail.label}: ${body}` : `${prefix} ${detail.label}`;
-  });
-  const segments = [summary, ...detailLines].filter(Boolean);
-  return segments.length > 0 ? segments.join('\n') : undefined;
 }
 
 
@@ -286,30 +235,6 @@ function resolveDefaultExpandedThoughtKeys(
     return [active[active.length - 1]];
   }
   return stages.map((item) => item.key);
-}
-
-function upsertThoughtDetail(
-  stages: ThoughtStageItem[],
-  stageKey: ThoughtStageItem['key'],
-  detail: ThoughtStageDetailItem
-): ThoughtStageItem[] {
-  return stages.map((item) => {
-    if (item.key !== stageKey) {
-      return item;
-    }
-    const details = [...(item.details || [])];
-    const index = details.findIndex((candidate) => candidate.id === detail.id);
-    if (index === -1) {
-      details.push(detail);
-    } else {
-      details[index] = { ...details[index], ...detail };
-    }
-    return {
-      ...item,
-      details,
-      content: renderThoughtContent(item.content, details),
-    };
-  });
 }
 
 function normalizeThoughtStatus(status: string | undefined, fallback: ThoughtStageStatus = 'loading'): ThoughtStageStatus {
@@ -353,7 +278,7 @@ function resolveThoughtStageTitle(stage: string | undefined): ThoughtStageItem['
 const AssistantMessage: React.FC<{
   content: string;
   thinking?: string;
-  turn?: ChatTurn;
+  confirmation?: ConfirmationRequest;
   recommendations?: EmbeddedRecommendation[];
   thoughtChain?: ThoughtStageItem[];
   rawEvidence?: string[];
@@ -369,7 +294,7 @@ const AssistantMessage: React.FC<{
 }> = ({
   content,
   thinking,
-  turn,
+  confirmation,
   recommendations,
   thoughtChain,
   rawEvidence,
@@ -397,26 +322,19 @@ const AssistantMessage: React.FC<{
     () => !isRestoredAssistant && (Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading'))),
     [isRestoredAssistant, thinking, thoughtChain],
   );
-  const blocks = useMemo(() => {
-    const fallbackBlocks = normalizeAssistantMessage({
-      content,
-      thinking: isRestoredAssistant ? undefined : thinking,
-      showThinking: isRestoredAssistant ? false : showThinking,
-      rawEvidence: displayMode === 'debug' ? rawEvidence : undefined,
-      recommendations,
-      isStreaming,
-    });
-    if (isRestoredAssistant) {
-      return fallbackBlocks;
+  const effectiveConfirmation = useMemo(() => {
+    if (!confirmation) {
+      return null;
     }
-    if (turn && turn.blocks.length > 0) {
-      return mergeAssistantBlocks(
-        normalizeTurnBlocks(getTurnBlocksForDisplay(turn, displayMode, reducedMotion)),
-        fallbackBlocks,
-      );
+    if (!onApprovalDecision) {
+      return confirmation;
     }
-    return fallbackBlocks;
-  }, [content, displayMode, isRestoredAssistant, isStreaming, rawEvidence, recommendations, reducedMotion, showThinking, thinking, turn]);
+    return {
+      ...confirmation,
+      onConfirm: () => onApprovalDecision(confirmation.details || {}, true),
+      onCancel: () => onApprovalDecision(confirmation.details || {}, false),
+    };
+  }, [confirmation, onApprovalDecision]);
 
   return (
     <div>
@@ -445,7 +363,7 @@ const AssistantMessage: React.FC<{
                   key: item.key,
                   title: item.title,
                   description: item.description,
-                  content: item.content,
+                  content: <ThoughtChainStageCard stage={item} />,
                   footer: item.footer,
                   status: item.status,
                   collapsible: item.collapsible,
@@ -455,14 +373,28 @@ const AssistantMessage: React.FC<{
               />
             </div>
           )}
-          {blocks.length > 0 ? (
-            <AssistantMessageBlocks
-              blocks={blocks}
-              onRecommendationSelect={onRecommendationSelect}
-              onApprovalDecision={onApprovalDecision}
-            />
+          {showThinking ? (
+            <div style={{ marginBottom: 12, whiteSpace: 'pre-wrap', color: token.colorTextSecondary }}>
+              {thinking}
+            </div>
+          ) : null}
+          {content ? (
+            <div className="ai-markdown-content" style={{ marginBottom: confirmation || recommendations?.length || (displayMode === 'debug' && rawEvidence?.length) ? 12 : 0 }}>
+              <XMarkdown>{content}</XMarkdown>
+            </div>
           ) : isStreaming ? (
             <span style={{ color: token.colorTextSecondary }}>正在输入...</span>
+          ) : null}
+          {effectiveConfirmation ? (
+            <ApprovalConfirmationPanel confirmation={effectiveConfirmation} />
+          ) : null}
+          {recommendations && recommendations.length > 0 && onRecommendationSelect ? (
+            <RecommendedActions recommendations={recommendations} onSelect={onRecommendationSelect} />
+          ) : null}
+          {displayMode === 'debug' && rawEvidence && rawEvidence.length > 0 ? (
+            <pre style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>
+              {rawEvidence.map((item) => `- ${item}`).join('\n')}
+            </pre>
           ) : null}
 
           {showActions && !isStreaming && content && (
@@ -847,118 +779,16 @@ export const Copilot: React.FC<CopilotProps> = ({
         if (data.traceId) {
           assistantTraceId = String(data.traceId);
         }
-        if (data.turn_id) {
-          patchAssistantMessage(conversationKey, assistantId, (message) => {
-            const nextTurn = applyTurnStarted(message.turn, { turn_id: data.turn_id!, phase: 'rewrite', status: 'streaming' }, assistantTraceId);
-            const summary = projectTurnSummary(nextTurn);
-            return syncMessageFromBuffers(message, {
-              turn: nextTurn,
-              content: summary.content || message.content,
-              thinking: summary.thinking || message.thinking,
-              rawEvidence: summary.rawEvidence || message.rawEvidence,
-              recommendations: summary.recommendations || message.recommendations,
-            });
-          });
-        }
       },
-      onTurnStarted: (data: { turn_id: string; phase?: string; status?: string; role?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyTurnStarted(message.turn, data, assistantTraceId || message.traceId);
-          const summary = projectTurnSummary(nextTurn);
-          refreshAnnouncement(resolveThoughtStageTitle(nextTurn.phase));
-            return syncMessageFromBuffers(message, {
-              turn: nextTurn,
-              content: summary.content || message.content,
-              thinking: summary.thinking || message.thinking,
-              rawEvidence: summary.rawEvidence,
-              recommendations: summary.recommendations,
-            });
-        });
-      },
-      onBlockOpen: (data: { turn_id: string; block_id: string; block_type: string; position?: number; status?: string; title?: string; payload?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyBlockOpen(message.turn, data);
-          const summary = projectTurnSummary(nextTurn);
-          return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          });
-        });
-      },
-      onBlockDelta: (data: { turn_id: string; block_id: string; block_type?: string; patch?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyBlockDelta(message.turn, data);
-          const summary = projectTurnSummary(nextTurn);
-          return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          });
-        });
-      },
-      onBlockReplace: (data: { turn_id: string; block_id: string; block_type?: string; payload?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyBlockReplace(message.turn, data);
-          const summary = projectTurnSummary(nextTurn);
-          return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          });
-        });
-      },
-      onBlockClose: (data: { turn_id: string; block_id: string; status?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyBlockClose(message.turn, data);
-          const summary = projectTurnSummary(nextTurn);
-          return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          });
-        });
-      },
-      onTurnState: (data: { turn_id: string; status?: string; phase?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          let nextThoughtChain = message.thoughtChain || [];
-          if (data.phase === 'summary') {
-            nextThoughtChain = finalizeThoughtStage(
-              nextThoughtChain,
-              'execute',
-              'success',
-              buildStageDescription('execute', 'success'),
-            );
-          }
-          return {
-            ...message,
-            turn: applyTurnState(message.turn, data),
-            thoughtChain: nextThoughtChain,
-          };
-        });
+      onTurnStarted: () => {},
+      onBlockOpen: () => {},
+      onBlockDelta: () => {},
+      onBlockReplace: () => {},
+      onBlockClose: () => {},
+      onTurnState: (data: { status?: string; phase?: string }) => {
         refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
       },
-      onTurnDone: (data: { turn_id: string; status?: string; phase?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextTurn = applyTurnDone(message.turn, data);
-          const summary = projectTurnSummary(nextTurn);
-          return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence,
-            recommendations: summary.recommendations,
-          });
-        });
-      },
+      onTurnDone: () => {},
       onStageDelta: (data: SSEStageDeltaEvent) => {
         const stageKey = String(data.stage || '').trim() as ThoughtStageItem['key'];
         if (!stageKey) {
@@ -975,7 +805,7 @@ export const Copilot: React.FC<CopilotProps> = ({
               description: buildStageDescription(stageKey, status, data as unknown as Record<string, unknown>) || currentStage?.description,
               content: appendStageContent(
                 data.replace ? '' : currentStage?.content,
-                buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>),
+                String(data.contentChunk || data.content_chunk || data.detail || data.summary || buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>) || '').trim(),
               ),
             }),
           });
@@ -1026,8 +856,9 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
-      onStepUpdate: (data: Record<string, unknown>) => {
+      onStepUpdate: (data: SSEStepUpdateEvent) => {
         const rawStatus = String(data.status || '').trim();
+        const stepData = data as unknown as Record<string, unknown>;
         if (rawStatus === 'waiting_approval') {
           patchAssistantMessage(conversationKey, assistantId, (message) => ({
             ...message,
@@ -1043,14 +874,39 @@ export const Copilot: React.FC<CopilotProps> = ({
         }
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const nextStatus = normalizeThoughtStatus(data.status as string | undefined, 'loading');
+          const detailID = buildToolDetailID(stepData);
+          const currentStage = (message.thoughtChain || []).find((item) => item.key === 'execute');
+          const details = [...(currentStage?.details || [])];
+          const detailIndex = details.findIndex((item) => item.id === detailID);
+          const nextDetail: ThoughtStageDetailItem = {
+            id: detailID,
+            kind: 'tool',
+            label: String(data.title || data.tool_name || data.tool || data.expert || data.step_id || '执行步骤'),
+            tool: String(data.tool_name || data.tool || data.expert || '').trim() || undefined,
+            status: nextStatus,
+            content: String(data.user_visible_summary || data.summary || data.error || '').trim() || undefined,
+            params: data.params,
+            result: data.result,
+            session_id: data.session_id,
+            plan_id: data.plan_id,
+            step_id: data.step_id,
+            checkpoint_id: data.checkpoint_id,
+          };
+          if (detailIndex === -1) {
+            details.push(nextDetail);
+          } else {
+            details[detailIndex] = { ...details[detailIndex], ...nextDetail };
+          }
           return {
             ...message,
+            confirmation: undefined,
             thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
               key: 'execute',
               title: '调用专家执行',
               status: nextStatus,
-              description: buildStageDescription('execute', nextStatus, data),
-              content: buildExecutionStageSummary(data) || buildStageMilestone('execute', 'event', data),
+              description: buildStageDescription('execute', nextStatus, stepData),
+              content: buildExecutionStageSummary(stepData) || buildStageMilestone('execute', 'event', stepData),
+              details,
             }),
           };
         });
@@ -1119,40 +975,20 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
-      onApprovalRequired: (data: ApprovalTicket & {
-        turn_id?: string;
-        approval_required?: boolean;
-        previewDiff?: string;
-        title?: string;
-        user_visible_summary?: string;
-      }) => {
+      onApprovalRequired: (data: ApprovalRequiredEvent) => {
+        const confirmation: ConfirmationRequest = {
+          id: String(data.id || data.step_id || data.checkpoint_id || assistantId),
+          title: String(data.title || data.tool_name || data.tool || '等待确认'),
+          description: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
+          risk: (data.risk || data.risk_level || 'high') as 'low' | 'medium' | 'high',
+          status: 'waiting_user',
+          details: data as unknown as Record<string, unknown>,
+          onConfirm: () => {},
+          onCancel: () => {},
+        };
         patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const turnID = String(data.turn_id || message.turn?.id || `pending-${assistantId}`);
-          const nextTurn = applyTurnState(
-            applyBlockReplace(message.turn, {
-              turn_id: turnID,
-              block_id: buildApprovalBlockID(data as unknown as Record<string, unknown>),
-              block_type: 'approval',
-              payload: {
-                ...data,
-                status: 'waiting_user',
-                title: String(data.title || '等待你确认'),
-                summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-              },
-            }),
-            {
-              turn_id: turnID,
-              status: 'waiting_user',
-              phase: 'execute',
-            },
-          );
-          const summary = projectTurnSummary(nextTurn);
           return syncMessageFromBuffers(message, {
-            turn: nextTurn,
-            content: summary.content || message.content,
-            thinking: summary.thinking || message.thinking,
-            rawEvidence: summary.rawEvidence || message.rawEvidence,
-            recommendations: summary.recommendations || message.recommendations,
+            confirmation,
             thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
               key: 'user_action',
               title: '等待你确认',
@@ -1162,6 +998,7 @@ export const Copilot: React.FC<CopilotProps> = ({
             }),
           });
         });
+        setIsLoading(false);
         refreshAnnouncement('等待确认');
       },
       onClarifyRequired: (data: Record<string, unknown>) => {
@@ -1178,6 +1015,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           content: assistantContent,
         }));
+        setIsLoading(false);
       },
       onSummary: () => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
@@ -1217,15 +1055,15 @@ export const Copilot: React.FC<CopilotProps> = ({
         }
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...syncMessageFromBuffers(message, {
-          content: message.turn ? projectTurnSummary(message.turn).content || assistantContent : assistantContent,
-          thinking: message.turn ? projectTurnSummary(message.turn).thinking || assistantThinking || undefined : assistantThinking || undefined,
-          recommendations: assistantRecommendations || message.recommendations,
-          traceId: assistantTraceId || message.traceId,
+            content: assistantContent || message.content,
+            thinking: assistantThinking || undefined,
+            recommendations: assistantRecommendations || message.recommendations,
+            traceId: assistantTraceId || message.traceId,
           }),
           thoughtChain: (message.thoughtChain || []).map((item) => ({
             ...item,
             blink: false,
-            status: item.key === 'user_action' && message.turn?.status === 'waiting_user'
+            status: item.key === 'user_action' && message.confirmation
               ? item.status
               : item.status === 'loading' ? 'success' : item.status,
           })),
@@ -1253,7 +1091,7 @@ export const Copilot: React.FC<CopilotProps> = ({
             ...message,
             content: message.content || errorText,
             thoughtChain: nextThoughtChain,
-            turn: message.turn ? applyTurnState(message.turn, { turn_id: message.turn.id, status: 'error', phase: message.turn.phase }) : message.turn,
+            confirmation: message.confirmation ? { ...message.confirmation, status: 'failed', errorMessage: errorText } : message.confirmation,
           };
         });
         setIsLoading(false);
@@ -1317,7 +1155,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           role: 'assistant',
           content: '',
           thoughtChain: [],
-          turn: createAssistantTurn(`pending-${assistantId}`, { status: 'streaming', phase: 'rewrite' }),
           createdAt: new Date().toISOString(),
         },
       ],
@@ -1337,30 +1174,19 @@ export const Copilot: React.FC<CopilotProps> = ({
     approved: boolean,
   ) => {
     setIsLoading(true);
-    const turnID = String(payload.turn_id || '');
-    const approvalBlockID = buildApprovalBlockID(payload);
     patchAssistantMessage(activeKey, assistantId, (message) => {
-      if (!message.turn) {
-        return message;
-      }
-      const submittingTurn = applyBlockReplace(message.turn, {
-        turn_id: turnID || message.turn.id,
-        block_id: approvalBlockID,
-        block_type: 'approval',
-        payload: buildApprovalStatusPayload(
-          payload,
-          String(payload.title || '正在提交'),
-          approved ? '正在提交确认，马上继续执行。' : '正在提交取消请求。',
-          'submitting',
-        ),
-      });
       return {
         ...message,
-        turn: applyTurnState(submittingTurn, {
-          turn_id: submittingTurn.id,
-          status: approved ? 'streaming' : 'completed',
-          phase: 'execute',
-        }),
+        confirmation: {
+          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          title: String(payload.title || '正在提交'),
+          description: approved ? '正在提交确认，马上继续执行。' : '正在提交取消请求。',
+          risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
+          status: 'submitting',
+          details: payload,
+          onConfirm: () => {},
+          onCancel: () => {},
+        },
         thoughtChain: finalizeThoughtStage(message.thoughtChain || [], 'user_action', approved ? 'success' : 'abort', approved ? '已确认，继续执行' : '已取消执行'),
       };
     });
@@ -1371,24 +1197,13 @@ export const Copilot: React.FC<CopilotProps> = ({
           session_id: String(payload.session_id || sessionId || ''),
           plan_id: payload.plan_id ? String(payload.plan_id) : undefined,
           step_id: payload.step_id ? String(payload.step_id) : undefined,
+          checkpoint_id: payload.checkpoint_id ? String(payload.checkpoint_id) : undefined,
           approved: false,
         });
         patchAssistantMessage(activeKey, assistantId, (message) => ({
           ...message,
+          confirmation: undefined,
           content: message.content || '已取消该操作。',
-          turn: message.turn ? applyTurnDone(
-            applyBlockReplace(message.turn, {
-              turn_id: message.turn.id,
-              block_id: approvalBlockID,
-              block_type: 'status',
-              payload: {
-                title: '审批已取消',
-                summary: '已取消执行，当前变更不会继续推进。',
-                status: 'cancelled',
-              },
-            }),
-            { turn_id: message.turn.id, status: 'completed', phase: 'done' },
-          ) : message.turn,
         }));
         setIsLoading(false);
         return;
@@ -1396,16 +1211,16 @@ export const Copilot: React.FC<CopilotProps> = ({
 
       patchAssistantMessage(activeKey, assistantId, (message) => ({
         ...message,
-        turn: message.turn ? applyBlockReplace(message.turn, {
-          turn_id: message.turn.id,
-          block_id: approvalBlockID,
-          block_type: 'status',
-          payload: {
-            title: '已确认，继续执行',
-            summary: '审批已通过，正在继续执行当前步骤。',
-            status: 'approved',
-          },
-        }) : message.turn,
+        confirmation: {
+          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          title: '已确认，继续执行',
+          description: '审批已通过，正在继续执行当前步骤。',
+          risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
+          status: 'submitting',
+          details: payload,
+          onConfirm: () => {},
+          onCancel: () => {},
+        },
       }));
 
       await aiApi.respondApprovalStream(
@@ -1413,6 +1228,7 @@ export const Copilot: React.FC<CopilotProps> = ({
           session_id: String(payload.session_id || sessionId || ''),
           plan_id: payload.plan_id ? String(payload.plan_id) : undefined,
           step_id: payload.step_id ? String(payload.step_id) : undefined,
+          checkpoint_id: payload.checkpoint_id ? String(payload.checkpoint_id) : undefined,
           approved: true,
         },
         createStreamHandlers(activeKey, assistantId),
@@ -1420,18 +1236,17 @@ export const Copilot: React.FC<CopilotProps> = ({
     } catch {
       patchAssistantMessage(activeKey, assistantId, (message) => ({
         ...message,
-        turn: message.turn ? applyBlockReplace(message.turn, {
-          turn_id: message.turn.id,
-          block_id: approvalBlockID,
-          block_type: 'approval',
-          payload: buildApprovalStatusPayload(
-            payload,
-            String(payload.title || '等待你确认'),
-            String(payload.user_visible_summary || payload.title || '当前步骤需要确认后继续执行'),
-            'failed',
-            '审批结果提交失败，请重试。',
-          ),
-        }) : message.turn,
+        confirmation: {
+          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          title: String(payload.title || '等待你确认'),
+          description: String(payload.user_visible_summary || payload.title || '当前步骤需要确认后继续执行'),
+          risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
+          status: 'failed',
+          errorMessage: '审批结果提交失败，请重试。',
+          details: payload,
+          onConfirm: () => {},
+          onCancel: () => {},
+        },
         thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
           key: 'user_action',
           title: '等待你确认',
@@ -1551,11 +1366,11 @@ export const Copilot: React.FC<CopilotProps> = ({
       ...message,
       content: '',
       thinking: undefined,
+      confirmation: undefined,
       recommendations: undefined,
       rawEvidence: undefined,
       thoughtChain: [],
       traceId: undefined,
-      turn: createAssistantTurn(`pending-${assistantMsgId}`, { status: 'streaming', phase: 'rewrite' }),
       restored: false,
     }));
 
@@ -1575,7 +1390,7 @@ export const Copilot: React.FC<CopilotProps> = ({
 
     // 助手消息
     const hasThoughtChain = visibleThoughtChain(msg.thoughtChain).length > 0;
-    const hasVisibleAssistantState = Boolean(msg.content || msg.thinking || hasThoughtChain || (msg.turn && msg.turn.blocks.length > 0));
+    const hasVisibleAssistantState = Boolean(msg.content || msg.thinking || hasThoughtChain || msg.confirmation);
     const isStreaming = isCurrentStreaming && !hasVisibleAssistantState;
 
     // 只有当消息内容正在生成时（内容为空）才显示 loading
@@ -1586,7 +1401,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       <AssistantMessage
         content={msg.content}
         thinking={msg.thinking}
-        turn={msg.turn}
+        confirmation={msg.confirmation}
         recommendations={msg.recommendations}
         thoughtChain={msg.thoughtChain}
         rawEvidence={msg.rawEvidence}
@@ -1710,7 +1525,7 @@ export const Copilot: React.FC<CopilotProps> = ({
                   && !m.content
                   && !m.thinking
                   && !(m.thoughtChain && m.thoughtChain.length > 0)
-                  && !(m.turn && m.turn.blocks.length > 0),
+                  && !m.confirmation,
               }))}
               role={role}
             />

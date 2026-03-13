@@ -231,6 +231,21 @@ export interface ThoughtStageDetailItem {
   label: string;
   status: ThoughtStageStatus;
   content?: string;
+  kind?: 'tool' | 'approval' | 'note';
+  tool?: string;
+  params?: Record<string, unknown>;
+  result?: {
+    ok?: boolean;
+    data?: unknown;
+    error?: string;
+    latency_ms?: number;
+  };
+  risk?: RiskLevel;
+  session_id?: string;
+  plan_id?: string;
+  step_id?: string;
+  checkpoint_id?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ThoughtStageItem {
