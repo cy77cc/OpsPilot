@@ -79,6 +79,8 @@ export interface EmbeddedRecommendation {
   relevance: number;
 }
 
+// === Turn/block 主模型 ===
+
 export type TurnBlockType =
   | 'status'
   | 'text'
@@ -119,28 +121,19 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
+  turn?: ChatTurn;
+
+  // Legacy compatibility for the pre-turn/block rendering path.
   thinking?: string;
   rawEvidence?: string[];
   tools?: ToolExecution[];
   confirmation?: ConfirmationRequest;
-  // 新增: 下一步推荐
   recommendations?: EmbeddedRecommendation[];
   thoughtChain?: ThoughtStageItem[];
   traceId?: string;
-  turn?: ChatTurn;
   restored?: boolean;
   createdAt: string;
   updatedAt?: string;
-}
-
-// 会话
-export interface Conversation {
-  id: string;
-  title: string;
-  scene: string;
-  messages: ChatMessage[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 // 场景信息
@@ -149,25 +142,6 @@ export interface SceneInfo {
   label: string;
   description?: string;
   tools?: string[];
-}
-
-// AI 聊天上下文
-export interface AIChatContextValue {
-  // 状态
-  messages: ChatMessage[];
-  isLoading: boolean;
-  currentConversation: Conversation | null;
-  conversations: Conversation[];
-
-  // 操作
-  sendMessage: (content: string) => Promise<void>;
-  createConversation: () => void;
-  switchConversation: (id: string) => void;
-  deleteConversation: (id: string) => Promise<void>;
-  clearMessages: () => void;
-
-  // 确认操作
-  confirmAction: (id: string, approved: boolean) => Promise<void>;
 }
 
 // 抽屉宽度设置
@@ -210,6 +184,8 @@ export interface SSEEventPayload {
   type: SSEEventType;
   data: Record<string, unknown>;
 }
+
+// === Legacy compatibility types ===
 
 export type ThoughtStageKey = 'rewrite' | 'plan' | 'execute' | 'user_action' | 'summary';
 
@@ -259,26 +235,4 @@ export interface ErrorInfo {
   code?: string;
   recoverable?: boolean;
   retry?: () => void;
-}
-
-// === Plan-Execute-Replan 可视化类型 ===
-
-// 规划步骤（从后端 plan_generated 事件接收）
-export interface PlanStep {
-  id: string;
-  content: string;
-  tool_hint?: string;
-  status?: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
-  result?: {
-    ok: boolean;
-    summary?: string;
-    error?: string;
-  };
-}
-
-// 扩展 ThoughtStageItem 以支持步骤列表
-export interface ExtendedThoughtStageItem extends ThoughtStageItem {
-  steps?: PlanStep[];
-  currentStepIndex?: number;
-  replanReason?: string;
 }

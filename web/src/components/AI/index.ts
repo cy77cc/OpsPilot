@@ -2,28 +2,19 @@
  * AI Copilot 组件导出
  */
 
-// 主组件
+// 主路径
 export { AIAssistantDrawer } from './AIAssistantDrawer';
-export { AIAssistantButton } from './AIAssistantButton'; // 保留旧组件兼容
-export { AICopilotButton } from './AICopilotButton'; // 新统一入口
-export { Copilot } from './Copilot'; // 新 @ant-design/x 组件
+export { AICopilotButton } from './AICopilotButton';
+export { Copilot } from './Copilot';
 
-// 子组件
-export { ConversationsPanel } from './components/ConversationsPanel';
-export { MessageList } from './components/MessageList';
-export { MessageBubble } from './components/MessageBubble';
+// 主路径内部复用组件
 export { ToolCard } from './components/ToolCard';
 export { ConfirmationPanel } from './components/ConfirmationPanel';
-export { ChatInput } from './components/ChatInput';
 
 // Hooks
 export { useResizableDrawer } from './hooks/useResizableDrawer';
 export { useSceneDetector, useHasSceneSupport, useSceneConfig } from './hooks/useSceneDetector';
 export { useAutoScene } from './hooks/useAutoScene';
-export { useAIChat } from './hooks/useAIChat';
-
-// Provider
-export { AIChatProvider, useAIChatContext } from './providers/AIChatProvider';
 
 // 常量
 export { SCENE_MAPPINGS, getSceneByPath, getSceneLabel, SCENE_LABELS } from './constants/sceneMapping';
@@ -37,12 +28,19 @@ export type {
   ToolExecution,
   ConfirmationRequest,
   ChatMessage,
-  Conversation,
   SceneInfo,
-  AIChatContextValue,
   DrawerWidthConfig,
+  ChatTurn,
+  ChatTurnStatus,
+  ChatTurnPhase,
+  TurnBlock,
+  TurnBlockType,
   SSEEventType,
   SSEEventPayload,
+  ThoughtStageItem,
+  ThoughtStageDetailItem,
+  ThoughtStageKey,
+  ThoughtStageStatus,
   ErrorType,
   ErrorInfo,
 } from './types';

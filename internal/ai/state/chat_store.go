@@ -18,7 +18,7 @@ type ChatMessageRecord struct {
 	Thinking        string           `json:"thinking,omitempty"`
 	Status          string           `json:"status,omitempty"`
 	TraceID         string           `json:"trace_id,omitempty"`
-	ThoughtChain    []map[string]any `json:"thought_chain,omitempty"`
+	ThoughtChain    []map[string]any `json:"thought_chain,omitempty"` // Deprecated: 仅兼容读取旧消息元数据
 	Recommendations []map[string]any `json:"recommendations,omitempty"`
 	RawEvidence     []string         `json:"raw_evidence,omitempty"`
 	CreatedAt       time.Time        `json:"created_at"`
@@ -134,13 +134,7 @@ func (s *ChatStore) UpdateAssistantMessage(ctx context.Context, sessionID, messa
 	if s == nil || s.db == nil {
 		return nil
 	}
-	meta, _ := json.Marshal(map[string]any{
-		"trace_id":        record.TraceID,
-		"turn_id":         strings.TrimSpace(turnID),
-		"thought_chain":   record.ThoughtChain,
-		"recommendations": record.Recommendations,
-		"raw_evidence":    record.RawEvidence,
-	})
+	meta, _ := json.Marshal(buildMessageMetadata(record, turnID))
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.AIChatMessage{}).
 			Where("id = ? AND session_id = ?", messageID, sessionID).
@@ -256,12 +250,7 @@ func (s *ChatStore) Clone(ctx context.Context, userID uint64, sourceID, newID, t
 		return nil, err
 	}
 	for _, msg := range src.Messages {
-		meta, _ := json.Marshal(map[string]any{
-			"trace_id":        msg.TraceID,
-			"thought_chain":   msg.ThoughtChain,
-			"recommendations": msg.Recommendations,
-			"raw_evidence":    msg.RawEvidence,
-		})
+		meta, _ := json.Marshal(buildMessageMetadata(msg, ""))
 		if err := s.db.WithContext(ctx).Create(&model.AIChatMessage{
 			ID:           uuid.NewString(),
 			SessionID:    newID,
@@ -378,21 +367,12 @@ func syncTurn(tx *gorm.DB, sessionID, turnID string, record ChatMessageRecord) e
 }
 
 func buildBlocks(record ChatMessageRecord) []ChatBlockRecord {
-	blocks := make([]ChatBlockRecord, 0, len(record.ThoughtChain)+2)
+	blocks := make([]ChatBlockRecord, 0, 2)
 	if strings.TrimSpace(record.Thinking) != "" {
 		blocks = append(blocks, ChatBlockRecord{
 			BlockType:   "thinking",
 			Status:      firstNonEmpty(record.Status, "completed"),
 			ContentText: record.Thinking,
-		})
-	}
-	for _, stage := range record.ThoughtChain {
-		blocks = append(blocks, ChatBlockRecord{
-			BlockType:   "stage",
-			Status:      stringValue(stage["status"]),
-			Title:       stringValue(stage["title"]),
-			ContentText: stringValue(stage["content"]),
-			ContentJSON: stage,
 		})
 	}
 	if strings.TrimSpace(record.Content) != "" {
@@ -410,6 +390,10 @@ func decodeMessage(row model.AIChatMessage) ChatMessageRecord {
 	if strings.TrimSpace(row.MetadataJSON) != "" {
 		_ = json.Unmarshal([]byte(row.MetadataJSON), &meta)
 	}
+	thoughtChain := mapSlice(meta["thought_chain"])
+	if len(thoughtChain) == 0 {
+		thoughtChain = mapSlice(meta["legacy_thought_chain"])
+	}
 	return ChatMessageRecord{
 		ID:              row.ID,
 		Role:            row.Role,
@@ -417,12 +401,25 @@ func decodeMessage(row model.AIChatMessage) ChatMessageRecord {
 		Thinking:        row.Thinking,
 		Status:          row.Status,
 		TraceID:         stringValue(meta["trace_id"]),
-		ThoughtChain:    mapSlice(meta["thought_chain"]),
+		ThoughtChain:    thoughtChain,
 		Recommendations: mapSlice(meta["recommendations"]),
 		RawEvidence:     stringSlice(meta["raw_evidence"]),
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}
+}
+
+func buildMessageMetadata(record ChatMessageRecord, turnID string) map[string]any {
+	meta := map[string]any{
+		"trace_id":        record.TraceID,
+		"turn_id":         strings.TrimSpace(turnID),
+		"recommendations": record.Recommendations,
+		"raw_evidence":    record.RawEvidence,
+	}
+	if len(record.ThoughtChain) > 0 {
+		meta["legacy_thought_chain"] = record.ThoughtChain
+	}
+	return meta
 }
 
 func decodeBlock(row model.AIChatBlock) ChatBlockRecord {

@@ -25,14 +25,13 @@ import (
 type EventType = events.Name
 
 // 以下常量将 events 包的名称重新导出为 EventXxx 形式，供 runtime 包内使用。
+// 主运行时路径只依赖 turn lifecycle、正文流和审批事件；旧 stage 事件仅做兼容保留。
 const (
 	EventMeta             EventType = events.Meta
 	EventDelta            EventType = events.Delta
 	EventThinkingDelta    EventType = events.ThinkingDelta
 	EventToolCall         EventType = events.ToolCall
 	EventToolResult       EventType = events.ToolResult
-	EventStageDelta       EventType = events.StageDelta
-	EventStepUpdate       EventType = events.StepUpdate
 	EventApprovalRequired EventType = events.ApprovalRequired
 	EventTurnStarted      EventType = events.TurnStarted
 	EventTurnState        EventType = events.TurnState
@@ -49,13 +48,6 @@ type StreamEvent struct {
 // StreamEmitter 是事件推送回调。返回 false 表示调用方已断开连接，应停止推送。
 type StreamEmitter func(StreamEvent) bool
 
-// PlanStep 表示执行计划中的单个步骤，用于前端渲染步骤列表。
-type PlanStep struct {
-	ID       string `json:"id"`                 // 步骤唯一标识
-	Content  string `json:"content"`            // 步骤描述文本
-	ToolHint string `json:"tool_hint,omitempty"` // 可能使用的工具名（可选）
-}
-
 // Runtime 是 AI 运行时的顶层接口，由 Orchestrator 实现。
 type Runtime interface {
 	// Run 发起一次新的 AI 对话，通过 emit 流式推送执行事件。
@@ -68,8 +60,8 @@ type Runtime interface {
 
 // RunRequest 是发起新对话的请求参数。
 type RunRequest struct {
-	SessionID      string         `json:"session_id,omitempty"`  // 可选；为空时自动生成
-	Message        string         `json:"message"`               // 用户消息，不可为空
+	SessionID      string         `json:"session_id,omitempty"`      // 可选；为空时自动生成
+	Message        string         `json:"message"`                   // 用户消息，不可为空
 	RuntimeContext RuntimeContext `json:"runtime_context,omitempty"` // 场景上下文
 }
 
@@ -107,8 +99,8 @@ type ResumeRequest struct {
 
 // ResumeResult 是审批处理后的返回结果。
 type ResumeResult struct {
-	Resumed     bool   `json:"resumed"`               // true=已从断点继续执行
-	Interrupted bool   `json:"interrupted"`           // true=执行再次被中断
+	Resumed     bool   `json:"resumed"`     // true=已从断点继续执行
+	Interrupted bool   `json:"interrupted"` // true=执行再次被中断
 	SessionID   string `json:"session_id,omitempty"`
 	PlanID      string `json:"plan_id,omitempty"`
 	StepID      string `json:"step_id,omitempty"`
@@ -201,13 +193,13 @@ const (
 type StepState struct {
 	StepID             string         `json:"step_id"`
 	Title              string         `json:"title,omitempty"`
-	Expert             string         `json:"expert,omitempty"`              // 负责该步骤的专家领域
+	Expert             string         `json:"expert,omitempty"` // 负责该步骤的专家领域
 	Status             StepStatus     `json:"status,omitempty"`
-	Mode               string         `json:"mode,omitempty"`                // readonly / mutating
-	Risk               string         `json:"risk,omitempty"`                // low / medium / high
+	Mode               string         `json:"mode,omitempty"`                 // readonly / mutating
+	Risk               string         `json:"risk,omitempty"`                 // low / medium / high
 	UserVisibleSummary string         `json:"user_visible_summary,omitempty"` // 展示给用户的摘要
-	ToolName           string         `json:"tool_name,omitempty"`           // 触发审批的工具名
-	ToolArgs           map[string]any `json:"tool_args,omitempty"`           // 工具调用参数
+	ToolName           string         `json:"tool_name,omitempty"`            // 触发审批的工具名
+	ToolArgs           map[string]any `json:"tool_args,omitempty"`            // 工具调用参数
 }
 
 // PendingApproval 记录一次等待人工确认的审批请求。
@@ -220,7 +212,7 @@ type PendingApproval struct {
 	Title       string         `json:"title,omitempty"`
 	Mode        string         `json:"mode,omitempty"`
 	Risk        string         `json:"risk,omitempty"`
-	Summary     string         `json:"summary,omitempty"`     // 人类可读的操作摘要
+	Summary     string         `json:"summary,omitempty"`      // 人类可读的操作摘要
 	ApprovalKey string         `json:"approval_key,omitempty"` // 用于幂等恢复的复合键
 	ToolName    string         `json:"tool_name,omitempty"`
 	Params      map[string]any `json:"params,omitempty"`
@@ -235,12 +227,12 @@ type ExecutionState struct {
 	SessionID       string               `json:"session_id,omitempty"`
 	PlanID          string               `json:"plan_id,omitempty"`
 	TurnID          string               `json:"turn_id,omitempty"`
-	Message         string               `json:"message,omitempty"`        // 用户原始消息
-	Scene           string               `json:"scene,omitempty"`          // 场景 key
+	Message         string               `json:"message,omitempty"` // 用户原始消息
+	Scene           string               `json:"scene,omitempty"`   // 场景 key
 	Status          ExecutionStatus      `json:"status,omitempty"`
-	Phase           string               `json:"phase,omitempty"`          // plan / execute / completed 等
+	Phase           string               `json:"phase,omitempty"` // 运行时生命周期阶段：running / waiting_approval / completed
 	RuntimeContext  RuntimeContext       `json:"runtime_context,omitempty"`
-	CheckpointID    string               `json:"checkpoint_id,omitempty"`  // 当前关联的 ADK 断点 ID
+	CheckpointID    string               `json:"checkpoint_id,omitempty"`    // 当前关联的 ADK 断点 ID
 	InterruptTarget string               `json:"interrupt_target,omitempty"` // 最近一次中断的步骤 ID
 	Steps           map[string]StepState `json:"steps,omitempty"`
 	PendingApproval *PendingApproval     `json:"pending_approval,omitempty"`

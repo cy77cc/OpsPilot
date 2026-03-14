@@ -14,61 +14,12 @@ func NewSSEConverter() *SSEConverter {
 func (c *SSEConverter) OnPlannerStart(sessionID, planID, turnID string) []StreamEvent {
 	return []StreamEvent{
 		{Type: EventTurnStarted, Data: map[string]any{"turn_id": turnID, "session_id": sessionID}},
-		{Type: EventStageDelta, Data: map[string]any{
-			"stage":       "plan",
-			"status":      "loading",
-			"plan_id":     planID,
-			"title":       "整理执行步骤",
-			"description": "正在根据你的需求整理执行步骤",
+		{Type: EventTurnState, Data: map[string]any{
+			"turn_id": turnID,
+			"plan_id": planID,
+			"status":  "running",
 		}},
 	}
-}
-
-func (c *SSEConverter) OnPlanCreated(planID string, steps []PlanStep) StreamEvent {
-	// 转换为前端期望的格式
-	stepStrings := make([]string, 0, len(steps))
-	for _, s := range steps {
-		stepStrings = append(stepStrings, s.Content)
-	}
-	return StreamEvent{Type: EventStageDelta, Data: map[string]any{
-		"stage":       "plan",
-		"status":      "success",
-		"plan_id":     planID,
-		"title":       "执行步骤已整理",
-		"description": "已生成可执行步骤",
-		"steps":       steps,        // 结构化步骤列表
-		"step_list":   stepStrings,  // 兼容旧格式
-		"total":       len(steps),
-	}}
-}
-
-func (c *SSEConverter) OnExecuteStart(stepID, title, toolName string, params map[string]any) StreamEvent {
-	return StreamEvent{Type: EventStageDelta, Data: map[string]any{
-		"stage":       "execute",
-		"status":      "loading",
-		"step_id":     stepID,
-		"title":       strings.TrimSpace(title),
-		"tool_name":   strings.TrimSpace(toolName),
-		"params":      params,
-		"description": firstNonEmptyString(strings.TrimSpace(title), strings.TrimSpace(toolName), "正在执行工具调用"),
-	}}
-}
-
-func (c *SSEConverter) OnToolCallStart(stepID, title, toolName string) StreamEvent {
-	return StreamEvent{Type: EventStepUpdate, Data: map[string]any{
-		"step_id": stepID,
-		"title":   title,
-		"tool":    toolName,
-		"status":  "loading",
-	}}
-}
-
-func (c *SSEConverter) OnToolResult(stepID, status, result string) StreamEvent {
-	return StreamEvent{Type: EventStepUpdate, Data: map[string]any{
-		"step_id": stepID,
-		"status":  status,
-		"result":  strings.TrimSpace(result),
-	}}
 }
 
 func (c *SSEConverter) OnApprovalRequired(pending *PendingApproval, checkpointID string) []StreamEvent {
@@ -76,12 +27,17 @@ func (c *SSEConverter) OnApprovalRequired(pending *PendingApproval, checkpointID
 		return nil
 	}
 	return []StreamEvent{
-		{Type: EventStageDelta, Data: map[string]any{"stage": "user_action", "status": "loading"}},
+		{Type: EventTurnState, Data: map[string]any{
+			"plan_id": pending.PlanID,
+			"step_id": pending.StepID,
+			"status":  "waiting_approval",
+		}},
 		{Type: EventApprovalRequired, Data: map[string]any{
 			"id":            pending.ID,
 			"plan_id":       pending.PlanID,
 			"step_id":       pending.StepID,
 			"checkpoint_id": checkpointID,
+			"title":         pending.Title,
 			"tool_name":     pending.ToolName,
 			"risk_level":    pending.Risk,
 			"mode":          pending.Mode,
@@ -92,18 +48,22 @@ func (c *SSEConverter) OnApprovalRequired(pending *PendingApproval, checkpointID
 }
 
 func (c *SSEConverter) OnApprovalResult(stepID string, approved bool, reason string) []StreamEvent {
-	status := "abort"
+	status := "rejected"
 	message := "审批未通过，待审批步骤不会继续执行。"
 	if approved {
-		status = "success"
+		status = "running"
 		message = "审批已通过，待审批步骤会继续执行。"
 	}
 	if strings.TrimSpace(reason) != "" {
 		message = fmt.Sprintf("%s 原因: %s", message, strings.TrimSpace(reason))
 	}
 	return []StreamEvent{
-		{Type: EventStageDelta, Data: map[string]any{"stage": "user_action", "status": status}},
-		{Type: EventStepUpdate, Data: map[string]any{"step_id": stepID, "status": status, "message": message}},
+		{Type: EventTurnState, Data: map[string]any{
+			"step_id":  stepID,
+			"status":   status,
+			"decision": map[bool]string{true: "approved", false: "rejected"}[approved],
+			"message":  message,
+		}},
 	}
 }
 
@@ -114,7 +74,6 @@ func (c *SSEConverter) OnTextDelta(chunk string) StreamEvent {
 func (c *SSEConverter) OnExecuteComplete() []StreamEvent {
 	return []StreamEvent{
 		{Type: EventTurnState, Data: map[string]any{"status": "completed"}},
-		{Type: EventStageDelta, Data: map[string]any{"stage": "execute", "status": "success"}},
 	}
 }
 
@@ -127,14 +86,5 @@ func (c *SSEConverter) OnError(stage string, err error) StreamEvent {
 	if err != nil {
 		message = err.Error()
 	}
-	return StreamEvent{Type: EventError, Data: map[string]any{"stage": stage, "message": message}}
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return StreamEvent{Type: EventError, Data: map[string]any{"phase": stage, "message": message}}
 }

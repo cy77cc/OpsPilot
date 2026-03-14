@@ -1,8 +1,8 @@
-// 本文件实现基于 eino ADK plan-execute 架构的 AI 编排器。
+// 本文件实现基于 eino ADK 的 AI 编排器。
 //
 // Orchestrator 是 AI 模块对外的唯一入口，负责：
-//   - 初始化 ADK Runner（planner → executor → replanner 三阶段 Agent 管线）
-//   - 接收用户请求，驱动 Agent 流式执行，将事件转换为 SSE 流推送给调用方
+//   - 初始化 ADK Runner，并驱动单条后端主路径执行
+//   - 接收用户请求，将执行进度收口为 turn lifecycle + delta/approval 事件
 //   - 处理人工审批中断：在敏感变更工具调用前暂停执行，等待外部 Resume 信号
 //   - 持久化执行状态（ExecutionStore）和断点（CheckpointStore）以支持会话恢复
 
@@ -138,7 +138,7 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		Message:        req.Message,
 		Scene:          req.RuntimeContext.Scene,
 		Status:         airuntime.ExecutionStatusRunning,
-		Phase:          "plan",
+		Phase:          "running",
 		RuntimeContext: req.RuntimeContext,
 		CheckpointID:   checkpointID,
 		Steps:          map[string]airuntime.StepState{},
@@ -159,7 +159,6 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 			return nil
 		}
 	}
-	emit(airuntime.StreamEvent{Type: airuntime.EventTurnState, Data: map[string]any{"turn_id": turnID, "status": "running"}})
 
 	iter := o.runner.Query(ctx, strings.TrimSpace(req.Message),
 		adk.WithCheckPointID(checkpointID),

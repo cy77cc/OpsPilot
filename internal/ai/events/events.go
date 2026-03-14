@@ -8,18 +8,26 @@ package events
 type Name string
 
 const (
-	// --- 通用事件 ---
+	// --- 主运行时事件 ---
+	//
+	// 新的后端主路径以 turn 生命周期和正文/审批流为中心，
+	// 这些事件应视为当前唯一的语义主链。
 
-	Meta             Name = "meta"             // 会话元信息（session_id/plan_id/turn_id）
-	Delta            Name = "delta"            // 模型文本增量输出
-	ThinkingDelta    Name = "thinking_delta"   // 模型思考链增量输出
-	ToolCall         Name = "tool_call"        // 工具调用请求
-	ToolResult       Name = "tool_result"      // 工具调用结果
+	Meta             Name = "meta"              // 会话元信息（session_id/plan_id/turn_id）
+	Delta            Name = "delta"             // 模型文本增量输出
+	ThinkingDelta    Name = "thinking_delta"    // 模型思考增量输出（兼容保留）
+	ToolCall         Name = "tool_call"         // 工具调用请求
+	ToolResult       Name = "tool_result"       // 工具调用结果
 	ApprovalRequired Name = "approval_required" // 需要人工审批
-	Done             Name = "done"             // 本次执行结束
-	Error            Name = "error"            // 执行出错
+	TurnStarted      Name = "turn_started"      // 新一轮对话开始
+	TurnState        Name = "turn_state"        // 轮次状态变更（running/completed 等）
+	Done             Name = "done"              // 本次执行结束
+	Error            Name = "error"             // 执行出错
 
-	// --- 规划阶段事件（plan-execute 架构专用）---
+	// --- 旧 ThoughtChain/Stage 事件 ---
+	//
+	// 这些名称仍然保留给外部兼容层读取，但不再是后端内部主路径。
+	// 新实现应优先使用上面的主运行时事件。
 
 	RewriteResult   Name = "rewrite_result"   // 意图改写结果
 	PlannerState    Name = "planner_state"    // 规划器状态变更
@@ -28,9 +36,4 @@ const (
 	StepUpdate      Name = "step_update"      // 单步状态更新
 	ClarifyRequired Name = "clarify_required" // 需要用户澄清意图
 	ReplanStarted   Name = "replan_started"   // 重新规划开始
-
-	// --- 轮次生命周期事件 ---
-
-	TurnStarted Name = "turn_started" // 新一轮对话开始
-	TurnState   Name = "turn_state"   // 轮次状态变更（running/completed 等）
 )
