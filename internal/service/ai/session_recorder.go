@@ -56,6 +56,26 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 	switch eventType {
 	case events.Meta:
 		r.handleMeta(ctx, payload)
+
+	// === 新增: 原生链节点事件处理 ===
+	case events.ChainStarted:
+		r.handleChainStarted(payload)
+	case events.ChainNodeOpen:
+		r.handleChainNodeOpen(payload)
+	case events.ChainNodePatch:
+		r.handleChainNodePatch(payload)
+	case events.ChainNodeClose:
+		r.handleChainNodeClose(payload)
+	case events.ChainCollapsed:
+		r.handleChainCollapsed(payload)
+	case events.FinalAnswerStart:
+		r.handleFinalAnswerStart(payload)
+	case events.FinalAnswerDelta:
+		r.handleFinalAnswerDelta(payload)
+	case events.FinalAnswerDone:
+		r.handleFinalAnswerDone(payload)
+
+	// === 兼容层: 旧事件处理 ===
 	case events.RewriteResult:
 		r.upsertStage(map[string]any{
 			"key":         "rewrite",
@@ -172,48 +192,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 		}
 	}
 	_ = r.persist(ctx)
-}
-
-func extractRawEvidenceFromThoughtChain(stages []map[string]any) []string {
-	for _, stage := range stages {
-		if toString(stage["key"]) != "execute" {
-			continue
-		}
-		details, _ := stage["details"].([]map[string]any)
-		if len(details) == 0 {
-			if raw, ok := stage["details"].([]any); ok {
-				details = make([]map[string]any, 0, len(raw))
-				for _, item := range raw {
-					if detail, okDetail := item.(map[string]any); okDetail {
-						details = append(details, detail)
-					}
-				}
-			}
-		}
-		out := make([]string, 0, len(details))
-		for _, detail := range details {
-			text := firstString(detail["content"])
-			if text == "" {
-				text = firstString(detail["label"])
-			}
-			if text != "" {
-				out = append(out, text)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-func copyMap(input map[string]any) map[string]any {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }
 
 func (r *chatRecorder) SessionPayload(ctx context.Context) map[string]any {
@@ -514,14 +492,6 @@ func firstRawString(values ...any) string {
 	return ""
 }
 
-func firstStringFromMap(row map[string]any, values ...string) string {
-	for _, key := range values {
-		if text := strings.TrimSpace(toString(row[key])); text != "" {
-			return text
-		}
-	}
-	return ""
-}
 
 func toString(value any) string {
 	switch v := value.(type) {
@@ -544,4 +514,162 @@ func deriveChatTitle(message string) string {
 		return strings.TrimSpace(string(runes[:24])) + "..."
 	}
 	return message
+}
+
+// === 原生链节点事件处理器 ===
+
+func (r *chatRecorder) ensureRuntime() *aistate.RuntimeState {
+	if r.assistant.Runtime == nil {
+		r.assistant.Runtime = &aistate.RuntimeState{}
+	}
+	return r.assistant.Runtime
+}
+
+func (r *chatRecorder) handleChainStarted(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	runtime.TurnID = firstString(payload["turn_id"])
+	runtime.Nodes = nil
+	runtime.IsCollapsed = false
+	runtime.ActiveNodeID = ""
+	if runtime.FinalAnswer == nil {
+		runtime.FinalAnswer = &aistate.RuntimeFinalAnswer{}
+	}
+	runtime.FinalAnswer.Visible = false
+	runtime.FinalAnswer.Content = ""
+}
+
+func (r *chatRecorder) handleChainNodeOpen(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	nodeID := firstString(payload["node_id"])
+	if nodeID == "" {
+		return
+	}
+	node := aistate.RuntimeChainNode{
+		NodeID:    nodeID,
+		Kind:      firstString(payload["kind"]),
+		Title:     firstString(payload["title"]),
+		Status:    firstString(payload["status"]),
+		Summary:   firstString(payload["summary"]),
+		StartedAt: firstString(payload["started_at"]),
+	}
+	if details, ok := payload["details"].([]any); ok {
+		node.Details = details
+	}
+	if approval, ok := payload["approval"].(map[string]any); ok {
+		node.Approval = approval
+	}
+	// 关闭之前的活动节点
+	if runtime.ActiveNodeID != "" && runtime.ActiveNodeID != nodeID {
+		for i, n := range runtime.Nodes {
+			if n.NodeID == runtime.ActiveNodeID {
+				runtime.Nodes[i].Status = "done"
+				break
+			}
+		}
+	}
+	// 更新或追加节点
+	found := false
+	for i, n := range runtime.Nodes {
+		if n.NodeID == nodeID {
+			runtime.Nodes[i] = node
+			found = true
+			break
+		}
+	}
+	if !found {
+		runtime.Nodes = append(runtime.Nodes, node)
+	}
+	if node.Status == "loading" || node.Status == "active" || node.Status == "waiting" {
+		runtime.ActiveNodeID = nodeID
+	}
+}
+
+func (r *chatRecorder) handleChainNodePatch(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	nodeID := firstString(payload["node_id"])
+	if nodeID == "" {
+		return
+	}
+	for i, n := range runtime.Nodes {
+		if n.NodeID == nodeID {
+			if title := firstString(payload["title"]); title != "" {
+				runtime.Nodes[i].Title = title
+			}
+			if summary := firstString(payload["summary"]); summary != "" {
+				runtime.Nodes[i].Summary = summary
+			}
+			if status := firstString(payload["status"]); status != "" {
+				runtime.Nodes[i].Status = status
+			}
+			if details, ok := payload["details"].([]any); ok {
+				runtime.Nodes[i].Details = details
+			}
+			break
+		}
+	}
+}
+
+func (r *chatRecorder) handleChainNodeClose(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	nodeID := firstString(payload["node_id"])
+	if nodeID == "" {
+		return
+	}
+	status := firstString(payload["status"])
+	if status == "" {
+		status = "done"
+	}
+	for i, n := range runtime.Nodes {
+		if n.NodeID == nodeID {
+			runtime.Nodes[i].Status = status
+			break
+		}
+	}
+	if runtime.ActiveNodeID == nodeID {
+		runtime.ActiveNodeID = ""
+	}
+}
+
+func (r *chatRecorder) handleChainCollapsed(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	runtime.IsCollapsed = true
+	runtime.ActiveNodeID = ""
+	// 标记所有节点为完成
+	for i := range runtime.Nodes {
+		if runtime.Nodes[i].Status == "loading" || runtime.Nodes[i].Status == "active" || runtime.Nodes[i].Status == "waiting" {
+			runtime.Nodes[i].Status = "done"
+		}
+	}
+}
+
+func (r *chatRecorder) handleFinalAnswerStart(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	if runtime.FinalAnswer == nil {
+		runtime.FinalAnswer = &aistate.RuntimeFinalAnswer{}
+	}
+	runtime.FinalAnswer.Visible = true
+	runtime.FinalAnswer.Streaming = true
+	runtime.FinalAnswer.RevealState = "revealing"
+}
+
+func (r *chatRecorder) handleFinalAnswerDelta(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	if runtime.FinalAnswer == nil {
+		runtime.FinalAnswer = &aistate.RuntimeFinalAnswer{}
+	}
+	chunk := firstString(payload["chunk"])
+	if chunk != "" {
+		runtime.FinalAnswer.Content += chunk
+	}
+	runtime.FinalAnswer.Visible = true
+	runtime.FinalAnswer.Streaming = true
+}
+
+func (r *chatRecorder) handleFinalAnswerDone(payload map[string]any) {
+	runtime := r.ensureRuntime()
+	if runtime.FinalAnswer == nil {
+		runtime.FinalAnswer = &aistate.RuntimeFinalAnswer{}
+	}
+	runtime.FinalAnswer.Streaming = false
+	runtime.FinalAnswer.RevealState = "complete"
 }

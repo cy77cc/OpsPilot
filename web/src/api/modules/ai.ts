@@ -363,6 +363,55 @@ function toContentChunk(payload: unknown): string {
   }
 }
 
+// normalizeVisibleStreamChunk 将模型内部协议 JSON 转换为用户可见文本。
+// - {"steps": [...]} 视为内部计划，不透传
+// - {"response": "..."} 解包 response 文本
+// - 其他内容原样透传
+export function normalizeVisibleStreamChunk(rawChunk: string): string {
+  const chunk = typeof rawChunk === 'string' ? rawChunk : '';
+  const trimmed = chunk.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return chunk;
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return chunk;
+  }
+  if (!payload || typeof payload !== 'object') {
+    return chunk;
+  }
+
+  const keys = Object.keys(payload);
+  const hasOnlyResponseEnvelope = keys.length > 0
+    && keys.every((key) => key === 'response' || key === 'reasoning' || key === 'metadata');
+  if (hasOnlyResponseEnvelope && typeof payload.response === 'string') {
+    return payload.response;
+  }
+
+  const hasOnlyStepsEnvelope = keys.length > 0
+    && keys.every((key) => key === 'steps' || key === 'plan' || key === 'reasoning' || key === 'metadata');
+  if (hasOnlyStepsEnvelope && Array.isArray(payload.steps)) {
+    return '';
+  }
+
+  return chunk;
+}
+
+function normalizeFinalAnswerEventPayload(payload: unknown): SSEFinalAnswerEvent {
+  const eventPayload = (typeof payload === 'object' && payload ? payload : {}) as SSEFinalAnswerEvent;
+  const normalizedChunk = normalizeVisibleStreamChunk(String(eventPayload.chunk || ''));
+  return {
+    ...eventPayload,
+    ...(normalizedChunk ? { chunk: normalizedChunk } : {}),
+  };
+}
+
 function normalizeResumeIdentity<T extends Record<string, unknown>>(payload: T): T {
   const resume = (payload.resume || {}) as Record<string, unknown>;
   const sessionID = payload.session_id ?? resume.session_id;
@@ -758,7 +807,10 @@ export const aiApi = {
       } else if (eventType === 'final_answer_started') {
         handlers.onFinalAnswerStarted?.(payload as SSEFinalAnswerEvent);
       } else if (eventType === 'final_answer_delta') {
-        handlers.onFinalAnswerDelta?.(payload as SSEFinalAnswerEvent);
+        const normalized = normalizeFinalAnswerEventPayload(payload);
+        if (typeof normalized.chunk === 'string' && normalized.chunk.length > 0) {
+          handlers.onFinalAnswerDelta?.(normalized);
+        }
       } else if (eventType === 'final_answer_done') {
         handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
       } else if (eventType === 'turn_started') {
@@ -796,7 +848,7 @@ export const aiApi = {
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
-        const contentChunk = toContentChunk(payload);
+        const contentChunk = normalizeVisibleStreamChunk(toContentChunk(payload));
         if (contentChunk) {
           handlers.onDelta?.({
             ...(typeof payload === 'object' && payload ? payload as Record<string, unknown> : {}),

@@ -15,12 +15,12 @@
 - [x] 1.3 重构 `internal/ai/runtime/sse_converter.go`，由运行时直接投影用户叙事型链节点事件
 - [x] 1.4 重构 `internal/ai/orchestrator.go`，确保 `plan -> execute -> tool -> replan -> approval` 生命周期输出为链节点原生协议，而不是前端推断
 - [x] 1.5 约束 `tool_result` 只更新当前 tool 节点详情，不生成新链节点
-- [ ] 1.6 保留兼容事件输出，但将其降级为 compatibility 层
+- [x] 1.6 保留兼容事件输出，但将其降级为 compatibility 层
 
 ## 2. Final Answer Separation
 
 - [x] 2.1 后端保证最终答案只通过 `final_answer_*` 事件输出，不再混入过程链事件
-- [ ] 2.2 过滤 planner JSON、tool 参数、replan 中间态，避免污染最终答案内容
+- [x] 2.2 过滤 planner JSON、tool 参数、replan 中间态，避免污染最终答案内容
 - [x] 2.3 确保 `chain_collapsed` 先于 `final_answer_started`
 - [x] 2.4 为最终答案增加 append-only chunk 输出，支持前端打字机渲染
 
@@ -35,16 +35,16 @@
 
 ## 4. Motion and Transition
 
-- [ ] 4.1 设计并实现节点出现、loading->done、链折叠、最终答案淡入的过渡动画
-- [ ] 4.2 保证执行中只显示过程链，过程链折叠后才显示最终答案
-- [ ] 4.3 处理 reduced-motion 场景下的降级行为
+- [x] 4.1 设计并实现节点出现、loading->done、链折叠、最终答案淡入的过渡动画
+- [x] 4.2 保证执行中只显示过程链，过程链折叠后才显示最终答案
+- [x] 4.3 处理 reduced-motion 场景下的降级行为
 
 ## 5. Persistence and Replay
 
-- [ ] 5.1 调整持久化模型，确保链节点顺序、状态、最终答案分离存储
-- [ ] 5.2 更新 `internal/service/ai/session_recorder.go` 和 `internal/ai/state/chat_store.go` 支持新模型
+- [x] 5.1 调整持久化模型，确保链节点顺序、状态、最终答案分离存储
+- [x] 5.2 更新 `internal/service/ai/session_recorder.go` 和 `internal/ai/state/chat_store.go` 支持新模型
 - [x] 5.3 更新 `web/src/components/AI/hooks/useConversationRestore.ts`，恢复已完成和未完成会话时保持相同体验
-- [ ] 5.4 明确旧 message/block 数据的兼容读取策略，不再作为新主模型的事实来源
+- [x] 5.4 明确旧 message/block 数据的兼容读取策略，不再作为新主模型的事实来源
 
 ## 6. Verification
 

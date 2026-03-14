@@ -19,10 +19,40 @@ type ChatMessageRecord struct {
 	Status          string           `json:"status,omitempty"`
 	TraceID         string           `json:"trace_id,omitempty"`
 	ThoughtChain    []map[string]any `json:"thought_chain,omitempty"` // Deprecated: 仅兼容读取旧消息元数据
+	Runtime         *RuntimeState    `json:"runtime,omitempty"`       // 新增: 运行时链节点状态
 	Recommendations []map[string]any `json:"recommendations,omitempty"`
 	RawEvidence     []string         `json:"raw_evidence,omitempty"`
 	CreatedAt       time.Time        `json:"created_at"`
 	UpdatedAt       time.Time        `json:"updated_at"`
+}
+
+// RuntimeState 运行时状态，用于持久化和恢复链节点状态
+type RuntimeState struct {
+	TurnID       string                `json:"turn_id,omitempty"`
+	Nodes        []RuntimeChainNode    `json:"nodes,omitempty"`
+	IsCollapsed  bool                  `json:"is_collapsed,omitempty"`
+	FinalAnswer  *RuntimeFinalAnswer   `json:"final_answer,omitempty"`
+	ActiveNodeID string                `json:"active_node_id,omitempty"`
+}
+
+// RuntimeChainNode 链节点
+type RuntimeChainNode struct {
+	NodeID    string         `json:"node_id"`
+	Kind      string         `json:"kind"`
+	Title     string         `json:"title"`
+	Status    string         `json:"status"`
+	Summary   string         `json:"summary,omitempty"`
+	Details   []any          `json:"details,omitempty"`
+	Approval  map[string]any `json:"approval,omitempty"`
+	StartedAt string         `json:"started_at,omitempty"`
+}
+
+// RuntimeFinalAnswer 最终答案状态
+type RuntimeFinalAnswer struct {
+	Visible    bool   `json:"visible"`
+	Streaming  bool   `json:"streaming"`
+	Content    string `json:"content"`
+	RevealState string `json:"reveal_state,omitempty"`
 }
 
 type ChatBlockRecord struct {
@@ -402,11 +432,83 @@ func decodeMessage(row model.AIChatMessage) ChatMessageRecord {
 		Status:          row.Status,
 		TraceID:         stringValue(meta["trace_id"]),
 		ThoughtChain:    thoughtChain,
+		Runtime:         decodeRuntimeState(meta["runtime"]),
 		Recommendations: mapSlice(meta["recommendations"]),
 		RawEvidence:     stringSlice(meta["raw_evidence"]),
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}
+}
+
+func decodeRuntimeState(value any) *RuntimeState {
+	if value == nil {
+		return nil
+	}
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	state := &RuntimeState{
+		TurnID:       stringValue(raw["turn_id"]),
+		IsCollapsed:  boolValue(raw["is_collapsed"]),
+		ActiveNodeID: stringValue(raw["active_node_id"]),
+	}
+	if nodes, ok := raw["nodes"].([]any); ok {
+		state.Nodes = make([]RuntimeChainNode, 0, len(nodes))
+		for _, n := range nodes {
+			if node, ok := n.(map[string]any); ok {
+				state.Nodes = append(state.Nodes, RuntimeChainNode{
+					NodeID:    stringValue(node["node_id"]),
+					Kind:      stringValue(node["kind"]),
+					Title:     stringValue(node["title"]),
+					Status:    stringValue(node["status"]),
+					Summary:   stringValue(node["summary"]),
+					Details:   anySlice(node["details"]),
+					Approval:  mapValue(node["approval"]),
+					StartedAt: stringValue(node["started_at"]),
+				})
+			}
+		}
+	}
+	if fa, ok := raw["final_answer"].(map[string]any); ok {
+		state.FinalAnswer = &RuntimeFinalAnswer{
+			Visible:     boolValue(fa["visible"]),
+			Streaming:   boolValue(fa["streaming"]),
+			Content:     stringValue(fa["content"]),
+			RevealState: stringValue(fa["reveal_state"]),
+		}
+	}
+	return state
+}
+
+func mapValue(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	if m, ok := value.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+func anySlice(value any) []any {
+	if value == nil {
+		return nil
+	}
+	if s, ok := value.([]any); ok {
+		return s
+	}
+	return nil
+}
+
+func boolValue(value any) bool {
+	if value == nil {
+		return false
+	}
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return false
 }
 
 func buildMessageMetadata(record ChatMessageRecord, turnID string) map[string]any {
@@ -418,6 +520,9 @@ func buildMessageMetadata(record ChatMessageRecord, turnID string) map[string]an
 	}
 	if len(record.ThoughtChain) > 0 {
 		meta["legacy_thought_chain"] = record.ThoughtChain
+	}
+	if record.Runtime != nil {
+		meta["runtime"] = record.Runtime
 	}
 	return meta
 }

@@ -1,0 +1,251 @@
+/* ThoughtChain Runtime 动画样式 */
+
+/* ===== 链节点基础样式 ===== */
+.runtime-chain {
+  transition: all 0.3s ease-out;
+}
+
+.runtime-chain--expanded {
+  opacity: 1;
+  max-height: 2000px;
+}
+
+.runtime-chain--collapsed {
+  opacity: 0.8;
+  max-height: 60px;
+  overflow: hidden;
+}
+
+/* ===== 节点出现动画 ===== */
+.runtime-chain__node {
+  animation: chain-node-appear 0.3s ease-out;
+  transform-origin: top center;
+}
+
+.runtime-chain__node.is-active {
+  animation: chain-node-pulse 1.5s ease-in-out infinite;
+}
+
+.runtime-chain__node.is-done {
+  animation: none;
+}
+
+.runtime-chain__node.is-error {
+  animation: chain-node-shake 0.4s ease-out;
+}
+
+.runtime-chain__node.is-waiting {
+  animation: chain-node-waiting 2s ease-in-out infinite;
+}
+
+/* 节点出现：上移 + 淡入 */
+@keyframes chain-node-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 活动节点脉冲 */
+@keyframes chain-node-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+/* 等待状态动画 */
+@keyframes chain-node-waiting {
+  0%, 100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  25% {
+    opacity: 0.9;
+    transform: translateX(2px);
+  }
+  75% {
+    opacity: 0.9;
+    transform: translateX(-2px);
+  }
+}
+
+/* 错误抖动 */
+@keyframes chain-node-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+/* ===== 链折叠动画 ===== */
+.runtime-chain--collapsed .runtime-chain__node {
+  animation: chain-collapse 0.4s ease-out forwards;
+}
+
+@keyframes chain-collapse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    max-height: 200px;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* 折叠后显示"思考完成"标题 */
+.runtime-chain__collapsed-title {
+  display: none;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+  padding: 8px 0;
+}
+
+.runtime-chain--collapsed .runtime-chain__collapsed-title {
+  display: block;
+  animation: fade-in 0.3s ease-out;
+}
+
+/* ===== 最终答案区域 ===== */
+.final-answer-stream {
+  transition: opacity 0.3s ease-out;
+}
+
+.final-answer-stream--revealing {
+  animation: final-answer-reveal 0.5s ease-out;
+}
+
+.final-answer-stream--complete {
+  animation: none;
+}
+
+@keyframes final-answer-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 打字机光标 */
+.final-answer-stream__caret {
+  display: inline-block;
+  animation: caret-blink 0.8s step-end infinite;
+  color: #1890ff;
+  font-weight: 300;
+}
+
+@keyframes caret-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ===== 审批节点内嵌区 ===== */
+.runtime-chain__approvalRow {
+  animation: approval-appear 0.3s ease-out 0.1s backwards;
+}
+
+@keyframes approval-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== Reduced Motion 降级 ===== */
+@media (prefers-reduced-motion: reduce) {
+  .runtime-chain,
+  .runtime-chain__node,
+  .runtime-chain--collapsed .runtime-chain__node,
+  .final-answer-stream,
+  .final-answer-stream--revealing,
+  .runtime-chain__approvalRow {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .final-answer-stream__caret {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  .runtime-chain__node.is-active,
+  .runtime-chain__node.is-waiting {
+    animation: none !important;
+  }
+
+  .runtime-chain--collapsed {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* ===== 节点内容样式 ===== */
+.runtime-chain__nodeSummary {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 4px;
+}
+
+.runtime-chain__nodeBody {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+}
+
+/* ===== 暗色主题 ===== */
+@media (prefers-color-scheme: dark) {
+  .runtime-chain__collapsed-title {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .runtime-chain__nodeSummary {
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .runtime-chain__nodeBody {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .final-answer-stream__caret {
+    color: #4096ff;
+  }
+}

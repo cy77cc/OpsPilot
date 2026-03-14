@@ -3,6 +3,7 @@ import { ThoughtChain } from '@ant-design/x';
 import { theme } from 'antd';
 import { ConfirmationPanel } from './ConfirmationPanel';
 import type { ConfirmationRequest, RuntimeThoughtChainNode } from '../types';
+import './RuntimeChain.css';
 
 interface RuntimeThoughtChainProps {
   nodes: RuntimeThoughtChainNode[];
@@ -28,6 +29,11 @@ export function RuntimeThoughtChain({ nodes, isCollapsed = false, onApprovalDeci
   }
   return (
     <div className={`runtime-chain ${isCollapsed ? 'runtime-chain--collapsed' : 'runtime-chain--expanded'}`}>
+      {isCollapsed ? (
+        <div className="runtime-chain__collapsed-title" style={{ color: token.colorTextSecondary }}>
+          思考完成
+        </div>
+      ) : null}
       <ThoughtChain
         items={nodes.map((node) => ({
           key: node.nodeId,
