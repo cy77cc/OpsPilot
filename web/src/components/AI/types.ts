@@ -123,6 +123,7 @@ export interface ThoughtChainRuntimeState {
 
 // === Replay compatibility structures ===
 // These remain only for persisted history projection and transitional UI fallback.
+// They are not the canonical live-runtime contract.
 
 export type TurnBlockType =
   | 'status'
@@ -164,7 +165,9 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
+  // Compatibility replay snapshot for block-based history projection.
   turn?: ChatTurn;
+  // Canonical live/runtime-first thoughtChain state.
   runtime?: ThoughtChainRuntimeState;
 
   // Legacy compatibility for the pre-turn/block rendering path.
