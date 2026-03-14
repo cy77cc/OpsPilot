@@ -113,56 +113,6 @@ interface SSEMetaEvent {
   turn_id?: string;
 }
 
-export interface SSETurnStartedEvent {
-  turn_id: string;
-  role?: string;
-  phase?: string;
-  status?: string;
-}
-
-export interface SSEBlockOpenEvent {
-  turn_id: string;
-  block_id: string;
-  block_type: string;
-  position?: number;
-  status?: string;
-  phase?: string;
-  title?: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface SSEBlockDeltaEvent {
-  turn_id: string;
-  block_id: string;
-  block_type?: string;
-  patch?: Record<string, unknown>;
-}
-
-export interface SSEBlockReplaceEvent {
-  turn_id: string;
-  block_id: string;
-  block_type?: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface SSEBlockCloseEvent {
-  turn_id: string;
-  block_id: string;
-  status?: string;
-}
-
-export interface SSETurnStateEvent {
-  turn_id: string;
-  status?: string;
-  phase?: string;
-}
-
-export interface SSETurnDoneEvent {
-  turn_id: string;
-  status?: string;
-  phase?: string;
-}
-
 export interface SSEPlanStep {
   [key: string]: unknown;
   id?: string;
@@ -335,13 +285,6 @@ export interface AIChatStreamHandlers {
   onFinalAnswerDelta?: (payload: SSEFinalAnswerEvent) => void;
   onFinalAnswerDone?: (payload: SSEFinalAnswerEvent) => void;
   onMeta?: (payload: SSEMetaEvent) => void;
-  onTurnStarted?: (payload: SSETurnStartedEvent) => void;
-  onBlockOpen?: (payload: SSEBlockOpenEvent) => void;
-  onBlockDelta?: (payload: SSEBlockDeltaEvent) => void;
-  onBlockReplace?: (payload: SSEBlockReplaceEvent) => void;
-  onBlockClose?: (payload: SSEBlockCloseEvent) => void;
-  onTurnState?: (payload: SSETurnStateEvent) => void;
-  onTurnDone?: (payload: SSETurnDoneEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
   onReplanStarted?: (payload: SSEReplanStartedEvent) => void;
@@ -407,20 +350,6 @@ function dispatchAIStreamEvent(
     }
   } else if (eventType === 'final_answer_done') {
     handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
-  } else if (eventType === 'turn_started') {
-    handlers.onTurnStarted?.(payload as SSETurnStartedEvent);
-  } else if (eventType === 'block_open') {
-    handlers.onBlockOpen?.(payload as SSEBlockOpenEvent);
-  } else if (eventType === 'block_delta') {
-    handlers.onBlockDelta?.(payload as SSEBlockDeltaEvent);
-  } else if (eventType === 'block_replace') {
-    handlers.onBlockReplace?.(payload as SSEBlockReplaceEvent);
-  } else if (eventType === 'block_close') {
-    handlers.onBlockClose?.(payload as SSEBlockCloseEvent);
-  } else if (eventType === 'turn_state') {
-    handlers.onTurnState?.(payload as SSETurnStateEvent);
-  } else if (eventType === 'turn_done') {
-    handlers.onTurnDone?.(payload as SSETurnDoneEvent);
   } else if (eventType === 'delta' || eventType === 'message') {
     const contentChunk = normalizeVisibleDelta
       ? normalizeVisibleStreamChunk(toContentChunk(payload))
@@ -835,14 +764,6 @@ export const aiApi = {
 
   async getApproval(id: string): Promise<ApiResponse<ApprovalTicket>> {
     return apiService.get(`/ai/approvals/${id}`);
-  },
-
-  async approveApproval(id: string, reason?: string): Promise<ApiResponse<{ task: ApprovalTicket; execution?: AIToolExecution }>> {
-    return apiService.post(`/ai/approvals/${id}/approve`, reason ? { reason } : {});
-  },
-
-  async rejectApproval(id: string, reason?: string): Promise<ApiResponse<{ task: ApprovalTicket; execution?: AIToolExecution }>> {
-    return apiService.post(`/ai/approvals/${id}/reject`, reason ? { reason } : {});
   },
 
   async submitFeedback(payload: AIKnowledgeFeedbackPayload): Promise<ApiResponse<KnowledgeEntry | null>> {

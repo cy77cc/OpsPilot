@@ -35,8 +35,6 @@ func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	g.POST("/approvals", h.CreateApproval)
 	g.GET("/approvals", h.ListApprovals)
 	g.GET("/approvals/:id", h.GetApproval)
-	g.POST("/approvals/:id/approve", h.ApproveApproval)
-	g.POST("/approvals/:id/reject", h.RejectApproval)
 	g.GET("/scene/:scene/tools", h.SceneTools)
 	g.GET("/scene/:scene/prompts", h.ScenePrompts)
 	g.GET("/scene/configs", h.ListSceneConfigs)

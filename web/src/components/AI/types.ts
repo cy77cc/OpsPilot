@@ -205,13 +205,6 @@ export interface DrawerWidthConfig {
 // SSE 事件类型
 export type SSEEventType =
   | 'meta'
-  | 'turn_started'
-  | 'block_open'
-  | 'block_delta'
-  | 'block_replace'
-  | 'block_close'
-  | 'turn_state'
-  | 'turn_done'
   | 'delta'
   | 'message'
   | 'thinking_delta'

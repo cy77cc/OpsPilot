@@ -5,6 +5,7 @@ import { Copilot, DEFAULT_CONVERSATION, conversationReducer } from './Copilot';
 import { aiApi } from '../../api/modules/ai';
 
 let restoredConversation: any = null;
+let mockedScenePrompts: Array<{ key: string; description: string }> = [];
 
 vi.mock('@ant-design/x', () => ({
   Bubble: {
@@ -25,7 +26,19 @@ vi.mock('@ant-design/x', () => ({
       ))}
     </div>
   ),
-  Prompts: () => null,
+  Prompts: ({ items, onItemClick }: { items?: Array<{ key: string; description: string }>; onItemClick?: (info?: { data?: { description?: string } }) => void }) => (
+    <div>
+      {(items || []).map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          onClick={() => onItemClick?.({ data: { description: item.description } })}
+        >
+          {item.description}
+        </button>
+      ))}
+    </div>
+  ),
   Sender: () => null,
   Welcome: () => null,
   Think: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) => (
@@ -71,7 +84,7 @@ vi.mock('./hooks/useConversationRestore', () => ({
 }));
 
 vi.mock('./hooks/useScenePrompts', () => ({
-  useScenePrompts: () => ({ prompts: [] }),
+  useScenePrompts: () => ({ prompts: mockedScenePrompts }),
 }));
 
 vi.mock('./components/MessageActions', () => ({
@@ -83,12 +96,14 @@ vi.mock('./components/MessageActions', () => ({
 describe('Copilot', () => {
   beforeEach(() => {
     restoredConversation = null;
+    mockedScenePrompts = [];
     vi.spyOn(aiApi, 'chatStream').mockResolvedValue();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     restoredConversation = null;
+    mockedScenePrompts = [];
   });
 
   it('hides restored thought chain details and keeps only the summary content', async () => {
@@ -269,6 +284,30 @@ describe('Copilot', () => {
         }),
       ],
     }));
+  });
+
+  it('submits a recommended prompt in a new conversation without falling into an unavailable state', async () => {
+    mockedScenePrompts = [{ key: 'hosts', description: '查询所有服务器的状态' }];
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ sessionId: 'sess-prompts', createdAt: new Date().toISOString() });
+      handlers.onChainStarted?.({ turn_id: 'turn-prompts' } as any);
+      handlers.onFinalAnswerStarted?.({ turn_id: 'turn-prompts' } as any);
+      handlers.onFinalAnswerDelta?.({ turn_id: 'turn-prompts', chunk: '已收到推荐问题' } as any);
+      handlers.onFinalAnswerDone?.({ turn_id: 'turn-prompts' } as any);
+      handlers.onDone?.({ stream_state: 'ok' } as any);
+    });
+
+    render(<Copilot open scene="global" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '查询所有服务器的状态' }));
+
+    await waitFor(() => {
+      expect(aiApi.chatStream).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.queryByText('AI 助手暂时不可用')).not.toBeInTheDocument();
+    expect(await screen.findByText('查询所有服务器的状态')).toBeInTheDocument();
+    expect(await screen.findByText('已收到推荐问题')).toBeInTheDocument();
   });
 
   it('renders plan, tool, and approval nodes during regenerate on the runtime path', async () => {

@@ -28,6 +28,9 @@ func TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute(t *testing.T) {
 		if route == "POST /api/v1/ai/approval/respond" {
 			t.Fatalf("unexpected legacy approval respond route still registered: %v", routes)
 		}
+		if route == "POST /api/v1/ai/approvals/:id/approve" || route == "POST /api/v1/ai/approvals/:id/reject" {
+			t.Fatalf("unexpected duplicate approval decision route still registered: %v", routes)
+		}
 		if route == "POST /api/v1/ai/resume/step" || route == "POST /api/v1/ai/resume/step/stream" || route == "POST /api/v1/ai/adk/resume" {
 			t.Fatalf("unexpected legacy resume route still registered: %v", routes)
 		}

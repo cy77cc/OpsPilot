@@ -54,13 +54,8 @@ import AssistantMessageBlocks from './components/AssistantMessageBlocks';
 import { mergeAssistantBlocks, normalizeAssistantMessage, normalizeTurnBlocks } from './messageBlocks';
 import { createThoughtChainRuntimeState, reduceThoughtChainRuntimeEvent } from './thoughtChainRuntime';
 import {
-  applyBlockClose,
-  applyBlockDelta,
-  applyBlockOpen,
   applyBlockReplace,
   applyTurnDone,
-  applyTurnStarted,
-  applyTurnState,
   createAssistantTurn,
   getTurnBlocksForDisplay,
   projectTurnSummary,
@@ -974,47 +969,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           content: message.runtime?.finalAnswer.content || assistantContent || message.content,
         }));
       },
-      onTurnStarted: (data: { turn_id: string; phase?: string; status?: string; role?: string }) => {
-        refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyTurnStarted(message.turn, data, assistantTraceId),
-        }));
-      },
-      onBlockOpen: (data: { turn_id: string; block_id: string; block_type: string; position?: number; status?: string; title?: string; payload?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyBlockOpen(message.turn, data),
-        }));
-      },
-      onBlockDelta: (data: { turn_id: string; block_id: string; block_type?: string; patch?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyBlockDelta(message.turn, data),
-        }));
-      },
-      onBlockReplace: (data: { turn_id: string; block_id: string; block_type?: string; payload?: Record<string, unknown> }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyBlockReplace(message.turn, data),
-        }));
-      },
-      onBlockClose: (data: { turn_id: string; block_id: string; status?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyBlockClose(message.turn, data),
-        }));
-      },
-      onTurnState: (data: { status?: string; phase?: string }) => {
-        refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyTurnState(message.turn, {
-            turn_id: message.turn?.id || assistantId,
-            status: data.status,
-            phase: data.phase,
-          }),
-        }));
-      },
-      onTurnDone: (data: { turn_id: string; status?: string; phase?: string }) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyTurnDone(message.turn, data),
-        }));
-      },
       onRewriteResult: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
@@ -1034,14 +988,6 @@ export const Copilot: React.FC<CopilotProps> = ({
         assistantContent += data.contentChunk || '';
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           content: assistantContent,
-          turn: applyBlockDelta(message.turn, {
-            turn_id: message.turn?.id || assistantId,
-            block_id: 'text:main',
-            block_type: 'text',
-            patch: {
-              content_chunk: data.contentChunk,
-            },
-          }),
           thoughtChain: finalizeThoughtStage(
             finalizeThoughtStage(
               message.thoughtChain || [],
@@ -1058,14 +1004,6 @@ export const Copilot: React.FC<CopilotProps> = ({
         assistantThinking += data.contentChunk || '';
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           thinking: assistantThinking,
-          turn: applyBlockDelta(message.turn, {
-            turn_id: message.turn?.id || assistantId,
-            block_id: 'thinking:main',
-            block_type: 'thinking',
-            patch: {
-              content_chunk: data.contentChunk,
-            },
-          }),
           thoughtChain: upsertThoughtStage(finalizeThoughtStage(
             message.thoughtChain || [],
             'execute',
