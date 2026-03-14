@@ -8,6 +8,9 @@ The current AI chat runtime mixes legacy `turn/block`, `phase/step`, detached ap
 - **BREAKING** Remove legacy `turn/block`, `phase/step`, and compatibility-only streaming semantics from the AI chat primary path.
 - **BREAKING** Replace detached approval trigger and resume semantics with one unified chain approval decision flow.
 - Upgrade the AI assistant frontend to render one native `thoughtChain` timeline with dedicated node cards for `plan`, `step`, `tool`, `approval`, `replan`, and `answer`.
+- Preserve markdown fidelity during streaming by removing trimming behavior that mutates user-visible SSE payloads.
+- Persist runtime-first replay state, including final-answer markdown, so completed assistant responses survive conversation restore.
+- Redesign ThoughtChain node payload semantics so `plan`/`replan` render structured steps, `tool` nodes render beautified raw results, and detailed phase summaries do not leak into the wrong rendering surface.
 - Fix new-conversation recommended prompt handling so an in-flight chain never falls into a false "AI assistant unavailable" state before the first server event arrives.
 - Add callback-based runtime telemetry for chain and node lifecycle and export it to the existing Prometheus integration.
 - Add regression coverage to prevent legacy protocol concepts from re-entering the primary chat flow.

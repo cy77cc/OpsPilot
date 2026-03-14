@@ -30,6 +30,18 @@
 - **THEN** 该载荷 MUST 通过结构化 chain/node 事件路由或被过滤
 - **AND** 用户可见的答案内容 MUST NOT 将原始内部结构化载荷当作普通文本暴露
 
+#### Scenario: SSE 解析保持 markdown 原始空白
+- **WHEN** 主路径以 SSE 发送用户可见 markdown 内容、表格、空行或缩进文本
+- **THEN** 系统 MUST 保留 `data:` 行中的用户可见空白和换行语义
+- **AND** 消费侧 MUST NOT 通过逐行 trim 改写 markdown 内容
+- **AND** 仅允许移除协议前缀而不允许破坏正文布局
+
+#### Scenario: 可见 chunk 仅解包完整 envelope
+- **WHEN** 流式内容包含 `{"response": ...}` 之类的协议 envelope
+- **THEN** 系统 MAY 仅在确认收到完整 envelope 后解包其中的 `response`
+- **AND** 对于部分 JSON 片段、非 envelope 文本或混合内容 MUST 原样透传
+- **AND** 系统 MUST NOT 因为激进归一化而吞掉用户可见 markdown 分隔
+
 #### Scenario: 主路径不依赖 legacy 事件族
 - **WHEN** 主聊天链路向前端流式输出
 - **THEN** 系统 MUST NOT 要求前端依赖 `phase_started`、`phase_complete`、`plan_generated`、`step_started`、`step_complete`、`replan_triggered`、`approval_required`、`turn_started`、`block_open` 等 legacy 主路径事件恢复 ThoughtChain

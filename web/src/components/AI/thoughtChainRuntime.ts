@@ -132,6 +132,10 @@ function patchNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent):
       ? {
           ...node,
           title: asString(payload.title) || node.title,
+          headline: asString(payload.headline) || node.headline,
+          body: asString(payload.body) || node.body,
+          structured: asRecord(payload.structured) || node.structured,
+          raw: payload.raw ?? node.raw,
           summary: asString(payload.summary) || node.summary,
           details: Array.isArray(payload.details) ? payload.details : node.details,
           approval: payload.approval ? approvalFromPayload(payload.approval as Record<string, unknown>) : node.approval,
@@ -165,6 +169,10 @@ function toRuntimeNode(payload: SSEChainNodeEvent, fallbackStatus: RuntimeThough
     kind: normalizeNodeKind(asString(payload.kind)),
     title: asString(payload.title) || '执行步骤',
     status: normalizeNodeStatus(asString(payload.status)) || fallbackStatus,
+    headline: asString(payload.headline),
+    body: asString(payload.body),
+    structured: asRecord(payload.structured),
+    raw: payload.raw,
     summary: asString(payload.summary),
     details: Array.isArray(payload.details) ? payload.details : undefined,
     approval: payload.approval ? approvalFromPayload(payload.approval as Record<string, unknown>) : undefined,
@@ -232,6 +240,8 @@ export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined): ThoughtC
         kind: 'plan',
         title: block.title || '正在整理执行计划',
         status: normalizeReplayBlockStatus(block.status, turn.status),
+        headline: block.content,
+        structured: asRecord(block.data),
         summary: block.content,
         details: block.data?.steps as unknown[] | undefined,
       });
@@ -241,6 +251,9 @@ export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined): ThoughtC
         kind: 'tool',
         title: block.title || '正在调用工具',
         status: normalizeReplayBlockStatus(block.status, turn.status),
+        headline: block.content || asString(block.data?.summary),
+        structured: asRecord(block.data),
+        raw: block.data,
         summary: block.content || asString(block.data?.summary),
         details: [block.data].filter(Boolean) as unknown[],
       });
@@ -250,6 +263,7 @@ export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined): ThoughtC
         kind: 'approval',
         title: block.title || '等待你确认',
         status: normalizeReplayBlockStatus(block.status, turn.status, true),
+        headline: block.content || asString(block.data?.summary),
         summary: block.content || asString(block.data?.summary),
         approval: approvalFromApprovalEvent(block.data as Record<string, unknown>),
       });
@@ -259,6 +273,7 @@ export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined): ThoughtC
         kind: 'replan',
         title: block.title || '发现新信息，正在调整计划',
         status: normalizeReplayBlockStatus(block.status, turn.status),
+        headline: block.content,
         summary: block.content,
       });
     }
@@ -318,12 +333,19 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
 export function approvalNodeFromEvent(data: ApprovalRequiredEvent): RuntimeThoughtChainNode {
   return {
     nodeId: `approval:${String(data.id || data.step_id || data.checkpoint_id || 'current')}`,
     kind: 'approval',
     title: String(data.title || data.tool_name || data.tool || 'Approval required'),
     status: 'waiting',
+    headline: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
     summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
     approval: approvalFromPayload(data as unknown as Record<string, unknown>),
   };

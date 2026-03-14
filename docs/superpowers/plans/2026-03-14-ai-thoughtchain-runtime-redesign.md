@@ -2,221 +2,247 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the mixed AI chat runtime with a deletion-first, `thoughtChain`-only execution model that fixes chain rendering, approval pause/resume, new-session prompt races, and Prometheus observability.
+**Goal:** Deliver a runtime-first `thoughtChain` chat flow that preserves markdown fidelity, renders structured plan/tool/replan nodes, uses one approval decision path, and persists restorable assistant answers.
 
-**Architecture:** Start by deleting legacy `turn/block`, `phase/step`, and detached approval semantics from the AI chat primary path so they stop shaping new code. Then introduce one canonical `thoughtChain` contract across backend streaming, replay persistence, frontend state, approval decisions, and metrics callbacks, keeping live rendering and replay on the same model.
+**Architecture:** Delete remaining legacy `turn/block`, `phase/step`, and detached approval runtime wiring from the primary chat path first. Then tighten the canonical chain contract across backend SSE emission, frontend reducers/rendering, and session persistence so live streaming and restored sessions use the same `thoughtChain + final answer` model.
 
-**Tech Stack:** Go 1.25, Gin, GORM, React 19, TypeScript, Vite, Ant Design X, Jest/Vitest-style frontend tests, Go test, Prometheus client.
+**Tech Stack:** Go 1.25, Gin, internal AI runtime/orchestrator packages, React 19, TypeScript, Vite, Ant Design X `ThoughtChain`, Vitest, Go test, OpenSpec.
 
 ---
 
 ## Scope Check
 
-This spec is still one coherent subsystem: AI chat runtime. It touches backend streaming, approval, frontend rendering, replay, and metrics, but those pieces all serve one runtime contract and one user flow. Do not split implementation unless a concrete blocker forces it.
+This remains one implementation plan for one subsystem: the AI chat runtime. Backend streaming, frontend rendering, replay persistence, approval, and observability all serve the same runtime contract, so keep them in one execution thread and commit in small vertical slices.
 
 ## File Structure Map
 
-### Backend runtime and transport
+### Backend runtime contract and streaming
 
-- Modify: `internal/ai/events/events.go`
-  Responsibility: canonical event names; delete old primary-path constants.
-- Modify: `internal/ai/runtime/sse_converter.go`
-  Responsibility: convert runtime lifecycle into SSE events; stop emitting legacy phase/step/approval events on the primary path.
-- Modify: `internal/ai/runtime/runtime.go`
-  Responsibility: runtime orchestration entry points; thread chain identity and approval pause/resume.
-- Modify: `internal/ai/orchestrator.go`
-  Responsibility: planner/executor/replan orchestration; emit thoughtChain-native lifecycle only.
 - Modify: `internal/ai/contracts.go`
-  Responsibility: shared runtime contract types.
+  Responsibility: canonical chain/node payload types, including `headline`, `body`, `structured`, and `raw`.
+- Modify: `internal/ai/events/events.go`
+  Responsibility: canonical event names only for the primary path.
+- Modify: `internal/ai/runtime/sse_converter.go`
+  Responsibility: emit `chain_*`, `node_*`, `final_answer_*`, and `heartbeat`; remove legacy phase/block primary-path dependence.
+- Modify: `internal/ai/runtime/runtime.go`
+  Responsibility: runtime lifecycle entry points and state handoff between planner, executor, approval pause, replan, and final answer.
+- Modify: `internal/ai/orchestrator.go`
+  Responsibility: produce thoughtChain-native node payloads and final-answer flow.
 
-### Backend AI service and persistence
+### Backend approval and persistence
 
 - Modify: `internal/service/ai/routes.go`
-  Responsibility: remove detached approval/resume primary-path routes, add unified chain approval decision route.
-- Modify: `internal/service/ai/handler.go`
-  Responsibility: chat streaming/session response wiring.
+  Responsibility: unified chain approval decision route, no detached primary-path resume routes.
 - Modify: `internal/service/ai/tooling_handlers.go`
-  Responsibility: approval create/approve/reject handlers; refactor toward chain decision semantics.
+  Responsibility: chain approval decision request/response handling.
 - Modify: `internal/service/ai/session_recorder.go`
-  Responsibility: persist canonical thoughtChain nodes and final answer, delete legacy stage synthesis.
+  Responsibility: persist runtime-first replay state and final answer flushes.
 - Modify: `internal/ai/state/chat_store.go`
-  Responsibility: store/retrieve assistant replay state.
-- Modify: `internal/service/ai/execution_observability.go`
-  Responsibility: hook runtime lifecycle to observability.
+  Responsibility: store and retrieve canonical replay payloads.
+- Modify: `internal/service/ai/handler.go`
+  Responsibility: session detail/stream wiring for runtime-first replay and streaming.
 
 ### Backend observability
 
+- Modify: `internal/service/ai/execution_observability.go`
+  Responsibility: callback hook wiring from runtime lifecycle to metrics/traces.
 - Modify: `internal/ai/observability/metrics.go`
-  Responsibility: add chain/node/approval/replan metrics.
-- Create: `internal/ai/observability/thoughtchain.go`
-  Responsibility: focused helpers for chain/node metric observation if `metrics.go` becomes crowded.
+  Responsibility: chain/node/approval/replan/final-answer metrics.
+- Modify: `internal/ai/observability/metrics_test.go`
+  Responsibility: observability regression coverage.
 
-### Frontend API and runtime state
+### Frontend streaming and state
 
 - Modify: `web/src/api/modules/ai.ts`
-  Responsibility: canonical SSE event parsing, session/replay DTOs, unified approval decision API.
-- Modify: `web/src/components/AI/types.ts`
-  Responsibility: canonical thoughtChain node/store types; remove legacy compatibility typing.
-- Modify: `web/src/components/AI/thoughtChainRuntime.ts`
-  Responsibility: single reducer for chain/node/final-answer runtime.
-- Modify: `web/src/components/AI/turnLifecycle.ts`
-  Responsibility: replay reconstruction; likely shrink or become adapter-only during migration, then delete dead legacy helpers.
-- Modify: `web/src/components/AI/hooks/useConversationRestore.ts`
-  Responsibility: restore assistant state from canonical thoughtChain replay.
-
-### Frontend UI
-
-- Modify: `web/src/components/AI/Copilot.tsx`
-  Responsibility: stop merging old state models; drive message UI from one chain store.
-- Modify: `web/src/components/AI/components/RuntimeThoughtChain.tsx`
-  Responsibility: render native chain nodes, approval card, final answer separation.
-- Modify: `web/src/components/AI/components/AssistantMessageBlocks.tsx`
-  Responsibility: either narrow to non-runtime content or remove legacy fallback use in chat runtime.
-- Modify: `web/src/components/AI/AISurfaceBoundary.tsx`
-  Responsibility: unavailable-state behavior.
-- Modify: `web/src/components/AI/components/RuntimeChain.css`
-  Responsibility: upgraded node card styling for plan/tool/approval/replan/answer.
-
-### Tests
-
+  Responsibility: SSE parser, visible chunk normalization, replay DTOs, unified approval decision API.
 - Modify: `web/src/api/modules/ai.test.ts`
+  Responsibility: parser contract, DTO mapping, approval API expectations.
+- Modify: `web/src/api/modules/ai.streamChunk.test.ts`
+  Responsibility: markdown whitespace preservation and envelope normalization regression tests.
+- Modify: `web/src/components/AI/types.ts`
+  Responsibility: canonical runtime node types and replay-first message model.
+- Modify: `web/src/components/AI/thoughtChainRuntime.ts`
+  Responsibility: reducer logic for structured node payloads and final answer state.
 - Modify: `web/src/components/AI/thoughtChainRuntime.test.ts`
-- Modify: `web/src/components/AI/hooks/useConversationRestore.test.ts`
+  Responsibility: reducer regression coverage for structured payloads and event ordering.
+
+### Frontend restore and rendering
+
+- Modify: `web/src/components/AI/hooks/useConversationRestore.ts`
+  Responsibility: restore assistant state from runtime-first replay.
+- Modify: `web/src/components/AI/hooks/useConversationRestore.test.tsx`
+  Responsibility: restore priority regression coverage.
+- Modify: `web/src/components/AI/Copilot.tsx`
+  Responsibility: one runtime-first assistant rendering path and new-session placeholder behavior.
 - Modify: `web/src/components/AI/Copilot.test.tsx`
-- Modify: `web/src/components/AI/AIAssistantDrawer.test.tsx`
-- Create or modify: backend tests near `internal/service/ai` and `internal/ai/runtime`
+  Responsibility: live UI rendering, race handling, approval and final answer interactions.
+- Modify: `web/src/components/AI/components/RuntimeThoughtChain.tsx`
+  Responsibility: top-level node cards plus `ThoughtChain.Item`-style structured children.
+- Modify: `web/src/components/AI/components/RuntimeThoughtChain.test.tsx`
+  Responsibility: plan/replan/tool rendering and approval card tests.
+- Modify: `web/src/components/AI/components/RuntimeChain.css`
+  Responsibility: node card, structured tool panel, and compact collapsed styling.
+- Modify: `web/src/components/AI/components/FinalAnswerStream.tsx`
+  Responsibility: final markdown-first answer rendering.
+- Modify: `web/src/components/AI/components/ToolCard.tsx`
+  Responsibility: beautified raw-result rendering fallback helpers if reused by thoughtChain tool nodes.
 
-### Specs and docs to keep open during implementation
+### Compatibility and cleanup
 
+- Modify: `web/src/components/AI/turnLifecycle.ts`
+  Responsibility: replay-only compatibility adapter; remove dead legacy helpers.
+- Modify: `web/src/components/AI/components/AssistantMessageBlocks.tsx`
+  Responsibility: keep only non-runtime message blocks if still needed.
+- Modify: `internal/service/ai/routes_test.go`
+  Responsibility: unified route and removed-route regression tests.
+- Modify: `internal/ai/runtime/sse_converter_test.go`
+  Responsibility: canonical event emission tests.
+
+### Specs and docs to keep open while implementing
+
+- Read: `docs/superpowers/specs/2026-03-14-ai-thoughtchain-runtime-redesign-design.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/proposal.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/design.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/tasks.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-thoughtchain-runtime/spec.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-streaming-events/spec.md`
-- Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-pre-execution-approval-gate/spec.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-chat-session-contract/spec.md`
-- Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/prometheus-integration/spec.md`
+- Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-pre-execution-approval-gate/spec.md`
 - Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/ai-thoughtchain-observability/spec.md`
+- Read: `openspec/changes/ai-thoughtchain-runtime-redesign/specs/prometheus-integration/spec.md`
 
-## Chunk 1: Delete Legacy Runtime Surfaces
+## Chunk 1: Streaming Contract and Parser Fidelity
 
-### Task 1: Freeze the legacy baseline with failing tests
+### Task 1: Lock markdown-safe SSE parsing with failing tests
 
 **Files:**
+- Modify: `web/src/api/modules/ai.streamChunk.test.ts`
 - Modify: `web/src/api/modules/ai.test.ts`
-- Modify: `web/src/components/AI/Copilot.test.tsx`
-- Modify: `web/src/components/AI/thoughtChainRuntime.test.ts`
-- Create: `internal/ai/runtime/sse_converter_test.go`
-- Create: `internal/service/ai/routes_test.go`
+- Test: `web/src/api/modules/ai.streamChunk.test.ts`
 
-- [ ] **Step 1: Write a failing backend test for legacy event non-emission**
+- [ ] **Step 1: Write the failing SSE whitespace preservation test**
+
+```ts
+it('preserves markdown whitespace and blank lines from SSE data lines', async () => {
+  const events: Array<{ type: string; data: unknown }> = [];
+  await consumeAIStream(
+    streamFromChunks([
+      'event: final_answer_delta\n',
+      'data: {"chunk":"## Title\\n\\n| A | B |\\n| - | - |"}\n\n',
+    ]),
+    { onEvent: (type, data) => events.push({ type, data }) },
+  );
+  expect(events).toEqual([
+    {
+      type: 'final_answer_delta',
+      data: { chunk: '## Title\n\n| A | B |\n| - | - |' },
+    },
+  ]);
+});
+```
+
+- [ ] **Step 2: Run the focused parser test to verify it fails**
+
+Run: `npm run test:run -- src/api/modules/ai.streamChunk.test.ts`
+Expected: FAIL because `data:` lines are trimmed and markdown spacing is altered.
+
+- [ ] **Step 3: Write the failing envelope normalization test**
+
+```ts
+it('unwraps only complete response envelopes', () => {
+  expect(normalizeVisibleStreamChunk('{"response":"ok"}')).toBe('ok');
+  expect(normalizeVisibleStreamChunk('{"response":')).toBe('{"response":');
+  expect(normalizeVisibleStreamChunk('\n\n| a | b |\n')).toBe('\n\n| a | b |\n');
+});
+```
+
+- [ ] **Step 4: Run the normalization test to verify it fails**
+
+Run: `npm run test:run -- src/api/modules/ai.test.ts -t "unwraps only complete response envelopes"`
+Expected: FAIL because the helper trims raw user-visible content.
+
+- [ ] **Step 5: Commit the red tests**
+
+```bash
+git add web/src/api/modules/ai.streamChunk.test.ts web/src/api/modules/ai.test.ts
+git commit -m "test: pin markdown-safe AI stream parsing"
+```
+
+### Task 2: Implement markdown-safe parsing and explicit envelope handling
+
+**Files:**
+- Modify: `web/src/api/modules/ai.ts`
+- Test: `web/src/api/modules/ai.streamChunk.test.ts`
+- Test: `web/src/api/modules/ai.test.ts`
+
+- [ ] **Step 1: Remove line-level trimming from SSE parsing**
+
+```ts
+if (line.startsWith('event:')) {
+  eventType = line.slice(6).trim();
+}
+if (line.startsWith('data:')) {
+  dataLines.push(line.slice(5).replace(/^ /, ''));
+}
+```
+
+- [ ] **Step 2: Make visible chunk normalization preserve raw markdown**
+
+```ts
+export function normalizeVisibleStreamChunk(rawChunk: string): string {
+  if (typeof rawChunk !== 'string' || rawChunk === '') return '';
+  const candidate = rawChunk;
+  const trimmedForJSON = candidate.trim();
+  if (!trimmedForJSON.startsWith('{') || !trimmedForJSON.endsWith('}')) {
+    return candidate;
+  }
+  // parse only complete envelopes, otherwise return candidate unchanged
+}
+```
+
+- [ ] **Step 3: Re-run focused parser tests**
+
+Run: `npm run test:run -- src/api/modules/ai.streamChunk.test.ts src/api/modules/ai.test.ts`
+Expected: PASS.
+
+- [ ] **Step 4: Run thoughtChain reducer tests to catch stream contract fallout**
+
+Run: `npm run test:run -- src/components/AI/thoughtChainRuntime.test.ts src/components/AI/Copilot.test.tsx`
+Expected: PASS or targeted failures showing downstream contract updates still needed.
+
+- [ ] **Step 5: Commit parser fidelity fixes**
+
+```bash
+git add web/src/api/modules/ai.ts web/src/api/modules/ai.streamChunk.test.ts web/src/api/modules/ai.test.ts
+git commit -m "fix: preserve markdown in AI stream parser"
+```
+
+### Task 3: Lock backend canonical event emission with failing tests
+
+**Files:**
+- Modify: `internal/ai/runtime/sse_converter_test.go`
+- Modify: `internal/service/ai/routes_test.go`
+- Test: `internal/ai/runtime/sse_converter_test.go`
+
+- [ ] **Step 1: Add a failing test that primary-path converter emits only canonical events**
 
 ```go
-func TestSSEConverter_PrimaryPathDoesNotEmitLegacyPhaseEvents(t *testing.T) {
-	converter := NewSSEConverter()
-	events := converter.OnPlannerStart("sess-1", "plan-1", "turn-1")
+func TestSSEConverter_PrimaryPathDoesNotEmitLegacyRuntimeEvents(t *testing.T) {
+	events := NewSSEConverter().ChainStarted("turn-1")
 	for _, event := range events {
-		if event.Type == EventPhaseStarted || event.Type == EventTurnStarted {
-			t.Fatalf("unexpected legacy event on primary path: %s", event.Type)
+		if event.Type == "phase_started" || event.Type == "turn_started" || event.Type == "block_open" {
+			t.Fatalf("unexpected legacy event: %s", event.Type)
 		}
 	}
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the backend test to verify it fails if legacy emission remains**
 
-Run: `go test ./internal/ai/runtime -run TestSSEConverter_PrimaryPathDoesNotEmitLegacyPhaseEvents -v`
-Expected: FAIL because `OnPlannerStart` still emits `turn_started` and `phase_started`.
+Run: `go test ./internal/ai/runtime -run TestSSEConverter_PrimaryPathDoesNotEmitLegacyRuntimeEvents -v`
+Expected: FAIL if any legacy event names are still present on the primary path.
 
-- [ ] **Step 3: Write a failing frontend test for phase-event dependence**
-
-```tsx
-it('ignores legacy phase events for the primary chain reducer', () => {
-  const state = reduceThoughtChainRuntimeEvent(undefined, {
-    // @ts-expect-error verifying legacy event rejection during migration
-    type: 'phase_started',
-    data: { phase: 'planning', status: 'loading' },
-  });
-  expect(state.nodes).toHaveLength(0);
-});
-```
-
-- [ ] **Step 4: Run the focused frontend tests**
-
-Run: `npm run test:run -- web/src/components/AI/thoughtChainRuntime.test.ts web/src/api/modules/ai.test.ts`
-Expected: FAIL because parsing and reducer paths still accept legacy phase/approval events.
-
-- [ ] **Step 5: Commit the red tests**
-
-```bash
-git add web/src/api/modules/ai.test.ts web/src/components/AI/Copilot.test.tsx web/src/components/AI/thoughtChainRuntime.test.ts internal/ai/runtime/sse_converter_test.go internal/service/ai/routes_test.go
-git commit -m "test: pin legacy AI runtime removal baseline"
-```
-
-### Task 2: Remove legacy event names and converters from the backend primary path
-
-**Files:**
-- Modify: `internal/ai/events/events.go`
-- Modify: `internal/ai/runtime/sse_converter.go`
-- Modify: `internal/ai/runtime/runtime.go`
-- Modify: `internal/ai/orchestrator.go`
-- Test: `internal/ai/runtime/sse_converter_test.go`
-
-- [ ] **Step 1: Remove legacy primary-path event constants and keep only canonical thoughtChain events**
-
-```go
-const (
-	ChainStarted   Name = "chain_started"
-	ChainMeta      Name = "chain_meta"
-	NodeOpen       Name = "node_open"
-	NodeDelta      Name = "node_delta"
-	NodeReplace    Name = "node_replace"
-	NodeClose      Name = "node_close"
-	ChainPaused    Name = "chain_paused"
-	ChainResumed   Name = "chain_resumed"
-	ChainCompleted Name = "chain_completed"
-	ChainError     Name = "chain_error"
-	Heartbeat      Name = "heartbeat"
-)
-```
-
-- [ ] **Step 2: Update the SSE converter to emit only canonical chain events**
-
-```go
-func (c *SSEConverter) OnApprovalPaused(chainID string, node ChainNodeInfo) []StreamEvent {
-	return []StreamEvent{
-		{Type: EventNodeOpen, Data: chainNodeData(node)},
-		{Type: EventChainPaused, Data: compactMap(map[string]any{"chain_id": chainID, "node_id": node.NodeID})},
-	}
-}
-```
-
-- [ ] **Step 3: Remove phase/step/replan compatibility emission from orchestrator and runtime**
-
-Run search: `rg -n "PhaseStarted|PhaseComplete|PlanGenerated|StepStarted|StepComplete|ReplanTriggered|ApprovalRequired|TurnStarted" internal/ai internal/service/ai`
-Expected: only non-chat or test references remain after the edit.
-
-- [ ] **Step 4: Re-run backend tests**
-
-Run: `go test ./internal/ai/runtime ./internal/ai/... ./internal/service/ai/...`
-Expected: PASS for updated runtime tests and failures only where downstream code still expects removed events.
-
-- [ ] **Step 5: Commit the backend protocol cleanup**
-
-```bash
-git add internal/ai/events/events.go internal/ai/runtime/sse_converter.go internal/ai/runtime/runtime.go internal/ai/orchestrator.go internal/ai/runtime/sse_converter_test.go
-git commit -m "refactor: remove legacy AI chat streaming events"
-```
-
-### Task 3: Delete detached approval and legacy route semantics
-
-**Files:**
-- Modify: `internal/service/ai/routes.go`
-- Modify: `internal/service/ai/tooling_handlers.go`
-- Modify: `internal/service/ai/handler.go`
-- Test: `internal/service/ai/routes_test.go`
-
-- [ ] **Step 1: Write a failing route test for the new approval endpoint**
+- [ ] **Step 3: Add a failing route test for the chain approval decision endpoint**
 
 ```go
 func TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute(t *testing.T) {
@@ -225,18 +251,99 @@ func TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the route test to verify it fails**
+- [ ] **Step 4: Run the focused route test**
 
 Run: `go test ./internal/service/ai -run TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute -v`
-Expected: FAIL because only `/ai/approvals/:id/approve` and `/ai/approval/respond` style routes exist.
+Expected: FAIL if the unified route is not the only primary approval path.
 
-- [ ] **Step 3: Add the unified route and remove old primary-path approval handlers from the chat path**
+- [ ] **Step 5: Commit the red backend contract tests**
 
-```go
-g.POST("/chains/:chain_id/approvals/:node_id/decision", h.DecideChainApproval)
+```bash
+git add internal/ai/runtime/sse_converter_test.go internal/service/ai/routes_test.go
+git commit -m "test: pin canonical thoughtchain backend contract"
 ```
 
-- [ ] **Step 4: Refactor handler request types around chain identity**
+## Chunk 2: Backend Runtime, Approval, and Persistence
+
+### Task 4: Canonicalize backend event and node payload contracts
+
+**Files:**
+- Modify: `internal/ai/contracts.go`
+- Modify: `internal/ai/events/events.go`
+- Modify: `internal/ai/runtime/sse_converter.go`
+- Modify: `internal/ai/orchestrator.go`
+- Test: `internal/ai/runtime/sse_converter_test.go`
+
+- [ ] **Step 1: Add canonical node payload fields in shared contracts**
+
+```go
+type ChainNodePayload struct {
+	NodeID    string         `json:"node_id"`
+	Kind      string         `json:"kind"`
+	Title     string         `json:"title"`
+	Headline  string         `json:"headline,omitempty"`
+	Body      string         `json:"body,omitempty"`
+	Structured map[string]any `json:"structured,omitempty"`
+	Raw       any            `json:"raw,omitempty"`
+	Status    string         `json:"status,omitempty"`
+}
+```
+
+- [ ] **Step 2: Keep only canonical primary-path event names**
+
+```go
+const (
+	EventChainStarted   = "chain_started"
+	EventChainMeta      = "chain_meta"
+	EventNodeOpen       = "node_open"
+	EventNodeDelta      = "node_delta"
+	EventNodeReplace    = "node_replace"
+	EventNodeClose      = "node_close"
+	EventChainPaused    = "chain_paused"
+	EventChainResumed   = "chain_resumed"
+	EventChainCompleted = "chain_completed"
+	EventChainError     = "chain_error"
+)
+```
+
+- [ ] **Step 3: Emit node payloads with separated `headline/body/structured/raw`**
+
+```go
+func toolNodeData(node ToolNode) map[string]any {
+	return compactMap(map[string]any{
+		"node_id":    node.NodeID,
+		"kind":       "tool",
+		"title":      node.Title,
+		"headline":   node.Headline,
+		"structured": node.Structured,
+		"raw":        node.Raw,
+		"status":     node.Status,
+	})
+}
+```
+
+- [ ] **Step 4: Run backend runtime tests**
+
+Run: `go test ./internal/ai/runtime ./internal/ai/...`
+Expected: PASS for updated converter tests; any failures should point to remaining payload-shape updates.
+
+- [ ] **Step 5: Commit the backend contract slice**
+
+```bash
+git add internal/ai/contracts.go internal/ai/events/events.go internal/ai/runtime/sse_converter.go internal/ai/orchestrator.go internal/ai/runtime/sse_converter_test.go
+git commit -m "refactor: canonicalize thoughtchain node payloads"
+```
+
+### Task 5: Unify approval flow on the same chain
+
+**Files:**
+- Modify: `internal/service/ai/routes.go`
+- Modify: `internal/service/ai/tooling_handlers.go`
+- Modify: `internal/ai/runtime/runtime.go`
+- Modify: `internal/ai/runtime/approval.go`
+- Test: `internal/service/ai/routes_test.go`
+
+- [ ] **Step 1: Add the unified approval decision request type**
 
 ```go
 type chainApprovalDecisionRequest struct {
@@ -245,306 +352,494 @@ type chainApprovalDecisionRequest struct {
 }
 ```
 
-- [ ] **Step 5: Commit the route and handler cleanup**
+- [ ] **Step 2: Register only the chain approval decision route on the primary path**
 
-```bash
-git add internal/service/ai/routes.go internal/service/ai/tooling_handlers.go internal/service/ai/handler.go internal/service/ai/routes_test.go
-git commit -m "refactor: unify AI chain approval decision flow"
+```go
+g.POST("/chains/:chain_id/approvals/:node_id/decision", h.DecideChainApproval)
 ```
 
-## Chunk 2: Introduce the Canonical ThoughtChain Contract
+- [ ] **Step 3: Resume or terminate the same chain from approval handling**
 
-### Task 4: Canonicalize backend and frontend contract types
-
-**Files:**
-- Modify: `internal/ai/contracts.go`
-- Modify: `web/src/api/modules/ai.ts`
-- Modify: `web/src/components/AI/types.ts`
-- Test: `web/src/api/modules/ai.test.ts`
-
-- [ ] **Step 1: Write a failing parser test for canonical chain events**
-
-```ts
-it('parses canonical node events and rejects detached approval_required events', async () => {
-  const seen: string[] = [];
-  await aiApi.streamFromResponse(mockSSE([
-    'event: node_open\ndata: {"chain_id":"chain-1","node_id":"node-1","kind":"plan"}\n\n',
-  ]), {
-    onEvent: (event) => seen.push(event.type),
-  });
-  expect(seen).toContain('node_open');
-  expect(seen).not.toContain('approval_required');
-});
-```
-
-- [ ] **Step 2: Run the parser test**
-
-Run: `npm run test:run -- web/src/api/modules/ai.test.ts`
-Expected: FAIL because the parser still routes legacy event families and old DTO shapes.
-
-- [ ] **Step 3: Replace DTOs with canonical chain and replay shapes**
-
-```ts
-export interface AIChainNode {
-  chain_id: string;
-  node_id: string;
-  parent_node_id?: string;
-  kind: 'plan' | 'step' | 'tool' | 'approval' | 'replan' | 'answer' | 'status';
-  status: 'pending' | 'running' | 'waiting' | 'success' | 'error' | 'aborted';
-  title?: string;
-  summary?: string;
-  payload?: Record<string, unknown>;
+```go
+func (h *Handler) DecideChainApproval(c *gin.Context) {
+	// load chain_id + node_id context
+	// resolve approval
+	// resume same chain or close it as rejected
 }
 ```
 
-- [ ] **Step 4: Update event parsing and approval API helpers**
+- [ ] **Step 4: Run approval route and runtime tests**
 
-Run search: `rg -n "respondApproval|approveApproval|confirmApproval|phase_started|approval_required" web/src/api/modules/ai.ts`
-Expected: replaced by canonical `decideChainApproval` and `node_*` parsing.
+Run: `go test ./internal/service/ai -run TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute -v && go test ./internal/service/ai/... ./internal/ai/...`
+Expected: PASS.
 
-- [ ] **Step 5: Commit the contract cleanup**
+- [ ] **Step 5: Commit the approval unification**
 
 ```bash
-git add internal/ai/contracts.go web/src/api/modules/ai.ts web/src/components/AI/types.ts web/src/api/modules/ai.test.ts
-git commit -m "refactor: define canonical AI thoughtchain contracts"
+git add internal/service/ai/routes.go internal/service/ai/tooling_handlers.go internal/ai/runtime/runtime.go internal/ai/runtime/approval.go internal/service/ai/routes_test.go
+git commit -m "refactor: unify chain approval decisions"
 ```
 
-### Task 5: Persist and restore canonical thoughtChain replay
+### Task 6: Persist runtime-first replay and terminal final answer flushes
 
 **Files:**
 - Modify: `internal/service/ai/session_recorder.go`
 - Modify: `internal/ai/state/chat_store.go`
-- Modify: `web/src/components/AI/hooks/useConversationRestore.ts`
-- Modify: `web/src/components/AI/hooks/useConversationRestore.test.ts`
+- Modify: `internal/service/ai/handler.go`
+- Create or modify: `internal/service/ai/session_recorder_test.go`
+- Test: `internal/service/ai/session_recorder_test.go`
 
-- [ ] **Step 1: Write a failing restore test using only chain replay data**
-
-```tsx
-it('restores assistant runtime from canonical thoughtChain replay only', async () => {
-  const restored = restoreConversation({
-    turns: [{
-      id: 'turn-1',
-      role: 'assistant',
-      chain: { chain_id: 'chain-1', nodes: [{ node_id: 'plan-1', kind: 'plan', status: 'success' }] },
-    }],
-  });
-  expect(restored.messages[0].runtime?.nodes[0].kind).toBe('plan');
-});
-```
-
-- [ ] **Step 2: Run the restore test**
-
-Run: `npm run test:run -- web/src/components/AI/hooks/useConversationRestore.test.ts`
-Expected: FAIL because restore still reconstructs from legacy turn/block and message compatibility fields.
-
-- [ ] **Step 3: Rewrite session recorder to persist chain nodes and answer separately**
+- [ ] **Step 1: Write the failing persistence regression test**
 
 ```go
-type StoredThoughtChain struct {
-	ChainID string           `json:"chain_id"`
-	Nodes   []StoredChainNode `json:"nodes"`
+func TestSessionRecorder_CompletedAssistantTurnPersistsRuntimeAndFinalAnswer(t *testing.T) {
+	recorder := newRecorderForTest(t)
+	recorder.RecordFinalAnswerDelta("turn-1", "## Hosts\n\n| id | status |")
+	recorder.RecordFinalAnswerDone("turn-1")
+
+	session := recorder.SessionDetail("session-1")
+	turn := findAssistantTurn(session, "turn-1")
+	require.NotNil(t, turn.Runtime)
+	require.NotEmpty(t, turn.Runtime.FinalAnswer.Content)
 }
 ```
 
-- [ ] **Step 4: Rewrite restore logic to consume canonical replay first and delete legacy merge rules**
+- [ ] **Step 2: Run the persistence test to verify it fails**
 
-Run search: `rg -n "legacy_thought_chain|turns\\?|summaryStage|normalizeTurnBlocks" internal/ai/state/chat_store.go web/src/components/AI/hooks/useConversationRestore.ts`
-Expected: dead compatibility branches removed or isolated behind short-lived comments slated for deletion.
+Run: `go test ./internal/service/ai -run TestSessionRecorder_CompletedAssistantTurnPersistsRuntimeAndFinalAnswer -v`
+Expected: FAIL because completed turns can still persist empty replay payloads.
 
-- [ ] **Step 5: Commit replay persistence changes**
+- [ ] **Step 3: Persist runtime-first replay and final-answer flush points**
 
-```bash
-git add internal/service/ai/session_recorder.go internal/ai/state/chat_store.go web/src/components/AI/hooks/useConversationRestore.ts web/src/components/AI/hooks/useConversationRestore.test.ts
-git commit -m "refactor: persist canonical AI thoughtchain replay"
+```go
+func (r *SessionRecorder) flushTurn(turn *RecordedTurn) error {
+	turn.Runtime = buildRuntimeReplay(turn)
+	turn.Blocks = deriveCompatibilityBlocks(turn.Runtime)
+	return r.store.SaveTurn(turn)
+}
 ```
 
-## Chunk 3: Rebuild the Frontend Runtime and Approval UX
+- [ ] **Step 4: Run focused persistence and handler tests**
 
-### Task 6: Replace mixed frontend runtime state with one chain reducer
+Run: `go test ./internal/service/ai -run TestSessionRecorder_ -v && go test ./internal/service/ai/...`
+Expected: PASS.
+
+- [ ] **Step 5: Commit the persistence slice**
+
+```bash
+git add internal/service/ai/session_recorder.go internal/ai/state/chat_store.go internal/service/ai/handler.go internal/service/ai/session_recorder_test.go
+git commit -m "fix: persist runtime-first AI replay state"
+```
+
+### Task 7: Add callback-driven observability and Prometheus coverage
 
 **Files:**
-- Modify: `web/src/components/AI/thoughtChainRuntime.ts`
-- Modify: `web/src/components/AI/Copilot.tsx`
-- Modify: `web/src/components/AI/turnLifecycle.ts`
-- Modify: `web/src/components/AI/thoughtChainRuntime.test.ts`
-- Modify: `web/src/components/AI/Copilot.test.tsx`
+- Modify: `internal/service/ai/execution_observability.go`
+- Modify: `internal/ai/observability/metrics.go`
+- Modify: `internal/ai/observability/metrics_test.go`
+- Test: `internal/ai/observability/metrics_test.go`
 
-- [ ] **Step 1: Write a failing reducer test for pause/resume and final answer separation**
+- [ ] **Step 1: Write the failing callback metric test**
+
+```go
+func TestObserveChainCompleted_RecordsDurationAndStatus(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	metrics := NewMetrics(registry)
+	metrics.ObserveChainCompleted("deployment:hosts", "completed", time.Second)
+	requireMetricExists(t, registry, "ai_thoughtchain_chain_duration_seconds")
+}
+```
+
+- [ ] **Step 2: Run the metrics test to verify it fails**
+
+Run: `go test ./internal/ai/observability -run TestObserveChainCompleted_RecordsDurationAndStatus -v`
+Expected: FAIL if metrics/callback hooks are incomplete.
+
+- [ ] **Step 3: Wire runtime callbacks to metrics observers**
+
+```go
+type RuntimeCallbacks struct {
+	OnChainStarted   func(meta ChainMeta)
+	OnNodeUpdated    func(meta NodeMeta)
+	OnApprovalResolved func(meta ApprovalMeta)
+	OnChainCompleted func(meta ChainMeta)
+}
+```
+
+- [ ] **Step 4: Run observability tests**
+
+Run: `go test ./internal/ai/observability ./internal/service/ai/...`
+Expected: PASS.
+
+- [ ] **Step 5: Commit observability updates**
+
+```bash
+git add internal/service/ai/execution_observability.go internal/ai/observability/metrics.go internal/ai/observability/metrics_test.go
+git commit -m "feat: add thoughtchain observability callbacks"
+```
+
+## Chunk 3: Frontend Runtime, Rendering, and Replay
+
+### Task 8: Rebuild runtime types and reducer around structured nodes
+
+**Files:**
+- Modify: `web/src/components/AI/types.ts`
+- Modify: `web/src/components/AI/thoughtChainRuntime.ts`
+- Modify: `web/src/components/AI/thoughtChainRuntime.test.ts`
+- Test: `web/src/components/AI/thoughtChainRuntime.test.ts`
+
+- [ ] **Step 1: Write the failing reducer test for structured node fields**
 
 ```ts
-it('keeps approval waiting in-chain and appends final answer only after chain completion', () => {
-  let state = createThoughtChainRuntimeState();
-  state = reduceThoughtChainRuntimeEvent(state, { type: 'node_open', data: { chain_id: 'c1', node_id: 'a1', kind: 'approval', status: 'waiting' } });
-  state = reduceThoughtChainRuntimeEvent(state, { type: 'chain_completed', data: { chain_id: 'c1' } });
-  expect(state.nodes[0].status).toBe('waiting');
-  expect(state.finalAnswer.visible).toBe(false);
+it('stores headline body structured and raw separately on tool nodes', () => {
+  const state = reduceThoughtChainRuntimeEvent(undefined, {
+    type: 'chain_node_open',
+    data: {
+      turn_id: 'turn-1',
+      node_id: 'tool-1',
+      kind: 'tool',
+      title: 'host_list_inventory',
+      headline: '已获取 5 台主机',
+      body: '当前主机全部在线',
+      structured: { columns: ['id', 'status'], rows: [[1, 'online']] },
+      raw: { total: 5 },
+      status: 'loading',
+    },
+  });
+  expect(state.nodes[0]).toMatchObject({
+    headline: '已获取 5 台主机',
+    body: '当前主机全部在线',
+  });
 });
 ```
 
-- [ ] **Step 2: Run reducer and Copilot tests**
+- [ ] **Step 2: Run the reducer test to verify it fails**
 
-Run: `npm run test:run -- web/src/components/AI/thoughtChainRuntime.test.ts web/src/components/AI/Copilot.test.tsx`
-Expected: FAIL because `Copilot.tsx` still merges `thoughtChain`, `turnLifecycle`, confirmation, and raw content paths.
+Run: `npm run test:run -- src/components/AI/thoughtChainRuntime.test.ts`
+Expected: FAIL because runtime node types still collapse content into `summary/details`.
 
-- [ ] **Step 3: Simplify `Copilot.tsx` to one runtime source**
+- [ ] **Step 3: Update runtime types and reducer minimally**
 
-```tsx
-const [runtime, dispatchRuntime] = useReducer(reduceThoughtChainRuntimeEvent, undefined, createThoughtChainRuntimeState);
-const assistantView = projectAssistantView(runtime, restoredReplay);
+```ts
+export interface RuntimeThoughtChainNode {
+  nodeId: string;
+  kind: RuntimeThoughtChainNodeKind;
+  title: string;
+  status: RuntimeThoughtChainNodeStatus;
+  headline?: string;
+  body?: string;
+  structured?: Record<string, unknown>;
+  raw?: unknown;
+  approval?: ...
+}
 ```
 
-- [ ] **Step 4: Delete or isolate old lifecycle helpers**
+- [ ] **Step 4: Re-run reducer tests**
 
-Run search: `rg -n "applyPhaseStarted|applyPlanGenerated|applyStepStarted|applyStepComplete|applyReplanTriggered|upsertThoughtStage|finalizeThoughtStage" web/src/components/AI`
-Expected: removed from the primary chat render path.
+Run: `npm run test:run -- src/components/AI/thoughtChainRuntime.test.ts`
+Expected: PASS.
 
-- [ ] **Step 5: Commit the frontend state rewrite**
+- [ ] **Step 5: Commit the runtime state model**
 
 ```bash
-git add web/src/components/AI/thoughtChainRuntime.ts web/src/components/AI/Copilot.tsx web/src/components/AI/turnLifecycle.ts web/src/components/AI/thoughtChainRuntime.test.ts web/src/components/AI/Copilot.test.tsx
-git commit -m "refactor: drive AI chat from one thoughtchain runtime"
+git add web/src/components/AI/types.ts web/src/components/AI/thoughtChainRuntime.ts web/src/components/AI/thoughtChainRuntime.test.ts
+git commit -m "refactor: split thoughtchain node content layers"
 ```
 
-### Task 7: Upgrade the thoughtChain UI and fix the recommended-prompt race
+### Task 9: Restore runtime-first assistant history
+
+**Files:**
+- Modify: `web/src/components/AI/hooks/useConversationRestore.ts`
+- Modify: `web/src/components/AI/hooks/useConversationRestore.test.tsx`
+- Modify: `web/src/components/AI/turnLifecycle.ts`
+- Test: `web/src/components/AI/hooks/useConversationRestore.test.tsx`
+
+- [ ] **Step 1: Write the failing restore priority test**
+
+```tsx
+it('prefers persisted runtime and finalAnswer content over compatibility blocks', () => {
+  const turn = buildAssistantTurn({
+    runtime: { finalAnswer: { content: 'runtime answer', visible: true, streaming: false, revealState: 'complete' }, nodes: [] },
+    blocks: [{ id: 'b1', type: 'text', position: 0, content: 'legacy answer' }],
+  });
+  expect(runtimeStateFromReplayTurn(turn)?.finalAnswer.content).toBe('runtime answer');
+});
+```
+
+- [ ] **Step 2: Run the restore test to verify it fails**
+
+Run: `npm run test:run -- src/components/AI/hooks/useConversationRestore.test.tsx`
+Expected: FAIL if restore still privileges legacy block text.
+
+- [ ] **Step 3: Make restore order runtime-first**
+
+```ts
+const restoredRuntime = turn.runtime ?? runtimeStateFromReplayTurn(turn);
+const restoredContent =
+  restoredRuntime?.finalAnswer.content ||
+  deriveContentFromBlocks(turn.blocks) ||
+  '';
+```
+
+- [ ] **Step 4: Re-run restore and Copilot tests**
+
+Run: `npm run test:run -- src/components/AI/hooks/useConversationRestore.test.tsx src/components/AI/Copilot.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5: Commit the replay restore slice**
+
+```bash
+git add web/src/components/AI/hooks/useConversationRestore.ts web/src/components/AI/hooks/useConversationRestore.test.tsx web/src/components/AI/turnLifecycle.ts
+git commit -m "fix: restore AI sessions from runtime-first replay"
+```
+
+### Task 10: Render structured plan and replan nodes
 
 **Files:**
 - Modify: `web/src/components/AI/components/RuntimeThoughtChain.tsx`
+- Modify: `web/src/components/AI/components/RuntimeThoughtChain.test.tsx`
 - Modify: `web/src/components/AI/components/RuntimeChain.css`
-- Modify: `web/src/components/AI/AISurfaceBoundary.tsx`
-- Modify: `web/src/components/AI/AIAssistantDrawer.test.tsx`
-- Modify: `web/src/components/AI/AICopilotButton.test.tsx`
-- Modify: `web/src/components/AI/Copilot.test.tsx`
+- Test: `web/src/components/AI/components/RuntimeThoughtChain.test.tsx`
 
-- [ ] **Step 1: Write a failing UI test for fresh-session recommended prompt submission**
+- [ ] **Step 1: Write the failing rendering test for plan steps**
 
 ```tsx
-it('creates a placeholder assistant chain immediately when a recommended prompt is clicked', async () => {
-  render(<Copilot />);
-  await userEvent.click(screen.getByRole('button', { name: /推荐/i }));
-  expect(screen.queryByText('AI 助手暂时不可用')).not.toBeInTheDocument();
-  expect(screen.getByText(/正在连接|正在思考/)).toBeInTheDocument();
+it('renders plan nodes as structured ThoughtChain items', () => {
+  render(<RuntimeThoughtChain nodes={[{
+    nodeId: 'plan-1',
+    kind: 'plan',
+    title: '动态调整计划',
+    status: 'done',
+    structured: {
+      steps: [
+        { id: 's1', title: '获取主机列表', status: 'done' },
+        { id: 's2', title: '整理状态汇总', status: 'active' },
+      ],
+    },
+  }]} />);
+  expect(screen.getByText('获取主机列表')).toBeInTheDocument();
+  expect(screen.getByText('整理状态汇总')).toBeInTheDocument();
 });
 ```
 
-- [ ] **Step 2: Run the UI test**
+- [ ] **Step 2: Run the rendering test to verify it fails**
 
-Run: `npm run test:run -- web/src/components/AI/Copilot.test.tsx web/src/components/AI/AIAssistantDrawer.test.tsx`
-Expected: FAIL because the assistant container is not created until streaming state settles.
+Run: `npm run test:run -- src/components/AI/components/RuntimeThoughtChain.test.tsx`
+Expected: FAIL because the component still renders only generic text/detail blocks.
 
-- [ ] **Step 3: Implement immediate placeholder chain creation and upgraded node rendering**
+- [ ] **Step 3: Implement structured plan/replan item rendering**
 
 ```tsx
-setMessages((current) => current.concat([
-  createUserMessage(prompt),
-  createAssistantPlaceholder({ chainId: `pending:${Date.now()}`, status: 'connecting' }),
-]));
-```
-
-- [ ] **Step 4: Style dedicated node cards for plan/tool/approval/replan/answer**
-
-Run visual check: `npm run preview`
-Expected: approval is visually emphasized, replan reason is readable, and raw JSON is never shown as assistant prose.
-
-- [ ] **Step 5: Commit the UI and race-condition fix**
-
-```bash
-git add web/src/components/AI/components/RuntimeThoughtChain.tsx web/src/components/AI/components/RuntimeChain.css web/src/components/AI/AISurfaceBoundary.tsx web/src/components/AI/AIAssistantDrawer.test.tsx web/src/components/AI/AICopilotButton.test.tsx web/src/components/AI/Copilot.test.tsx
-git commit -m "feat: upgrade AI thoughtchain UI and prompt handling"
-```
-
-## Chunk 4: Observability, Verification, and Cleanup
-
-### Task 8: Add callback-based thoughtChain metrics and traces
-
-**Files:**
-- Modify: `internal/ai/observability/metrics.go`
-- Modify: `internal/service/ai/execution_observability.go`
-- Create: `internal/ai/observability/thoughtchain.go`
-- Create or modify: `internal/ai/observability/metrics_test.go`
-
-- [ ] **Step 1: Write a failing metric test for approval wait and chain completion**
-
-```go
-func TestObserveThoughtChainApprovalWait(t *testing.T) {
-	metrics := newMetrics()
-	metrics.ObserveThoughtChainNode(NodeRecord{
-		ChainID: "chain-1",
-		NodeID: "approval-1",
-		NodeKind: "approval",
-		Status: "waiting",
-		Duration: 3 * time.Second,
-	})
-	// assert metric family contains approval wait sample
+function renderStructuredSteps(node: RuntimeThoughtChainNode) {
+  const steps = asStepList(node.structured);
+  return (
+    <Flex gap="small" vertical>
+      {steps.map((step) => (
+        <ThoughtChain.Item key={step.id} variant="solid" status={toThoughtItemStatus(step.status)} title={step.title} description={step.description} />
+      ))}
+    </Flex>
+  );
 }
 ```
 
-- [ ] **Step 2: Run the metric test**
+- [ ] **Step 4: Re-run RuntimeThoughtChain tests**
 
-Run: `go test ./internal/ai/observability -run TestObserveThoughtChainApprovalWait -v`
-Expected: FAIL because no thoughtChain-specific counters/histograms exist yet.
+Run: `npm run test:run -- src/components/AI/components/RuntimeThoughtChain.test.tsx`
+Expected: PASS.
 
-- [ ] **Step 3: Implement focused thoughtChain metric helpers**
+- [ ] **Step 5: Commit structured plan rendering**
 
-```go
-type NodeRecord struct {
-	ChainID string
-	NodeID string
-	NodeKind string
-	Scene string
-	Tool string
-	Status string
-	Duration time.Duration
+```bash
+git add web/src/components/AI/components/RuntimeThoughtChain.tsx web/src/components/AI/components/RuntimeThoughtChain.test.tsx web/src/components/AI/components/RuntimeChain.css
+git commit -m "feat: render structured thoughtchain plan nodes"
+```
+
+### Task 11: Render beautified raw tool results by default
+
+**Files:**
+- Modify: `web/src/components/AI/components/RuntimeThoughtChain.tsx`
+- Modify: `web/src/components/AI/components/ToolCard.tsx`
+- Modify: `web/src/components/AI/components/RuntimeThoughtChain.test.tsx`
+- Test: `web/src/components/AI/components/RuntimeThoughtChain.test.tsx`
+
+- [ ] **Step 1: Write the failing tool result rendering test**
+
+```tsx
+it('renders host tool results as readable rows instead of one JSON blob', () => {
+  render(<RuntimeThoughtChain nodes={[{
+    nodeId: 'tool-1',
+    kind: 'tool',
+    title: 'host_list_inventory',
+    status: 'done',
+    structured: {
+      resource: 'hosts',
+      rows: [{ id: 1, name: 'test', status: 'online', ip: 'localhost' }],
+    },
+    raw: { total: 1, list: [{ id: 1, name: 'test', status: 'online', ip: 'localhost' }] },
+  }]} />);
+  expect(screen.getByText('test')).toBeInTheDocument();
+  expect(screen.getByText('online')).toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: Run the tool rendering test to verify it fails**
+
+Run: `npm run test:run -- src/components/AI/components/RuntimeThoughtChain.test.tsx -t "renders host tool results as readable rows"`
+Expected: FAIL because tool nodes still surface raw text or generic detail cards.
+
+- [ ] **Step 3: Implement structured tool rendering with raw fallback**
+
+```tsx
+function renderToolStructured(node: RuntimeThoughtChainNode) {
+  if (looksLikeHostRows(node.structured)) {
+    return <HostResultTable rows={extractRows(node.structured)} />;
+  }
+  return <pre>{JSON.stringify(node.raw ?? node.structured, null, 2)}</pre>;
 }
 ```
 
-- [ ] **Step 4: Wire callbacks from the AI service/runtime**
+- [ ] **Step 4: Re-run tool and Copilot tests**
 
-Run search: `rg -n "ObserveAgentExecution|ObserveToolExecution|execution_observability" internal/ai internal/service/ai`
-Expected: updated call sites now include chain/node callbacks and trace metadata propagation.
+Run: `npm run test:run -- src/components/AI/components/RuntimeThoughtChain.test.tsx src/components/AI/Copilot.test.tsx`
+Expected: PASS.
 
-- [ ] **Step 5: Commit observability support**
+- [ ] **Step 5: Commit tool result beautification**
 
 ```bash
-git add internal/ai/observability/metrics.go internal/ai/observability/thoughtchain.go internal/service/ai/execution_observability.go internal/ai/observability/metrics_test.go
-git commit -m "feat: add AI thoughtchain observability metrics"
+git add web/src/components/AI/components/RuntimeThoughtChain.tsx web/src/components/AI/components/ToolCard.tsx web/src/components/AI/components/RuntimeThoughtChain.test.tsx
+git commit -m "feat: beautify thoughtchain tool results"
 ```
 
-### Task 9: Full verification, spec validation, and dead-code sweep
+### Task 12: Keep final answer markdown separate and fix new-session rendering race
 
 **Files:**
-- Modify: any touched files that still contain temporary migration shims
-- Validate: `openspec/changes/ai-thoughtchain-runtime-redesign/*`
+- Modify: `web/src/components/AI/Copilot.tsx`
+- Modify: `web/src/components/AI/components/FinalAnswerStream.tsx`
+- Modify: `web/src/components/AI/Copilot.test.tsx`
+- Modify: `web/src/components/AI/AIAssistantDrawer.test.tsx`
+- Test: `web/src/components/AI/Copilot.test.tsx`
 
-- [ ] **Step 1: Run backend tests for AI runtime and service paths**
+- [ ] **Step 1: Write the failing recommended prompt race test**
+
+```tsx
+it('creates a placeholder assistant runtime immediately for recommended prompts', async () => {
+  render(<Copilot />);
+  await user.click(screen.getByText('查询所有服务器的状态'));
+  expect(screen.queryByText('AI assistant unavailable')).not.toBeInTheDocument();
+});
+```
+
+- [ ] **Step 2: Write the failing final-answer separation test**
+
+```tsx
+it('renders final answer markdown outside process node bodies', () => {
+  // mount runtime with replan body and finalAnswer content
+  // assert markdown table is in final answer area, not duplicated under plan/replan card
+});
+```
+
+- [ ] **Step 3: Run the focused UI tests**
+
+Run: `npm run test:run -- src/components/AI/Copilot.test.tsx src/components/AI/AIAssistantDrawer.test.tsx`
+Expected: FAIL where live UI still mixes runtime and legacy content or delays assistant container creation.
+
+- [ ] **Step 4: Implement placeholder assistant creation and strict final-answer rendering boundary**
+
+```tsx
+const assistantMessage = {
+  id: pendingId,
+  role: 'assistant',
+  content: '',
+  runtime: createThoughtChainRuntimeState(),
+  createdAt: new Date().toISOString(),
+};
+```
+
+- [ ] **Step 5: Re-run key frontend runtime tests**
+
+Run: `npm run test:run -- src/components/AI/Copilot.test.tsx src/components/AI/AIAssistantDrawer.test.tsx src/components/AI/hooks/useConversationRestore.test.tsx src/components/AI/components/RuntimeThoughtChain.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 6: Commit the frontend runtime experience slice**
+
+```bash
+git add web/src/components/AI/Copilot.tsx web/src/components/AI/components/FinalAnswerStream.tsx web/src/components/AI/Copilot.test.tsx web/src/components/AI/AIAssistantDrawer.test.tsx
+git commit -m "fix: stabilize runtime-first AI assistant rendering"
+```
+
+## Chunk 4: Validation, Cleanup, and Handoff
+
+### Task 13: Remove final legacy primary-path branches and compatibility leaks
+
+**Files:**
+- Modify: `web/src/components/AI/turnLifecycle.ts`
+- Modify: `web/src/components/AI/components/AssistantMessageBlocks.tsx`
+- Modify: `web/src/components/AI/Copilot.tsx`
+- Modify: `internal/service/ai/routes.go`
+- Test: existing frontend/backend runtime tests
+
+- [ ] **Step 1: Search for remaining primary-path legacy hooks**
+
+Run: `cd /root/project/k8s-manage/.worktrees/ai-thoughtchain-runtime-redesign && rg -n "phase_started|phase_complete|plan_generated|step_started|step_complete|replan_triggered|approval_required|turn_started|block_open|block_delta|block_replace|block_close" internal/service/ai internal/ai web/src/components/AI web/src/api/modules/ai.ts`
+Expected: only narrow replay compatibility or tests remain.
+
+- [ ] **Step 2: Remove dead compatibility branches**
+
+```ts
+// delete unused phase/replan helpers once runtime-first restore/render paths are green
+```
+
+- [ ] **Step 3: Run targeted regression suites**
+
+Run: `npm run test:run -- src/api/modules/ai.test.ts src/api/modules/ai.streamChunk.test.ts src/components/AI/thoughtChainRuntime.test.ts src/components/AI/hooks/useConversationRestore.test.tsx src/components/AI/Copilot.test.tsx src/components/AI/components/RuntimeThoughtChain.test.tsx && go test ./internal/ai/... ./internal/service/ai/...`
+Expected: PASS.
+
+- [ ] **Step 4: Commit legacy cleanup**
+
+```bash
+git add web/src/components/AI/turnLifecycle.ts web/src/components/AI/components/AssistantMessageBlocks.tsx web/src/components/AI/Copilot.tsx internal/service/ai/routes.go
+git commit -m "refactor: remove legacy AI runtime branches"
+```
+
+### Task 14: Final verification and OpenSpec validation
+
+**Files:**
+- Modify: `openspec/changes/ai-thoughtchain-runtime-redesign/progress.md`
+- Verify: OpenSpec artifacts and test output
+
+- [ ] **Step 1: Run OpenSpec validation**
+
+Run: `openspec validate ai-thoughtchain-runtime-redesign --json`
+Expected: valid `true` with zero issues.
+
+- [ ] **Step 2: Run final backend verification**
 
 Run: `go test ./internal/ai/... ./internal/service/ai/...`
 Expected: PASS.
 
-- [ ] **Step 2: Run frontend tests for AI chat runtime**
+- [ ] **Step 3: Run final frontend verification**
 
-Run: `npm run test:run -- web/src/api/modules/ai.test.ts web/src/components/AI/thoughtChainRuntime.test.ts web/src/components/AI/hooks/useConversationRestore.test.ts web/src/components/AI/Copilot.test.tsx web/src/components/AI/AIAssistantDrawer.test.tsx web/src/components/AI/AICopilotButton.test.tsx`
+Run: `cd web && npm run test:run -- src/api/modules/ai.test.ts src/api/modules/ai.streamChunk.test.ts src/components/AI/thoughtChainRuntime.test.ts src/components/AI/hooks/useConversationRestore.test.tsx src/components/AI/Copilot.test.tsx src/components/AI/AIAssistantDrawer.test.tsx src/components/AI/components/RuntimeThoughtChain.test.tsx && npm run build`
 Expected: PASS.
 
-- [ ] **Step 3: Validate OpenSpec artifacts**
+- [ ] **Step 4: Update progress tracking**
 
-Run: `openspec validate --json`
-Expected: valid change with no schema errors.
-
-- [ ] **Step 4: Sweep for banned legacy primary-path concepts**
-
-Run: `rg -n "phase_started|phase_complete|plan_generated|step_started|step_complete|replan_triggered|approval_required|respondApproval|confirmApproval|approveApproval|turn_started|block_open|block_delta|block_replace|block_close" internal/ai internal/service/ai web/src/components/AI web/src/api/modules/ai.ts`
-Expected: no remaining primary-path references except intentionally isolated compatibility comments or deleted tests updated in this change.
-
-- [ ] **Step 5: Commit final cleanup**
-
-```bash
-git add -A
-git commit -m "refactor: complete AI thoughtchain runtime redesign"
+```md
+- Completed runtime-first thoughtChain redesign slices for streaming, persistence, UI, and approval.
+- Verified OpenSpec change and project test suites.
 ```
 
-## Implementation Notes
+- [ ] **Step 5: Commit verification and progress updates**
 
-- Follow `@test-driven-development`: write the failing test first for each task, then make the minimal change to pass it.
-- Follow `@systematic-debugging` if any migration slice breaks streaming, replay, or approval recovery in unexpected ways.
-- Follow `@verification-before-completion`: do not claim a slice is done until the exact command in that slice passes.
-- Keep commits small and aligned with the tasks above. If one task balloons, split it before coding.
+```bash
+git add openspec/changes/ai-thoughtchain-runtime-redesign/progress.md
+git commit -m "docs: update thoughtchain redesign progress"
+```
+
+## Notes For The Implementer
+
+- Prefer vertical slices that produce one meaningful behavior change per commit.
+- Keep live rendering and restore rendering on the same runtime model. If a fallback is needed, treat it as replay-only compatibility.
+- Do not reintroduce generic trimming in the parser or generic summary buckets in runtime node payloads.
+- If a tool result shape is not recognized, ship a formatted raw fallback instead of inventing prose.
+- If any completed assistant turn can still serialize with empty runtime/final answer state, stop and fix persistence before touching more UI.

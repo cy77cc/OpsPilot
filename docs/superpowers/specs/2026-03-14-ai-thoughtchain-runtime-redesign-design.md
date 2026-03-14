@@ -17,6 +17,12 @@ This overlap has produced the four concrete problems reported by the user:
 3. Clicking a recommended prompt in a fresh conversation can briefly show a false unavailable state until the page is refreshed.
 4. Callback-based telemetry is insufficient, reducing observability.
 
+Additional runtime failures were identified during design validation:
+
+5. Markdown formatting can be corrupted in streaming mode because the frontend SSE parser trims line content and visible chunks.
+6. Tool nodes currently dump raw JSON into generic summary text, which makes the chain unreadable.
+7. Persisted assistant turns can complete with empty replay content such as `blocks: []`, causing answers to disappear after leaving and re-entering a conversation.
+
 The user explicitly wants `thoughtChain` to become the new runtime contract, and wants legacy runtime structures removed first so they do not continue shaping new work.
 
 ## Goals
@@ -26,6 +32,8 @@ The user explicitly wants `thoughtChain` to become the new runtime contract, and
 - redesign the frontend runtime around a single `thoughtChain` store and an upgraded chain UI
 - model approval as a first-class chain node and unify approval actions under one API
 - add callback-driven metrics and tracing hooks that can be exported to the existing Prometheus integration
+- preserve markdown fidelity during streaming and replay
+- persist runtime-first replay state so completed answers survive conversation restore
 - prevent legacy protocol concepts from re-entering the implementation
 
 ## Non-Goals
@@ -73,9 +81,18 @@ A chain contains ordered nodes that describe execution progress. Node kinds are:
 Each node has:
 
 - stable identity: `chain_id`, `node_id`, optional `parent_node_id`
-- display metadata: `kind`, `title`, `summary`
+- display metadata: `kind`, `title`, `headline`
 - lifecycle state: `pending`, `running`, `waiting`, `success`, `error`, `aborted`
 - typed payload data for rendering and telemetry
+
+Node content is no longer modeled as one generic `summary` string. Runtime payloads must distinguish:
+
+- `headline`: short human-readable state under the node title
+- `body`: detailed phase summary, which may contain markdown
+- `structured`: typed renderable data such as plan steps, tool result tables, or field groups
+- `raw`: raw JSON or debug payloads kept for debug mode or explicit disclosure
+
+`body` is allowed to be detailed and user-facing. It is not limited to a short summary sentence.
 
 The chain has:
 
@@ -107,11 +124,11 @@ The chat stream exposes only `thoughtChain` lifecycle events.
 
 ### Payload Guidance
 
-- `plan`: plan title, plan summary, proposed steps, constraints
+- `plan`: plan title, detailed planning body, structured proposed steps, constraints
 - `step`: step order, current progress, completion notes
-- `tool`: tool name, input summary, output summary, duration, risk summary
+- `tool`: tool name, structured result payload, raw result payload, duration, risk summary
 - `approval`: approval target, approval summary, preview, risk level, action token or action reference
-- `replan`: trigger reason, affected prior nodes, new plan summary
+- `replan`: trigger reason, affected prior nodes, detailed stage summary, new structured plan
 - `answer`: final markdown content, optional follow-up recommendations
 
 No legacy `turn_started`, `block_open`, `phase_started`, `step_started`, `approval_required`, or similar event types remain on the primary streaming path.
@@ -126,9 +143,40 @@ The assistant message UI is rendered only from chain state. It must not merge or
 
 - the top of the assistant area shows a runtime timeline based on ordered nodes
 - each node renders as a dedicated expandable card
-- the `answer` node is visually separated from process nodes
+- the `answer` region is visually separated from process nodes
 - the `approval` node is visually emphasized and provides direct action controls
 - `replan` clearly explains why the plan changed and what was replaced
+
+### Node Presentation Model
+
+The upgraded `ThoughtChain` UI should follow a card-plus-subitems structure similar to Ant Design X `ThoughtChain.Item` composition:
+
+- top-level `plan`, `execute`, `tool`, `replan`, and `approval` nodes remain collapsible cards
+- `plan` and `replan` render structured step items instead of serialized `{"steps": ...}` text
+- `tool` nodes render beautified raw results, not plain log blobs
+- debug-only raw payloads remain accessible through an explicit disclosure area rather than the default body
+
+### Tool Result Rendering
+
+`tool` nodes should default to a beautified raw-result view rather than an AI-authored summary.
+
+Recommended rendering order:
+
+- typed object results render as grouped key/value cards
+- typed array results render as list rows or compact tables
+- known business result shapes such as host, cluster, deployment, or approval records can apply domain-specific badges and grouped fields
+- unknown shapes fall back to formatted JSON in a code-style disclosure panel
+
+This keeps tool output faithful to the source while avoiding unreadable JSON walls.
+
+### Detailed Summary Placement
+
+Detailed narrative summaries remain valid, but they belong in the correct place:
+
+- final answer region contains the canonical complete markdown answer
+- `replan` and similar chain nodes may include a detailed phase summary in `body`
+- `plan` nodes should not receive streamed final-answer fragments
+- tool result payloads should not be flattened into the same text slot as narrative summaries
 
 ### Recommended Prompt Fix
 
@@ -142,6 +190,69 @@ This avoids the transient "AI assistant unavailable" empty-state path before the
 ### Presentation Requirement
 
 The upgraded UI must present the real chain semantics instead of dumping serialized JSON or flattened text blobs. The display should make `plan -> step/tool -> approval -> replan -> answer` easy to scan as one continuous runtime.
+
+## Streaming Fidelity
+
+The streaming parser must preserve user-visible markdown and whitespace semantics.
+
+### SSE Parsing Rules
+
+- do not trim individual `data:` lines while parsing SSE frames
+- do not normalize away leading indentation, blank lines, or markdown-significant spacing
+- only strip protocol prefixes such as `event:` and `data:`
+- preserve frame body text exactly unless a protocol-specific envelope is positively identified
+
+### Visible Chunk Normalization
+
+`normalizeVisibleStreamChunk` may unwrap explicit protocol envelopes such as a completed `{"response": ...}` payload, but it must not:
+
+- trim user-visible markdown content
+- treat partial JSON fragments as complete envelopes
+- drop blank-line separators that belong to markdown output
+
+The normalization policy should favor fidelity over aggressive cleanup.
+
+## Persistence And Replay
+
+Persistence becomes runtime-first.
+
+### Canonical Persisted Data
+
+Each assistant turn must persist:
+
+- `runtime`
+- `runtime.finalAnswer.content`
+- `runtime.finalAnswer.revealState`
+- minimal compatibility `blocks`
+
+`blocks` remain only as a derived compatibility projection for legacy replay, search, and fallback rendering. They are not the source of truth for a completed assistant answer.
+
+### Recorder Flush Points
+
+Session persistence must update on:
+
+- `chain_started`
+- `node_open`
+- `node_delta` or `node_replace`
+- `node_close`
+- `final_answer_started`
+- `final_answer_delta`
+- `final_answer_done`
+- `chain_completed`
+- `chain_error`
+
+`final_answer_delta` writes may be throttled, but `final_answer_done` and terminal completion events must flush persisted state before the turn is considered complete.
+
+### Restore Priority
+
+Conversation restore must read assistant content in this order:
+
+1. `turn.runtime`
+2. persisted `runtime.finalAnswer.content`
+3. compatibility `blocks`
+4. narrow legacy `thoughtChain` fallback
+
+The system must never produce a completed assistant turn whose persisted replay payload is effectively empty.
 
 ## Approval Model
 

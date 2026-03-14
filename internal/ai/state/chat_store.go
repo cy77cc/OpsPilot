@@ -405,11 +405,15 @@ func buildBlocks(record ChatMessageRecord) []ChatBlockRecord {
 			ContentText: record.Thinking,
 		})
 	}
-	if strings.TrimSpace(record.Content) != "" {
+	content := record.Content
+	if strings.TrimSpace(content) == "" && record.Runtime != nil && record.Runtime.FinalAnswer != nil {
+		content = record.Runtime.FinalAnswer.Content
+	}
+	if strings.TrimSpace(content) != "" {
 		blocks = append(blocks, ChatBlockRecord{
 			BlockType:   "text",
 			Status:      firstNonEmpty(record.Status, "completed"),
-			ContentText: record.Content,
+			ContentText: content,
 		})
 	}
 	return blocks

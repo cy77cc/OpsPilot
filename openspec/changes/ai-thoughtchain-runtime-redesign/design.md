@@ -17,6 +17,8 @@ This design intentionally replaces the mixed architecture with one `thoughtChain
 - remove legacy `turn/block`, `phase/step`, and detached approval semantics from the AI chat primary path
 - define a single approval decision flow based on `chain_id` and `approval node_id`
 - redesign frontend state around one `thoughtChain` store and an upgraded node-based UI
+- preserve markdown fidelity across SSE parsing, visible chunk normalization, and replay restoration
+- persist runtime-first replay state so completed assistant responses cannot be restored as empty content
 - expose chain/node lifecycle callbacks that export metrics to the existing Prometheus integration
 - add migration guardrails and tests to prevent legacy protocol concepts from returning
 
@@ -82,6 +84,70 @@ Why:
 Alternatives considered:
 - keep a separate compatibility message model and enrich it with chain state: rejected because it preserves multiple sources of truth
 
+### Decision: node content is split into narrative, structured, and raw layers
+
+ThoughtChain nodes will no longer treat one generic `summary` string as the universal rendering surface. Node payloads should distinguish at least:
+
+- `headline`: short human-readable status under the title
+- `body`: detailed phase summary, which may contain markdown
+- `structured`: typed plan steps, tool result groups, or other renderable records
+- `raw`: explicit raw/debug payloads such as JSON
+
+Why:
+- plan JSON, tool result JSON, detailed replanning summaries, and final answer text have different rendering needs
+- one overloaded text field is the direct cause of unreadable chain cards and leaked internal payloads
+- this boundary lets the UI render rich `ThoughtChain.Item` hierarchies without inventing summaries that the runtime did not actually produce
+
+Alternatives considered:
+- keep one `summary` field and teach the UI to guess content type: rejected because it keeps the ambiguity that already caused current failures
+
+### Decision: tool nodes default to beautified raw-result rendering
+
+Tool nodes will present structured raw result views by shape:
+
+- objects become grouped key/value cards
+- arrays become compact lists or tables
+- recognized business resource shapes such as hosts or clusters may use badges and grouped fields
+- unknown payloads fall back to formatted JSON in an explicit disclosure area
+
+Why:
+- the user wants faithful raw data, but readable
+- AI-authored summaries would require extra post-processing and could drift from the source result
+- structured rendering preserves debugging value without producing JSON walls
+
+Alternatives considered:
+- summarize tool results into prose first: rejected because it adds another transformation layer the user does not want as the default
+- render only formatted JSON: rejected because it remains too log-like for the main ThoughtChain surface
+
+### Decision: streaming parsing must preserve markdown fidelity
+
+The SSE parsing layer and visible chunk normalization must prefer fidelity over cleanup:
+
+- do not trim individual `data:` lines
+- do not strip markdown-significant indentation or blank lines
+- only unwrap explicit complete protocol envelopes such as `{"response": "..."}`
+- do not treat partial JSON fragments as complete envelopes
+
+Why:
+- the current frontend parser trims away whitespace that markdown needs for tables, spacing, and code-style rendering
+- preserving exact streamed content keeps live rendering and persisted replay consistent
+
+Alternatives considered:
+- continue normalizing aggressively and patch markdown rendering later: rejected because the parser itself is the source of corruption
+
+### Decision: session persistence is runtime-first and must flush final answer state
+
+Persistence will store native runtime replay state plus final-answer markdown as the canonical assistant restore model. Compatibility `blocks` remain derived fallback data only.
+
+Persistence must flush on chain lifecycle and final-answer lifecycle boundaries, including terminal `final_answer_done` and completion/error events.
+
+Why:
+- the reported `completed` assistant turns with empty `blocks: []` show that the current replay source can claim success while persisting no recoverable content
+- runtime-first persistence keeps live and restored rendering aligned
+
+Alternatives considered:
+- keep `blocks` as the authoritative replay store and project runtime from them: rejected because it recreates the same data-loss and semantic-loss problems under a legacy model
+
 ### Decision: observability is callback-first and exported through Prometheus
 
 The backend runtime will emit explicit callbacks such as `OnChainStarted`, `OnNodeOpened`, `OnApprovalResolved`, and `OnChainCompleted`. These callbacks will feed counters, histograms, and traces keyed by `trace_id`, `chain_id`, `node_id`, `scene`, `tool`, and `status`.
@@ -98,6 +164,9 @@ Alternatives considered:
 - [Hidden dependencies on legacy events] -> Inventory all legacy consumers before removal, then add regression tests asserting the new path does not emit old primary-path events.
 - [Approval regression during migration] -> Promote approval to a chain node before removing old approval resume branches, and require pause/resume tests for every migration slice.
 - [Replay/live divergence] -> Use one node model and one frontend rendering path for both live streams and restored sessions.
+- [Markdown corruption during streaming] -> Make SSE parsing and visible chunk normalization preserve raw content boundaries, then add parser regression tests with markdown tables and blank lines.
+- [Tool cards becoming another unreadable log view] -> Require structured tool renderers plus explicit raw fallback instead of one generic text body.
+- [Completed turns restoring as empty content] -> Persist runtime and final-answer state directly, define mandatory flush points, and add replay tests that assert completed assistant turns are never empty.
 - [Temporary migration code becoming permanent] -> Allow only minimal short-lived shims and require their removal before marking the change complete.
 - [Broader blast radius across frontend and backend] -> Sequence work by protocol cleanup, runtime contract, approval flow, frontend store/UI, then observability and tests.
 
@@ -106,8 +175,8 @@ Alternatives considered:
 1. Inventory AI chat runtime entry points across `internal/service/ai`, `internal/ai`, `web/src/api/modules/ai.ts`, and `web/src/components/AI`.
 2. Detach legacy `turn/block`, `phase/step`, and detached approval semantics from the AI chat primary path.
 3. Remove compatibility-only DTOs, event emitters, and frontend runtime mergers that exist only for the old primary path.
-4. Implement the new `thoughtChain` streaming contract, node model, replay contract, and approval decision API.
-5. Rebuild the frontend around a single chain store and upgraded node-based assistant UI.
+4. Implement the new `thoughtChain` streaming contract, markdown-safe parser semantics, node content model, replay contract, and approval decision API.
+5. Rebuild the frontend around a single chain store and upgraded node-based assistant UI, including structured `plan`/`replan` steps and beautified tool-result rendering.
 6. Add chain/node callbacks and connect metrics to the Prometheus integration.
 7. Add regression coverage and validate that old runtime concepts are no longer emitted or rendered on the primary path.
 
@@ -116,5 +185,4 @@ Rollback strategy:
 
 ## Open Questions
 
-- Whether session persistence should store native chain nodes directly or store a normalized format that is reconstructed into chain nodes at read time.
 - Whether `status` should remain an explicit node kind or be folded into summaries on other node kinds once implementation details are clearer.

@@ -32,7 +32,11 @@ describe('thoughtChainRuntime', () => {
         kind: 'plan',
         title: '正在整理执行计划',
         status: 'loading',
-        summary: '准备检查集群状态',
+        headline: '准备检查集群状态',
+        body: '先确认集群可用性，再检查 deployment 副本数。',
+        structured: {
+          steps: ['检查集群状态'],
+        },
       },
     });
     state = reduceThoughtChainRuntimeEvent(state, {
@@ -40,8 +44,13 @@ describe('thoughtChainRuntime', () => {
       data: {
         turn_id: 'turn-1',
         node_id: 'plan-1',
-        summary: '已整理出 2 个执行步骤',
-        details: ['检查集群状态', '确认 deployment 副本数'],
+        headline: '已整理出 2 个执行步骤',
+        structured: {
+          steps: ['检查集群状态', '确认 deployment 副本数'],
+        },
+        raw: {
+          source: 'planner',
+        },
       },
     });
     state = reduceThoughtChainRuntimeEvent(state, {
@@ -75,8 +84,14 @@ describe('thoughtChainRuntime', () => {
         nodeId: 'plan-1',
         kind: 'plan',
         status: 'done',
-        summary: '已整理出 2 个执行步骤',
-        details: ['检查集群状态', '确认 deployment 副本数'],
+        headline: '已整理出 2 个执行步骤',
+        body: '先确认集群可用性，再检查 deployment 副本数。',
+        structured: {
+          steps: ['检查集群状态', '确认 deployment 副本数'],
+        },
+        raw: {
+          source: 'planner',
+        },
       }),
     ]);
     expect(state.isCollapsed).toBe(true);
@@ -118,6 +133,40 @@ describe('thoughtChainRuntime', () => {
         requestId: 'approval-1',
         title: '扩容 nginx 需要确认',
         risk: 'medium',
+      }),
+    }));
+  });
+
+  it('stores separated narrative and raw fields on tool nodes', () => {
+    const state = reduceThoughtChainRuntimeEvent(undefined, {
+      type: 'chain_node_open',
+      data: {
+        turn_id: 'turn-1',
+        node_id: 'tool-1',
+        kind: 'tool',
+        title: 'host_list_inventory',
+        status: 'loading',
+        headline: '已获取 5 台主机',
+        body: '当前所有主机均在线。',
+        structured: {
+          resource: 'hosts',
+          rows: [{ id: 1, name: 'test', status: 'online' }],
+        },
+        raw: {
+          total: 5,
+        },
+      },
+    });
+
+    expect(state.nodes[0]).toEqual(expect.objectContaining({
+      nodeId: 'tool-1',
+      headline: '已获取 5 台主机',
+      body: '当前所有主机均在线。',
+      structured: expect.objectContaining({
+        resource: 'hosts',
+      }),
+      raw: expect.objectContaining({
+        total: 5,
       }),
     }));
   });
