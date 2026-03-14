@@ -6,11 +6,12 @@ import {
 
 describe('thoughtChainRuntime', () => {
   it('ignores legacy phase events for the primary chain reducer', () => {
-    const state = reduceThoughtChainRuntimeEvent(undefined, {
-      // @ts-expect-error verifying legacy event rejection during migration
+    const legacyPhaseEvent = {
       type: 'phase_started',
       data: { phase: 'planning', status: 'loading' },
-    });
+    } as unknown as Parameters<typeof reduceThoughtChainRuntimeEvent>[1];
+
+    const state = reduceThoughtChainRuntimeEvent(undefined, legacyPhaseEvent);
 
     expect(state.nodes).toHaveLength(0);
     expect(state.turnId).toBeUndefined();
