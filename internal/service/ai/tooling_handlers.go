@@ -51,11 +51,6 @@ type createApprovalRequest struct {
 	Reason       string         `json:"reason,omitempty"`
 }
 
-// approvalDecisionRequest 是审批通过/拒绝接口的请求体。
-type approvalDecisionRequest struct {
-	Reason string `json:"reason,omitempty"`
-}
-
 type chainApprovalDecisionRequest struct {
 	Approved bool   `json:"approved"`
 	Reason   string `json:"reason,omitempty"`
@@ -309,21 +304,6 @@ func (h *HTTPHandler) GetApproval(c *gin.Context) {
 	httpx.OK(c, approvalPayload(*row))
 }
 
-func (h *HTTPHandler) ApproveApproval(c *gin.Context) {
-	var req approvalDecisionRequest
-	_ = c.ShouldBindJSON(&req)
-	row, err := findApproval(h.svcCtx.DB.WithContext(c.Request.Context()), c.Param("id"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if row == nil {
-		httpx.Fail(c, xcode.NotFound, "approval not found")
-		return
-	}
-	h.respondApprovalDecision(c, *row, true, req.Reason)
-}
-
 func (h *HTTPHandler) DecideChainApproval(c *gin.Context) {
 	var req chainApprovalDecisionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -533,21 +513,6 @@ func approvalResumeRequest(row model.AIApproval, approved bool, reason string) c
 
 func wantsEventStream(c *gin.Context) bool {
 	return strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/event-stream")
-}
-
-func (h *HTTPHandler) RejectApproval(c *gin.Context) {
-	var req approvalDecisionRequest
-	_ = c.ShouldBindJSON(&req)
-	row, err := findApproval(h.svcCtx.DB.WithContext(c.Request.Context()), c.Param("id"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if row == nil {
-		httpx.Fail(c, xcode.NotFound, "approval not found")
-		return
-	}
-	h.respondApprovalDecision(c, *row, false, req.Reason)
 }
 
 func (h *HTTPHandler) SceneTools(c *gin.Context) {
