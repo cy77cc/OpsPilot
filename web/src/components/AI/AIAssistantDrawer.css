@@ -281,6 +281,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .confirmation-heading {
@@ -320,9 +321,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: #7c2d12;
+  color: inherit;
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(124, 45, 18, 0.12);
+  border: 1px solid currentColor;
 }
 
 .confirmation-risk.high {
@@ -350,6 +351,7 @@
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.58);
   padding: 10px 12px;
+  border: 1px solid rgba(140, 140, 140, 0.14);
 }
 
 .confirmation-details summary {
@@ -372,6 +374,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .ai-confirmation-compact {
@@ -420,6 +423,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 /* 确认面板 */
@@ -645,6 +649,7 @@
   font-size: 14px;
   line-height: 1.7;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
 
   /* 标题样式 */
   h1, h2, h3, h4, h5, h6 {
@@ -752,5 +757,89 @@
     max-width: 100%;
     height: auto;
     border-radius: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ai-confirmation-panel,
+  .ai-confirmation-compact {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .confirmation-actions,
+  .confirmation-compact-actions {
+    width: 100%;
+  }
+
+  .confirmation-actions .ant-btn,
+  .confirmation-compact-actions .ant-btn {
+    flex: 1 1 100%;
+  }
+
+  .ai-markdown-content pre,
+  .ai-markdown-content table {
+    font-size: 12px;
+  }
+
+  .ai-markdown-content pre {
+    padding: 10px 12px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .ai-confirmation-compact {
+    background: rgba(25, 31, 45, 0.92);
+    border-color: rgba(96, 165, 250, 0.22);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  }
+
+  .ai-confirmation-compact.submitting {
+    background: rgba(18, 35, 58, 0.98);
+  }
+
+  .ai-confirmation-compact.failed {
+    background: rgba(56, 24, 30, 0.98);
+    border-color: rgba(248, 113, 113, 0.28);
+  }
+
+  .confirmation-compact-title,
+  .confirmation-title,
+  .confirmation-description {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .confirmation-compact-text,
+  .confirmation-subtitle,
+  .confirmation-details summary,
+  .confirmation-details-content,
+  .ai-markdown-content blockquote,
+  .ai-markdown-content h6 {
+    color: rgba(255, 255, 255, 0.68);
+  }
+
+  .confirmation-details {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .ai-markdown-content {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .ai-markdown-content h1,
+  .ai-markdown-content h2,
+  .ai-markdown-content hr,
+  .ai-markdown-content th,
+  .ai-markdown-content td {
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  .ai-markdown-content pre,
+  .ai-markdown-content code,
+  .ai-markdown-content th,
+  .ai-markdown-content tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.88);
   }
 }

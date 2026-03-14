@@ -192,6 +192,59 @@ export interface SSETurnDoneEvent {
   phase?: string;
 }
 
+export interface SSEPhaseStartedEvent {
+  [key: string]: unknown;
+  turn_id?: string;
+  phase?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  user_visible_summary?: string;
+  message?: string;
+}
+
+export interface SSEPhaseCompleteEvent extends SSEPhaseStartedEvent {}
+
+export interface SSEPlanStep {
+  [key: string]: unknown;
+  id?: string;
+  content?: string;
+  title?: string;
+  tool_hint?: string;
+  status?: string;
+  summary?: string;
+}
+
+export interface SSEPlanGeneratedEvent {
+  [key: string]: unknown;
+  turn_id?: string;
+  session_id?: string;
+  plan_id?: string;
+  title?: string;
+  summary?: string;
+  user_visible_summary?: string;
+  total?: number;
+  steps?: SSEPlanStep[];
+  plan?: Record<string, unknown>;
+}
+
+export interface SSEStepStartedEvent extends SSEStepUpdateEvent {}
+
+export interface SSEStepCompleteEvent extends SSEStepUpdateEvent {}
+
+export interface SSEReplanTriggeredEvent {
+  [key: string]: unknown;
+  turn_id?: string;
+  session_id?: string;
+  plan_id?: string;
+  previous_plan_id?: string;
+  reason?: string;
+  title?: string;
+  summary?: string;
+  user_visible_summary?: string;
+  completed_steps?: number;
+}
+
 interface SSEDeltaEvent {
   contentChunk: string;
   turn_id?: string;
@@ -323,6 +376,18 @@ function normalizeApprovalRequiredEvent(payload: unknown): ApprovalRequiredEvent
   return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as unknown as ApprovalRequiredEvent;
 }
 
+function normalizePhaseEvent<T extends Record<string, unknown>>(payload: unknown): T {
+  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as T;
+}
+
+function normalizePlanGeneratedEvent(payload: unknown): SSEPlanGeneratedEvent {
+  return normalizePhaseEvent<SSEPlanGeneratedEvent>(payload);
+}
+
+function normalizeReplanTriggeredEvent(payload: unknown): SSEReplanTriggeredEvent {
+  return normalizePhaseEvent<SSEReplanTriggeredEvent>(payload);
+}
+
 function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
   const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
   if (!errorPayload.code && errorPayload.error_code) {
@@ -372,13 +437,19 @@ export interface AIChatStreamHandlers {
   onBlockClose?: (payload: SSEBlockCloseEvent) => void;
   onTurnState?: (payload: SSETurnStateEvent) => void;
   onTurnDone?: (payload: SSETurnDoneEvent) => void;
+  onPhaseStarted?: (payload: SSEPhaseStartedEvent) => void;
+  onPhaseComplete?: (payload: SSEPhaseCompleteEvent) => void;
   onRewriteResult?: (payload: SSERewriteResultEvent) => void;
+  onPlanGenerated?: (payload: SSEPlanGeneratedEvent) => void;
   onPlannerState?: (payload: SSEPlannerStateEvent) => void;
   onPlanCreated?: (payload: SSEPlanCreatedEvent) => void;
   onStageDelta?: (payload: SSEStageDeltaEvent) => void;
+  onStepStarted?: (payload: SSEStepStartedEvent) => void;
+  onStepComplete?: (payload: SSEStepCompleteEvent) => void;
   onStepUpdate?: (payload: SSEStepUpdateEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
+  onReplanTriggered?: (payload: SSEReplanTriggeredEvent) => void;
   onReplanStarted?: (payload: SSEReplanStartedEvent) => void;
   onSummary?: (payload: SSESummaryEvent) => void;
   onDone?: (payload: SSEDoneEvent) => void;
@@ -660,14 +731,24 @@ export const aiApi = {
         handlers.onTurnState?.(payload as SSETurnStateEvent);
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
+      } else if (eventType === 'phase_started') {
+        handlers.onPhaseStarted?.(normalizePhaseEvent<SSEPhaseStartedEvent>(payload));
+      } else if (eventType === 'phase_complete') {
+        handlers.onPhaseComplete?.(normalizePhaseEvent<SSEPhaseCompleteEvent>(payload));
       } else if (eventType === 'rewrite_result') {
         handlers.onRewriteResult?.(payload as SSERewriteResultEvent);
+      } else if (eventType === 'plan_generated') {
+        handlers.onPlanGenerated?.(normalizePlanGeneratedEvent(payload));
       } else if (eventType === 'planner_state') {
         handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
       } else if (eventType === 'plan_created') {
         handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
       } else if (eventType === 'stage_delta') {
         handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
+      } else if (eventType === 'step_started') {
+        handlers.onStepStarted?.(normalizeStepUpdateEvent(payload));
+      } else if (eventType === 'step_complete') {
+        handlers.onStepComplete?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
@@ -709,6 +790,8 @@ export const aiApi = {
         handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
         toolPending = false;
         clearToolTimer();
+      } else if (eventType === 'replan_triggered') {
+        handlers.onReplanTriggered?.(normalizeReplanTriggeredEvent(payload));
       } else if (eventType === 'replan_started') {
         handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
       } else if (eventType === 'summary') {
@@ -893,8 +976,18 @@ export const aiApi = {
         handlers.onTurnState?.(payload as SSETurnStateEvent);
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
+      } else if (eventType === 'phase_started') {
+        handlers.onPhaseStarted?.(normalizePhaseEvent<SSEPhaseStartedEvent>(payload));
+      } else if (eventType === 'phase_complete') {
+        handlers.onPhaseComplete?.(normalizePhaseEvent<SSEPhaseCompleteEvent>(payload));
+      } else if (eventType === 'plan_generated') {
+        handlers.onPlanGenerated?.(normalizePlanGeneratedEvent(payload));
       } else if (eventType === 'stage_delta') {
         handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
+      } else if (eventType === 'step_started') {
+        handlers.onStepStarted?.(normalizeStepUpdateEvent(payload));
+      } else if (eventType === 'step_complete') {
+        handlers.onStepComplete?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'tool_call') {
@@ -905,6 +998,8 @@ export const aiApi = {
         handlers.onApprovalRequired?.(normalizeApprovalRequiredEvent(payload));
       } else if (eventType === 'thinking_delta') {
         handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
+      } else if (eventType === 'replan_triggered') {
+        handlers.onReplanTriggered?.(normalizeReplanTriggeredEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
         const contentChunk = toContentChunk(payload);
         if (contentChunk) {

@@ -4,6 +4,12 @@
 
 本文档记录 Plan-Execute-Replan 思考过程可视化功能的开发任务。
 
+说明：本任务已按 cleanup 后的 AI 主路径重映射执行，具体落点见
+`docs/refactor/plan-execute-replan-implementation-remap.md`。原文中的
+`useAIChat / ThoughtChain* / ThinkingProcessPanel*` 文件级要求，语义上已
+收口到 `Copilot.tsx -> turnLifecycle.ts -> messageBlocks.ts ->
+AssistantMessageBlocks.tsx`。
+
 **预估总工时**: 11-12 小时
 
 ---
@@ -14,7 +20,7 @@
 
 ### 1.1 事件定义
 
-- [ ] `internal/ai/events/events.go`: 新增事件常量
+- [x] `internal/ai/events/events.go`: 新增事件常量
   - `EventPhaseStarted`
   - `EventPhaseComplete`
   - `EventPlanGenerated`
@@ -25,7 +31,7 @@
 
 ### 1.2 数据结构
 
-- [ ] `internal/ai/runtime/runtime.go`: 新增数据结构
+- [x] `internal/ai/runtime/runtime.go`: 新增数据结构
   - `PlanStep` 结构体
   - `PhaseInfo` 结构体
   - `StepInfo` 结构体
@@ -35,7 +41,7 @@
 
 ### 1.3 SSE 转换器
 
-- [ ] `internal/ai/runtime/sse_converter.go`: 新增转换方法
+- [x] `internal/ai/runtime/sse_converter.go`: 新增转换方法
   - `OnPhaseStarted(phase, title string) StreamEvent`
   - `OnPhaseComplete(phase, status string) StreamEvent`
   - `OnPlanGenerated(planID string, steps []PlanStep) []StreamEvent`
@@ -47,14 +53,14 @@
 
 ### 1.4 阶段检测器
 
-- [ ] `internal/ai/runtime/phase_detector.go`: 新建文件
+- [x] `internal/ai/runtime/phase_detector.go`: 新建文件
   - `PhaseDetector` 结构体
   - `Detect(event *adk.AgentEvent) string` 方法
   - `NextStepID() string` 方法
 
 ### 1.5 计划解析器
 
-- [ ] `internal/ai/runtime/plan_parser.go`: 新建文件
+- [x] `internal/ai/runtime/plan_parser.go`: 新建文件
   - `PlanParser` 结构体
   - `Parse(event *adk.AgentEvent) *ParsedPlan` 方法
   - JSON 格式解析
@@ -62,7 +68,7 @@
 
 ### 1.6 Orchestrator 增强
 
-- [ ] `internal/ai/orchestrator.go`: 修改 streamExecution
+- [x] `internal/ai/orchestrator.go`: 修改 streamExecution
   - 集成 PhaseDetector
   - 集成 PlanParser
   - 发送阶段事件
@@ -71,8 +77,8 @@
 
 ### 1.7 单元测试
 
-- [ ] `internal/ai/runtime/phase_detector_test.go`: 新建测试
-- [ ] `internal/ai/runtime/plan_parser_test.go`: 新建测试
+- [x] `internal/ai/runtime/phase_detector_test.go`: 新建测试
+- [x] `internal/ai/runtime/plan_parser_test.go`: 新建测试
 
 ---
 
@@ -82,33 +88,33 @@
 
 ### 2.1 类型定义
 
-- [ ] `web/src/components/AI/types.ts`: 新增类型
+- [x] `web/src/components/AI/types.ts`: 新增类型
   - `PlanStep` 接口
   - `ToolExecution` 接口
-  - 扩展 `ThoughtStageItem` 添加 `steps`, `executions`, `replanReason` 字段
+  - 以 `ChatTurn` / `TurnBlock` / block payload 承载过程可视化语义
   - `ApprovalRequest` 接口扩展
   - SSE 事件类型: `SSEPhaseStartedEvent`, `SSEPlanGeneratedEvent` 等
 
 ### 2.2 事件处理器
 
-- [ ] `web/src/components/AI/hooks/useAIChat.ts`: 新增处理器
-  - `handlePhaseStarted`
-  - `handlePlanGenerated`
-  - `handleStepStarted`
-  - `handleToolResult`
-  - `handleStepComplete`
-  - `handleReplanTriggered`
+- [x] `web/src/components/AI/Copilot.tsx` + `turnLifecycle.ts`: 新增处理器
+  - `applyPhaseStarted`
+  - `applyPlanGenerated`
+  - `applyStepStarted`
+  - `applyStepComplete`
+  - `applyReplanTriggered`
+  - tool/approval 事件映射到 turn/block 主路径
 
 ### 2.3 辅助函数
 
-- [ ] `web/src/components/AI/hooks/useAIChat.ts`: 新增辅助函数
-  - `mapPhaseToStage(phase: string): ThoughtStageKey`
-  - `upsertMultipleStages(stages, updates): ThoughtStageItem[]`
+- [x] `web/src/components/AI/turnLifecycle.ts` + `messageBlocks.ts`: 新增辅助函数
+  - phase/step/replan 到 block 的 reducer 语义
+  - plan/tool/status block payload 归一化
 
 ### 2.4 SSE API 扩展
 
-- [ ] `web/src/api/modules/ai.ts`: 新增 SSE 事件类型
-- [ ] `web/src/api/modules/ai.ts`: 扩展 `AIChatStreamHandlers` 接口
+- [x] `web/src/api/modules/ai.ts`: 新增 SSE 事件类型
+- [x] `web/src/api/modules/ai.ts`: 扩展 `AIChatStreamHandlers` 接口
 
 ---
 
@@ -118,46 +124,40 @@
 
 ### 3.1 思考过程面板
 
-- [ ] `web/src/components/AI/components/ThinkingProcessPanel.tsx`: 新建组件
-  - Props: `stages`, `isStreaming`, `defaultExpanded`
-  - 使用 Ant Design Collapse
-  - 集成 StageTimeline
+- [x] `web/src/components/AI/components/AssistantMessageBlocks.tsx`: 以 block 面板承载过程可视化
+  - 使用现有 assistant block 渲染主容器
+  - 统一承载 plan/status/tool/approval 展示
 
 ### 3.2 阶段时间线
 
-- [ ] `web/src/components/AI/components/StageTimeline.tsx`: 新建组件
-  - 使用 Ant Design Timeline
-  - 渲染各阶段状态图标
-  - 集成子组件 (PlanStepsList, ToolExecutionTimeline)
+- [x] `web/src/components/AI/components/AssistantMessageBlocks.tsx`: 通过 status/plan/tool block 顺序表达阶段
+  - 渲染各阶段状态图标与元信息
+  - 以现有 block 结构替代独立 timeline 容器
 
 ### 3.3 步骤列表
 
-- [ ] `web/src/components/AI/components/PlanStepsList.tsx`: 新建组件
-  - Props: `steps`, `currentStepIndex`
-  - 渲染步骤状态图标
-  - 显示工具提示标签
+- [x] `web/src/components/AI/components/AssistantMessageBlocks.tsx`: 渲染 plan steps 列表
+  - 展示步骤状态图标
+  - 展示 tool hint / tool descriptor
 
 ### 3.4 工具执行时间线
 
-- [ ] `web/src/components/AI/components/ToolExecutionTimeline.tsx`: 新建组件
-  - Props: `executions`
+- [x] `web/src/components/AI/components/ToolCard.tsx`: 渲染工具执行卡片
   - 显示工具名称、参数、结果
-  - 状态图标指示
+  - 状态图标与摘要展示
 
 ### 3.5 审批弹窗
 
-- [ ] `web/src/components/AI/components/ApprovalModal.tsx`: 新建组件
-  - Props: `visible`, `request`, `onConfirm`, `onCancel`, `loading`
+- [x] `web/src/components/AI/components/ConfirmationPanel.tsx`: 审批确认 UI 已接入现有主路径
   - 风险等级标签
-  - 详情折叠面板
+  - 详情展示
   - 确认/取消按钮
 
 ### 3.6 样式文件
 
-- [ ] `web/src/components/AI/styles/thinking-process.css`: 新建样式
-  - 脉冲动画
-  - 时间线样式
-  - 弹窗样式
+- [x] 过程可视化样式已并入现有 block 组件
+  - status/plan/tool/approval 块样式已增强
+  - 未新增独立 `thinking-process.css`
 
 ---
 
@@ -167,34 +167,34 @@
 
 ### 4.1 组件集成
 
-- [ ] `web/src/components/AI/Copilot.tsx`: 集成新组件
-  - 导入 ThinkingProcessPanel
-  - 导入 ApprovalModal
-  - 修改 AssistantMessage 渲染逻辑
+- [x] `web/src/components/AI/Copilot.tsx`: 集成 turn/block 主路径
+  - 注册新的 phase/plan/step/replan/tool 事件
+  - 修改 AssistantMessage 渲染逻辑，优先展示 turn blocks
 
 ### 4.2 后端集成测试
 
-- [ ] 启动后端服务
-- [ ] 测试 SSE 事件流
-- [ ] 验证事件序列正确
+- [x] 启动后端服务
+- [x] 测试 SSE 事件流
+- [x] 验证事件序列正确
 
 ### 4.3 前端集成测试
 
-- [ ] 启动前端服务
-- [ ] 测试 UI 渲染
-- [ ] 验证步骤状态更新
-- [ ] 验证审批弹窗功能
+- [x] 启动前端服务
+- [x] 测试 UI 渲染
+- [x] 验证步骤状态更新
+- [x] 验证审批弹窗功能
 
 ### 4.4 样式调整
 
-- [ ] 调整响应式布局
-- [ ] 调整颜色和间距
+- [x] 调整响应式布局
+- [x] 调整颜色和间距
 - [ ] 测试暗色主题
 
 ### 4.5 文档更新
 
-- [ ] 更新 README
-- [ ] 更新 API 文档
+- [x] 更新实现重映射文档
+- [x] 更新 README
+- [x] 更新 API 文档
 
 ---
 
@@ -202,11 +202,11 @@
 
 ### 功能验收
 
-- [ ] 前端能正确显示 Planning/Executing/Replanning 阶段
-- [ ] 步骤列表能实时更新状态 (pending → running → completed)
-- [ ] 工具调用参数和结果能正确展示
-- [ ] 审批弹窗能正常工作
-- [ ] 用户批准/拒绝后流程能继续
+- [x] 前端能正确显示 Planning/Executing/Replanning 阶段
+- [x] 步骤列表能实时更新状态 (pending → running → completed)
+- [x] 工具调用参数和结果能正确展示
+- [x] 审批弹窗能正常工作
+- [x] 用户批准/拒绝后流程能继续
 
 ### 性能验收
 
@@ -216,9 +216,9 @@
 
 ### 代码验收
 
-- [ ] 后端新增代码有单元测试
-- [ ] 前端组件有 TypeScript 类型检查
-- [ ] 代码符合项目规范
+- [x] 后端新增代码有单元测试
+- [x] 前端组件有 TypeScript 类型检查
+- [x] 代码符合项目规范
 
 ---
 
@@ -237,10 +237,10 @@
 
 | 阶段 | 开始日期 | 结束日期 | 状态 |
 |------|---------|---------|------|
-| Phase 1: 后端 | - | - | 待开始 |
-| Phase 2: 前端状态 | - | - | 待开始 |
-| Phase 3: UI 组件 | - | - | 待开始 |
-| Phase 4: 集成测试 | - | - | 待开始 |
+| Phase 1: 后端 | 2026-03-14 | 2026-03-14 | 已完成 |
+| Phase 2: 前端状态 | 2026-03-14 | 2026-03-14 | 已完成 |
+| Phase 3: UI 组件 | 2026-03-14 | 2026-03-14 | 已完成 |
+| Phase 4: 集成测试 | 2026-03-14 | - | 进行中 |
 
 ---
 

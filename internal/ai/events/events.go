@@ -21,6 +21,12 @@ const (
 	ApprovalRequired Name = "approval_required" // 需要人工审批
 	TurnStarted      Name = "turn_started"      // 新一轮对话开始
 	TurnState        Name = "turn_state"        // 轮次状态变更（running/completed 等）
+	PhaseStarted     Name = "phase_started"     // 阶段开始
+	PhaseComplete    Name = "phase_complete"    // 阶段完成
+	PlanGenerated    Name = "plan_generated"    // 结构化计划已生成
+	StepStarted      Name = "step_started"      // 结构化步骤开始
+	StepComplete     Name = "step_complete"     // 结构化步骤完成
+	ReplanTriggered  Name = "replan_triggered"  // 触发重新规划
 	Done             Name = "done"              // 本次执行结束
 	Error            Name = "error"             // 执行出错
 

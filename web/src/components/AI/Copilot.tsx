@@ -28,9 +28,20 @@ import type { BubbleListRef } from '@ant-design/x/es/bubble';
 import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Skeleton } from 'antd';
 import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
-import type { ApprovalRequiredEvent, SSEDoneEvent, SSEStageDeltaEvent, SSEStepUpdateEvent } from '../../api/modules/ai';
+import type {
+  ApprovalRequiredEvent,
+  SSEDoneEvent,
+  SSEPhaseCompleteEvent,
+  SSEPhaseStartedEvent,
+  SSEPlanGeneratedEvent,
+  SSEReplanTriggeredEvent,
+  SSEStageDeltaEvent,
+  SSEStepCompleteEvent,
+  SSEStepStartedEvent,
+  SSEStepUpdateEvent,
+} from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage, ConfirmationRequest, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
+import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
 import {
   loadRestoredConversationDetail,
@@ -43,7 +54,27 @@ import { MessageActions } from './components/MessageActions';
 import { ConfirmationPanel } from './components/ConfirmationPanel';
 import { RecommendedActions } from './components/RecommendedActions';
 import { ToolCard } from './components/ToolCard';
-import type { DisplayMode } from './turnLifecycle';
+import AssistantMessageBlocks from './components/AssistantMessageBlocks';
+import { mergeAssistantBlocks, normalizeAssistantMessage, normalizeTurnBlocks } from './messageBlocks';
+import {
+  applyBlockClose,
+  applyBlockDelta,
+  applyBlockOpen,
+  applyBlockReplace,
+  applyPhaseComplete,
+  applyPhaseStarted,
+  applyPlanGenerated,
+  applyReplanTriggered,
+  applyStepComplete,
+  applyStepStarted,
+  applyTurnDone,
+  applyTurnStarted,
+  applyTurnState,
+  createAssistantTurn,
+  getTurnBlocksForDisplay,
+  projectTurnSummary,
+  type DisplayMode,
+} from './turnLifecycle';
 
 const { useToken } = theme;
 
@@ -263,8 +294,11 @@ function resolveThoughtStageTitle(stage: string | undefined): ThoughtStageItem['
   switch (stage) {
     case 'rewrite':
       return '识别目标与约束';
+    case 'planning':
     case 'plan':
       return '整理执行步骤';
+    case 'replanning':
+      return '动态调整计划';
     case 'execute':
       return '工具调用链';
     case 'summary':
@@ -281,6 +315,7 @@ const AssistantMessage: React.FC<{
   confirmation?: ConfirmationRequest;
   recommendations?: EmbeddedRecommendation[];
   thoughtChain?: ThoughtStageItem[];
+  turn?: ChatTurn;
   rawEvidence?: string[];
   isStreaming?: boolean;
   restored?: boolean;
@@ -297,6 +332,7 @@ const AssistantMessage: React.FC<{
   confirmation,
   recommendations,
   thoughtChain,
+  turn,
   rawEvidence,
   isStreaming,
   restored,
@@ -310,6 +346,26 @@ const AssistantMessage: React.FC<{
 }) => {
   const { token } = theme.useToken();
   const isRestoredAssistant = Boolean(restored);
+  const turnBlocks = useMemo(
+    () => normalizeTurnBlocks(getTurnBlocksForDisplay(turn, displayMode, reducedMotion)),
+    [turn, displayMode, reducedMotion],
+  );
+  const fallbackBlocks = useMemo(
+    () => normalizeAssistantMessage({
+      content,
+      thinking,
+      showThinking: !isRestoredAssistant,
+      rawEvidence: displayMode === 'debug' ? rawEvidence : undefined,
+      recommendations,
+      isStreaming,
+    }),
+    [content, thinking, isRestoredAssistant, displayMode, rawEvidence, recommendations, isStreaming],
+  );
+  const assistantBlocks = useMemo(
+    () => mergeAssistantBlocks(turnBlocks, fallbackBlocks),
+    [turnBlocks, fallbackBlocks],
+  );
+  const hasApprovalBlock = assistantBlocks.some((block) => block.type === 'approval');
   const chainItems = useMemo(
     () => (isRestoredAssistant ? [] : visibleThoughtChain(thoughtChain)),
     [isRestoredAssistant, thoughtChain],
@@ -335,10 +391,30 @@ const AssistantMessage: React.FC<{
       onCancel: () => onApprovalDecision(confirmation.details || {}, false),
     };
   }, [confirmation, onApprovalDecision]);
+  const useTurnBlockRendering = Boolean(turn) && assistantBlocks.length > 0;
 
   return (
     <div>
-      {isRestoredAssistant ? (
+      {useTurnBlockRendering ? (
+        <>
+          <AssistantMessageBlocks
+            blocks={assistantBlocks}
+            onRecommendationSelect={onRecommendationSelect}
+            onApprovalDecision={onApprovalDecision}
+          />
+          {effectiveConfirmation && !hasApprovalBlock ? (
+            <ConfirmationPanel confirmation={effectiveConfirmation} />
+          ) : null}
+          {showActions && !isStreaming && content && (
+            <MessageActions
+              content={content}
+              messageId=""
+              isLoading={isLoading}
+              onRegenerate={onRegenerate}
+            />
+          )}
+        </>
+      ) : isRestoredAssistant ? (
         <>
           {content ? (
             <div className="ai-markdown-content">
@@ -800,14 +876,29 @@ export const Copilot: React.FC<CopilotProps> = ({
     const syncMessageFromBuffers = (
       message: ExtendedChatMessage,
       overrides: Partial<ExtendedChatMessage> = {},
-    ): ExtendedChatMessage => ({
-      ...message,
-      ...overrides,
-      content: overrides.content !== undefined ? overrides.content : (message.content || assistantContent),
-      thinking: overrides.thinking !== undefined ? overrides.thinking : (message.thinking || assistantThinking || undefined),
-      recommendations: overrides.recommendations ?? message.recommendations ?? assistantRecommendations,
-      traceId: overrides.traceId ?? assistantTraceId ?? message.traceId,
-    });
+    ): ExtendedChatMessage => {
+      const nextTurn = overrides.turn !== undefined ? overrides.turn : message.turn;
+      const projected = projectTurnSummary(nextTurn);
+      return {
+        ...message,
+        ...overrides,
+        turn: nextTurn,
+        content: overrides.content !== undefined
+          ? overrides.content
+          : (projected.content || message.content || assistantContent),
+        thinking: overrides.thinking !== undefined
+          ? overrides.thinking
+          : (projected.thinking || message.thinking || assistantThinking || undefined),
+        rawEvidence: overrides.rawEvidence !== undefined
+          ? overrides.rawEvidence
+          : (projected.rawEvidence || message.rawEvidence),
+        recommendations: overrides.recommendations
+          ?? projected.recommendations
+          ?? message.recommendations
+          ?? assistantRecommendations,
+        traceId: overrides.traceId ?? assistantTraceId ?? message.traceId,
+      };
+    };
 
     return {
       onMeta: (data: { sessionId?: string; traceId?: string; turn_id?: string }) => {
@@ -818,20 +909,101 @@ export const Copilot: React.FC<CopilotProps> = ({
           assistantTraceId = String(data.traceId);
         }
       },
-      onTurnStarted: () => {},
-      onBlockOpen: () => {},
-      onBlockDelta: () => {},
-      onBlockReplace: () => {},
-      onBlockClose: () => {},
+      onTurnStarted: (data: { turn_id: string; phase?: string; status?: string; role?: string }) => {
+        refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyTurnStarted(message.turn, data, assistantTraceId),
+        }));
+      },
+      onBlockOpen: (data: { turn_id: string; block_id: string; block_type: string; position?: number; status?: string; title?: string; payload?: Record<string, unknown> }) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyBlockOpen(message.turn, data),
+        }));
+      },
+      onBlockDelta: (data: { turn_id: string; block_id: string; block_type?: string; patch?: Record<string, unknown> }) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyBlockDelta(message.turn, data),
+        }));
+      },
+      onBlockReplace: (data: { turn_id: string; block_id: string; block_type?: string; payload?: Record<string, unknown> }) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyBlockReplace(message.turn, data),
+        }));
+      },
+      onBlockClose: (data: { turn_id: string; block_id: string; status?: string }) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyBlockClose(message.turn, data),
+        }));
+      },
       onTurnState: (data: { status?: string; phase?: string }) => {
         refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyTurnState(message.turn, {
+            turn_id: message.turn?.id || assistantId,
+            status: data.status,
+            phase: data.phase,
+          }),
+        }));
       },
-      onTurnDone: () => {},
+      onTurnDone: (data: { turn_id: string; status?: string; phase?: string }) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyTurnDone(message.turn, data),
+        }));
+      },
+      onPhaseStarted: (data: SSEPhaseStartedEvent) => {
+        refreshAnnouncement(data.title || resolveThoughtStageTitle(data.phase));
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyPhaseStarted(message.turn, data),
+        }));
+      },
+      onPhaseComplete: (data: SSEPhaseCompleteEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyPhaseComplete(message.turn, data),
+        }));
+      },
+      onPlanGenerated: (data: SSEPlanGeneratedEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyPlanGenerated(message.turn, data),
+        }));
+      },
       onStageDelta: (data: SSEStageDeltaEvent) => {
         const stageKey = String(data.stage || '').trim() as ThoughtStageItem['key'];
         if (!stageKey) {
           return;
         }
+        patchAssistantMessage(conversationKey, assistantId, (message) => {
+          const stageSummary = String(
+            data.contentChunk
+            || data.content_chunk
+            || data.detail
+            || data.summary
+            || buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>)
+            || '',
+          ).trim();
+          const phase = stageKey === 'plan'
+            ? 'planning'
+            : stageKey === 'execute'
+              ? 'executing'
+              : stageKey === 'summary'
+                ? 'summary'
+                : stageKey;
+          const nextTurn = normalizeThoughtStatus(data.status as string | undefined, 'loading') === 'success'
+            ? applyPhaseComplete(message.turn, {
+                turn_id: message.turn?.id || assistantId,
+                phase,
+                status: String(data.status || 'success'),
+                title: resolveThoughtStageTitle(stageKey),
+                summary: stageSummary,
+              })
+            : applyPhaseStarted(message.turn, {
+                turn_id: message.turn?.id || assistantId,
+                phase,
+                status: String(data.status || 'loading'),
+                title: resolveThoughtStageTitle(stageKey),
+                summary: stageSummary,
+              });
+          return syncMessageFromBuffers(message, { turn: nextTurn });
+        });
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           const currentStage = (message.thoughtChain || []).find((item) => item.key === stageKey);
           const status = normalizeThoughtStatus(data.status as string | undefined, 'loading');
@@ -894,9 +1066,24 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
+      onStepStarted: (data: SSEStepStartedEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyStepStarted(message.turn, data),
+        }));
+      },
+      onStepComplete: (data: SSEStepCompleteEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyStepComplete(message.turn, data),
+        }));
+      },
       onStepUpdate: (data: SSEStepUpdateEvent) => {
         const rawStatus = String(data.status || '').trim();
         const stepData = data as unknown as Record<string, unknown>;
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: rawStatus === 'success' || rawStatus === 'completed' || rawStatus === 'error' || rawStatus === 'failed'
+            ? applyStepComplete(message.turn, data)
+            : applyStepStarted(message.turn, data),
+        }));
         if (rawStatus === 'waiting_approval') {
           patchAssistantMessage(conversationKey, assistantId, (message) => ({
             ...message,
@@ -962,10 +1149,23 @@ export const Copilot: React.FC<CopilotProps> = ({
             }),
           };
         });
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyStepStarted(message.turn, {
+            turn_id: String(data.turn_id || message.turn?.id || assistantId),
+            step_id: typeof data.step_id === 'string' ? data.step_id : undefined,
+            title: typeof data.title === 'string' ? data.title : undefined,
+            tool_name: typeof data.tool_name === 'string' ? data.tool_name : typeof data.tool === 'string' ? data.tool : undefined,
+            tool: typeof data.tool === 'string' ? data.tool : undefined,
+            status: 'running',
+            summary: typeof data.summary === 'string' ? data.summary : undefined,
+            user_visible_summary: typeof data.user_visible_summary === 'string' ? data.user_visible_summary : undefined,
+            params: data.params as Record<string, unknown> | undefined,
+          }),
+        }));
       },
       onToolResult: (data: Record<string, unknown>) => {
+        const result = data.result as Record<string, unknown> | undefined;
         patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const result = data.result as Record<string, unknown> | undefined;
           const status = data.status === 'error' || result?.ok === false ? 'error' : 'success';
           return {
             ...message,
@@ -978,11 +1178,34 @@ export const Copilot: React.FC<CopilotProps> = ({
             }),
           };
         });
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyStepComplete(message.turn, {
+            turn_id: String(data.turn_id || message.turn?.id || assistantId),
+            step_id: typeof data.step_id === 'string' ? data.step_id : undefined,
+            title: typeof data.title === 'string' ? data.title : undefined,
+            tool_name: typeof data.tool_name === 'string' ? data.tool_name : typeof data.tool === 'string' ? data.tool : undefined,
+            tool: typeof data.tool === 'string' ? data.tool : undefined,
+            status: data.status === 'error' || result?.ok === false ? 'error' : 'success',
+            summary: typeof data.summary === 'string' ? data.summary : undefined,
+            user_visible_summary: typeof data.user_visible_summary === 'string' ? data.user_visible_summary : undefined,
+            result,
+            error: typeof data.error === 'string' ? data.error : undefined,
+            params: data.params as Record<string, unknown> | undefined,
+          }),
+        }));
       },
       onDelta: (data: { contentChunk: string }) => {
         assistantContent += data.contentChunk || '';
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           content: assistantContent,
+          turn: applyBlockDelta(message.turn, {
+            turn_id: message.turn?.id || assistantId,
+            block_id: 'text:main',
+            block_type: 'text',
+            patch: {
+              content_chunk: data.contentChunk,
+            },
+          }),
           thoughtChain: finalizeThoughtStage(
             finalizeThoughtStage(
               message.thoughtChain || [],
@@ -999,7 +1222,15 @@ export const Copilot: React.FC<CopilotProps> = ({
         assistantThinking += data.contentChunk || '';
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           thinking: assistantThinking,
-            thoughtChain: upsertThoughtStage(finalizeThoughtStage(
+          turn: applyBlockDelta(message.turn, {
+            turn_id: message.turn?.id || assistantId,
+            block_id: 'thinking:main',
+            block_type: 'thinking',
+            patch: {
+              content_chunk: data.contentChunk,
+            },
+          }),
+          thoughtChain: upsertThoughtStage(finalizeThoughtStage(
             message.thoughtChain || [],
             'execute',
             'success',
@@ -1027,6 +1258,12 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           return syncMessageFromBuffers(message, {
             confirmation,
+            turn: applyBlockReplace(message.turn, {
+              turn_id: String(data.turn_id || message.turn?.id || assistantId),
+              block_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
+              block_type: 'approval',
+              payload: data as unknown as Record<string, unknown>,
+            }),
             thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
               key: 'user_action',
               title: '等待你确认',
@@ -1055,9 +1292,20 @@ export const Copilot: React.FC<CopilotProps> = ({
         }));
         setIsLoading(false);
       },
+      onReplanTriggered: (data: SSEReplanTriggeredEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyReplanTriggered(message.turn, data),
+        }));
+      },
       onSummary: () => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          turn: applyPhaseComplete(message.turn, {
+            turn_id: message.turn?.id || assistantId,
+            phase: 'summary',
+            status: 'success',
+            title: '整理最终结论',
+            summary: '已整理出最终结论与建议',
+          }),
           thoughtChain: finalizeThoughtStage(
             finalizeThoughtStage(
               finalizeThoughtStage(
@@ -1097,6 +1345,13 @@ export const Copilot: React.FC<CopilotProps> = ({
             thinking: assistantThinking || undefined,
             recommendations: assistantRecommendations || message.recommendations,
             traceId: assistantTraceId || message.traceId,
+            turn: message.turn
+              ? applyTurnDone(message.turn, {
+                  turn_id: data.turn_id || message.turn.id,
+                  status: data.stream_state === 'failed' ? 'error' : message.turn.status,
+                  phase: message.turn.phase,
+                })
+              : message.turn,
           }),
           thoughtChain: (message.thoughtChain || []).map((item) => ({
             ...item,
@@ -1125,12 +1380,21 @@ export const Copilot: React.FC<CopilotProps> = ({
             : (message.thoughtChain || []).map((item, index, items) => (
                 index === items.length - 1 ? { ...item, status: 'error' as ThoughtStageStatus, blink: false, content: item.content || errorText } : item
               ));
-          return {
-            ...message,
+          return syncMessageFromBuffers(message, {
             content: message.content || errorText,
+            turn: applyBlockReplace(message.turn, {
+              turn_id: message.turn?.id || assistantId,
+              block_id: `error:${stageKey || 'main'}`,
+              block_type: 'error',
+              payload: {
+                title: stageKey ? resolveThoughtStageTitle(stageKey) : '执行错误',
+                content: errorText,
+                stage: stageKey || undefined,
+              },
+            }),
             thoughtChain: nextThoughtChain,
             confirmation: message.confirmation ? { ...message.confirmation, status: 'failed', errorMessage: errorText } : message.confirmation,
-          };
+          });
         });
         setIsLoading(false);
       },
@@ -1192,6 +1456,7 @@ export const Copilot: React.FC<CopilotProps> = ({
           id: assistantId,
           role: 'assistant',
           content: '',
+          turn: createAssistantTurn(assistantId),
           thoughtChain: [],
           createdAt: new Date().toISOString(),
         },
@@ -1225,6 +1490,15 @@ export const Copilot: React.FC<CopilotProps> = ({
           onConfirm: () => {},
           onCancel: () => {},
         },
+        turn: applyBlockReplace(message.turn, {
+          turn_id: message.turn?.id || assistantId,
+          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_type: 'approval',
+          payload: {
+            ...payload,
+            status: 'submitting',
+          },
+        }),
         thoughtChain: finalizeThoughtStage(message.thoughtChain || [], 'user_action', approved ? 'success' : 'abort', approved ? '已确认，继续执行' : '已取消执行'),
       };
     });
@@ -1241,6 +1515,15 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(activeKey, assistantId, (message) => ({
           ...message,
           confirmation: undefined,
+          turn: applyBlockReplace(message.turn, {
+            turn_id: message.turn?.id || assistantId,
+            block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+            block_type: 'approval',
+            payload: {
+              ...payload,
+              status: 'rejected',
+            },
+          }),
           content: message.content || '已取消该操作。',
         }));
         setIsLoading(false);
@@ -1259,6 +1542,15 @@ export const Copilot: React.FC<CopilotProps> = ({
           onConfirm: () => {},
           onCancel: () => {},
         },
+        turn: applyBlockReplace(message.turn, {
+          turn_id: message.turn?.id || assistantId,
+          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_type: 'approval',
+          payload: {
+            ...payload,
+            status: 'submitting',
+          },
+        }),
       }));
 
       await aiApi.respondApprovalStream(
@@ -1285,6 +1577,16 @@ export const Copilot: React.FC<CopilotProps> = ({
           onConfirm: () => {},
           onCancel: () => {},
         },
+        turn: applyBlockReplace(message.turn, {
+          turn_id: message.turn?.id || assistantId,
+          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_type: 'approval',
+          payload: {
+            ...payload,
+            status: 'failed',
+            error_message: '审批结果提交失败，请重试。',
+          },
+        }),
         thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
           key: 'user_action',
           title: '等待你确认',
@@ -1407,6 +1709,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       confirmation: undefined,
       recommendations: undefined,
       rawEvidence: undefined,
+      turn: createAssistantTurn(message.turn?.id || assistantMsgId),
       thoughtChain: [],
       traceId: undefined,
       restored: false,
@@ -1442,6 +1745,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         confirmation={msg.confirmation}
         recommendations={msg.recommendations}
         thoughtChain={msg.thoughtChain}
+        turn={msg.turn}
         rawEvidence={msg.rawEvidence}
         restored={msg.restored}
         displayMode={displayMode}

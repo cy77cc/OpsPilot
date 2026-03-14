@@ -17,7 +17,9 @@ export function ToolCard({ tool }: ToolCardProps) {
   const hasDetails = tool.params || tool.result;
 
   const statusConfig = getStatusConfig(tool.status, token);
-  const showSubtitle = Boolean((tool.summary || '').trim() || (tool.target || '').trim());
+  const showSubtitle = Boolean((tool.summary || '').trim() || (tool.target || '').trim() || (tool.error || '').trim());
+  const paramsSummary = summarizeObject(tool.params);
+  const resultSummary = summarizeResult(tool.result?.data);
 
   return (
     <div
@@ -56,6 +58,19 @@ export function ToolCard({ tool }: ToolCardProps) {
         {!hasDetails && <span style={{ width: 10 }} />}
         <span style={{ fontSize: 14 }}>🔧</span>
         <span style={{ fontWeight: 500, flex: 1 }}>{formatToolName(tool.name)}</span>
+        <span
+          style={{
+            fontSize: 11,
+            lineHeight: 1,
+            padding: '4px 6px',
+            borderRadius: 999,
+            background: statusConfig.bg,
+            color: statusConfig.color,
+            border: `1px solid ${statusConfig.borderColor}`,
+          }}
+        >
+          {statusConfig.text}
+        </span>
         <span style={{ color: statusConfig.color }}>
           {statusConfig.icon}
         </span>
@@ -88,7 +103,10 @@ export function ToolCard({ tool }: ToolCardProps) {
           }}
         >
           {(tool.summary || '').trim() ? <div>{tool.summary}</div> : null}
+          {!(tool.summary || '').trim() && (tool.error || '').trim() ? <div>{tool.error}</div> : null}
           {(tool.target || '').trim() ? <div>目标: {tool.target}</div> : null}
+          {paramsSummary ? <div>参数摘要: {paramsSummary}</div> : null}
+          {resultSummary ? <div>结果摘要: {resultSummary}</div> : null}
         </div>
       )}
 
@@ -109,6 +127,15 @@ export function ToolCard({ tool }: ToolCardProps) {
               }}>
                 参数:
               </div>
+              {paramsSummary ? (
+                <div style={{
+                  fontSize: 12,
+                  color: token.colorTextSecondary,
+                  marginBottom: 6,
+                }}>
+                  {paramsSummary}
+                </div>
+              ) : null}
               <pre style={{
                 margin: 0,
                 padding: '8px 10px',
@@ -151,6 +178,15 @@ export function ToolCard({ tool }: ToolCardProps) {
                   {tool.result.error}
                 </div>
               )}
+              {resultSummary ? (
+                <div style={{
+                  fontSize: 12,
+                  color: token.colorTextSecondary,
+                  marginBottom: tool.result.data ? 8 : 0,
+                }}>
+                  {resultSummary}
+                </div>
+              ) : null}
               {tool.result.data && (
                 <pre style={{
                   margin: 0,
@@ -186,24 +222,32 @@ function getStatusConfig(status: ToolStatus, token: any) {
         icon: <LoadingOutlined spin />,
         text: '执行中',
         color: token.colorPrimary,
+        bg: token.colorPrimaryBg,
+        borderColor: token.colorPrimaryBorder,
       };
     case 'success':
       return {
         icon: <CheckCircleOutlined />,
         text: '成功',
         color: token.colorSuccess,
+        bg: token.colorSuccessBg,
+        borderColor: token.colorSuccessBorder,
       };
     case 'error':
       return {
         icon: <CloseCircleOutlined />,
         text: '失败',
         color: token.colorError,
+        bg: token.colorErrorBg,
+        borderColor: token.colorErrorBorder,
       };
     default:
       return {
         icon: null,
         text: '',
         color: token.colorText,
+        bg: token.colorBgContainer,
+        borderColor: token.colorBorder,
       };
   }
 }
@@ -222,4 +266,53 @@ function formatToolName(name: string): string {
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+function summarizeObject(value: Record<string, unknown> | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const entries = Object.entries(value).slice(0, 3);
+  if (entries.length === 0) {
+    return null;
+  }
+  const summary = entries.map(([key, entryValue]) => `${key}=${shortValue(entryValue)}`).join(', ');
+  const extra = Object.keys(value).length - entries.length;
+  return extra > 0 ? `${summary}，另 ${extra} 项` : summary;
+}
+
+function summarizeResult(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    return value.length > 96 ? `${value.slice(0, 96)}...` : value;
+  }
+  if (Array.isArray(value)) {
+    return `返回 ${value.length} 项`;
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length > 0 ? `返回字段: ${keys.slice(0, 4).join(', ')}${keys.length > 4 ? '...' : ''}` : '返回对象';
+  }
+  return String(value);
+}
+
+function shortValue(value: unknown): string {
+  if (value == null) {
+    return 'null';
+  }
+  if (typeof value === 'string') {
+    return value.length > 24 ? `${value.slice(0, 24)}...` : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.length}]`;
+  }
+  if (typeof value === 'object') {
+    return '{...}';
+  }
+  return String(value);
 }

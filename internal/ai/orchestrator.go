@@ -12,10 +12,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 
 	"github.com/cy77cc/OpsPilot/internal/ai/agents"
@@ -213,8 +215,17 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			"turn_id":    state.TurnID,
 			"session_id": state.SessionID,
 		}})
+		emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+			Phase:   airuntime.PhaseExecuting,
+			PlanID:  state.PlanID,
+			TurnID:  state.TurnID,
+			Status:  "running",
+			Title:   "执行步骤",
+			Summary: "恢复执行已批准的步骤",
+		}))
 		emit(airuntime.StreamEvent{Type: airuntime.EventTurnState, Data: map[string]any{
 			"turn_id": state.TurnID,
+			"plan_id": state.PlanID,
 			"status":  "running",
 		}})
 	}
@@ -231,6 +242,9 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		}
 		_ = o.executions.Save(ctx, state)
 		if emit != nil {
+			if step := state.Steps[stepID]; step.StepID != "" {
+				emit(o.converter.OnStepComplete(stepEventFromState(state, step, string(airuntime.StepRejected), req.Reason)))
+			}
 			for _, evt := range o.converter.OnApprovalResult(stepID, false, req.Reason) {
 				emit(evt)
 			}
@@ -268,6 +282,9 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		}
 		_ = o.executions.Save(ctx, state)
 		if emit != nil {
+			if step := state.Steps[stepID]; step.StepID != "" {
+				emit(o.converter.OnStepComplete(stepEventFromState(state, step, string(airuntime.StepSucceeded), req.Reason)))
+			}
 			for _, evt := range o.converter.OnApprovalResult(stepID, true, req.Reason) {
 				emit(evt)
 			}
@@ -333,6 +350,12 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}
 
 	var lastText string
+	parser := airuntime.NewPlanParser()
+	detector := airuntime.NewPhaseDetector()
+	planningText := ""
+	planningStarted := false
+	planningCompleted := false
+	executingStarted := false
 	for {
 		event, ok := iter.Next()
 		if !ok {
@@ -345,23 +368,213 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			emit(o.converter.OnError(state.Phase, event.Err))
 			return nil, event.Err
 		}
+		detectedPhase := detector.Detect(event)
+		if detectedPhase == string(airuntime.PhaseReplanning) && state.Phase != string(airuntime.PhaseReplanning) {
+			reason := strings.TrimSpace(eventMessageTextPreview(event))
+			if reason == "" {
+				reason = "执行结果触发重新规划"
+			}
+			emit(o.converter.OnReplanTriggered(airuntime.ReplanEvent{
+				PlanID:  state.PlanID,
+				TurnID:  state.TurnID,
+				Reason:  reason,
+				Summary: "当前执行流已切换到重新规划阶段",
+			}))
+			if state.Phase == string(airuntime.PhaseExecuting) {
+				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
+					Phase:   airuntime.PhaseExecuting,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "success",
+					Title:   "执行步骤",
+					Summary: "执行阶段已暂停，等待重新规划",
+				}))
+			}
+			emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+				Phase:   airuntime.PhaseReplanning,
+				PlanID:  state.PlanID,
+				TurnID:  state.TurnID,
+				Status:  "loading",
+				Title:   "动态调整计划",
+				Summary: reason,
+			}))
+			state.Phase = string(airuntime.PhaseReplanning)
+			planningCompleted = false
+			planningStarted = false
+			planningText = ""
+		}
 		contents, err := eventTextContents(event)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse agent message chunks: %w", err)
+		}
+		if isToolOutputEvent(event) {
+			if !executingStarted {
+				phaseName := airuntime.PhasePlanning
+				title := "整理执行步骤"
+				summary := "规划完成，开始执行步骤"
+				if state.Phase == string(airuntime.PhaseReplanning) {
+					phaseName = airuntime.PhaseReplanning
+					title = "动态调整计划"
+					summary = "重新规划完成，开始执行步骤"
+				}
+				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
+					Phase:   phaseName,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "success",
+					Title:   title,
+					Summary: summary,
+				}))
+				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+					Phase:   airuntime.PhaseExecuting,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "loading",
+					Title:   "执行步骤",
+					Summary: "开始执行计划步骤",
+				}))
+				planningCompleted = true
+				executingStarted = true
+			}
+
+			toolName := strings.TrimSpace(event.Output.MessageOutput.ToolName)
+			toolResult := strings.TrimSpace(strings.Join(contents, ""))
+			stepID, step := claimStepForTool(state, detector, toolName)
+			startingStep := step.Status != airuntime.StepRunning
+			step.Status = airuntime.StepRunning
+			step.ToolName = firstNonEmpty(toolName, step.ToolName)
+			if strings.TrimSpace(step.Title) == "" {
+				step.Title = firstNonEmpty(step.ToolName, step.StepID, "执行步骤")
+			}
+			if strings.TrimSpace(toolResult) != "" {
+				step.UserVisibleSummary = toolResult
+			}
+			state.Steps[stepID] = step
+			if startingStep {
+				emit(o.converter.OnStepStarted(stepEventFromState(*state, step, string(airuntime.StepRunning), "")))
+				emit(airuntime.StreamEvent{Type: airuntime.EventToolCall, Data: compactEventData(map[string]any{
+					"plan_id":   state.PlanID,
+					"turn_id":   state.TurnID,
+					"step_id":   stepID,
+					"title":     step.Title,
+					"tool_name": step.ToolName,
+					"params":    step.ToolArgs,
+					"mode":      step.Mode,
+					"risk":      step.Risk,
+					"summary":   step.UserVisibleSummary,
+				})})
+			}
+			emit(airuntime.StreamEvent{Type: airuntime.EventToolResult, Data: compactEventData(map[string]any{
+				"plan_id":   state.PlanID,
+				"turn_id":   state.TurnID,
+				"step_id":   stepID,
+				"title":     step.Title,
+				"tool_name": step.ToolName,
+				"params":    step.ToolArgs,
+				"summary":   firstNonEmpty(step.UserVisibleSummary, toolResult),
+				"result": map[string]any{
+					"ok":   true,
+					"data": toolResult,
+				},
+			})})
+			step.Status = airuntime.StepSucceeded
+			state.Steps[stepID] = step
+			emit(o.converter.OnStepComplete(stepEventFromState(*state, step, string(airuntime.StepSucceeded), toolResult)))
+			_ = o.executions.Save(ctx, *state)
+			continue
 		}
 		for _, content := range contents {
 			if strings.TrimSpace(content) == "" {
 				continue
 			}
+			if !planningStarted {
+				phaseName := airuntime.PhasePlanning
+				title := "整理执行步骤"
+				summary := "正在分析并整理执行计划"
+				if state.Phase == string(airuntime.PhaseReplanning) {
+					phaseName = airuntime.PhaseReplanning
+					title = "动态调整计划"
+					summary = "正在根据最新结果调整执行计划"
+				}
+				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+					Phase:   phaseName,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "loading",
+					Title:   title,
+					Summary: summary,
+				}))
+				planningStarted = true
+			}
 			// 始终透传每个文本分片，避免因前缀判断丢失用户可见内容。
 			emit(o.converter.OnTextDelta(content))
 			lastText = mergeTextProgress(lastText, content)
+			if !planningCompleted {
+				planningText = mergeTextProgress(planningText, content)
+				if plan, ok := parser.Extract(state.PlanID, state.TurnID, planningText); ok {
+					emit(o.converter.OnPlanGenerated(plan))
+					for i := range plan.Steps {
+						state.Steps[plan.Steps[i].ID] = airuntime.StepState{
+							StepID: plan.Steps[i].ID,
+							Title:  firstNonEmpty(plan.Steps[i].Title, plan.Steps[i].Content),
+							Status: airuntime.StepPending,
+						}
+					}
+					currentPlanningPhase := airuntime.PhasePlanning
+					currentPlanningTitle := "整理执行步骤"
+					currentPlanningSummary := "已提取结构化计划"
+					if state.Phase == string(airuntime.PhaseReplanning) {
+						currentPlanningPhase = airuntime.PhaseReplanning
+						currentPlanningTitle = "动态调整计划"
+						currentPlanningSummary = "已生成调整后的结构化计划"
+					}
+					emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
+						Phase:   currentPlanningPhase,
+						PlanID:  state.PlanID,
+						TurnID:  state.TurnID,
+						Status:  "success",
+						Title:   currentPlanningTitle,
+						Summary: currentPlanningSummary,
+					}))
+					emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+						Phase:   airuntime.PhaseExecuting,
+						PlanID:  state.PlanID,
+						TurnID:  state.TurnID,
+						Status:  "loading",
+						Title:   "执行步骤",
+						Summary: "开始执行计划步骤",
+					}))
+					state.Phase = string(airuntime.PhaseExecuting)
+					planningCompleted = true
+					executingStarted = true
+				}
+			}
 		}
 		if event.Action != nil && event.Action.Interrupted != nil {
 			stepID := interruptStepID(event)
 			pending := o.pendingApprovalFromInterrupt(state, stepID, event)
+			if !executingStarted {
+				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
+					Phase:   airuntime.PhasePlanning,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "success",
+					Title:   "整理执行步骤",
+					Summary: "规划完成，开始执行步骤",
+				}))
+				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+					Phase:   airuntime.PhaseExecuting,
+					PlanID:  state.PlanID,
+					TurnID:  state.TurnID,
+					Status:  "loading",
+					Title:   "执行步骤",
+					Summary: "开始执行计划步骤",
+				}))
+				planningCompleted = true
+				executingStarted = true
+			}
 			state.Status = airuntime.ExecutionStatusWaitingApproval
-			state.Phase = "waiting_approval"
+			state.Phase = string(airuntime.PhaseExecuting)
 			state.InterruptTarget = stepID
 			state.PendingApproval = pending
 			state.Steps[stepID] = airuntime.StepState{
@@ -376,6 +589,30 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			}
 			_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
 			_ = o.executions.Save(ctx, *state)
+			emit(o.converter.OnStepStarted(airuntime.StepEvent{
+				PlanID:  state.PlanID,
+				TurnID:  state.TurnID,
+				StepID:  stepID,
+				Title:   pending.Title,
+				Status:  string(airuntime.StepWaitingApproval),
+				Summary: pending.Summary,
+				Tool: &airuntime.ToolDescriptor{
+					Name: pending.ToolName,
+					Args: pending.Params,
+					Mode: pending.Mode,
+					Risk: pending.Risk,
+				},
+			}))
+			emit(airuntime.StreamEvent{Type: airuntime.EventToolCall, Data: map[string]any{
+				"plan_id":   state.PlanID,
+				"turn_id":   state.TurnID,
+				"step_id":   stepID,
+				"tool_name": pending.ToolName,
+				"params":    pending.Params,
+				"mode":      pending.Mode,
+				"risk":      pending.Risk,
+				"summary":   pending.Summary,
+			}})
 			for _, evt := range o.converter.OnApprovalRequired(state.PendingApproval, state.CheckpointID) {
 				emit(evt)
 			}
@@ -392,8 +629,34 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		}
 	}
 
+	if !executingStarted {
+		phaseName := airuntime.PhasePlanning
+		title := "整理执行步骤"
+		summary := "规划完成"
+		if state.Phase == string(airuntime.PhaseReplanning) {
+			phaseName = airuntime.PhaseReplanning
+			title = "动态调整计划"
+			summary = "重新规划完成"
+		}
+		emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
+			Phase:   phaseName,
+			PlanID:  state.PlanID,
+			TurnID:  state.TurnID,
+			Status:  "success",
+			Title:   title,
+			Summary: summary,
+		}))
+		emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
+			Phase:   airuntime.PhaseExecuting,
+			PlanID:  state.PlanID,
+			TurnID:  state.TurnID,
+			Status:  "loading",
+			Title:   "执行步骤",
+			Summary: "开始执行计划步骤",
+		}))
+	}
 	state.Status = airuntime.ExecutionStatusCompleted
-	state.Phase = "completed"
+	state.Phase = string(airuntime.PhaseExecuting)
 	_ = o.executions.Save(ctx, *state)
 	for _, evt := range o.converter.OnExecuteComplete() {
 		emit(evt)
@@ -408,6 +671,99 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		Status:    string(state.Status),
 		Message:   lastNonEmpty(lastText, "执行完成。"),
 	}, nil
+}
+
+func stepEventFromState(state airuntime.ExecutionState, step airuntime.StepState, status, result string) airuntime.StepEvent {
+	event := airuntime.StepEvent{
+		PlanID:  state.PlanID,
+		TurnID:  state.TurnID,
+		StepID:  step.StepID,
+		Title:   step.Title,
+		Status:  firstNonEmpty(status, string(step.Status)),
+		Expert:  step.Expert,
+		Summary: step.UserVisibleSummary,
+		Result:  strings.TrimSpace(result),
+	}
+	if strings.TrimSpace(step.ToolName) != "" || len(step.ToolArgs) > 0 {
+		event.Tool = &airuntime.ToolDescriptor{
+			Name: step.ToolName,
+			Args: step.ToolArgs,
+			Mode: step.Mode,
+			Risk: step.Risk,
+		}
+	}
+	return event
+}
+
+func claimStepForTool(state *airuntime.ExecutionState, detector *airuntime.PhaseDetector, toolName string) (string, airuntime.StepState) {
+	if state == nil {
+		stepID := detector.NextStepID()
+		return stepID, airuntime.StepState{
+			StepID:   stepID,
+			Title:    firstNonEmpty(toolName, stepID, "执行步骤"),
+			Status:   airuntime.StepPending,
+			ToolName: toolName,
+		}
+	}
+
+	for _, status := range []airuntime.StepStatus{airuntime.StepRunning, airuntime.StepPending, airuntime.StepWaitingApproval} {
+		for _, stepID := range sortedStepIDs(state.Steps) {
+			step := state.Steps[stepID]
+			if step.Status != status {
+				continue
+			}
+			if strings.TrimSpace(toolName) == "" || strings.EqualFold(strings.TrimSpace(step.ToolName), toolName) {
+				return stepID, step
+			}
+		}
+	}
+
+	stepID := detector.NextStepID()
+	return stepID, airuntime.StepState{
+		StepID:   stepID,
+		Title:    firstNonEmpty(toolName, stepID, "执行步骤"),
+		Status:   airuntime.StepPending,
+		ToolName: toolName,
+	}
+}
+
+func sortedStepIDs(steps map[string]airuntime.StepState) []string {
+	if len(steps) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(steps))
+	for stepID := range steps {
+		ids = append(ids, stepID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func isToolOutputEvent(event *adk.AgentEvent) bool {
+	return event != nil &&
+		event.Output != nil &&
+		event.Output.MessageOutput != nil &&
+		event.Output.MessageOutput.Role == schema.Tool
+}
+
+func compactEventData(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		switch v := value.(type) {
+		case nil:
+			continue
+		case string:
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+		case map[string]any:
+			if len(v) == 0 {
+				continue
+			}
+		}
+		out[key] = value
+	}
+	return out
 }
 
 func mergeTextProgress(previous, current string) string {
@@ -463,6 +819,13 @@ func eventTextContents(event *adk.AgentEvent) ([]string, error) {
 		chunks = append(chunks, frame.Content)
 	}
 	return chunks, nil
+}
+
+func eventMessageTextPreview(event *adk.AgentEvent) string {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil || event.Output.MessageOutput.Message == nil {
+		return ""
+	}
+	return event.Output.MessageOutput.Message.Content
 }
 
 func (o *Orchestrator) loadExecution(ctx context.Context, req airuntime.ResumeRequest) (airuntime.ExecutionState, bool, error) {

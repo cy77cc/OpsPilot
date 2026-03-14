@@ -171,6 +171,72 @@ func TestChatStreamsThoughtChainSSEFlow(t *testing.T) {
 	}
 }
 
+func TestChatStreamsNativePlanExecuteReplanEvents(t *testing.T) {
+	suite := testutil.NewIntegrationSuite(t)
+	t.Cleanup(suite.Cleanup)
+
+	handler := &HTTPHandler{
+		svcCtx: &svc.ServiceContext{DB: suite.DB},
+		orchestrator: &fakeRuntime{
+			runFn: func(_ context.Context, _ coreai.RunRequest, emit coreai.StreamEmitter) error {
+				emit(coreai.StreamEvent{Type: "meta", Data: map[string]any{"session_id": "session-native", "plan_id": "plan-42", "turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "phase_started", Data: map[string]any{"phase": "planning", "title": "整理执行步骤", "status": "loading"}})
+				emit(coreai.StreamEvent{Type: "plan_generated", Data: map[string]any{
+					"plan_id": "plan-42",
+					"steps": []map[string]any{
+						{"id": "step-1", "content": "检查集群状态", "tool_hint": "get_cluster_info"},
+					},
+					"total": 1,
+				}})
+				emit(coreai.StreamEvent{Type: "phase_complete", Data: map[string]any{"phase": "planning", "status": "success"}})
+				emit(coreai.StreamEvent{Type: "phase_started", Data: map[string]any{"phase": "executing", "title": "执行步骤", "status": "loading"}})
+				emit(coreai.StreamEvent{Type: "step_started", Data: map[string]any{"step_id": "step-1", "title": "检查集群状态", "tool_name": "get_cluster_info", "status": "running"}})
+				emit(coreai.StreamEvent{Type: "tool_call", Data: map[string]any{"step_id": "step-1", "tool_name": "get_cluster_info", "params": map[string]any{"namespace": "kube-system"}}})
+				emit(coreai.StreamEvent{Type: "tool_result", Data: map[string]any{"step_id": "step-1", "tool_name": "get_cluster_info", "status": "success", "result": map[string]any{"ok": true, "data": "3 pods found"}}})
+				emit(coreai.StreamEvent{Type: "step_complete", Data: map[string]any{"step_id": "step-1", "status": "success", "summary": "集群状态正常"}})
+				emit(coreai.StreamEvent{Type: "replan_triggered", Data: map[string]any{"reason": "发现后续需要重新规划"}})
+				emit(coreai.StreamEvent{Type: "done", Data: map[string]any{"status": "completed"}})
+				return nil
+			},
+			resumeFn: func(context.Context, coreai.ResumeRequest) (*coreai.ResumeResult, error) { return nil, nil },
+			resumeStreamFn: func(context.Context, coreai.ResumeRequest, coreai.StreamEmitter) (*coreai.ResumeResult, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/v1/ai/chat", bytes.NewBufferString(`{"message":"检查集群状态","context":{"scene":"global"}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("uid", uint64(1))
+
+	handler.Chat(c)
+
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, body)
+	}
+	for _, fragment := range []string{
+		"event: meta",
+		"event: phase_started",
+		"\"phase\":\"planning\"",
+		"event: plan_generated",
+		"\"tool_hint\":\"get_cluster_info\"",
+		"event: phase_complete",
+		"event: step_started",
+		"event: tool_call",
+		"event: tool_result",
+		"event: step_complete",
+		"event: replan_triggered",
+		"event: done",
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("stream body missing %q: %s", fragment, body)
+		}
+	}
+}
+
 func TestResumeStepStreamPassesCheckpointIdentityToRuntime(t *testing.T) {
 	suite := testutil.NewIntegrationSuite(t)
 	t.Cleanup(suite.Cleanup)
@@ -179,7 +245,7 @@ func TestResumeStepStreamPassesCheckpointIdentityToRuntime(t *testing.T) {
 	handler := &HTTPHandler{
 		svcCtx: &svc.ServiceContext{DB: suite.DB},
 		orchestrator: &fakeRuntime{
-			runFn: func(context.Context, coreai.RunRequest, coreai.StreamEmitter) error { return nil },
+			runFn:    func(context.Context, coreai.RunRequest, coreai.StreamEmitter) error { return nil },
 			resumeFn: func(context.Context, coreai.ResumeRequest) (*coreai.ResumeResult, error) { return nil, nil },
 			resumeStreamFn: func(_ context.Context, req coreai.ResumeRequest, emit coreai.StreamEmitter) (*coreai.ResumeResult, error) {
 				captured = req
@@ -223,6 +289,58 @@ func TestResumeStepStreamPassesCheckpointIdentityToRuntime(t *testing.T) {
 		"event: stage_delta",
 		"event: step_update",
 		"\"checkpoint_id\":\"cp-1\"",
+		"event: done",
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("stream body missing %q: %s", fragment, body)
+		}
+	}
+}
+
+func TestResumeStepStreamEmitsNativeExecutionEvents(t *testing.T) {
+	suite := testutil.NewIntegrationSuite(t)
+	t.Cleanup(suite.Cleanup)
+
+	handler := &HTTPHandler{
+		svcCtx: &svc.ServiceContext{DB: suite.DB},
+		orchestrator: &fakeRuntime{
+			runFn:    func(context.Context, coreai.RunRequest, coreai.StreamEmitter) error { return nil },
+			resumeFn: func(context.Context, coreai.ResumeRequest) (*coreai.ResumeResult, error) { return nil, nil },
+			resumeStreamFn: func(_ context.Context, req coreai.ResumeRequest, emit coreai.StreamEmitter) (*coreai.ResumeResult, error) {
+				emit(coreai.StreamEvent{Type: "meta", Data: map[string]any{"session_id": req.SessionID, "plan_id": req.PlanID, "turn_id": "turn-resume"}})
+				emit(coreai.StreamEvent{Type: "phase_started", Data: map[string]any{"phase": "executing", "title": "执行步骤", "status": "running"}})
+				emit(coreai.StreamEvent{Type: "step_complete", Data: map[string]any{"step_id": req.StepID, "status": "success", "summary": "审批后的步骤已完成"}})
+				emit(coreai.StreamEvent{Type: "done", Data: map[string]any{"status": "completed"}})
+				return &coreai.ResumeResult{
+					Resumed:   true,
+					SessionID: req.SessionID,
+					PlanID:    req.PlanID,
+					StepID:    req.StepID,
+					Status:    "completed",
+				}, nil
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(
+		"POST",
+		"/api/v1/ai/resume/step/stream",
+		bytes.NewBufferString(`{"session_id":"sess-1","plan_id":"plan-1","step_id":"step-1","checkpoint_id":"cp-1","approved":true}`),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("uid", uint64(1))
+
+	handler.ResumeStepStream(c)
+
+	body := w.Body.String()
+	for _, fragment := range []string{
+		"event: meta",
+		"event: phase_started",
+		"\"phase\":\"executing\"",
+		"event: step_complete",
+		"审批后的步骤已完成",
 		"event: done",
 	} {
 		if !strings.Contains(body, fragment) {

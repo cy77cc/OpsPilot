@@ -28,6 +28,13 @@ vi.mock('@ant-design/x', () => ({
   Prompts: () => null,
   Sender: () => null,
   Welcome: () => null,
+  Think: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) => (
+    <div>
+      {title ? <div>{title}</div> : null}
+      <div>{children}</div>
+    </div>
+  ),
+  CodeHighlighter: ({ children }: { children?: React.ReactNode }) => <pre>{children}</pre>,
   ThoughtChain: ({
     items,
     defaultExpandedKeys = [],
@@ -231,7 +238,7 @@ describe('Copilot', () => {
     expect(bubbleItems[1]).toHaveAttribute('data-role', 'assistant');
   });
 
-  it('renders ThoughtChain stage details and checkpoint-based approval confirmation during regenerate', async () => {
+  it('renders plan, tool, and approval blocks during regenerate on the turn/block path', async () => {
     restoredConversation = {
       conversations: [{ id: 'sess-stream', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:01Z' }],
       activeConversation: {
@@ -290,7 +297,6 @@ describe('Copilot', () => {
     });
 
     expect(await screen.findByText('整理执行步骤')).toBeInTheDocument();
-    expect(screen.getByText('当前步骤: 扩容 nginx')).toBeInTheDocument();
     expect(screen.getByText('扩容 nginx 需要确认')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '扩容 nginx 需要确认，确认执行' })).toBeInTheDocument();
   });

@@ -175,6 +175,24 @@ Related docs:
 - 前端优先用 turn/block 事件驱动状态、工具、审批、证据和最终回答渲染，并保留 legacy message 兼容路径
 - 审批恢复会继续写入原 assistant turn，历史会话回放也会优先读取结构化 `turns` 合同
 
+当前已接入 `plan-execute-replan-visualization` 主流程，可视化语义包括：
+
+- `phase_started / phase_complete`：显示 `planning / executing / replanning` 阶段切换
+- `plan_generated`：显示结构化步骤列表
+- `step_started / step_complete`：显示步骤状态推进
+- `tool_call / tool_result`：显示工具参数与执行结果
+- `approval_required`：显示审批确认卡片
+
+实现主路径：
+
+- 后端：`internal/ai/orchestrator.go` -> `internal/ai/runtime/*`
+- 前端：`web/src/components/AI/Copilot.tsx` -> `turnLifecycle.ts` -> `messageBlocks.ts` -> `AssistantMessageBlocks.tsx`
+
+更多实现映射见：
+
+- `docs/refactor/plan-execute-replan-implementation-remap.md`
+- `docs/ai-api.md`
+
 ### AIV2 单 Agent Runtime
 
 AI 网关默认启用 `internal/aiv2`，也可以通过 `feature_flags.ai_assistant_v2` 显式切换：

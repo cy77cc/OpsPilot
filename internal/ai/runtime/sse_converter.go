@@ -14,12 +14,100 @@ func NewSSEConverter() *SSEConverter {
 func (c *SSEConverter) OnPlannerStart(sessionID, planID, turnID string) []StreamEvent {
 	return []StreamEvent{
 		{Type: EventTurnStarted, Data: map[string]any{"turn_id": turnID, "session_id": sessionID}},
+		c.OnPhaseStarted(PhaseEvent{
+			Phase:  PhasePlanning,
+			PlanID: planID,
+			TurnID: turnID,
+			Status: "loading",
+			Title:  "整理执行步骤",
+		}),
 		{Type: EventTurnState, Data: map[string]any{
 			"turn_id": turnID,
 			"plan_id": planID,
 			"status":  "running",
 		}},
 	}
+}
+
+func (c *SSEConverter) OnPhaseStarted(payload PhaseEvent) StreamEvent {
+	return StreamEvent{Type: EventPhaseStarted, Data: compactMap(map[string]any{
+		"phase":    string(payload.Phase),
+		"plan_id":  payload.PlanID,
+		"turn_id":  payload.TurnID,
+		"status":   payload.Status,
+		"title":    payload.Title,
+		"summary":  payload.Summary,
+		"reason":   payload.Reason,
+		"message":  payload.Message,
+		"metadata": payload.Metadata,
+	})}
+}
+
+func (c *SSEConverter) OnPhaseComplete(payload PhaseEvent) StreamEvent {
+	return StreamEvent{Type: EventPhaseComplete, Data: compactMap(map[string]any{
+		"phase":    string(payload.Phase),
+		"plan_id":  payload.PlanID,
+		"turn_id":  payload.TurnID,
+		"status":   payload.Status,
+		"title":    payload.Title,
+		"summary":  payload.Summary,
+		"reason":   payload.Reason,
+		"message":  payload.Message,
+		"metadata": payload.Metadata,
+	})}
+}
+
+func (c *SSEConverter) OnPlanGenerated(payload PlanEvent) StreamEvent {
+	steps := make([]map[string]any, 0, len(payload.Steps))
+	for _, step := range payload.Steps {
+		stepData := compactMap(map[string]any{
+			"id":        step.ID,
+			"title":     step.Title,
+			"content":   step.Content,
+			"status":    step.Status,
+			"tool_hint": step.ToolHint,
+			"metadata":  step.Metadata,
+		})
+		if step.Tool != nil {
+			stepData["tool"] = compactMap(map[string]any{
+				"name":         step.Tool.Name,
+				"display_name": step.Tool.DisplayName,
+				"args":         step.Tool.Args,
+				"mode":         step.Tool.Mode,
+				"risk":         step.Tool.Risk,
+			})
+		}
+		steps = append(steps, stepData)
+	}
+	return StreamEvent{Type: EventPlanGenerated, Data: compactMap(map[string]any{
+		"plan_id":  payload.PlanID,
+		"turn_id":  payload.TurnID,
+		"source":   payload.Source,
+		"summary":  payload.Summary,
+		"raw":      payload.Raw,
+		"steps":    steps,
+		"total":    len(steps),
+		"metadata": payload.Metadata,
+	})}
+}
+
+func (c *SSEConverter) OnStepStarted(payload StepEvent) StreamEvent {
+	return StreamEvent{Type: EventStepStarted, Data: stepEventData(payload)}
+}
+
+func (c *SSEConverter) OnStepComplete(payload StepEvent) StreamEvent {
+	return StreamEvent{Type: EventStepComplete, Data: stepEventData(payload)}
+}
+
+func (c *SSEConverter) OnReplanTriggered(payload ReplanEvent) StreamEvent {
+	return StreamEvent{Type: EventReplanTriggered, Data: compactMap(map[string]any{
+		"plan_id":          payload.PlanID,
+		"turn_id":          payload.TurnID,
+		"previous_plan_id": payload.PreviousPlanID,
+		"reason":           payload.Reason,
+		"summary":          payload.Summary,
+		"metadata":         payload.Metadata,
+	})}
 }
 
 func (c *SSEConverter) OnApprovalRequired(pending *PendingApproval, checkpointID string) []StreamEvent {
@@ -73,6 +161,11 @@ func (c *SSEConverter) OnTextDelta(chunk string) StreamEvent {
 
 func (c *SSEConverter) OnExecuteComplete() []StreamEvent {
 	return []StreamEvent{
+		c.OnPhaseComplete(PhaseEvent{
+			Phase:  PhaseExecuting,
+			Status: "success",
+			Title:  "执行步骤",
+		}),
 		{Type: EventTurnState, Data: map[string]any{"status": "completed"}},
 	}
 }
@@ -87,4 +180,56 @@ func (c *SSEConverter) OnError(stage string, err error) StreamEvent {
 		message = err.Error()
 	}
 	return StreamEvent{Type: EventError, Data: map[string]any{"phase": stage, "message": message}}
+}
+
+func stepEventData(payload StepEvent) map[string]any {
+	data := compactMap(map[string]any{
+		"plan_id":  payload.PlanID,
+		"turn_id":  payload.TurnID,
+		"step_id":  payload.StepID,
+		"title":    payload.Title,
+		"content":  payload.Content,
+		"status":   payload.Status,
+		"expert":   payload.Expert,
+		"summary":  payload.Summary,
+		"result":   payload.Result,
+		"error":    payload.Error,
+		"metadata": payload.Metadata,
+	})
+	if payload.Tool != nil {
+		data["tool_name"] = payload.Tool.Name
+		data["params"] = payload.Tool.Args
+		data["tool"] = compactMap(map[string]any{
+			"name":         payload.Tool.Name,
+			"display_name": payload.Tool.DisplayName,
+			"args":         payload.Tool.Args,
+			"mode":         payload.Tool.Mode,
+			"risk":         payload.Tool.Risk,
+		})
+	}
+	return data
+}
+
+func compactMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		switch v := value.(type) {
+		case nil:
+			continue
+		case string:
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+		case map[string]any:
+			if len(v) == 0 {
+				continue
+			}
+		case []map[string]any:
+			if len(v) == 0 {
+				continue
+			}
+		}
+		out[key] = value
+	}
+	return out
 }

@@ -5,7 +5,7 @@
 // 消息角色
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type ChatTurnStatus = 'streaming' | 'waiting_user' | 'completed' | 'error';
-export type ChatTurnPhase = 'rewrite' | 'plan' | 'execute' | 'summary' | 'done' | 'user_message' | 'streaming';
+export type ChatTurnPhase = 'rewrite' | 'plan' | 'planning' | 'execute' | 'replanning' | 'summary' | 'done' | 'user_message' | 'streaming';
 
 // 工具执行状态
 export type ToolStatus = 'running' | 'success' | 'error';
@@ -77,6 +77,15 @@ export interface EmbeddedRecommendation {
   followup_prompt?: string;
   reasoning?: string;
   relevance: number;
+}
+
+export interface PlanStep {
+  id?: string;
+  content?: string;
+  title?: string;
+  tool_hint?: string;
+  status?: string;
+  summary?: string;
 }
 
 // === Turn/block 主模型 ===
@@ -164,7 +173,12 @@ export type SSEEventType =
   | 'rewrite_result'
   | 'planner_state'
   | 'plan_created'
+  | 'phase_started'
+  | 'phase_complete'
+  | 'plan_generated'
   | 'stage_delta'
+  | 'step_started'
+  | 'step_complete'
   | 'step_update'
   | 'delta'
   | 'message'
@@ -173,6 +187,7 @@ export type SSEEventType =
   | 'tool_result'
   | 'approval_required'
   | 'clarify_required'
+  | 'replan_triggered'
   | 'replan_started'
   | 'summary'
   | 'done'

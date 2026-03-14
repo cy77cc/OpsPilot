@@ -166,30 +166,115 @@ const RawEvidenceMessageBlock: React.FC<{ block: RawEvidenceBlock }> = ({ block 
   </BlockErrorBoundary>
 );
 
-const StatusMessageBlock: React.FC<{ block: StatusBlock }> = ({ block }) => (
-  <BlockErrorBoundary fallback={<pre>{block.content}</pre>}>
-    <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(0,0,0,0.03)' }}>
-      {block.title && <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>{block.title}</div>}
-      <div style={{ fontSize: 13, lineHeight: 1.5 }}>{block.content}</div>
-    </div>
-  </BlockErrorBoundary>
-);
+const StatusMessageBlock: React.FC<{ block: StatusBlock }> = ({ block }) => {
+  const { token } = theme.useToken();
+  const statusTone = getBlockStatusTone(block.status, token);
+  const metaItems = buildStatusMeta(block.payload);
 
-const PlanMessageBlock: React.FC<{ block: PlanBlock }> = ({ block }) => (
-  <BlockErrorBoundary fallback={<pre>{block.content || JSON.stringify(block.payload, null, 2)}</pre>}>
-    <details style={{ marginBottom: 12 }}>
-      <summary>{block.title || '执行计划'}</summary>
-      <div style={{ marginTop: 8 }}>
-        {block.content ? <MarkdownBlock content={block.content} /> : null}
-        {block.payload ? (
-          <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-            {JSON.stringify(block.payload, null, 2)}
-          </pre>
+  return (
+    <BlockErrorBoundary fallback={<pre>{block.content}</pre>}>
+      <div
+        style={{
+          marginBottom: 12,
+          padding: '10px 12px',
+          borderRadius: 12,
+          background: statusTone.bg,
+          border: `1px solid ${statusTone.border}`,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+          {block.title ? <div style={{ fontSize: 12, fontWeight: 600, color: statusTone.text }}>{block.title}</div> : null}
+          {block.status ? (
+            <span style={{
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: token.colorBgContainer,
+              color: statusTone.text,
+              border: `1px solid ${statusTone.border}`,
+            }}
+            >
+              {formatBlockStatus(block.status)}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.6 }}>{block.content}</div>
+        {metaItems.length > 0 ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {metaItems.map((item) => (
+              <span
+                key={`${item.label}:${item.value}`}
+                style={{
+                  fontSize: 11,
+                  color: token.colorTextSecondary,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                }}
+              >
+                {item.label}: {item.value}
+              </span>
+            ))}
+          </div>
         ) : null}
       </div>
-    </details>
-  </BlockErrorBoundary>
-);
+    </BlockErrorBoundary>
+  );
+};
+
+const PlanMessageBlock: React.FC<{ block: PlanBlock }> = ({ block }) => {
+  const { token } = theme.useToken();
+
+  return (
+    <BlockErrorBoundary fallback={<pre>{block.content || JSON.stringify(block.payload, null, 2)}</pre>}>
+      <details style={{ marginBottom: 12 }}>
+        <summary>{block.title || '执行计划'}</summary>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: block.content ? 8 : 0 }}>
+            {typeof block.total === 'number' ? (
+              <span style={metaChipStyle(token)}>共 {block.total} 步</span>
+            ) : null}
+            {block.steps && block.steps.length > 0 ? (
+              <span style={metaChipStyle(token)}>已接收 {block.steps.length} 个计划步骤</span>
+            ) : null}
+          </div>
+          {block.content ? <MarkdownBlock content={block.content} /> : null}
+          {block.steps && block.steps.length > 0 ? (
+            <ol style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              {block.steps.map((step, index) => (
+                <li key={step.id || `${block.id}:${index}`} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 500 }}>
+                      {step.content || step.title || `步骤 ${index + 1}`}
+                    </div>
+                    {step.status ? <span style={metaChipStyle(token)}>{formatBlockStatus(step.status)}</span> : null}
+                    {step.id ? <span style={metaChipStyle(token)}>ID {step.id}</span> : null}
+                  </div>
+                  {step.tool_hint ? (
+                    <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
+                      工具提示: <code>{step.tool_hint}</code>
+                    </div>
+                  ) : null}
+                  {step.summary ? (
+                    <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
+                      {step.summary}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {block.payload && !block.content && (!block.steps || block.steps.length === 0) ? (
+            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+              {JSON.stringify(block.payload, null, 2)}
+            </pre>
+          ) : null}
+        </div>
+      </details>
+    </BlockErrorBoundary>
+  );
+};
 
 const ToolMessageBlock: React.FC<{ block: ToolExecutionBlock }> = ({ block }) => {
   const payload = block.payload || {};
@@ -198,11 +283,21 @@ const ToolMessageBlock: React.FC<{ block: ToolExecutionBlock }> = ({ block }) =>
     id: block.id,
     name: String(payload.tool_name || payload.tool || block.title || 'tool'),
     status: block.status === 'error' ? 'error' : block.status === 'success' ? 'success' : 'running',
-    summary: typeof payload.summary === 'string' ? String(payload.summary) : undefined,
+    summary: typeof payload.user_visible_summary === 'string'
+      ? String(payload.user_visible_summary)
+      : typeof payload.summary === 'string'
+        ? String(payload.summary)
+        : typeof payload.title === 'string'
+          ? String(payload.title)
+          : undefined,
     target: typeof payload.target === 'string'
       ? String(payload.target)
-      : typeof payload.host_id === 'string' || typeof payload.host_id === 'number'
-        ? `host_id=${String(payload.host_id)}`
+      : typeof payload.step_id === 'string'
+        ? `step_id=${String(payload.step_id)}`
+        : typeof payload.plan_id === 'string'
+          ? `plan_id=${String(payload.plan_id)}`
+        : typeof payload.host_id === 'string' || typeof payload.host_id === 'number'
+          ? `host_id=${String(payload.host_id)}`
         : undefined,
     params: (payload.params as Record<string, unknown>) || undefined,
     result: typeof resultPayload === 'object' && resultPayload ? {
@@ -320,3 +415,76 @@ export function AssistantMessageBlocks({
 }
 
 export default AssistantMessageBlocks;
+
+function getBlockStatusTone(status: string | undefined, token: any) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized.includes('error') || normalized.includes('failed')) {
+    return {
+      bg: token.colorErrorBg,
+      border: token.colorErrorBorder,
+      text: token.colorError,
+    };
+  }
+  if (normalized.includes('success') || normalized.includes('completed')) {
+    return {
+      bg: token.colorSuccessBg,
+      border: token.colorSuccessBorder,
+      text: token.colorSuccess,
+    };
+  }
+  return {
+    bg: token.colorPrimaryBg,
+    border: token.colorPrimaryBorder,
+    text: token.colorPrimary,
+  };
+}
+
+function buildStatusMeta(payload: Record<string, unknown> | undefined): Array<{ label: string; value: string }> {
+  if (!payload) {
+    return [];
+  }
+  const items: Array<{ label: string; value: string }> = [];
+  if (typeof payload.phase === 'string') {
+    items.push({ label: '阶段', value: payload.phase });
+  }
+  if (typeof payload.plan_id === 'string') {
+    items.push({ label: '计划', value: payload.plan_id });
+  }
+  if (typeof payload.previous_plan_id === 'string') {
+    items.push({ label: '原计划', value: payload.previous_plan_id });
+  }
+  if (typeof payload.completed_steps === 'number') {
+    items.push({ label: '已完成', value: `${payload.completed_steps} 步` });
+  }
+  return items.slice(0, 4);
+}
+
+function formatBlockStatus(status: string): string {
+  switch (status) {
+    case 'running':
+    case 'loading':
+    case 'streaming':
+      return '进行中';
+    case 'success':
+    case 'completed':
+      return '已完成';
+    case 'error':
+    case 'failed':
+      return '失败';
+    case 'waiting_approval':
+      return '待确认';
+    default:
+      return status;
+  }
+}
+
+function metaChipStyle(token: any): React.CSSProperties {
+  return {
+    fontSize: 11,
+    color: token.colorTextSecondary,
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: token.colorBgContainer,
+    border: `1px solid ${token.colorBorderSecondary}`,
+  };
+}

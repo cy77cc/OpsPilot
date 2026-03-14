@@ -136,29 +136,30 @@ export async function loadRestoredConversationDetail(id: string, scene: string):
 
 function toRestoredConversation(session: AISession): RestoredConversation {
   if (session.turns && session.turns.length > 0) {
+    const replayMessages = normalizeReplayTurns(session.turns).map((turn) => {
+      const hydratedTurn = turnFromReplay(turn);
+      const summary = projectTurnSummary(hydratedTurn);
+      const fallbackContent = turn.role === 'assistant'
+        ? resolveReplayAssistantContent(turn, summary.content)
+        : resolveUserTurnContent(turn, summary.content);
+      return {
+        id: turn.id,
+        role: turn.role,
+        content: fallbackContent,
+        thinking: turn.role === 'assistant' ? summary.thinking : undefined,
+        traceId: hydratedTurn.traceId,
+        recommendations: turn.role === 'assistant' ? summary.recommendations : undefined,
+        rawEvidence: turn.role === 'assistant' ? summary.rawEvidence : undefined,
+        status: hydratedTurn.status,
+        turn: hydratedTurn,
+        restored: true,
+        createdAt: turn.createdAt,
+      };
+    });
     return {
       id: session.id,
       title: session.title || 'AI Session',
-      messages: normalizeReplayTurns(session.turns).map((turn) => {
-        const hydratedTurn = turnFromReplay(turn);
-        const summary = projectTurnSummary(hydratedTurn);
-        const fallbackContent = turn.role === 'assistant'
-          ? resolveReplayAssistantContent(turn, summary.content)
-          : resolveUserTurnContent(turn, summary.content);
-        return {
-          id: turn.id,
-          role: turn.role,
-          content: fallbackContent,
-          thinking: turn.role === 'assistant' ? summary.thinking : undefined,
-          traceId: hydratedTurn.traceId,
-          recommendations: turn.role === 'assistant' ? summary.recommendations : undefined,
-          rawEvidence: turn.role === 'assistant' ? summary.rawEvidence : undefined,
-          status: hydratedTurn.status,
-          turn: hydratedTurn,
-          restored: true,
-          createdAt: turn.createdAt,
-        };
-      }),
+      messages: mergeReplayMessages(session.messages || [], replayMessages),
     };
   }
 
@@ -184,6 +185,43 @@ function toRestoredConversation(session: AISession): RestoredConversation {
       };
     }),
   };
+}
+
+function mergeReplayMessages(
+  legacyMessages: AISession['messages'],
+  replayMessages: RestoredConversation['messages'],
+): RestoredConversation['messages'] {
+  const replayHasUserTurn = replayMessages.some((message) => message.role === 'user');
+  const legacyUserMessages = replayHasUserTurn
+    ? []
+    : normalizeLegacyMessages(legacyMessages).filter((message) => message.role === 'user').map((message) => ({
+        id: String(message.id || ''),
+        role: 'user' as const,
+        content: String(message.content || ''),
+        status: typeof message.status === 'string' ? message.status : undefined,
+        turn: undefined,
+        restored: true,
+        createdAt: String(message.timestamp || ''),
+      }));
+
+  return [...legacyUserMessages, ...replayMessages].sort((a, b) => {
+    const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+    const aParent = a.turn?.parentTurnId;
+    const bParent = b.turn?.parentTurnId;
+    if (a.id === bParent) {
+      return -1;
+    }
+    if (b.id === aParent) {
+      return 1;
+    }
+    if (a.role !== b.role) {
+      return a.role === 'user' ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
 }
 
 function normalizeConversationSummaries(sessions: AISession[]): RestoredConversationSummary[] {

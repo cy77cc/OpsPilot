@@ -2,33 +2,31 @@
 
 ## Overview
 
-The AI assistant now uses the agentic multi-expert orchestration path:
+AI streaming now uses a `plan -> execute -> replan` transport built on top of the current turn/block runtime.
 
 ```text
 /api/v1/ai/chat
-  -> internal/service/ai transport shell
+  -> internal/service/ai HTTPHandler
   -> internal/ai Orchestrator
-  -> Rewrite
-  -> Planner
-  -> Executor Runtime
-  -> Experts as Tools
-  -> Summarizer
+  -> internal/ai/runtime SSEConverter
+  -> SSE events
+  -> web/src/components/AI/Copilot.tsx
+  -> turnLifecycle.ts
+  -> messageBlocks.ts / AssistantMessageBlocks.tsx
 ```
 
-The transport contract is:
+The backend still emits some legacy compatibility events, but the current primary visualization path is:
 
-- `delta`: final assistant body stream
-- `summary`: structured conclusion
-- `stage_delta`: ThoughtChain stage stream
-- `approval` / `clarify`: user action gates
-- `error`: explicit stage failure signal with `error_code` and `stage`
-- `heartbeat`: keep-alive for long-running streams
+- lifecycle: `meta`, `turn_started`, `turn_state`, `turn_done`, `done`, `error`
+- plan/execute/replan: `phase_started`, `phase_complete`, `plan_generated`, `step_started`, `step_complete`, `replan_triggered`
+- content/detail: `delta`, `tool_call`, `tool_result`, `approval_required`
 
 Response headers:
 
 - `X-AI-Runtime-Mode`: `model_first | compatibility | disabled`
 - `X-AI-Compatibility-Enabled`: `true | false`
 - `X-AI-Model-First-Enabled`: `true | false`
+- `X-AI-Turn-Block-Streaming-Enabled`: `true | false`
 
 ## Chat
 
@@ -41,7 +39,7 @@ Request:
 ```json
 {
   "sessionId": "optional-session-id",
-  "message": "查看 local 集群 kube-system 空间下的 cilium pod 日志",
+  "message": "查看 kube-system 中 cilium pod 状态",
   "context": {
     "scene": "deployment:k8s"
   }
@@ -51,140 +49,186 @@ Request:
 Response:
 
 - `Content-Type: text/event-stream`
-- high-level events only
+- event stream may contain both native runtime events and compatibility events
 
-Primary SSE events:
-
-- `meta`
-- `rewrite_result`
-- `planner_state`
-- `plan_created`
-- `stage_delta`
-- `step_update`
-- `tool_call`
-- `tool_result`
-- `approval_required`
-- `clarify_required`
-- `replan_started`
-- `summary`
-- `delta`
-- `done`
-- `error`
-
-Example event order:
+Recommended native event order:
 
 ```text
 meta
-rewrite_result
-planner_state
-plan_created
-step_update
-tool_call
-tool_result
-summary
+turn_started
+phase_started(planning)
 delta*
+plan_generated?
+phase_complete(planning)
+phase_started(executing)
+step_started*
+tool_call*
+tool_result*
+step_complete*
+replan_triggered?
+phase_started(replanning)?
+approval_required?
+delta*
+phase_complete(executing)?
+turn_state
 done
 ```
+
+## Native SSE Events
 
 ### `meta`
 
 ```json
 {
-  "sessionId": "3781107b-dd2b-462a-9467-1120293fb126",
-  "session_id": "3781107b-dd2b-462a-9467-1120293fb126",
-  "traceId": "c9d1c182-ef1d-4f68-9d20-922326be486a",
-  "trace_id": "c9d1c182-ef1d-4f68-9d20-922326be486a",
-  "createdAt": "2026-03-10T13:28:33Z",
+  "session_id": "session-1",
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
   "runtime_mode": "model_first",
   "model_first_enabled": true,
-  "compatibility_enabled": false
+  "compatibility_enabled": false,
+  "turn_block_streaming_enabled": true
 }
 ```
 
-### `rewrite_result`
+### `turn_started`
 
 ```json
 {
-  "rewrite": {
-    "normalized_goal": "Fetch pod logs and assess health",
-    "operation_mode": "investigate",
-    "resource_hints": {
-      "cluster_name": "local",
-      "namespace": "kube-system"
-    },
-    "narrative": "用户请求已被规整为可执行任务。"
-  },
-  "user_visible_summary": "用户请求已被规整为可执行任务。"
+  "turn_id": "turn-1",
+  "session_id": "session-1"
 }
 ```
 
-### `planner_state`
+### `turn_state`
 
 ```json
 {
-  "status": "planning",
-  "user_visible_summary": "正在根据 Rewrite 结果整理执行计划。"
+  "turn_id": "turn-1",
+  "plan_id": "plan-1",
+  "status": "running"
 }
 ```
 
-### `plan_created`
+### `phase_started`
 
 ```json
 {
-  "plan": {
-    "plan_id": "plan-logs-cilium-87f2m",
-    "goal": "Retrieve last 100 log lines and assess pod health.",
-    "resolved": {
-      "cluster_id": 1,
-      "namespace": "kube-system",
-      "pod_name": "cilium-87f2m"
-    },
-    "steps": [
-      {
-        "step_id": "step-1",
-        "expert": "k8s",
-        "mode": "readonly",
-        "risk": "low"
-      }
-    ]
-  },
-  "user_visible_summary": "已生成结构化计划。"
-}
-```
-
-### `stage_delta`
-
-Used by the frontend ThoughtChain, not by the final answer body.
-
-```json
-{
-  "stage": "rewrite",
+  "phase": "planning",
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
   "status": "loading",
-  "content_chunk": "已提取目标资源、查询范围和排查意图。"
+  "title": "整理执行步骤",
+  "summary": "正在分析并整理执行计划"
 }
 ```
 
 Fields:
 
-- `stage`: `rewrite | plan | execute | summary`
-- `status`: `loading | success | error`
-- `content_chunk`: incremental user-visible stage text
-- `step_id`: optional for execute stage
-- `expert`: optional for execute stage
-- `replace`: optional overwrite mode
+- `phase`: `planning | executing | replanning`
+- `status`: usually `loading | running | success`
+- `title`: user-visible phase title
+- `summary`: optional user-visible detail
 
-`stage_delta` should reflect model-stage output or explicit stage failure text. It is not intended for host-generated placeholder sentences.
-
-### `step_update`
+### `phase_complete`
 
 ```json
 {
-  "plan_id": "plan-logs-cilium-87f2m",
+  "phase": "planning",
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "status": "success",
+  "summary": "已提取结构化计划"
+}
+```
+
+### `plan_generated`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "steps": [
+    {
+      "id": "step-1",
+      "content": "检查集群状态",
+      "tool_hint": "get_cluster_info"
+    },
+    {
+      "id": "step-2",
+      "content": "获取 deployment 列表",
+      "tool_hint": "list_deployments"
+    }
+  ],
+  "total": 2
+}
+```
+
+### `step_started`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
   "step_id": "step-1",
+  "title": "检查集群状态",
   "status": "running",
-  "title": "Fetch Pod Logs",
-  "expert": "k8s",
-  "user_visible_summary": "正在获取目标 Pod 日志。"
+  "tool_name": "get_cluster_info",
+  "params": {
+    "namespace": "kube-system"
+  }
+}
+```
+
+### `tool_call`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "step_id": "step-1",
+  "tool_name": "get_cluster_info",
+  "params": {
+    "namespace": "kube-system"
+  }
+}
+```
+
+### `tool_result`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "step_id": "step-1",
+  "tool_name": "get_cluster_info",
+  "summary": "集群状态正常",
+  "result": {
+    "ok": true,
+    "data": "3 pods found"
+  }
+}
+```
+
+### `step_complete`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "step_id": "step-1",
+  "status": "success",
+  "summary": "集群状态正常"
+}
+```
+
+### `replan_triggered`
+
+```json
+{
+  "plan_id": "plan-1",
+  "turn_id": "turn-1",
+  "reason": "发现后续需要重新规划",
+  "summary": "当前执行流已切换到重新规划阶段"
 }
 ```
 
@@ -192,82 +236,50 @@ Fields:
 
 ```json
 {
-  "session_id": "session-1",
+  "id": "approval-1",
   "plan_id": "plan-1",
   "step_id": "step-2",
-  "title": "等待你确认",
-  "risk": "high",
+  "checkpoint_id": "cp-1",
+  "title": "重启异常 Pod",
+  "tool_name": "k8s_restart_pod",
+  "risk_level": "high",
   "mode": "mutating",
-  "status": "waiting_approval",
-  "user_visible_summary": "当前步骤需要审批后继续执行。",
-  "resume": {
-    "session_id": "session-1",
-    "plan_id": "plan-1",
-    "step_id": "step-2"
+  "summary": "该步骤需要审批后继续执行",
+  "params": {
+    "namespace": "default",
+    "pod_name": "app-1"
   }
-}
-```
-
-### `clarify_required`
-
-```json
-{
-  "kind": "clarify",
-  "title": "需要你补充信息",
-  "message": "当前没有可执行的集群上下文，需要先指定集群。",
-  "candidates": []
-}
-```
-
-### `summary`
-
-Structured only. Do not render this as the final answer body.
-
-```json
-{
-  "output": {
-    "summary": "已生成结构化结论",
-    "conclusion": "Cilium pod 运行正常，日志中未见错误。",
-    "need_more_investigation": false,
-    "narrative": "当前结论基于已执行步骤及其证据生成。",
-    "raw_output_policy": "summary_only"
-  }
-}
-```
-
-### `error`
-
-```json
-{
-  "message": "AI 规划模块当前不可用，请稍后重试或手动在页面中执行操作。",
-  "error_code": "planner_runner_unavailable",
-  "stage": "plan",
-  "recoverable": true
-}
-```
-
-### `heartbeat`
-
-```json
-{
-  "status": "streaming",
-  "timestamp": "2026-03-11T07:30:00Z"
 }
 ```
 
 ### `delta`
 
-Final assistant answer stream.
+Final assistant answer stream:
 
 ```json
 {
-  "content_chunk": "Cilium pod cilium-87f2m 当前运行正常。"
+  "content_chunk": "Cilium pod 当前运行正常。"
 }
 ```
 
 ### `done`
 
-`done` closes the turn and returns the persisted session snapshot.
+Closes the turn and may include the persisted session snapshot.
+
+## Compatibility Events
+
+The server may still emit these for compatibility clients:
+
+- `rewrite_result`
+- `planner_state`
+- `plan_created`
+- `stage_delta`
+- `step_update`
+- `replan_started`
+- `summary`
+- `thinking_delta`
+
+New frontend work should treat them as fallback input only. The primary rendering path is native turn/block plus the native plan/execute/replan lifecycle events above.
 
 ## Resume
 
@@ -293,40 +305,28 @@ Response:
 {
   "resumed": true,
   "interrupted": false,
-  "sessionId": "session-1",
   "session_id": "session-1",
   "plan_id": "plan-1",
   "step_id": "step-2",
-  "status": "approved",
+  "status": "completed",
   "message": "审批已通过，待审批步骤会继续执行。"
 }
 ```
 
-### `POST /api/v1/ai/approval/respond`
+### `POST /api/v1/ai/resume/step/stream`
 
-Compatibility alias for `/api/v1/ai/resume/step`.
+Streams the continuation after approval. It can emit the same native events as `/api/v1/ai/chat`, especially:
 
-- same request handling
-- same response shape
-- intended for existing approval clients during migration
+- `meta`
+- `phase_started`
+- `step_complete`
+- `tool_result`
+- `done`
 
-### `POST /api/v1/ai/adk/resume`
+### Compatibility aliases
 
-Legacy ADK compatibility endpoint.
-
-Accepted compatibility fields:
-
-- `checkpoint_id`
-- `session_id`
-- `plan_id`
-- `step_id`
-
-Behavior:
-
-- `checkpoint_id` is mapped into `step_id`
-- response includes `deprecated: true`
-- response includes `compat_mode: "legacy_adk_resume"`
-- clients should migrate to `session_id + plan_id + step_id`
+- `POST /api/v1/ai/approval/respond`: alias for `/api/v1/ai/resume/step`
+- `POST /api/v1/ai/adk/resume`: legacy ADK compatibility endpoint
 
 ## Sessions
 
@@ -342,22 +342,16 @@ Returns the latest session for the current user and scene.
 
 Returns one session with full persisted messages.
 
-Assistant messages may include:
+Assistant session replay may include:
 
-- `thinking`
-- `traceId`
-- `thoughtChain`
+- `turns`
+- `blocks`
+- `content`
+- legacy `thoughtChain`
 - `recommendations`
-- `status`
-
-## Feedback
-
-### `POST /api/v1/ai/feedback`
-
-Stores user feedback for knowledge improvement.
 
 ## Notes
 
+- The primary frontend implementation path is `Copilot.tsx -> turnLifecycle.ts -> messageBlocks.ts -> AssistantMessageBlocks.tsx`
 - `summary` is not a replacement for `delta`
-- ThoughtChain should consume `rewrite_result / planner_state / plan_created / stage_delta / step_update / approval_required / clarify_required / summary`
-- final user-visible answer body should consume `delta`
+- `approval_required` should be treated as an execution gate, not as the final answer body

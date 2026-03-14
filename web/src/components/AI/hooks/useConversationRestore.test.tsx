@@ -213,6 +213,78 @@ describe('useConversationRestore', () => {
     });
   });
 
+  it('keeps persisted legacy user messages when replay turns only contain assistant turns', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
+    vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'sess-mixed',
+        title: 'Mixed restore',
+        createdAt: '2026-03-11T00:00:00Z',
+        updatedAt: '2026-03-11T00:00:02Z',
+        messages: [
+          {
+            id: 'msg-user-1',
+            role: 'user',
+            content: '把 nginx 扩容到 3 个副本',
+            timestamp: '2026-03-11T00:00:00Z',
+          },
+          {
+            id: 'msg-assistant-1',
+            role: 'assistant',
+            content: '',
+            timestamp: '2026-03-11T00:00:02Z',
+          },
+        ],
+        turns: [
+          {
+            id: 'turn-assistant',
+            role: 'assistant',
+            status: 'completed',
+            phase: 'done',
+            blocks: [
+              {
+                id: 'status-1',
+                blockType: 'status',
+                position: 1,
+                title: '执行中',
+                contentText: '正在扩容',
+                createdAt: '2026-03-11T00:00:01Z',
+                updatedAt: '2026-03-11T00:00:01Z',
+              },
+              {
+                id: 'text-1',
+                blockType: 'text',
+                position: 2,
+                contentText: '扩容完成',
+                createdAt: '2026-03-11T00:00:02Z',
+                updatedAt: '2026-03-11T00:00:02Z',
+              },
+            ],
+            createdAt: '2026-03-11T00:00:01Z',
+            updatedAt: '2026-03-11T00:00:02Z',
+          },
+        ],
+      },
+      msg: 'ok',
+    } as any);
+
+    const onRestore = vi.fn();
+    renderHook(() => useConversationRestore({ scene: 'global', onRestore }));
+
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          id: 'sess-mixed',
+          messages: [
+            expect.objectContaining({ role: 'user', content: '把 nginx 扩容到 3 个副本' }),
+            expect.objectContaining({ role: 'assistant', content: '扩容完成' }),
+          ],
+        }),
+      }));
+    });
+  });
+
   it('uses markdown-like status content as assistant fallback when replay text block is missing', async () => {
     vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
     vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({

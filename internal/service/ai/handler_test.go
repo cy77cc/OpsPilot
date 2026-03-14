@@ -201,7 +201,7 @@ func TestSessionHandlersRespectSceneAndExposeThoughtChain(t *testing.T) {
 	})
 }
 
-func TestResumeStepStreamContinuesExistingTurn(t *testing.T) {
+func TestResumeStepStreamContinuesExistingTurnWithNativeLifecycle(t *testing.T) {
 	suite := testutil.NewIntegrationSuite(t)
 	t.Cleanup(suite.Cleanup)
 	prevV2 := config.CFG.FeatureFlags.AIAssistantV2
@@ -278,8 +278,9 @@ func TestResumeStepStreamContinuesExistingTurn(t *testing.T) {
 	for _, fragment := range []string{
 		"event: meta",
 		"event: turn_started",
+		"event: phase_started",
 		"event: turn_state",
-		"event: step_update",
+		"event: step_complete",
 		"event: done",
 		"\"turn_id\":\"turn-resume\"",
 	} {

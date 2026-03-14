@@ -188,6 +188,233 @@ export function applyTurnDone(
   };
 }
 
+export function applyPhaseStarted(
+  current: ChatTurn | undefined,
+  payload: { turn_id?: string; phase?: string; status?: string; title?: string; summary?: string; user_visible_summary?: string; message?: string },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, payload.phase);
+  const blockID = `phase:${payload.phase || 'status'}`;
+  return {
+    ...turn,
+    phase: payload.phase || turn.phase,
+    status: normalizeTurnStatus(payload.status, turn.status),
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'status',
+      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || phaseTitle(payload.phase),
+      status: payload.status || 'running',
+      content: resolveLifecycleSummary(payload) || phaseTitle(payload.phase),
+      data: compactRecord({
+        phase: payload.phase,
+        status: payload.status,
+        title: payload.title,
+      }),
+      streaming: true,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyPhaseComplete(
+  current: ChatTurn | undefined,
+  payload: { turn_id?: string; phase?: string; status?: string; title?: string; summary?: string; user_visible_summary?: string; message?: string },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, payload.phase);
+  const blockID = `phase:${payload.phase || 'status'}`;
+  const existing = findBlock(turn.blocks, blockID);
+  return {
+    ...turn,
+    phase: payload.phase || turn.phase,
+    status: normalizeTurnStatus(payload.status, turn.status),
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'status',
+      position: existing?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || existing?.title || phaseTitle(payload.phase),
+      status: payload.status || 'success',
+      content: resolveLifecycleSummary(payload) || existing?.content || phaseTitle(payload.phase),
+      data: mergePayload(existing?.data, compactRecord({
+        phase: payload.phase,
+        status: payload.status,
+        title: payload.title,
+      }), {}),
+      streaming: false,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyPlanGenerated(
+  current: ChatTurn | undefined,
+  payload: {
+    turn_id?: string;
+    plan_id?: string;
+    title?: string;
+    summary?: string;
+    user_visible_summary?: string;
+    total?: number;
+    steps?: Array<Record<string, unknown>>;
+    plan?: Record<string, unknown>;
+  },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, 'plan');
+  const blockID = `plan:${payload.plan_id || 'main'}`;
+  const content = resolveLifecycleSummary(payload);
+  return {
+    ...turn,
+    phase: turn.phase === 'replanning' ? 'replanning' : 'plan',
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'plan',
+      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || '执行计划',
+      status: 'success',
+      content,
+      data: compactRecord({
+        plan_id: payload.plan_id,
+        total: payload.total ?? (Array.isArray(payload.steps) ? payload.steps.length : undefined),
+        steps: payload.steps,
+        plan: payload.plan,
+        summary: payload.summary,
+        user_visible_summary: payload.user_visible_summary,
+      }),
+      streaming: false,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyStepStarted(
+  current: ChatTurn | undefined,
+  payload: {
+    turn_id?: string;
+    step_id?: string;
+    title?: string;
+    tool_name?: string;
+    tool?: string;
+    expert?: string;
+    status?: string;
+    summary?: string;
+    user_visible_summary?: string;
+    params?: Record<string, unknown>;
+  },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, 'execute');
+  const blockID = `step:${payload.step_id || payload.tool_name || payload.tool || payload.title || 'current'}`;
+  return {
+    ...turn,
+    phase: 'execute',
+    status: normalizeTurnStatus(payload.status, turn.status),
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'tool',
+      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || payload.tool_name || payload.tool || payload.expert || '执行步骤',
+      status: payload.status || 'running',
+      content: resolveLifecycleSummary(payload),
+      data: compactRecord({
+        step_id: payload.step_id,
+        title: payload.title,
+        tool_name: payload.tool_name,
+        tool: payload.tool,
+        expert: payload.expert,
+        summary: payload.summary,
+        user_visible_summary: payload.user_visible_summary,
+        params: payload.params,
+      }),
+      streaming: true,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyStepComplete(
+  current: ChatTurn | undefined,
+  payload: {
+    turn_id?: string;
+    step_id?: string;
+    title?: string;
+    tool_name?: string;
+    tool?: string;
+    expert?: string;
+    status?: string;
+    summary?: string;
+    user_visible_summary?: string;
+    result?: Record<string, unknown>;
+    error?: string;
+    params?: Record<string, unknown>;
+  },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, 'execute');
+  const blockID = `step:${payload.step_id || payload.tool_name || payload.tool || payload.title || 'current'}`;
+  const existing = findBlock(turn.blocks, blockID);
+  return {
+    ...turn,
+    phase: 'execute',
+    status: normalizeTurnStatus(payload.status, turn.status),
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'tool',
+      position: existing?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || existing?.title || payload.tool_name || payload.tool || payload.expert || '执行步骤',
+      status: payload.status || 'success',
+      content: resolveLifecycleSummary(payload) || existing?.content,
+      data: mergePayload(existing?.data, compactRecord({
+        step_id: payload.step_id,
+        title: payload.title,
+        tool_name: payload.tool_name,
+        tool: payload.tool,
+        expert: payload.expert,
+        summary: payload.summary,
+        user_visible_summary: payload.user_visible_summary,
+        result: payload.result,
+        error: payload.error,
+        params: payload.params,
+      }), {}),
+      streaming: false,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyReplanTriggered(
+  current: ChatTurn | undefined,
+  payload: {
+    turn_id?: string;
+    plan_id?: string;
+    previous_plan_id?: string;
+    reason?: string;
+    title?: string;
+    summary?: string;
+    user_visible_summary?: string;
+    completed_steps?: number;
+  },
+): ChatTurn {
+  const turn = ensureLifecycleTurn(current, payload.turn_id, 'replanning');
+  const blockID = `replan:${payload.plan_id || payload.previous_plan_id || 'active'}`;
+  return {
+    ...turn,
+    phase: 'replanning',
+    blocks: upsertBlock(turn.blocks, {
+      id: blockID,
+      type: 'status',
+      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
+      title: payload.title || '触发重新规划',
+      status: 'loading',
+      content: resolveLifecycleSummary(payload) || '执行路径已调整，正在生成新计划。',
+      data: compactRecord({
+        plan_id: payload.plan_id,
+        previous_plan_id: payload.previous_plan_id,
+        completed_steps: payload.completed_steps,
+        reason: payload.reason,
+      }),
+      streaming: true,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function projectTurnSummary(turn: ChatTurn | undefined): {
   content: string;
   thinking?: string;
@@ -313,6 +540,15 @@ function normalizeTurnStatus(status: string | undefined, fallback: ChatTurnStatu
   }
 }
 
+function ensureLifecycleTurn(current: ChatTurn | undefined, turnID?: string, phase?: string): ChatTurn {
+  if (current) {
+    if (!turnID || current.id === turnID) {
+      return current;
+    }
+  }
+  return createAssistantTurn(turnID || current?.id || `assistant-turn-${Date.now()}`, phase ? { phase } : undefined);
+}
+
 function normalizeBlockType(type: string | undefined): TurnBlock['type'] {
   switch (type) {
     case 'text':
@@ -386,4 +622,36 @@ function mergePayload(
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function resolveLifecycleSummary(payload: Record<string, unknown>): string | undefined {
+  return asString(payload.user_visible_summary)
+    || asString(payload.summary)
+    || asString(payload.message)
+    || asString(payload.reason)
+    || asString(payload.title);
+}
+
+function phaseTitle(phase: string | undefined): string {
+  switch (phase) {
+    case 'planning':
+    case 'plan':
+      return '整理执行步骤';
+    case 'replanning':
+      return '动态调整计划';
+    case 'execute':
+      return '执行步骤';
+    case 'rewrite':
+      return '识别目标与约束';
+    default:
+      return '执行状态';
+  }
+}
+
+function compactRecord(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  const entries = Object.entries(record).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return Object.fromEntries(entries);
 }

@@ -1,4 +1,4 @@
-import type { EmbeddedRecommendation, TurnBlock } from './types';
+import type { EmbeddedRecommendation, PlanStep, TurnBlock } from './types';
 
 export interface AssistantMessageInput {
   content?: string;
@@ -30,6 +30,7 @@ export interface StatusBlock extends BaseBlock {
   title?: string;
   content: string;
   status?: string;
+  payload?: Record<string, unknown>;
 }
 
 export interface PlanBlock extends BaseBlock {
@@ -37,6 +38,8 @@ export interface PlanBlock extends BaseBlock {
   title?: string;
   content?: string;
   payload?: Record<string, unknown>;
+  steps?: PlanStep[];
+  total?: number;
 }
 
 export interface ToolExecutionBlock extends BaseBlock {
@@ -203,6 +206,7 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             content: block.content || stringifyBlockPayload(block.data),
             status: block.status,
+            payload: block.data,
             __renderOrder: renderOrder,
             __position: block.position,
           };
@@ -213,6 +217,8 @@ export function normalizeTurnBlocks(turnBlocks: TurnBlock[] | undefined): Assist
             title: block.title,
             content: block.content,
             payload: block.data,
+            steps: extractPlanSteps(block.data),
+            total: typeof block.data?.total === 'number' ? block.data.total : undefined,
             __renderOrder: renderOrder,
             __position: block.position,
           };
@@ -291,14 +297,45 @@ function stringifyBlockPayload(payload: Record<string, unknown> | undefined): st
   if (typeof payload.content_chunk === 'string') {
     return payload.content_chunk;
   }
+  if (typeof payload.user_visible_summary === 'string') {
+    return payload.user_visible_summary;
+  }
   if (typeof payload.summary === 'string') {
     return payload.summary;
+  }
+  if (typeof payload.reason === 'string') {
+    return payload.reason;
+  }
+  if (typeof payload.title === 'string') {
+    return payload.title;
+  }
+  if (Array.isArray(payload.steps)) {
+    return payload.steps
+      .map((step, index) => `${index + 1}. ${String((step as Record<string, unknown>).content || (step as Record<string, unknown>).title || '步骤')}`)
+      .join('\n');
   }
   try {
     return JSON.stringify(payload, null, 2);
   } catch {
     return String(payload);
   }
+}
+
+function extractPlanSteps(payload: Record<string, unknown> | undefined): PlanStep[] | undefined {
+  if (!payload || !Array.isArray(payload.steps)) {
+    return undefined;
+  }
+  const steps = payload.steps
+    .filter((step): step is Record<string, unknown> => Boolean(step && typeof step === 'object'))
+    .map((step) => ({
+      id: typeof step.id === 'string' ? step.id : undefined,
+      content: typeof step.content === 'string' ? step.content : undefined,
+      title: typeof step.title === 'string' ? step.title : undefined,
+      tool_hint: typeof step.tool_hint === 'string' ? step.tool_hint : undefined,
+      status: typeof step.status === 'string' ? step.status : undefined,
+      summary: typeof step.summary === 'string' ? step.summary : undefined,
+    }));
+  return steps.length > 0 ? steps : undefined;
 }
 
 function extractEvidenceItems(block: TurnBlock): string[] {

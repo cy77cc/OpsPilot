@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Space, Spin } from 'antd';
+import { Button, Space, Spin, theme } from 'antd';
 import type { ConfirmationRequest, RiskLevel } from '../types';
 
 interface ConfirmationPanelProps {
@@ -10,6 +10,7 @@ interface ConfirmationPanelProps {
  * 审批确认面板
  */
 export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
+  const { token } = theme.useToken();
   const riskConfig = getRiskConfig(confirmation.risk);
   const status = confirmation.status || 'waiting_user';
   const waiting = status === 'waiting_user';
@@ -52,7 +53,14 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
   }
 
   return (
-    <div className={`ai-confirmation-panel ${status}`}>
+    <div
+      className={`ai-confirmation-panel ${status}`}
+      style={{
+        borderColor: token.colorWarningBorder,
+        background: `linear-gradient(180deg, ${token.colorWarningBg} 0%, ${token.colorBgElevated} 100%)`,
+        boxShadow: token.boxShadowTertiary,
+      }}
+    >
       <div className="confirmation-header">
         <div className="confirmation-heading">
           <span className="confirmation-kicker">执行前确认</span>
@@ -62,7 +70,14 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
           </span>
         </div>
         <Space size={8}>
-          <span className={`confirmation-risk ${confirmation.risk}`}>
+          <span
+            className={`confirmation-risk ${confirmation.risk}`}
+            style={{
+              color: riskConfig.color,
+              background: token.colorBgContainer,
+              borderColor: riskConfig.borderColor,
+            }}
+          >
             {riskConfig.label}
           </span>
         </Space>
@@ -73,9 +88,21 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
       </div>
 
       {confirmation.details && (
-        <details className="confirmation-details">
+        <details
+          className="confirmation-details"
+          style={{
+            background: token.colorBgContainer,
+            borderColor: token.colorBorderSecondary,
+          }}
+        >
           <summary>查看详情</summary>
-          <pre className="confirmation-details-content">
+          <pre
+            className="confirmation-details-content"
+            style={{
+              background: token.colorFillQuaternary,
+              color: token.colorTextSecondary,
+            }}
+          >
             {JSON.stringify(confirmation.details, null, 2)}
           </pre>
         </details>
@@ -108,12 +135,12 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
 function getRiskConfig(risk: RiskLevel) {
   switch (risk) {
     case 'high':
-      return { label: '高风险', color: '#ff4d4f' };
+      return { label: '高风险', color: '#cf1322', borderColor: 'rgba(207, 19, 34, 0.24)' };
     case 'medium':
-      return { label: '中风险', color: '#faad14' };
+      return { label: '中风险', color: '#d48806', borderColor: 'rgba(212, 136, 6, 0.24)' };
     case 'low':
-      return { label: '低风险', color: '#52c41a' };
+      return { label: '低风险', color: '#389e0d', borderColor: 'rgba(56, 158, 13, 0.24)' };
     default:
-      return { label: '未知风险', color: '#8c8c8c' };
+      return { label: '未知风险', color: '#8c8c8c', borderColor: 'rgba(140, 140, 140, 0.24)' };
   }
 }

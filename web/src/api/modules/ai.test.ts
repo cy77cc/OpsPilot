@@ -118,6 +118,101 @@ describe('aiApi.chatStream', () => {
     expect(onTurnDone).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1', status: 'completed' }));
   });
 
+  it('dispatches phase lifecycle events for planning and replanning', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: phase_started\ndata: {"phase":"planning","status":"loading","title":"整理执行步骤"}\n\n',
+        'event: phase_complete\ndata: {"phase":"planning","status":"success"}\n\n',
+        'event: phase_started\ndata: {"phase":"replanning","status":"loading","title":"动态调整计划"}\n\n',
+      ]),
+    } as Response);
+
+    const onPhaseStarted = vi.fn();
+    const onPhaseComplete = vi.fn();
+
+    await aiApi.chatStream(
+      { message: 'hi', context: { scene: 'global' } },
+      { onPhaseStarted, onPhaseComplete } as any,
+    );
+
+    expect(onPhaseStarted).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      phase: 'planning',
+      status: 'loading',
+      title: '整理执行步骤',
+    }));
+    expect(onPhaseComplete).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'planning',
+      status: 'success',
+    }));
+    expect(onPhaseStarted).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      phase: 'replanning',
+      status: 'loading',
+      title: '动态调整计划',
+    }));
+  });
+
+  it('dispatches structured plan generation events with steps and total', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: plan_generated\ndata: {"plan_id":"plan-42","steps":[{"id":"step-1","content":"检查集群状态","tool_hint":"get_cluster_info"},{"id":"step-2","content":"获取 deployment 列表","tool_hint":"list_deployments"}],"total":2}\n\n',
+      ]),
+    } as Response);
+
+    const onPlanGenerated = vi.fn();
+
+    await aiApi.chatStream(
+      { message: 'hi', context: { scene: 'global' } },
+      { onPlanGenerated } as any,
+    );
+
+    expect(onPlanGenerated).toHaveBeenCalledWith(expect.objectContaining({
+      plan_id: 'plan-42',
+      total: 2,
+      steps: [
+        expect.objectContaining({ id: 'step-1', content: '检查集群状态', tool_hint: 'get_cluster_info' }),
+        expect.objectContaining({ id: 'step-2', content: '获取 deployment 列表', tool_hint: 'list_deployments' }),
+      ],
+    }));
+  });
+
+  it('dispatches step lifecycle and replan events during execution pivots', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: step_started\ndata: {"step_id":"step-1","title":"检查集群状态","tool_name":"get_cluster_info","status":"running"}\n\n',
+        'event: step_complete\ndata: {"step_id":"step-1","status":"success","summary":"集群状态正常"}\n\n',
+        'event: replan_triggered\ndata: {"reason":"步骤执行失败，需要调整计划","completed_steps":1}\n\n',
+      ]),
+    } as Response);
+
+    const onStepStarted = vi.fn();
+    const onStepComplete = vi.fn();
+    const onReplanTriggered = vi.fn();
+
+    await aiApi.chatStream(
+      { message: 'hi', context: { scene: 'global' } },
+      { onStepStarted, onStepComplete, onReplanTriggered } as any,
+    );
+
+    expect(onStepStarted).toHaveBeenCalledWith(expect.objectContaining({
+      step_id: 'step-1',
+      title: '检查集群状态',
+      tool_name: 'get_cluster_info',
+      status: 'running',
+    }));
+    expect(onStepComplete).toHaveBeenCalledWith(expect.objectContaining({
+      step_id: 'step-1',
+      status: 'success',
+      summary: '集群状态正常',
+    }));
+    expect(onReplanTriggered).toHaveBeenCalledWith(expect.objectContaining({
+      reason: '步骤执行失败，需要调整计划',
+      completed_steps: 1,
+    }));
+  });
+
   it('preserves stage-aware error payloads', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
