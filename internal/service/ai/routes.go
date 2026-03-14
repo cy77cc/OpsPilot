@@ -29,7 +29,6 @@ func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	// 流程恢复接口
 	g.POST("/resume/step", h.ResumeStep)
 	g.POST("/resume/step/stream", h.ResumeStepStream)
-	g.POST("/approval/respond", h.ResumeStep)
 	g.POST("/adk/resume", h.ResumeADKApproval)
 	g.GET("/capabilities", h.Capabilities)
 	g.GET("/tools/:name/params/hints", h.ToolParamHints)

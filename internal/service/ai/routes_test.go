@@ -25,6 +25,9 @@ func collectAIRoutesForTest(t *testing.T) []string {
 func TestRegisterAIHandlers_RegistersChainApprovalDecisionRoute(t *testing.T) {
 	routes := collectAIRoutesForTest(t)
 	for _, route := range routes {
+		if route == "POST /api/v1/ai/approval/respond" {
+			t.Fatalf("unexpected legacy approval respond route still registered: %v", routes)
+		}
 		if route == "POST /api/v1/ai/chains/:chain_id/approvals/:node_id/decision" {
 			return
 		}

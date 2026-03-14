@@ -69,37 +69,6 @@ export interface ToolTrace {
   timestamp: string;
 }
 
-export interface AIInterruptApprovalResponse {
-  session_id?: string;
-  plan_id?: string;
-  step_id?: string;
-  checkpoint_id?: string;
-  approved: boolean;
-  reason?: string;
-}
-
-export interface AIInterruptApprovalResult {
-  resumed: boolean;
-  interrupted?: boolean;
-  content?: string;
-  sessionId?: string;
-  session_id?: string;
-  plan_id?: string;
-  step_id?: string;
-  checkpoint_id?: string;
-  status?: string;
-  interrupt_targets?: string[];
-  interrupt_contexts?: any[];
-  approval_required?: boolean;
-  review_required?: boolean;
-  tool?: string;
-  arguments?: string;
-  risk?: string;
-  preview?: Record<string, any>;
-  message?: string;
-  interrupt_error?: string;
-}
-
 export interface AIKnowledgeFeedbackPayload {
   session_id?: string;
   namespace?: string;
@@ -538,6 +507,139 @@ export interface AIChatStreamHandlers {
   onHeartbeat?: (payload: { turn_id?: string; status?: string }) => void;
 }
 
+function dispatchAIStreamEvent(
+  chunk: string,
+  handlers: AIChatStreamHandlers,
+  options?: { normalizeVisibleDelta?: boolean },
+) {
+  const lines = chunk.split('\n');
+  let eventType = 'message';
+  const dataLines: string[] = [];
+
+  lines.forEach((line) => {
+    if (line.startsWith('event:')) {
+      eventType = line.slice(6).trim();
+      return;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trim());
+    }
+  });
+
+  if (dataLines.length === 0) {
+    return;
+  }
+
+  const rawData = dataLines.join('\n');
+  let payload: unknown = rawData;
+  try {
+    payload = JSON.parse(rawData);
+  } catch {
+    payload = { message: rawData };
+  }
+
+  const normalizeVisibleDelta = options?.normalizeVisibleDelta ?? false;
+  if (eventType === 'meta') {
+    handlers.onMeta?.(payload as SSEMetaEvent);
+  } else if (eventType === 'chain_started') {
+    handlers.onChainStarted?.(payload as SSEChainStartedEvent);
+  } else if (eventType === 'chain_node_open') {
+    handlers.onChainNodeOpen?.(payload as SSEChainNodeEvent);
+  } else if (eventType === 'chain_node_patch') {
+    handlers.onChainNodePatch?.(payload as SSEChainNodeEvent);
+  } else if (eventType === 'chain_node_close') {
+    handlers.onChainNodeClose?.(payload as SSEChainNodeEvent);
+  } else if (eventType === 'chain_collapsed') {
+    handlers.onChainCollapsed?.(payload as SSEChainStartedEvent);
+  } else if (eventType === 'final_answer_started') {
+    handlers.onFinalAnswerStarted?.(payload as SSEFinalAnswerEvent);
+  } else if (eventType === 'final_answer_delta') {
+    const normalized = normalizeFinalAnswerEventPayload(payload);
+    if (typeof normalized.chunk === 'string' && normalized.chunk.length > 0) {
+      handlers.onFinalAnswerDelta?.(normalized);
+    }
+  } else if (eventType === 'final_answer_done') {
+    handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
+  } else if (eventType === 'turn_started') {
+    handlers.onTurnStarted?.(payload as SSETurnStartedEvent);
+  } else if (eventType === 'block_open') {
+    handlers.onBlockOpen?.(payload as SSEBlockOpenEvent);
+  } else if (eventType === 'block_delta') {
+    handlers.onBlockDelta?.(payload as SSEBlockDeltaEvent);
+  } else if (eventType === 'block_replace') {
+    handlers.onBlockReplace?.(payload as SSEBlockReplaceEvent);
+  } else if (eventType === 'block_close') {
+    handlers.onBlockClose?.(payload as SSEBlockCloseEvent);
+  } else if (eventType === 'turn_state') {
+    handlers.onTurnState?.(payload as SSETurnStateEvent);
+  } else if (eventType === 'turn_done') {
+    handlers.onTurnDone?.(payload as SSETurnDoneEvent);
+  } else if (eventType === 'rewrite_result') {
+    handlers.onRewriteResult?.(payload as SSERewriteResultEvent);
+  } else if (eventType === 'planner_state') {
+    handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
+  } else if (eventType === 'plan_created') {
+    handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
+  } else if (eventType === 'stage_delta') {
+    handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
+  } else if (eventType === 'step_update') {
+    handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
+  } else if (eventType === 'delta' || eventType === 'message') {
+    const contentChunk = normalizeVisibleDelta
+      ? normalizeVisibleStreamChunk(toContentChunk(payload))
+      : toContentChunk(payload);
+    if (contentChunk) {
+      handlers.onDelta?.({
+        ...(typeof payload === 'object' && payload ? payload as Record<string, unknown> : {}),
+        contentChunk,
+      } as SSEDeltaEvent);
+    }
+  } else if (eventType === 'done') {
+    handlers.onDone?.(payload as SSEDoneEvent);
+  } else if (eventType === 'error') {
+    handlers.onError?.(normalizeErrorEvent(payload));
+  } else if (eventType === 'thinking_delta') {
+    handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
+  } else if (eventType === 'tool_call') {
+    handlers.onToolCall?.(payload as any);
+  } else if (eventType === 'tool_result') {
+    handlers.onToolResult?.(payload as any);
+  } else if (eventType === 'clarify_required') {
+    handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
+  } else if (eventType === 'replan_started') {
+    handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
+  } else if (eventType === 'summary') {
+    handlers.onSummary?.(payload as SSESummaryEvent);
+  } else if (eventType === 'heartbeat') {
+    handlers.onHeartbeat?.(payload as { turn_id?: string; status?: string });
+  }
+}
+
+async function consumeAIStream(response: Response, handlers: AIChatStreamHandlers, options?: { normalizeVisibleDelta?: boolean }): Promise<void> {
+  if (!response.ok || !response.body) {
+    throw new Error(`请求失败: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
+    const segments = buffer.split('\n\n');
+    buffer = segments.pop() || '';
+    segments.forEach((segment) => dispatchAIStreamEvent(segment, handlers, options));
+  }
+
+  if (buffer.trim()) {
+    dispatchAIStreamEvent(buffer, handlers, options);
+  }
+}
+
 export type RiskLevel = 'low' | 'medium' | 'high';
 
 export interface AICapability {
@@ -757,144 +859,47 @@ export const aiApi = {
       body: JSON.stringify(params),
     });
 
-    if (!response.ok || !response.body) {
-      throw new Error(`请求失败: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    const dispatchEvent = (chunk: string) => {
-      const lines = chunk.split('\n');
-      let eventType = 'message';
-      const dataLines: string[] = [];
-
-      lines.forEach((line) => {
-        if (line.startsWith('event:')) {
-          eventType = line.slice(6).trim();
-          return;
-        }
-        if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trim());
-        }
-      });
-
-      if (dataLines.length === 0) {
-        return;
-      }
-
-      const rawData = dataLines.join('\n');
-      let payload: unknown = rawData;
-      try {
-        payload = JSON.parse(rawData);
-      } catch {
-        payload = { message: rawData };
-      }
-
-      if (eventType === 'meta') {
-        handlers.onMeta?.(payload as SSEMetaEvent);
-      } else if (eventType === 'chain_started') {
-        handlers.onChainStarted?.(payload as SSEChainStartedEvent);
-      } else if (eventType === 'chain_node_open') {
-        handlers.onChainNodeOpen?.(payload as SSEChainNodeEvent);
-      } else if (eventType === 'chain_node_patch') {
-        handlers.onChainNodePatch?.(payload as SSEChainNodeEvent);
-      } else if (eventType === 'chain_node_close') {
-        handlers.onChainNodeClose?.(payload as SSEChainNodeEvent);
-      } else if (eventType === 'chain_collapsed') {
-        handlers.onChainCollapsed?.(payload as SSEChainStartedEvent);
-      } else if (eventType === 'final_answer_started') {
-        handlers.onFinalAnswerStarted?.(payload as SSEFinalAnswerEvent);
-      } else if (eventType === 'final_answer_delta') {
-        const normalized = normalizeFinalAnswerEventPayload(payload);
-        if (typeof normalized.chunk === 'string' && normalized.chunk.length > 0) {
-          handlers.onFinalAnswerDelta?.(normalized);
-        }
-      } else if (eventType === 'final_answer_done') {
-        handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
-      } else if (eventType === 'turn_started') {
-        handlers.onTurnStarted?.(payload as SSETurnStartedEvent);
-      } else if (eventType === 'block_open') {
-        handlers.onBlockOpen?.(payload as SSEBlockOpenEvent);
-      } else if (eventType === 'block_delta') {
-        handlers.onBlockDelta?.(payload as SSEBlockDeltaEvent);
-      } else if (eventType === 'block_replace') {
-        handlers.onBlockReplace?.(payload as SSEBlockReplaceEvent);
-      } else if (eventType === 'block_close') {
-        handlers.onBlockClose?.(payload as SSEBlockCloseEvent);
-      } else if (eventType === 'turn_state') {
-        handlers.onTurnState?.(payload as SSETurnStateEvent);
-      } else if (eventType === 'turn_done') {
-        handlers.onTurnDone?.(payload as SSETurnDoneEvent);
-      } else if (eventType === 'rewrite_result') {
-        handlers.onRewriteResult?.(payload as SSERewriteResultEvent);
-      } else if (eventType === 'planner_state') {
-        handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
-      } else if (eventType === 'plan_created') {
-        handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
-      } else if (eventType === 'stage_delta') {
-        handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
-      } else if (eventType === 'step_update') {
-        handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
-      } else if (eventType === 'delta' || eventType === 'message') {
-        const contentChunk = normalizeVisibleStreamChunk(toContentChunk(payload));
-        if (contentChunk) {
-          handlers.onDelta?.({
-            ...(typeof payload === 'object' && payload ? payload as Record<string, unknown> : {}),
-            contentChunk,
-          } as SSEDeltaEvent);
-        }
-      } else if (eventType === 'done') {
-        handlers.onDone?.(payload as SSEDoneEvent);
+    const wrappedHandlers: AIChatStreamHandlers = {
+      ...handlers,
+      onDone: (payload) => {
+        handlers.onDone?.(payload);
         toolPending = false;
         clearToolTimer();
-      } else if (eventType === 'error') {
-        const errorPayload = normalizeErrorEvent(payload);
-        handlers.onError?.(errorPayload);
-        const err = errorPayload;
-        if (err.code !== 'tool_timeout_soft') {
+      },
+      onError: (payload) => {
+        handlers.onError?.(payload);
+        if (payload.code !== 'tool_timeout_soft') {
           toolPending = false;
           clearToolTimer();
         }
-      } else if (eventType === 'thinking_delta') {
-        handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
+      },
+      onThinkingDelta: (payload) => {
+        handlers.onThinkingDelta?.(payload);
         touchActivity();
-      } else if (eventType === 'tool_call') {
-        handlers.onToolCall?.(payload as { tool: string; params?: Record<string, any> });
+      },
+      onToolCall: (payload) => {
+        handlers.onToolCall?.(payload);
         toolPending = true;
         armToolTimeout();
-      } else if (eventType === 'tool_result') {
-        handlers.onToolResult?.(payload as { tool?: string; result?: { ok: boolean; data?: any; error?: string; source?: string; latency_ms?: number } });
+      },
+      onToolResult: (payload) => {
+        handlers.onToolResult?.(payload);
         toolPending = false;
         clearToolTimer();
-      } else if (eventType === 'clarify_required') {
-        handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
+      },
+      onClarifyRequired: (payload) => {
+        handlers.onClarifyRequired?.(payload);
         toolPending = false;
         clearToolTimer();
-      } else if (eventType === 'replan_started') {
-        handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
-      } else if (eventType === 'summary') {
-        handlers.onSummary?.(payload as SSESummaryEvent);
-      } else if (eventType === 'heartbeat') {
-        handlers.onHeartbeat?.(payload as { turn_id?: string; status?: string });
+      },
+      onHeartbeat: (payload) => {
+        handlers.onHeartbeat?.(payload);
         touchActivity();
-      }
+      },
     };
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
-        const segments = buffer.split('\n\n');
-        buffer = segments.pop() || '';
-        segments.forEach(dispatchEvent);
-        touchActivity();
-      }
+      await consumeAIStream(response, wrappedHandlers, { normalizeVisibleDelta: true });
     } catch (err) {
       if (!timedOut) {
         throw err;
@@ -902,10 +907,6 @@ export const aiApi = {
     } finally {
       clearToolTimer();
       signal?.removeEventListener('abort', abortFromCaller);
-    }
-
-    if (buffer.trim()) {
-      dispatchEvent(buffer);
     }
   },
 
@@ -973,6 +974,34 @@ export const aiApi = {
     });
   },
 
+  async decideChainApprovalStream(
+    chainId: string,
+    nodeId: string,
+    approved: boolean,
+    handlers: AIChatStreamHandlers,
+    reason?: string,
+  ): Promise<void> {
+    const base = import.meta.env.VITE_API_BASE || '/api/v1';
+    const token = localStorage.getItem('token');
+    const projectId = localStorage.getItem('projectId');
+
+    const response = await fetch(`${base}/ai/chains/${chainId}/approvals/${nodeId}/decision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(projectId ? { 'X-Project-ID': projectId } : {}),
+      },
+      body: JSON.stringify({
+        approved,
+        ...(reason ? { reason } : {}),
+      }),
+    });
+
+    await consumeAIStream(response, handlers, { normalizeVisibleDelta: true });
+  },
+
   async listApprovals(status?: string): Promise<ApiResponse<ApprovalTicket[]>> {
     return apiService.get('/ai/approvals', status ? { params: { status } } : undefined);
   },
@@ -991,117 +1020,6 @@ export const aiApi = {
 
   async submitFeedback(payload: AIKnowledgeFeedbackPayload): Promise<ApiResponse<KnowledgeEntry | null>> {
     return apiService.post('/ai/feedback', payload);
-  },
-
-  async respondApproval(params: AIInterruptApprovalResponse): Promise<ApiResponse<AIInterruptApprovalResult>> {
-    return apiService.post('/ai/resume/step', params);
-  },
-
-  async respondApprovalStream(params: AIInterruptApprovalResponse, handlers: AIChatStreamHandlers): Promise<void> {
-    const base = import.meta.env.VITE_API_BASE || '/api/v1';
-    const token = localStorage.getItem('token');
-    const projectId = localStorage.getItem('projectId');
-
-    const response = await fetch(`${base}/ai/resume/step/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(projectId ? { 'X-Project-ID': projectId } : {}),
-      },
-      body: JSON.stringify(params),
-    });
-
-    if (!response.ok || !response.body) {
-      throw new Error(`请求失败: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    const dispatchEvent = (chunk: string) => {
-      const lines = chunk.split('\n');
-      let eventType = 'message';
-      const dataLines: string[] = [];
-
-      lines.forEach((line) => {
-        if (line.startsWith('event:')) {
-          eventType = line.slice(6).trim();
-          return;
-        }
-        if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trim());
-        }
-      });
-
-      if (dataLines.length === 0) {
-        return;
-      }
-
-      const rawData = dataLines.join('\n');
-      let payload: unknown = rawData;
-      try {
-        payload = JSON.parse(rawData);
-      } catch {
-        payload = { message: rawData };
-      }
-
-      if (eventType === 'meta') {
-        handlers.onMeta?.(payload as SSEMetaEvent);
-      } else if (eventType === 'turn_started') {
-        handlers.onTurnStarted?.(payload as SSETurnStartedEvent);
-      } else if (eventType === 'block_open') {
-        handlers.onBlockOpen?.(payload as SSEBlockOpenEvent);
-      } else if (eventType === 'block_delta') {
-        handlers.onBlockDelta?.(payload as SSEBlockDeltaEvent);
-      } else if (eventType === 'block_replace') {
-        handlers.onBlockReplace?.(payload as SSEBlockReplaceEvent);
-      } else if (eventType === 'block_close') {
-        handlers.onBlockClose?.(payload as SSEBlockCloseEvent);
-      } else if (eventType === 'turn_state') {
-        handlers.onTurnState?.(payload as SSETurnStateEvent);
-      } else if (eventType === 'turn_done') {
-        handlers.onTurnDone?.(payload as SSETurnDoneEvent);
-      } else if (eventType === 'stage_delta') {
-        handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
-      } else if (eventType === 'step_update') {
-        handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
-      } else if (eventType === 'tool_call') {
-        handlers.onToolCall?.(payload as any);
-      } else if (eventType === 'tool_result') {
-        handlers.onToolResult?.(payload as any);
-      } else if (eventType === 'thinking_delta') {
-        handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
-      } else if (eventType === 'delta' || eventType === 'message') {
-        const contentChunk = toContentChunk(payload);
-        if (contentChunk) {
-          handlers.onDelta?.({
-            ...(typeof payload === 'object' && payload ? payload as Record<string, unknown> : {}),
-            contentChunk,
-          } as SSEDeltaEvent);
-        }
-      } else if (eventType === 'done') {
-        handlers.onDone?.(payload as SSEDoneEvent);
-      } else if (eventType === 'error') {
-        handlers.onError?.(normalizeErrorEvent(payload));
-      }
-    };
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
-      const segments = buffer.split('\n\n');
-      buffer = segments.pop() || '';
-      segments.forEach(dispatchEvent);
-    }
-
-    if (buffer.trim()) {
-      dispatchEvent(buffer);
-    }
   },
 
   async confirmConfirmation(id: string, approve: boolean): Promise<ApiResponse<ConfirmationTicket>> {

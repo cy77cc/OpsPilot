@@ -176,4 +176,42 @@ describe('aiApi.chatStream', () => {
       { approved: true, reason: 'looks safe' },
     );
   });
+
+  it('streams unified chain approval decisions from the canonical endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: chain_started\ndata: {"turn_id":"turn-approval"}\n\n',
+        'event: chain_node_open\ndata: {"node_id":"tool:step-1","kind":"tool","title":"执行审批后的步骤"}\n\n',
+        'event: final_answer_delta\ndata: {"turn_id":"turn-approval","chunk":"已继续执行"}\n\n',
+      ]),
+    } as Response);
+
+    const onChainStarted = vi.fn();
+    const onChainNodeOpen = vi.fn();
+    const onFinalAnswerDelta = vi.fn();
+
+    await aiApi.decideChainApprovalStream(
+      'plan-1',
+      'approval:step-1',
+      true,
+      { onChainStarted, onChainNodeOpen, onFinalAnswerDelta },
+      'looks safe',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/chains/plan-1/approvals/approval:step-1/decision'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        }),
+        body: JSON.stringify({ approved: true, reason: 'looks safe' }),
+      }),
+    );
+    expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-approval' }));
+    expect(onChainNodeOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 'tool:step-1', kind: 'tool' }));
+    expect(onFinalAnswerDelta).toHaveBeenCalledWith(expect.objectContaining({ chunk: '已继续执行' }));
+  });
 });

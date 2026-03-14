@@ -1608,6 +1608,9 @@ export const Copilot: React.FC<CopilotProps> = ({
     payload: Record<string, unknown>,
     approved: boolean,
   ) => {
+    const chainId = String(payload.plan_id || '');
+    const stepId = String(payload.step_id || payload.checkpoint_id || '');
+    const approvalNodeId = `approval:${stepId || String(payload.id || assistantId)}`;
     setIsLoading(true);
     patchAssistantMessage(activeKey, assistantId, (message) => {
       return {
@@ -1624,7 +1627,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         },
         turn: applyBlockReplace(message.turn, {
           turn_id: message.turn?.id || assistantId,
-          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_id: approvalNodeId,
           block_type: 'approval',
           payload: {
             ...payload,
@@ -1637,19 +1640,13 @@ export const Copilot: React.FC<CopilotProps> = ({
 
     try {
       if (!approved) {
-        await aiApi.respondApproval({
-          session_id: String(payload.session_id || sessionId || ''),
-          plan_id: payload.plan_id ? String(payload.plan_id) : undefined,
-          step_id: payload.step_id ? String(payload.step_id) : undefined,
-          checkpoint_id: payload.checkpoint_id ? String(payload.checkpoint_id) : undefined,
-          approved: false,
-        });
+        await aiApi.decideChainApproval(chainId, approvalNodeId, false);
         patchAssistantMessage(activeKey, assistantId, (message) => ({
           ...message,
           confirmation: undefined,
           turn: applyBlockReplace(message.turn, {
             turn_id: message.turn?.id || assistantId,
-            block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+            block_id: approvalNodeId,
             block_type: 'approval',
             payload: {
               ...payload,
@@ -1676,7 +1673,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         },
         turn: applyBlockReplace(message.turn, {
           turn_id: message.turn?.id || assistantId,
-          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_id: approvalNodeId,
           block_type: 'approval',
           payload: {
             ...payload,
@@ -1685,14 +1682,10 @@ export const Copilot: React.FC<CopilotProps> = ({
         }),
       }));
 
-      await aiApi.respondApprovalStream(
-        {
-          session_id: String(payload.session_id || sessionId || ''),
-          plan_id: payload.plan_id ? String(payload.plan_id) : undefined,
-          step_id: payload.step_id ? String(payload.step_id) : undefined,
-          checkpoint_id: payload.checkpoint_id ? String(payload.checkpoint_id) : undefined,
-          approved: true,
-        },
+      await aiApi.decideChainApprovalStream(
+        chainId,
+        approvalNodeId,
+        true,
         createStreamHandlers(activeKey, assistantId),
       );
     } catch {
@@ -1711,7 +1704,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         },
         turn: applyBlockReplace(message.turn, {
           turn_id: message.turn?.id || assistantId,
-          block_id: `approval:${String(payload.id || payload.step_id || payload.checkpoint_id || assistantId)}`,
+          block_id: approvalNodeId,
           block_type: 'approval',
           payload: {
             ...payload,

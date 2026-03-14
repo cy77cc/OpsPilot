@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -353,51 +354,21 @@ func (h *HTTPHandler) DecideChainApproval(c *gin.Context) {
 		return
 	}
 
+	if req.Approved && wantsEventStream(c) {
+		h.respondChainApprovalDecisionStream(c, row, req.Reason)
+		return
+	}
 	h.respondApprovalDecision(c, row, req.Approved, req.Reason)
 }
 
 func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApproval, approved bool, reason string) {
-	execID := uuid.NewString()
-	now := time.Now().UTC()
 	if approved {
-		if err := h.svcCtx.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
-				"status":           "approved",
-				"reviewer_user_id": httpx.UIDFromCtx(c),
-				"reason":           firstNonEmpty(strings.TrimSpace(reason), row.Reason),
-				"approved_at":      now,
-				"execution_id":     execID,
-			}).Error; err != nil {
-				return err
-			}
-			return tx.Create(&model.AIExecution{
-				ID:            execID,
-				SessionID:     row.SessionID,
-				PlanID:        row.PlanID,
-				StepID:        row.StepID,
-				CheckpointID:  firstNonEmpty(row.CheckpointID, row.StepID),
-				ApprovalID:    row.ID,
-				RequestUserID: row.RequestUserID,
-				ToolName:      row.ToolName,
-				ToolMode:      row.ToolMode,
-				RiskLevel:     row.RiskLevel,
-				Scene:         row.Scene,
-				Status:        "running",
-				ParamsJSON:    row.ParamsJSON,
-				StartedAt:     &now,
-			}).Error
-		}); err != nil {
+		execID, startedAt, err := h.markApprovalApproved(c, row, reason)
+		if err != nil {
 			httpx.ServerErr(c, err)
 			return
 		}
-		res, err := h.resumeRuntime(c.Request.Context(), coreai.ResumeRequest{
-			SessionID:    row.SessionID,
-			PlanID:       row.PlanID,
-			StepID:       row.StepID,
-			CheckpointID: row.CheckpointID,
-			Approved:     true,
-			Reason:       reason,
-		})
+		res, err := h.resumeRuntime(c.Request.Context(), approvalResumeRequest(row, true, reason))
 		approvalExec := model.AIExecution{
 			ID:           execID,
 			SessionID:    row.SessionID,
@@ -411,7 +382,7 @@ func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApprov
 			Scene:        row.Scene,
 			Status:       executionStatusFromResume(res, err),
 			ParamsJSON:   row.ParamsJSON,
-			StartedAt:    &now,
+			StartedAt:    startedAt,
 		}
 		if err != nil {
 			finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, nil, err)
@@ -431,6 +402,7 @@ func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApprov
 		return
 	}
 
+	now := time.Now().UTC()
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
 		"status":           "rejected",
 		"reviewer_user_id": httpx.UIDFromCtx(c),
@@ -449,6 +421,118 @@ func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApprov
 		Reason:       reason,
 	})
 	httpx.OK(c, gin.H{"id": row.ID, "status": "rejected", "reason": strings.TrimSpace(reason)})
+}
+
+func (h *HTTPHandler) respondChainApprovalDecisionStream(c *gin.Context, row model.AIApproval, reason string) {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		httpx.Fail(c, xcode.ServerError, "streaming is not supported")
+		return
+	}
+
+	execID, startedAt, err := h.markApprovalApproved(c, row, reason)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	rollout := coreai.CurrentRolloutConfig()
+	c.Writer.Header().Set("X-AI-Runtime-Mode", h.runtimeModeHeader(rollout))
+	c.Writer.Header().Set("X-AI-Compatibility-Enabled", boolHeaderValue(rollout.CompatibilityEnabled()))
+	c.Writer.Header().Set("X-AI-Model-First-Enabled", boolHeaderValue(rollout.ModelFirstEnabled()))
+	c.Writer.Header().Set("X-AI-Turn-Block-Streaming-Enabled", boolHeaderValue(rollout.TurnBlockStreamingEnabled()))
+	c.Status(http.StatusOK)
+
+	emit := func(evt coreai.StreamEvent) bool {
+		payload := cloneMap(evt.Data)
+		if string(evt.Type) == "meta" {
+			payload = attachRolloutMetadata(payload, rollout)
+		}
+		return writeSSE(c, flusher, string(evt.Type), payload)
+	}
+
+	res, streamErr := h.resumeRuntimeStream(c.Request.Context(), approvalResumeRequest(row, true, reason), emit)
+	approvalExec := model.AIExecution{
+		ID:           execID,
+		SessionID:    row.SessionID,
+		PlanID:       row.PlanID,
+		StepID:       row.StepID,
+		CheckpointID: firstNonEmpty(row.CheckpointID, row.StepID),
+		ApprovalID:   row.ID,
+		ToolName:     row.ToolName,
+		ToolMode:     row.ToolMode,
+		RiskLevel:    row.RiskLevel,
+		Scene:        row.Scene,
+		Status:       executionStatusFromResume(res, streamErr),
+		ParamsJSON:   row.ParamsJSON,
+		StartedAt:    startedAt,
+	}
+	if streamErr != nil {
+		finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, nil, streamErr)
+		_ = writeSSE(c, flusher, "error", map[string]any{"message": streamErr.Error()})
+		return
+	}
+	finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, &aitools.Execution{
+		Result: res,
+		Metadata: map[string]any{
+			"token_accounting_status": "unavailable",
+			"token_accounting_source": "resume_runtime_result",
+		},
+	}, nil)
+}
+
+func (h *HTTPHandler) markApprovalApproved(c *gin.Context, row model.AIApproval, reason string) (string, *time.Time, error) {
+	execID := uuid.NewString()
+	now := time.Now().UTC()
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
+			"status":           "approved",
+			"reviewer_user_id": httpx.UIDFromCtx(c),
+			"reason":           firstNonEmpty(strings.TrimSpace(reason), row.Reason),
+			"approved_at":      now,
+			"execution_id":     execID,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.AIExecution{
+			ID:            execID,
+			SessionID:     row.SessionID,
+			PlanID:        row.PlanID,
+			StepID:        row.StepID,
+			CheckpointID:  firstNonEmpty(row.CheckpointID, row.StepID),
+			ApprovalID:    row.ID,
+			RequestUserID: row.RequestUserID,
+			ToolName:      row.ToolName,
+			ToolMode:      row.ToolMode,
+			RiskLevel:     row.RiskLevel,
+			Scene:         row.Scene,
+			Status:        "running",
+			ParamsJSON:    row.ParamsJSON,
+			StartedAt:     &now,
+		}).Error
+	}); err != nil {
+		return "", nil, err
+	}
+	return execID, &now, nil
+}
+
+func approvalResumeRequest(row model.AIApproval, approved bool, reason string) coreai.ResumeRequest {
+	return coreai.ResumeRequest{
+		SessionID:    row.SessionID,
+		PlanID:       row.PlanID,
+		StepID:       row.StepID,
+		CheckpointID: row.CheckpointID,
+		Approved:     approved,
+		Reason:       reason,
+	}
+}
+
+func wantsEventStream(c *gin.Context) bool {
+	return strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/event-stream")
 }
 
 func (h *HTTPHandler) RejectApproval(c *gin.Context) {
