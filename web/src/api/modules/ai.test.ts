@@ -43,7 +43,7 @@ describe('aiApi.chatStream', () => {
     expect(onDone).toHaveBeenCalled();
   });
 
-  it('dispatches high-level orchestration events', async () => {
+  it('does not dispatch deprecated orchestration events on the primary stream path', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
@@ -56,31 +56,21 @@ describe('aiApi.chatStream', () => {
       ]),
     } as Response);
 
-    const onRewriteResult = vi.fn();
-    const onStageDelta = vi.fn();
-    const onPlanCreated = vi.fn();
-    const onStepUpdate = vi.fn();
     const onThinkingDelta = vi.fn();
-    const onSummary = vi.fn();
 
     await aiApi.chatStream(
       { message: 'hi', context: { scene: 'global' } },
-      { onRewriteResult, onStageDelta, onPlanCreated, onStepUpdate, onThinkingDelta, onSummary }
+      {
+        onThinkingDelta,
+        onRewriteResult: vi.fn(),
+        onStageDelta: vi.fn(),
+        onPlanCreated: vi.fn(),
+        onStepUpdate: vi.fn(),
+        onSummary: vi.fn(),
+      } as any,
     );
 
-    expect(onRewriteResult).toHaveBeenCalledWith(expect.objectContaining({ user_visible_summary: 'rewrite ok' }));
-    expect(onStageDelta).toHaveBeenCalledWith(expect.objectContaining({
-      stage: 'plan',
-      status: 'loading',
-      title: '整理执行步骤',
-      description: '正在根据你的需求整理执行步骤',
-      steps: ['检查告警', '查看副本数'],
-      content_chunk: '正在理解',
-    }));
-    expect(onPlanCreated).toHaveBeenCalledWith(expect.objectContaining({ user_visible_summary: 'plan ok' }));
-    expect(onStepUpdate).toHaveBeenCalledWith(expect.objectContaining({ step_id: 'step-1', status: 'running' }));
     expect(onThinkingDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: 'thinking' }));
-    expect(onSummary).toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
   });
 
   it('dispatches native turn and block lifecycle events', async () => {
