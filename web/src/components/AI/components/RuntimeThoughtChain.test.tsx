@@ -85,4 +85,32 @@ describe('RuntimeThoughtChain', () => {
     expect(screen.getByText('offline')).toBeInTheDocument();
     expect(screen.queryByText('"total": 2')).not.toBeInTheDocument();
   });
+
+  it('renders replan body and structured step groups together', () => {
+    render(
+      <RuntimeThoughtChain
+        nodes={[
+          {
+            nodeId: 'replan-1',
+            kind: 'replan',
+            title: '发现新信息，正在调整计划',
+            status: 'done',
+            headline: '执行结果触发重新规划',
+            body: '集群查询结果返回的是 cluster 维度，需要切换到 host 维度继续。',
+            structured: {
+              steps: [
+                { id: 'step-1', title: '改用 host_list_inventory', description: '读取主机列表与在线状态', status: 'pending' },
+                { id: 'step-2', title: '输出汇总表格', description: '整理所有主机状态和统计信息', status: 'pending' },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('执行结果触发重新规划')).toBeInTheDocument();
+    expect(screen.getByText('集群查询结果返回的是 cluster 维度，需要切换到 host 维度继续。')).toBeInTheDocument();
+    expect(screen.getByText('改用 host_list_inventory')).toBeInTheDocument();
+    expect(screen.getByText('输出汇总表格')).toBeInTheDocument();
+  });
 });
