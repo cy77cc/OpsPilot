@@ -261,6 +261,11 @@
   background: rgba(255, 255, 255, 0.92);
 }
 
+.runtime-chain__detailCard--toolRow {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(24, 144, 255, 0.12);
+}
+
 .runtime-chain__detailTitle {
   font-size: 12px;
   line-height: 1.5;

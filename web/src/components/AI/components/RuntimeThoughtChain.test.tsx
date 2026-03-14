@@ -51,4 +51,38 @@ describe('RuntimeThoughtChain', () => {
     expect(screen.getByText('确认副本数')).toBeInTheDocument();
     expect(screen.queryByText(/^\{.*"title":/)).not.toBeInTheDocument();
   });
+
+  it('renders tool results as readable host rows before raw fallback', () => {
+    render(
+      <RuntimeThoughtChain
+        nodes={[
+          {
+            nodeId: 'tool-1',
+            kind: 'tool',
+            title: 'host_list_inventory',
+            status: 'done',
+            headline: '已获取 2 台主机',
+            structured: {
+              resource: 'hosts',
+              rows: [
+                { id: 1, name: 'test', status: 'online', ip: 'localhost' },
+                { id: 2, name: 'VM-1', status: 'offline', ip: '172.22.0.2' },
+              ],
+            },
+            raw: {
+              total: 2,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('已获取 2 台主机')).toBeInTheDocument();
+    expect(screen.getByText('test')).toBeInTheDocument();
+    expect(screen.getByText('online')).toBeInTheDocument();
+    expect(screen.getByText('localhost')).toBeInTheDocument();
+    expect(screen.getByText('VM-1')).toBeInTheDocument();
+    expect(screen.getByText('offline')).toBeInTheDocument();
+    expect(screen.queryByText('"total": 2')).not.toBeInTheDocument();
+  });
 });
