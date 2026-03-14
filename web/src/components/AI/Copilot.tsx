@@ -1602,7 +1602,9 @@ export const Copilot: React.FC<CopilotProps> = ({
             status: 'submitting',
           },
         }),
-        thoughtChain: finalizeThoughtStage(message.thoughtChain || [], 'user_action', approved ? 'success' : 'abort', approved ? '已确认，继续执行' : '已取消执行'),
+        thoughtChain: message.runtime
+          ? message.thoughtChain
+          : finalizeThoughtStage(message.thoughtChain || [], 'user_action', approved ? 'success' : 'abort', approved ? '已确认，继续执行' : '已取消执行'),
       };
     });
 
@@ -1680,12 +1682,14 @@ export const Copilot: React.FC<CopilotProps> = ({
             error_message: '审批结果提交失败，请重试。',
           },
         }),
-        thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
-          key: 'user_action',
-          title: '等待你确认',
-          status: 'error',
-          description: '审批结果提交失败，请重试。',
-        }),
+        thoughtChain: message.runtime
+          ? message.thoughtChain
+          : upsertThoughtStage(message.thoughtChain || [], {
+              key: 'user_action',
+              title: '等待你确认',
+              status: 'error',
+              description: '审批结果提交失败，请重试。',
+            }),
       }));
       message.error('确认操作失败');
       setIsLoading(false);
