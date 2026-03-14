@@ -152,6 +152,27 @@ describe('aiApi.chatStream', () => {
     }));
   });
 
+  it('does not dispatch legacy phase lifecycle events on the primary stream path', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: buildStream([
+        'event: phase_started\ndata: {"phase":"planning","status":"loading","title":"整理执行步骤"}\n\n',
+        'event: chain_started\ndata: {"turn_id":"turn-1"}\n\n',
+      ]),
+    } as Response);
+
+    const onPhaseStarted = vi.fn();
+    const onChainStarted = vi.fn();
+
+    await aiApi.chatStream(
+      { message: 'hi', context: { scene: 'global' } },
+      { onPhaseStarted, onChainStarted } as any,
+    );
+
+    expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }));
+    expect(onPhaseStarted).not.toHaveBeenCalled();
+  });
+
   it('dispatches structured plan generation events with steps and total', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,

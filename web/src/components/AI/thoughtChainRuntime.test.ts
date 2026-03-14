@@ -5,6 +5,17 @@ import {
 } from './thoughtChainRuntime';
 
 describe('thoughtChainRuntime', () => {
+  it('ignores legacy phase events for the primary chain reducer', () => {
+    const state = reduceThoughtChainRuntimeEvent(undefined, {
+      // @ts-expect-error verifying legacy event rejection during migration
+      type: 'phase_started',
+      data: { phase: 'planning', status: 'loading' },
+    });
+
+    expect(state.nodes).toHaveLength(0);
+    expect(state.turnId).toBeUndefined();
+  });
+
   it('opens, patches, closes, and collapses native chain nodes before final answer becomes visible', () => {
     let state = createThoughtChainRuntimeState();
 
