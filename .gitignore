@@ -30,6 +30,7 @@ go.work.sum
 .env
 
 bin/
+.worktrees/
 
 log/
 
