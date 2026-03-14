@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Copilot } from './Copilot';
+import { Copilot, DEFAULT_CONVERSATION, conversationReducer } from './Copilot';
 import { aiApi } from '../../api/modules/ai';
 
 let restoredConversation: any = null;
@@ -236,6 +236,39 @@ describe('Copilot', () => {
     const bubbleItems = view.container.querySelectorAll('[data-testid^="bubble-item-"]');
     expect(bubbleItems[0]).toHaveAttribute('data-role', 'user');
     expect(bubbleItems[1]).toHaveAttribute('data-role', 'assistant');
+  });
+
+  it('creates a new conversation bucket when messages are appended to a just-created key', () => {
+    const state = conversationReducer(
+      {
+        conversations: [DEFAULT_CONVERSATION],
+        activeKey: DEFAULT_CONVERSATION.key,
+      },
+      {
+        type: 'append_messages',
+        key: 'fresh-conversation',
+        label: '新对话',
+        messages: [
+          {
+            id: 'user-1',
+            role: 'user',
+            content: '帮我检查集群',
+            createdAt: '2026-03-14T00:00:00Z',
+          },
+        ],
+      },
+    );
+
+    expect(state.activeKey).toBe('fresh-conversation');
+    expect(state.conversations[0]).toEqual(expect.objectContaining({
+      key: 'fresh-conversation',
+      messages: [
+        expect.objectContaining({
+          id: 'user-1',
+          content: '帮我检查集群',
+        }),
+      ],
+    }));
   });
 
   it('renders plan, tool, and approval blocks during regenerate on the turn/block path', async () => {

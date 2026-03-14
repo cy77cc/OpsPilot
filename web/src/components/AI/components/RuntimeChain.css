@@ -231,6 +231,47 @@
   border-radius: 6px;
 }
 
+.runtime-chain__detailLine {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.runtime-chain__detailCard + .runtime-chain__detailCard,
+.runtime-chain__detailLine + .runtime-chain__detailCard,
+.runtime-chain__detailCard + .runtime-chain__detailLine,
+.runtime-chain__detailLine + .runtime-chain__detailLine {
+  margin-top: 8px;
+}
+
+.runtime-chain__detailCard {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.runtime-chain__detailTitle {
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.runtime-chain__detailText {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.runtime-chain__detailMeta {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ===== 暗色主题 ===== */
 @media (prefers-color-scheme: dark) {
   .runtime-chain__collapsed-title {
@@ -243,6 +284,19 @@
 
   .runtime-chain__nodeBody {
     background: rgba(255, 255, 255, 0.04);
+  }
+
+  .runtime-chain__detailCard {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .runtime-chain__detailText {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .runtime-chain__detailMeta {
+    color: rgba(255, 255, 255, 0.45);
   }
 
   .final-answer-stream__caret {

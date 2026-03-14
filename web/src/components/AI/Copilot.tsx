@@ -592,7 +592,7 @@ type ConversationAction =
   | { type: 'update_message'; key: string; messageId: string; updater: (message: ExtendedChatMessage) => ExtendedChatMessage }
   | { type: 'remove_message'; key: string; messageId: string };
 
-const DEFAULT_CONVERSATION: ConversationItem = { key: 'default', label: '新对话', group: '今天', messages: [] };
+export const DEFAULT_CONVERSATION: ConversationItem = { key: 'default', label: '新对话', group: '今天', messages: [] };
 
 function buildConversationItem(restored: RestoredConversation, hydrated: boolean): ConversationItem {
   return {
@@ -630,7 +630,7 @@ function normalizeConversationMessages(messages: RestoredConversation['messages'
   });
 }
 
-function conversationReducer(state: ConversationState, action: ConversationAction): ConversationState {
+export function conversationReducer(state: ConversationState, action: ConversationAction): ConversationState {
   switch (action.type) {
     case 'reset':
       return {
@@ -674,6 +674,21 @@ function conversationReducer(state: ConversationState, action: ConversationActio
         activeKey: action.key,
       };
     case 'append_messages':
+      if (!state.conversations.some((conversation) => conversation.key === action.key)) {
+        return {
+          ...state,
+          conversations: [
+            {
+              key: action.key,
+              label: action.label || '新对话',
+              group: '今天',
+              messages: action.messages,
+            },
+            ...state.conversations,
+          ],
+          activeKey: action.key,
+        };
+      }
       return {
         ...state,
         conversations: state.conversations.map((conversation) => (
@@ -687,6 +702,9 @@ function conversationReducer(state: ConversationState, action: ConversationActio
         )),
       };
     case 'update_message':
+      if (!state.conversations.some((conversation) => conversation.key === action.key)) {
+        return state;
+      }
       return {
         ...state,
         conversations: state.conversations.map((conversation) => {

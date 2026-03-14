@@ -11,6 +11,28 @@ interface RuntimeThoughtChainProps {
   onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void;
 }
 
+function renderDetail(detail: unknown, key: string) {
+  if (typeof detail === 'string') {
+    return <div key={key} className="runtime-chain__detailLine">{detail}</div>;
+  }
+  if (!detail || typeof detail !== 'object') {
+    return <div key={key} className="runtime-chain__detailLine">{String(detail)}</div>;
+  }
+
+  const record = detail as Record<string, unknown>;
+  const title = String(record.title || record.label || '').trim();
+  const secondary = String(record.content || record.summary || record.description || '').trim();
+  const hint = String(record.tool_hint || record.status || '').trim();
+
+  return (
+    <div key={key} className="runtime-chain__detailCard">
+      {title ? <div className="runtime-chain__detailTitle">{title}</div> : null}
+      {secondary ? <div className="runtime-chain__detailText">{secondary}</div> : null}
+      {hint ? <div className="runtime-chain__detailMeta">{hint}</div> : null}
+    </div>
+  );
+}
+
 function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void): ConfirmationRequest | null {
   if (!node.approval) {
     return null;
@@ -44,11 +66,7 @@ export function RuntimeThoughtChain({ nodes, isCollapsed = false, onApprovalDeci
               {node.summary ? <div className="runtime-chain__nodeSummary">{node.summary}</div> : null}
               {Array.isArray(node.details) && node.details.length > 0 ? (
                 <div className="runtime-chain__nodeBody">
-                  {node.details.map((detail, index) => (
-                    <div key={`${node.nodeId}:${index}`} style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      {typeof detail === 'string' ? detail : JSON.stringify(detail)}
-                    </div>
-                  ))}
+                  {node.details.map((detail, index) => renderDetail(detail, `${node.nodeId}:${index}`))}
                 </div>
               ) : null}
               {node.kind === 'approval' ? (

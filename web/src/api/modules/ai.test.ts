@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { aiApi } from './ai';
+import apiService from '../api';
 
 function buildStream(chunks: string[]) {
   const encoder = new TextEncoder();
@@ -118,40 +119,6 @@ describe('aiApi.chatStream', () => {
     expect(onTurnDone).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1', status: 'completed' }));
   });
 
-  it('dispatches phase lifecycle events for planning and replanning', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: phase_started\ndata: {"phase":"planning","status":"loading","title":"整理执行步骤"}\n\n',
-        'event: phase_complete\ndata: {"phase":"planning","status":"success"}\n\n',
-        'event: phase_started\ndata: {"phase":"replanning","status":"loading","title":"动态调整计划"}\n\n',
-      ]),
-    } as Response);
-
-    const onPhaseStarted = vi.fn();
-    const onPhaseComplete = vi.fn();
-
-    await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onPhaseStarted, onPhaseComplete } as any,
-    );
-
-    expect(onPhaseStarted).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      phase: 'planning',
-      status: 'loading',
-      title: '整理执行步骤',
-    }));
-    expect(onPhaseComplete).toHaveBeenCalledWith(expect.objectContaining({
-      phase: 'planning',
-      status: 'success',
-    }));
-    expect(onPhaseStarted).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      phase: 'replanning',
-      status: 'loading',
-      title: '动态调整计划',
-    }));
-  });
-
   it('does not dispatch legacy phase lifecycle events on the primary stream path', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
@@ -171,67 +138,6 @@ describe('aiApi.chatStream', () => {
 
     expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }));
     expect(onPhaseStarted).not.toHaveBeenCalled();
-  });
-
-  it('dispatches structured plan generation events with steps and total', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: plan_generated\ndata: {"plan_id":"plan-42","steps":[{"id":"step-1","content":"检查集群状态","tool_hint":"get_cluster_info"},{"id":"step-2","content":"获取 deployment 列表","tool_hint":"list_deployments"}],"total":2}\n\n',
-      ]),
-    } as Response);
-
-    const onPlanGenerated = vi.fn();
-
-    await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onPlanGenerated } as any,
-    );
-
-    expect(onPlanGenerated).toHaveBeenCalledWith(expect.objectContaining({
-      plan_id: 'plan-42',
-      total: 2,
-      steps: [
-        expect.objectContaining({ id: 'step-1', content: '检查集群状态', tool_hint: 'get_cluster_info' }),
-        expect.objectContaining({ id: 'step-2', content: '获取 deployment 列表', tool_hint: 'list_deployments' }),
-      ],
-    }));
-  });
-
-  it('dispatches step lifecycle and replan events during execution pivots', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: step_started\ndata: {"step_id":"step-1","title":"检查集群状态","tool_name":"get_cluster_info","status":"running"}\n\n',
-        'event: step_complete\ndata: {"step_id":"step-1","status":"success","summary":"集群状态正常"}\n\n',
-        'event: replan_triggered\ndata: {"reason":"步骤执行失败，需要调整计划","completed_steps":1}\n\n',
-      ]),
-    } as Response);
-
-    const onStepStarted = vi.fn();
-    const onStepComplete = vi.fn();
-    const onReplanTriggered = vi.fn();
-
-    await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onStepStarted, onStepComplete, onReplanTriggered } as any,
-    );
-
-    expect(onStepStarted).toHaveBeenCalledWith(expect.objectContaining({
-      step_id: 'step-1',
-      title: '检查集群状态',
-      tool_name: 'get_cluster_info',
-      status: 'running',
-    }));
-    expect(onStepComplete).toHaveBeenCalledWith(expect.objectContaining({
-      step_id: 'step-1',
-      status: 'success',
-      summary: '集群状态正常',
-    }));
-    expect(onReplanTriggered).toHaveBeenCalledWith(expect.objectContaining({
-      reason: '步骤执行失败，需要调整计划',
-      completed_steps: 1,
-    }));
   });
 
   it('preserves stage-aware error payloads', async () => {
@@ -257,69 +163,17 @@ describe('aiApi.chatStream', () => {
     }));
   });
 
-  it('streams approval resume events on the dedicated resume endpoint', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: stage_delta\ndata: {"stage":"execute","status":"loading","summary":"继续执行审批后的步骤"}\n\n',
-        'event: step_update\ndata: {"plan_id":"plan-1","step_id":"step-1","tool":"scale_deployment","status":"success","user_visible_summary":"扩容完成"}\n\n',
-        'event: delta\ndata: {"content":"继续执行"}\n\n',
-        'event: done\ndata: {"stream_state":"ok"}\n\n',
-      ]),
-    } as Response);
+  it('posts unified chain approval decisions to the canonical endpoint', async () => {
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: { approval: { id: 'approval-1', status: 'approved' } },
+    });
 
-    const onStageDelta = vi.fn();
-    const onStepUpdate = vi.fn();
-    const onDelta = vi.fn();
-    const onDone = vi.fn();
+    await aiApi.decideChainApproval('plan-1', 'approval:step-1', true, 'looks safe');
 
-    await aiApi.respondApprovalStream(
-      { session_id: 'sess-1', plan_id: 'plan-1', step_id: 'step-1', checkpoint_id: 'cp-1', approved: true },
-      { onStageDelta, onStepUpdate, onDelta, onDone },
+    expect(postMock).toHaveBeenCalledWith(
+      '/ai/chains/plan-1/approvals/approval:step-1/decision',
+      { approved: true, reason: 'looks safe' },
     );
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/ai/resume/step/stream'),
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          session_id: 'sess-1',
-          plan_id: 'plan-1',
-          step_id: 'step-1',
-          checkpoint_id: 'cp-1',
-          approved: true,
-        }),
-      }),
-    );
-    expect(onStageDelta).toHaveBeenCalledWith(expect.objectContaining({ stage: 'execute', status: 'loading' }));
-    expect(onStepUpdate).toHaveBeenCalledWith(expect.objectContaining({ step_id: 'step-1', status: 'success' }));
-    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: '继续执行' }));
-    expect(onDone).toHaveBeenCalled();
-  });
-
-  it('keeps checkpoint_id approval events while preserving canonical resume identity fields', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: approval_required\ndata: {"id":"approval-1","session_id":"sess-1","plan_id":"plan-1","step_id":"step-1","checkpoint_id":"cp-1","tool":"scale_deployment","status":"pending"}\n\n',
-      ]),
-    } as Response);
-
-    const onApprovalRequired = vi.fn();
-
-    await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onApprovalRequired }
-    );
-
-    expect(onApprovalRequired).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'approval-1',
-      session_id: 'sess-1',
-      plan_id: 'plan-1',
-      step_id: 'step-1',
-      checkpoint_id: 'cp-1',
-      tool: 'scale_deployment',
-      status: 'pending',
-    }));
   });
 });

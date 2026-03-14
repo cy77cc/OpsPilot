@@ -827,24 +827,14 @@ export const aiApi = {
         handlers.onTurnState?.(payload as SSETurnStateEvent);
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
-      } else if (eventType === 'phase_started') {
-        handlers.onPhaseStarted?.(normalizePhaseEvent<SSEPhaseStartedEvent>(payload));
-      } else if (eventType === 'phase_complete') {
-        handlers.onPhaseComplete?.(normalizePhaseEvent<SSEPhaseCompleteEvent>(payload));
       } else if (eventType === 'rewrite_result') {
         handlers.onRewriteResult?.(payload as SSERewriteResultEvent);
-      } else if (eventType === 'plan_generated') {
-        handlers.onPlanGenerated?.(normalizePlanGeneratedEvent(payload));
       } else if (eventType === 'planner_state') {
         handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
       } else if (eventType === 'plan_created') {
         handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
       } else if (eventType === 'stage_delta') {
         handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
-      } else if (eventType === 'step_started') {
-        handlers.onStepStarted?.(normalizeStepUpdateEvent(payload));
-      } else if (eventType === 'step_complete') {
-        handlers.onStepComplete?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
@@ -878,16 +868,10 @@ export const aiApi = {
         handlers.onToolResult?.(payload as { tool?: string; result?: { ok: boolean; data?: any; error?: string; source?: string; latency_ms?: number } });
         toolPending = false;
         clearToolTimer();
-      } else if (eventType === 'approval_required') {
-        handlers.onApprovalRequired?.(normalizeApprovalRequiredEvent(payload));
-        toolPending = false;
-        clearToolTimer();
       } else if (eventType === 'clarify_required') {
         handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
         toolPending = false;
         clearToolTimer();
-      } else if (eventType === 'replan_triggered') {
-        handlers.onReplanTriggered?.(normalizeReplanTriggeredEvent(payload));
       } else if (eventType === 'replan_started') {
         handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
       } else if (eventType === 'summary') {
@@ -982,6 +966,13 @@ export const aiApi = {
     return apiService.post(`/ai/approvals/${id}/confirm`, { approve });
   },
 
+  async decideChainApproval(chainId: string, nodeId: string, approved: boolean, reason?: string): Promise<ApiResponse<{ approval?: Record<string, unknown>; execution?: Record<string, unknown> }>> {
+    return apiService.post(`/ai/chains/${chainId}/approvals/${nodeId}/decision`, {
+      approved,
+      ...(reason ? { reason } : {}),
+    });
+  },
+
   async listApprovals(status?: string): Promise<ApiResponse<ApprovalTicket[]>> {
     return apiService.get('/ai/approvals', status ? { params: { status } } : undefined);
   },
@@ -1072,30 +1063,16 @@ export const aiApi = {
         handlers.onTurnState?.(payload as SSETurnStateEvent);
       } else if (eventType === 'turn_done') {
         handlers.onTurnDone?.(payload as SSETurnDoneEvent);
-      } else if (eventType === 'phase_started') {
-        handlers.onPhaseStarted?.(normalizePhaseEvent<SSEPhaseStartedEvent>(payload));
-      } else if (eventType === 'phase_complete') {
-        handlers.onPhaseComplete?.(normalizePhaseEvent<SSEPhaseCompleteEvent>(payload));
-      } else if (eventType === 'plan_generated') {
-        handlers.onPlanGenerated?.(normalizePlanGeneratedEvent(payload));
       } else if (eventType === 'stage_delta') {
         handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
-      } else if (eventType === 'step_started') {
-        handlers.onStepStarted?.(normalizeStepUpdateEvent(payload));
-      } else if (eventType === 'step_complete') {
-        handlers.onStepComplete?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'step_update') {
         handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
       } else if (eventType === 'tool_call') {
         handlers.onToolCall?.(payload as any);
       } else if (eventType === 'tool_result') {
         handlers.onToolResult?.(payload as any);
-      } else if (eventType === 'approval_required') {
-        handlers.onApprovalRequired?.(normalizeApprovalRequiredEvent(payload));
       } else if (eventType === 'thinking_delta') {
         handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
-      } else if (eventType === 'replan_triggered') {
-        handlers.onReplanTriggered?.(normalizeReplanTriggeredEvent(payload));
       } else if (eventType === 'delta' || eventType === 'message') {
         const contentChunk = toContentChunk(payload);
         if (contentChunk) {
