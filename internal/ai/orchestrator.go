@@ -205,6 +205,20 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 	}
 
 	stepID := firstNonEmpty(req.StepID, state.InterruptTarget, pendingStepID(state.PendingApproval))
+	observeApprovalResolution := func(status string) {
+		if state.PendingApproval == nil {
+			return
+		}
+		duration := time.Duration(0)
+		if !state.PendingApproval.CreatedAt.IsZero() {
+			duration = time.Since(state.PendingApproval.CreatedAt)
+		}
+		aiobs.ObserveThoughtChainApproval(aiobs.ThoughtChainApprovalRecord{
+			Scene:    state.Scene,
+			Status:   status,
+			Duration: duration,
+		})
+	}
 	if emit != nil {
 		emit(airuntime.StreamEvent{Type: airuntime.EventMeta, Data: map[string]any{
 			"session_id": state.SessionID,
@@ -215,6 +229,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 	}
 
 	if !req.Approved {
+		observeApprovalResolution("rejected")
 		state.Status = airuntime.ExecutionStatusRejected
 		if step := state.Steps[stepID]; step.StepID != "" {
 			step.Status = airuntime.StepRejected
@@ -250,6 +265,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		return nil, err
 	}
 	if !found || o.runner == nil {
+		observeApprovalResolution("approved")
 		state.Status = airuntime.ExecutionStatusCompleted
 		if step := state.Steps[stepID]; step.StepID != "" {
 			step.Status = airuntime.StepSucceeded
@@ -298,6 +314,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		})
 		return nil, err
 	}
+	observeApprovalResolution("approved")
 	res, streamErr := o.streamExecution(ctx, iter, &state, emit)
 	aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
 		Operation: "resume",
@@ -330,6 +347,8 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	finalAnswerStarted := false
 	activeNodeID := ""
 	activeNodeKind := airuntime.ChainNodeKind("")
+	activeNodeStartedAt := time.Time{}
+	chainStartedAt := time.Time{}
 	planNodeID := fmt.Sprintf("plan:%s", state.PlanID)
 	executeNodeID := fmt.Sprintf("execute:%s", state.PlanID)
 
@@ -339,6 +358,22 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		}
 		emit(o.converter.OnChainStarted(state.TurnID))
 		chainStarted = true
+		chainStartedAt = time.Now().UTC()
+	}
+	observeNodeClosed := func(nodeID string, kind airuntime.ChainNodeKind, status string, startedAt time.Time) {
+		if strings.TrimSpace(nodeID) == "" || strings.TrimSpace(string(kind)) == "" {
+			return
+		}
+		duration := time.Duration(0)
+		if !startedAt.IsZero() {
+			duration = time.Since(startedAt)
+		}
+		aiobs.ObserveThoughtChainNode(aiobs.ThoughtChainNodeRecord{
+			Scene:    state.Scene,
+			Kind:     string(kind),
+			Status:   firstNonEmpty(status, "done"),
+			Duration: duration,
+		})
 	}
 	openChainNode := func(info airuntime.ChainNodeInfo) {
 		emitChainStarted()
@@ -349,10 +384,12 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				Kind:   activeNodeKind,
 				Status: "done",
 			}))
+			observeNodeClosed(activeNodeID, activeNodeKind, "done", activeNodeStartedAt)
 		}
 		emit(o.converter.OnChainNodeOpen(info))
 		activeNodeID = info.NodeID
 		activeNodeKind = info.Kind
+		activeNodeStartedAt = time.Now().UTC()
 	}
 	patchChainNode := func(info airuntime.ChainNodeInfo) {
 		emitChainStarted()
@@ -368,8 +405,10 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			Kind:   activeNodeKind,
 			Status: firstNonEmpty(status, "done"),
 		}))
+		observeNodeClosed(activeNodeID, activeNodeKind, firstNonEmpty(status, "done"), activeNodeStartedAt)
 		activeNodeID = ""
 		activeNodeKind = ""
+		activeNodeStartedAt = time.Time{}
 	}
 	startFinalAnswer := func() {
 		if !chainCollapsed {
@@ -582,6 +621,18 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				}),
 			})
 			emit(o.converter.OnDone(string(state.Status)))
+			aiobs.ObserveThoughtChainApproval(aiobs.ThoughtChainApprovalRecord{
+				Scene:    state.Scene,
+				Status:   "pending",
+				Duration: 0,
+			})
+			if !chainStartedAt.IsZero() {
+				aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
+					Scene:    state.Scene,
+					Status:   string(state.Status),
+					Duration: time.Since(chainStartedAt),
+				})
+			}
 			return &airuntime.ResumeResult{
 				Interrupted: true,
 				SessionID:   state.SessionID,
@@ -616,6 +667,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		emit(o.converter.OnFinalAnswerDone(state.TurnID))
 	}
 	emit(o.converter.OnDone(string(state.Status)))
+	if !chainStartedAt.IsZero() {
+		aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
+			Scene:    state.Scene,
+			Status:   string(state.Status),
+			Duration: time.Since(chainStartedAt),
+		})
+	}
 	return &airuntime.ResumeResult{
 		Resumed:   true,
 		SessionID: state.SessionID,
