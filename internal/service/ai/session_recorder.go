@@ -600,7 +600,7 @@ func (r *chatRecorder) handleFinalAnswerDelta(payload map[string]any) {
 	if runtime.FinalAnswer == nil {
 		runtime.FinalAnswer = &aistate.RuntimeFinalAnswer{}
 	}
-	chunk := firstString(payload["chunk"])
+	chunk := firstRawString(payload["chunk"])
 	if chunk != "" {
 		runtime.FinalAnswer.Content += chunk
 	}
