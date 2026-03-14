@@ -161,19 +161,6 @@ export interface SSETurnDoneEvent {
   phase?: string;
 }
 
-export interface SSEPhaseStartedEvent {
-  [key: string]: unknown;
-  turn_id?: string;
-  phase?: string;
-  status?: string;
-  title?: string;
-  summary?: string;
-  user_visible_summary?: string;
-  message?: string;
-}
-
-export interface SSEPhaseCompleteEvent extends SSEPhaseStartedEvent {}
-
 export interface SSEPlanStep {
   [key: string]: unknown;
   id?: string;
@@ -182,36 +169,6 @@ export interface SSEPlanStep {
   tool_hint?: string;
   status?: string;
   summary?: string;
-}
-
-export interface SSEPlanGeneratedEvent {
-  [key: string]: unknown;
-  turn_id?: string;
-  session_id?: string;
-  plan_id?: string;
-  title?: string;
-  summary?: string;
-  user_visible_summary?: string;
-  total?: number;
-  steps?: SSEPlanStep[];
-  plan?: Record<string, unknown>;
-}
-
-export interface SSEStepStartedEvent extends SSEStepUpdateEvent {}
-
-export interface SSEStepCompleteEvent extends SSEStepUpdateEvent {}
-
-export interface SSEReplanTriggeredEvent {
-  [key: string]: unknown;
-  turn_id?: string;
-  session_id?: string;
-  plan_id?: string;
-  previous_plan_id?: string;
-  reason?: string;
-  title?: string;
-  summary?: string;
-  user_visible_summary?: string;
-  completed_steps?: number;
 }
 
 export interface SSEChainStartedEvent {
@@ -410,22 +367,6 @@ function normalizeStepUpdateEvent(payload: unknown): SSEStepUpdateEvent {
   return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as SSEStepUpdateEvent;
 }
 
-function normalizeApprovalRequiredEvent(payload: unknown): ApprovalRequiredEvent {
-  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as unknown as ApprovalRequiredEvent;
-}
-
-function normalizePhaseEvent<T extends Record<string, unknown>>(payload: unknown): T {
-  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as T;
-}
-
-function normalizePlanGeneratedEvent(payload: unknown): SSEPlanGeneratedEvent {
-  return normalizePhaseEvent<SSEPlanGeneratedEvent>(payload);
-}
-
-function normalizeReplanTriggeredEvent(payload: unknown): SSEReplanTriggeredEvent {
-  return normalizePhaseEvent<SSEReplanTriggeredEvent>(payload);
-}
-
 function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
   const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
   if (!errorPayload.code && errorPayload.error_code) {
@@ -483,19 +424,13 @@ export interface AIChatStreamHandlers {
   onBlockClose?: (payload: SSEBlockCloseEvent) => void;
   onTurnState?: (payload: SSETurnStateEvent) => void;
   onTurnDone?: (payload: SSETurnDoneEvent) => void;
-  onPhaseStarted?: (payload: SSEPhaseStartedEvent) => void;
-  onPhaseComplete?: (payload: SSEPhaseCompleteEvent) => void;
   onRewriteResult?: (payload: SSERewriteResultEvent) => void;
-  onPlanGenerated?: (payload: SSEPlanGeneratedEvent) => void;
   onPlannerState?: (payload: SSEPlannerStateEvent) => void;
   onPlanCreated?: (payload: SSEPlanCreatedEvent) => void;
   onStageDelta?: (payload: SSEStageDeltaEvent) => void;
-  onStepStarted?: (payload: SSEStepStartedEvent) => void;
-  onStepComplete?: (payload: SSEStepCompleteEvent) => void;
   onStepUpdate?: (payload: SSEStepUpdateEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
-  onReplanTriggered?: (payload: SSEReplanTriggeredEvent) => void;
   onReplanStarted?: (payload: SSEReplanStartedEvent) => void;
   onSummary?: (payload: SSESummaryEvent) => void;
   onDone?: (payload: SSEDoneEvent) => void;

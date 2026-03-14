@@ -34,8 +34,6 @@ import type {
   SSEChainStartedEvent,
   SSEDoneEvent,
   SSEFinalAnswerEvent,
-  SSEPhaseCompleteEvent,
-  SSEPhaseStartedEvent,
   SSEStageDeltaEvent,
   SSEStepUpdateEvent,
 } from '../../api/modules/ai';
@@ -1061,17 +1059,6 @@ export const Copilot: React.FC<CopilotProps> = ({
       onTurnDone: (data: { turn_id: string; status?: string; phase?: string }) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           turn: applyTurnDone(message.turn, data),
-        }));
-      },
-      onPhaseStarted: (data: SSEPhaseStartedEvent) => {
-        refreshAnnouncement(data.title || resolveThoughtStageTitle(data.phase));
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyPhaseStarted(message.turn, data),
-        }));
-      },
-      onPhaseComplete: (data: SSEPhaseCompleteEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyPhaseComplete(message.turn, data),
         }));
       },
       onStageDelta: (data: SSEStageDeltaEvent) => {
