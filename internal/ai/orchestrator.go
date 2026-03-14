@@ -211,23 +211,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			"plan_id":    state.PlanID,
 			"turn_id":    state.TurnID,
 		}})
-		emit(airuntime.StreamEvent{Type: airuntime.EventTurnStarted, Data: map[string]any{
-			"turn_id":    state.TurnID,
-			"session_id": state.SessionID,
-		}})
-		emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-			Phase:   airuntime.PhaseExecuting,
-			PlanID:  state.PlanID,
-			TurnID:  state.TurnID,
-			Status:  "running",
-			Title:   "执行步骤",
-			Summary: "恢复执行已批准的步骤",
-		}))
-		emit(airuntime.StreamEvent{Type: airuntime.EventTurnState, Data: map[string]any{
-			"turn_id": state.TurnID,
-			"plan_id": state.PlanID,
-			"status":  "running",
-		}})
+		emit(o.converter.OnChainStarted(state.TurnID))
 	}
 
 	if !req.Approved {
@@ -242,12 +226,6 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		}
 		_ = o.executions.Save(ctx, state)
 		if emit != nil {
-			if step := state.Steps[stepID]; step.StepID != "" {
-				emit(o.converter.OnStepComplete(stepEventFromState(state, step, string(airuntime.StepRejected), req.Reason)))
-			}
-			for _, evt := range o.converter.OnApprovalResult(stepID, false, req.Reason) {
-				emit(evt)
-			}
 			emit(o.converter.OnDone(string(state.Status)))
 		}
 		aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
@@ -282,15 +260,6 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 		}
 		_ = o.executions.Save(ctx, state)
 		if emit != nil {
-			if step := state.Steps[stepID]; step.StepID != "" {
-				emit(o.converter.OnStepComplete(stepEventFromState(state, step, string(airuntime.StepSucceeded), req.Reason)))
-			}
-			for _, evt := range o.converter.OnApprovalResult(stepID, true, req.Reason) {
-				emit(evt)
-			}
-			for _, evt := range o.converter.OnExecuteComplete() {
-				emit(evt)
-			}
 			emit(o.converter.OnDone(string(state.Status)))
 		}
 		aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
@@ -433,30 +402,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			if reason == "" {
 				reason = "执行结果触发重新规划"
 			}
-			emit(o.converter.OnReplanTriggered(airuntime.ReplanEvent{
-				PlanID:  state.PlanID,
-				TurnID:  state.TurnID,
-				Reason:  reason,
-				Summary: "当前执行流已切换到重新规划阶段",
-			}))
-			if state.Phase == string(airuntime.PhaseExecuting) {
-				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
-					Phase:   airuntime.PhaseExecuting,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "success",
-					Title:   "执行步骤",
-					Summary: "执行阶段已暂停，等待重新规划",
-				}))
-			}
-			emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-				Phase:   airuntime.PhaseReplanning,
-				PlanID:  state.PlanID,
-				TurnID:  state.TurnID,
-				Status:  "loading",
-				Title:   "动态调整计划",
-				Summary: reason,
-			}))
 			openChainNode(airuntime.ChainNodeInfo{
 				TurnID:  state.TurnID,
 				NodeID:  fmt.Sprintf("replan:%s", state.PlanID),
@@ -476,30 +421,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		}
 		if isToolOutputEvent(event) {
 			if !executingStarted {
-				phaseName := airuntime.PhasePlanning
-				title := "整理执行步骤"
-				summary := "规划完成，开始执行步骤"
-				if state.Phase == string(airuntime.PhaseReplanning) {
-					phaseName = airuntime.PhaseReplanning
-					title = "动态调整计划"
-					summary = "重新规划完成，开始执行步骤"
-				}
-				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
-					Phase:   phaseName,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "success",
-					Title:   title,
-					Summary: summary,
-				}))
-				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-					Phase:   airuntime.PhaseExecuting,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "loading",
-					Title:   "执行步骤",
-					Summary: "开始执行计划步骤",
-				}))
 				openChainNode(airuntime.ChainNodeInfo{
 					TurnID:  state.TurnID,
 					NodeID:  executeNodeID,
@@ -526,7 +447,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			}
 			state.Steps[stepID] = step
 			if startingStep {
-				emit(o.converter.OnStepStarted(stepEventFromState(*state, step, string(airuntime.StepRunning), "")))
 				openChainNode(airuntime.ChainNodeInfo{
 					TurnID:  state.TurnID,
 					NodeID:  fmt.Sprintf("tool:%s", stepID),
@@ -535,31 +455,7 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					Status:  "loading",
 					Summary: firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
 				})
-				emit(airuntime.StreamEvent{Type: airuntime.EventToolCall, Data: compactEventData(map[string]any{
-					"plan_id":   state.PlanID,
-					"turn_id":   state.TurnID,
-					"step_id":   stepID,
-					"title":     step.Title,
-					"tool_name": step.ToolName,
-					"params":    step.ToolArgs,
-					"mode":      step.Mode,
-					"risk":      step.Risk,
-					"summary":   step.UserVisibleSummary,
-				})})
 			}
-			emit(airuntime.StreamEvent{Type: airuntime.EventToolResult, Data: compactEventData(map[string]any{
-				"plan_id":   state.PlanID,
-				"turn_id":   state.TurnID,
-				"step_id":   stepID,
-				"title":     step.Title,
-				"tool_name": step.ToolName,
-				"params":    step.ToolArgs,
-				"summary":   firstNonEmpty(step.UserVisibleSummary, toolResult),
-				"result": map[string]any{
-					"ok":   true,
-					"data": toolResult,
-				},
-			})})
 			patchChainNode(airuntime.ChainNodeInfo{
 				TurnID:  state.TurnID,
 				NodeID:  fmt.Sprintf("tool:%s", stepID),
@@ -575,7 +471,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			})
 			step.Status = airuntime.StepSucceeded
 			state.Steps[stepID] = step
-			emit(o.converter.OnStepComplete(stepEventFromState(*state, step, string(airuntime.StepSucceeded), toolResult)))
 			closeActiveNode("done")
 			_ = o.executions.Save(ctx, *state)
 			continue
@@ -585,22 +480,12 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				continue
 			}
 			if !planningStarted {
-				phaseName := airuntime.PhasePlanning
 				title := "整理执行步骤"
 				summary := "正在分析并整理执行计划"
 				if state.Phase == string(airuntime.PhaseReplanning) {
-					phaseName = airuntime.PhaseReplanning
 					title = "动态调整计划"
 					summary = "正在根据最新结果调整执行计划"
 				}
-				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-					Phase:   phaseName,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "loading",
-					Title:   title,
-					Summary: summary,
-				}))
 				openChainNode(airuntime.ChainNodeInfo{
 					TurnID:  state.TurnID,
 					NodeID:  planNodeID,
@@ -620,7 +505,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					Summary: strings.TrimSpace(content),
 				})
 				if plan, ok := parser.Extract(state.PlanID, state.TurnID, planningText); ok {
-					emit(o.converter.OnPlanGenerated(plan))
 					patchChainNode(airuntime.ChainNodeInfo{
 						TurnID:  state.TurnID,
 						NodeID:  planNodeID,
@@ -635,30 +519,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 							Status: airuntime.StepPending,
 						}
 					}
-					currentPlanningPhase := airuntime.PhasePlanning
-					currentPlanningTitle := "整理执行步骤"
-					currentPlanningSummary := "已提取结构化计划"
-					if state.Phase == string(airuntime.PhaseReplanning) {
-						currentPlanningPhase = airuntime.PhaseReplanning
-						currentPlanningTitle = "动态调整计划"
-						currentPlanningSummary = "已生成调整后的结构化计划"
-					}
-					emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
-						Phase:   currentPlanningPhase,
-						PlanID:  state.PlanID,
-						TurnID:  state.TurnID,
-						Status:  "success",
-						Title:   currentPlanningTitle,
-						Summary: currentPlanningSummary,
-					}))
-					emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-						Phase:   airuntime.PhaseExecuting,
-						PlanID:  state.PlanID,
-						TurnID:  state.TurnID,
-						Status:  "loading",
-						Title:   "执行步骤",
-						Summary: "开始执行计划步骤",
-					}))
 					closeActiveNode("done")
 					openChainNode(airuntime.ChainNodeInfo{
 						TurnID:  state.TurnID,
@@ -672,36 +532,17 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					planningCompleted = true
 					executingStarted = true
 				}
-				// 兼容层仍继续透传旧 delta。
-				emit(o.converter.OnTextDelta(content))
 				lastText = mergeTextProgress(lastText, content)
 				continue
 			}
 			startFinalAnswer()
 			emit(o.converter.OnFinalAnswerDelta(state.TurnID, content))
-			emit(o.converter.OnTextDelta(content))
 			lastText = mergeTextProgress(lastText, content)
 		}
 		if event.Action != nil && event.Action.Interrupted != nil {
 			stepID := interruptStepID(event)
 			pending := o.pendingApprovalFromInterrupt(state, stepID, event)
 			if !executingStarted {
-				emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
-					Phase:   airuntime.PhasePlanning,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "success",
-					Title:   "整理执行步骤",
-					Summary: "规划完成，开始执行步骤",
-				}))
-				emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-					Phase:   airuntime.PhaseExecuting,
-					PlanID:  state.PlanID,
-					TurnID:  state.TurnID,
-					Status:  "loading",
-					Title:   "执行步骤",
-					Summary: "开始执行计划步骤",
-				}))
 				planningCompleted = true
 				executingStarted = true
 			}
@@ -721,20 +562,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			}
 			_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
 			_ = o.executions.Save(ctx, *state)
-			emit(o.converter.OnStepStarted(airuntime.StepEvent{
-				PlanID:  state.PlanID,
-				TurnID:  state.TurnID,
-				StepID:  stepID,
-				Title:   pending.Title,
-				Status:  string(airuntime.StepWaitingApproval),
-				Summary: pending.Summary,
-				Tool: &airuntime.ToolDescriptor{
-					Name: pending.ToolName,
-					Args: pending.Params,
-					Mode: pending.Mode,
-					Risk: pending.Risk,
-				},
-			}))
 			openChainNode(airuntime.ChainNodeInfo{
 				TurnID:  state.TurnID,
 				NodeID:  fmt.Sprintf("approval:%s", stepID),
@@ -754,19 +581,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					},
 				}),
 			})
-			emit(airuntime.StreamEvent{Type: airuntime.EventToolCall, Data: map[string]any{
-				"plan_id":   state.PlanID,
-				"turn_id":   state.TurnID,
-				"step_id":   stepID,
-				"tool_name": pending.ToolName,
-				"params":    pending.Params,
-				"mode":      pending.Mode,
-				"risk":      pending.Risk,
-				"summary":   pending.Summary,
-			}})
-			for _, evt := range o.converter.OnApprovalRequired(state.PendingApproval, state.CheckpointID) {
-				emit(evt)
-			}
 			emit(o.converter.OnDone(string(state.Status)))
 			return &airuntime.ResumeResult{
 				Interrupted: true,
@@ -781,30 +595,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}
 
 	if !executingStarted {
-		phaseName := airuntime.PhasePlanning
-		title := "整理执行步骤"
-		summary := "规划完成"
-		if state.Phase == string(airuntime.PhaseReplanning) {
-			phaseName = airuntime.PhaseReplanning
-			title = "动态调整计划"
-			summary = "重新规划完成"
-		}
-		emit(o.converter.OnPhaseComplete(airuntime.PhaseEvent{
-			Phase:   phaseName,
-			PlanID:  state.PlanID,
-			TurnID:  state.TurnID,
-			Status:  "success",
-			Title:   title,
-			Summary: summary,
-		}))
-		emit(o.converter.OnPhaseStarted(airuntime.PhaseEvent{
-			Phase:   airuntime.PhaseExecuting,
-			PlanID:  state.PlanID,
-			TurnID:  state.TurnID,
-			Status:  "loading",
-			Title:   "执行步骤",
-			Summary: "开始执行计划步骤",
-		}))
 		openChainNode(airuntime.ChainNodeInfo{
 			TurnID:  state.TurnID,
 			NodeID:  executeNodeID,
@@ -824,9 +614,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}
 	if finalAnswerStarted {
 		emit(o.converter.OnFinalAnswerDone(state.TurnID))
-	}
-	for _, evt := range o.converter.OnExecuteComplete() {
-		emit(evt)
 	}
 	emit(o.converter.OnDone(string(state.Status)))
 	return &airuntime.ResumeResult{

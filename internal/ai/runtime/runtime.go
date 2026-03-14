@@ -32,15 +32,7 @@ const (
 	EventThinkingDelta    EventType = events.ThinkingDelta
 	EventToolCall         EventType = events.ToolCall
 	EventToolResult       EventType = events.ToolResult
-	EventApprovalRequired EventType = events.ApprovalRequired
-	EventTurnStarted      EventType = events.TurnStarted
 	EventTurnState        EventType = events.TurnState
-	EventPhaseStarted     EventType = events.PhaseStarted
-	EventPhaseComplete    EventType = events.PhaseComplete
-	EventPlanGenerated    EventType = events.PlanGenerated
-	EventStepStarted      EventType = events.StepStarted
-	EventStepComplete     EventType = events.StepComplete
-	EventReplanTriggered  EventType = events.ReplanTriggered
 	EventChainStarted     EventType = events.ChainStarted
 	EventChainNodeOpen    EventType = events.ChainNodeOpen
 	EventChainNodePatch   EventType = events.ChainNodePatch

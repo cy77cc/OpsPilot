@@ -17,15 +17,7 @@ const (
 	ThinkingDelta    Name = "thinking_delta"    // 模型思考增量输出（兼容保留）
 	ToolCall         Name = "tool_call"         // 工具调用请求
 	ToolResult       Name = "tool_result"       // 工具调用结果
-	ApprovalRequired Name = "approval_required" // 需要人工审批
-	TurnStarted      Name = "turn_started"      // 新一轮对话开始
 	TurnState        Name = "turn_state"        // 轮次状态变更（running/completed 等）
-	PhaseStarted     Name = "phase_started"     // 阶段开始
-	PhaseComplete    Name = "phase_complete"    // 阶段完成
-	PlanGenerated    Name = "plan_generated"    // 结构化计划已生成
-	StepStarted      Name = "step_started"      // 结构化步骤开始
-	StepComplete     Name = "step_complete"     // 结构化步骤完成
-	ReplanTriggered  Name = "replan_triggered"  // 触发重新规划
 	ChainStarted     Name = "chain_started"     // 原生思维链开始
 	ChainNodeOpen    Name = "chain_node_open"   // 原生思维链节点开始
 	ChainNodePatch   Name = "chain_node_patch"  // 原生思维链节点增量更新

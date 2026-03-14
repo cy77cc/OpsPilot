@@ -109,14 +109,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 		r.assistant.Content += firstRawString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
 	case events.ThinkingDelta:
 		r.assistant.Thinking += firstRawString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
-	case events.ApprovalRequired:
-		r.upsertStage(map[string]any{
-			"key":         "user_action",
-			"title":       "等待你确认",
-			"status":      "loading",
-			"description": firstString(payload["title"], "当前步骤需要审批后继续执行"),
-			"content":     firstString(payload["user_visible_summary"]),
-		})
 	case events.Error:
 		r.assistant.Status = "error"
 		r.markLastStage("error")
