@@ -31,6 +31,7 @@ import {
   CodeOutlined,
   MoreOutlined,
   PlayCircleOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { Host, HostHealthSnapshot } from '../../api/modules/hosts';
@@ -270,12 +271,25 @@ const HostListPage: React.FC = () => {
                 { key: 'terminal', icon: <CodeOutlined />, label: '打开终端' },
                 { type: 'divider' },
                 { key: 'maintenance', icon: <ToolOutlined />, label: '设为维护' },
+                { key: 'delete', icon: <DeleteOutlined />, label: '删除主机', danger: true },
               ],
               onClick: async ({ key }) => {
                 if (key === 'check') {
                   await runHealthCheck(host.id);
                 } else if (key === 'restart') {
                   await quickAction(host.id, key);
+                } else if (key === 'delete') {
+                  Modal.confirm({
+                    title: '确认删除主机',
+                    content: `确定要删除主机 "${host.name}" (${host.ip}) 吗？此操作不可恢复。`,
+                    okText: '确认删除',
+                    okButtonProps: { danger: true },
+                    onOk: async () => {
+                      await Api.hosts.deleteHost(host.id);
+                      message.success('主机已删除');
+                      await load();
+                    },
+                  });
                 } else if (key === 'ssh') {
                   let command = 'uptime';
                   Modal.confirm({

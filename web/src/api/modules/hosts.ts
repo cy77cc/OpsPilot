@@ -536,10 +536,12 @@ export const hostApi = {
   },
 
   async listSSHKeys(): Promise<ApiResponse<SSHKeyItem[]>> {
-    const res = await apiService.get<any[]>('/credentials/ssh_keys');
+    const res = await apiService.get<any>('/credentials/ssh_keys');
+    // 后端返回 { list: [...], total: N } 结构
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
-      data: (res.data || []).map((x: any) => ({
+      data: rawList.map((x: any) => ({
         id: String(x.id),
         name: x.name,
         publicKey: x.public_key || '',
