@@ -926,6 +926,14 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
+      onChainNodeReplace: (data: SSEChainNodeEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_node_replace',
+            data,
+          }),
+        }));
+      },
       onChainNodeClose: (data: SSEChainNodeEvent) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
           runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {

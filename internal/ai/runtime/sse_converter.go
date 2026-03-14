@@ -14,12 +14,26 @@ func (c *SSEConverter) OnChainStarted(turnID string) StreamEvent {
 	})}
 }
 
+func (c *SSEConverter) OnChainMeta(sessionID, planID, turnID, traceID string) StreamEvent {
+	return StreamEvent{Type: EventChainMeta, Data: compactMap(map[string]any{
+		"session_id": sessionID,
+		"chain_id":   planID,
+		"plan_id":    planID,
+		"turn_id":    turnID,
+		"trace_id":   traceID,
+	})}
+}
+
 func (c *SSEConverter) OnChainNodeOpen(payload ChainNodeInfo) StreamEvent {
 	return StreamEvent{Type: EventChainNodeOpen, Data: chainNodeData(payload)}
 }
 
 func (c *SSEConverter) OnChainNodePatch(payload ChainNodeInfo) StreamEvent {
 	return StreamEvent{Type: EventChainNodePatch, Data: chainNodeData(payload)}
+}
+
+func (c *SSEConverter) OnChainNodeReplace(payload ChainNodeInfo) StreamEvent {
+	return StreamEvent{Type: EventChainNodeReplace, Data: chainNodeData(payload)}
 }
 
 func (c *SSEConverter) OnChainNodeClose(payload ChainNodeInfo) StreamEvent {
@@ -29,6 +43,34 @@ func (c *SSEConverter) OnChainNodeClose(payload ChainNodeInfo) StreamEvent {
 func (c *SSEConverter) OnChainCollapsed(turnID string) StreamEvent {
 	return StreamEvent{Type: EventChainCollapsed, Data: compactMap(map[string]any{
 		"turn_id": turnID,
+	})}
+}
+
+func (c *SSEConverter) OnChainPaused(turnID, reason string) StreamEvent {
+	return StreamEvent{Type: EventChainPaused, Data: compactMap(map[string]any{
+		"turn_id": turnID,
+		"reason":  reason,
+	})}
+}
+
+func (c *SSEConverter) OnChainResumed(turnID string) StreamEvent {
+	return StreamEvent{Type: EventChainResumed, Data: compactMap(map[string]any{
+		"turn_id": turnID,
+	})}
+}
+
+func (c *SSEConverter) OnChainCompleted(turnID, status string) StreamEvent {
+	return StreamEvent{Type: EventChainCompleted, Data: compactMap(map[string]any{
+		"turn_id": turnID,
+		"status":  status,
+	})}
+}
+
+func (c *SSEConverter) OnChainError(turnID, stage, message string) StreamEvent {
+	return StreamEvent{Type: EventChainError, Data: compactMap(map[string]any{
+		"turn_id": turnID,
+		"phase":   stage,
+		"message": message,
 	})}
 }
 
@@ -53,7 +95,6 @@ func (c *SSEConverter) OnFinalAnswerDone(turnID string) StreamEvent {
 
 func (c *SSEConverter) OnPlannerStart(sessionID, planID, turnID string) []StreamEvent {
 	return []StreamEvent{
-		c.OnChainStarted(turnID),
 		{Type: EventMeta, Data: compactMap(map[string]any{
 			"session_id": sessionID,
 			"plan_id":    planID,

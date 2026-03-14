@@ -12,17 +12,23 @@ const (
 	//
 	// 新的后端主路径以 turn 生命周期和正文/审批流为中心，
 	// 这些事件应视为当前唯一的语义主链。
-	Meta             Name = "meta"              // 会话元信息（session_id/plan_id/turn_id）
-	Delta            Name = "delta"             // 模型文本增量输出
-	ThinkingDelta    Name = "thinking_delta"    // 模型思考增量输出（兼容保留）
-	ToolCall         Name = "tool_call"         // 工具调用请求
-	ToolResult       Name = "tool_result"       // 工具调用结果
-	TurnState        Name = "turn_state"        // 轮次状态变更（running/completed 等）
-	ChainStarted     Name = "chain_started"     // 原生思维链开始
-	ChainNodeOpen    Name = "chain_node_open"   // 原生思维链节点开始
-	ChainNodePatch   Name = "chain_node_patch"  // 原生思维链节点增量更新
-	ChainNodeClose   Name = "chain_node_close"  // 原生思维链节点结束
-	ChainCollapsed   Name = "chain_collapsed"   // 原生思维链可折叠完成
+	Meta             Name = "meta"             // 会话元信息（session_id/plan_id/turn_id）
+	Delta            Name = "delta"            // 模型文本增量输出
+	ThinkingDelta    Name = "thinking_delta"   // 模型思考增量输出（兼容保留）
+	ToolCall         Name = "tool_call"        // 工具调用请求
+	ToolResult       Name = "tool_result"      // 工具调用结果
+	TurnState        Name = "turn_state"       // 轮次状态变更（running/completed 等）
+	ChainMeta        Name = "chain_meta"       // 原生思维链元信息
+	ChainStarted     Name = "chain_started"    // 原生思维链开始
+	ChainNodeOpen    Name = "chain_node_open"  // 原生思维链节点开始
+	ChainNodePatch   Name = "chain_node_patch" // 原生思维链节点增量更新
+	ChainNodeReplace Name = "chain_node_replace"
+	ChainNodeClose   Name = "chain_node_close" // 原生思维链节点结束
+	ChainPaused      Name = "chain_paused"     // 原生思维链因审批或等待而暂停
+	ChainResumed     Name = "chain_resumed"    // 原生思维链从暂停中恢复
+	ChainCollapsed   Name = "chain_collapsed"  // 原生思维链可折叠完成
+	ChainCompleted   Name = "chain_completed"  // 原生思维链完成
+	ChainError       Name = "chain_error"      // 原生思维链失败
 	FinalAnswerStart Name = "final_answer_started"
 	FinalAnswerDelta Name = "final_answer_delta"
 	FinalAnswerDone  Name = "final_answer_done"

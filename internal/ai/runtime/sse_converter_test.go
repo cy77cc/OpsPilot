@@ -13,6 +13,40 @@ func TestSSEConverter_PrimaryPathDoesNotEmitLegacyPhaseEvents(t *testing.T) {
 	}
 }
 
+func TestSSEConverter_ChainMetaAndReplaceCarryCanonicalIDs(t *testing.T) {
+	converter := NewSSEConverter()
+
+	meta := converter.OnChainMeta("sess-1", "chain-1", "turn-1", "trace-1")
+	if meta.Type != EventChainMeta {
+		t.Fatalf("unexpected meta event type: %s", meta.Type)
+	}
+	if got := meta.Data["session_id"]; got != "sess-1" {
+		t.Fatalf("expected session id, got %#v", got)
+	}
+	if got := meta.Data["chain_id"]; got != "chain-1" {
+		t.Fatalf("expected chain id, got %#v", got)
+	}
+	if got := meta.Data["trace_id"]; got != "trace-1" {
+		t.Fatalf("expected trace id, got %#v", got)
+	}
+
+	replace := converter.OnChainNodeReplace(ChainNodeInfo{
+		TurnID:   "turn-1",
+		NodeID:   "plan:chain-1",
+		Kind:     ChainNodePlan,
+		Headline: "已替换计划内容",
+		Structured: map[string]any{
+			"steps": []map[string]any{{"id": "step-1"}},
+		},
+	})
+	if replace.Type != EventChainNodeReplace {
+		t.Fatalf("unexpected replace event type: %s", replace.Type)
+	}
+	if got := replace.Data["node_id"]; got != "plan:chain-1" {
+		t.Fatalf("expected node id, got %#v", got)
+	}
+}
+
 func TestSSEConverter_ChainNodeCarriesStructuredRuntimeLayers(t *testing.T) {
 	converter := NewSSEConverter()
 	event := converter.OnChainNodePatch(ChainNodeInfo{

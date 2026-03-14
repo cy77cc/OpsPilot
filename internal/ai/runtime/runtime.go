@@ -33,11 +33,17 @@ const (
 	EventToolCall         EventType = events.ToolCall
 	EventToolResult       EventType = events.ToolResult
 	EventTurnState        EventType = events.TurnState
+	EventChainMeta        EventType = events.ChainMeta
 	EventChainStarted     EventType = events.ChainStarted
 	EventChainNodeOpen    EventType = events.ChainNodeOpen
 	EventChainNodePatch   EventType = events.ChainNodePatch
+	EventChainNodeReplace EventType = events.ChainNodeReplace
 	EventChainNodeClose   EventType = events.ChainNodeClose
+	EventChainPaused      EventType = events.ChainPaused
+	EventChainResumed     EventType = events.ChainResumed
 	EventChainCollapsed   EventType = events.ChainCollapsed
+	EventChainCompleted   EventType = events.ChainCompleted
+	EventChainError       EventType = events.ChainError
 	EventFinalAnswerStart EventType = events.FinalAnswerStart
 	EventFinalAnswerDelta EventType = events.FinalAnswerDelta
 	EventFinalAnswerDone  EventType = events.FinalAnswerDone

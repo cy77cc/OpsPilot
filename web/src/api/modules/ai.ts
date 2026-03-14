@@ -279,6 +279,7 @@ export interface AIChatStreamHandlers {
   onChainStarted?: (payload: SSEChainStartedEvent) => void;
   onChainNodeOpen?: (payload: SSEChainNodeEvent) => void;
   onChainNodePatch?: (payload: SSEChainNodeEvent) => void;
+  onChainNodeReplace?: (payload: SSEChainNodeEvent) => void;
   onChainNodeClose?: (payload: SSEChainNodeEvent) => void;
   onChainCollapsed?: (payload: SSEChainStartedEvent) => void;
   onFinalAnswerStarted?: (payload: SSEFinalAnswerEvent) => void;
@@ -337,6 +338,8 @@ function dispatchAIStreamEvent(
     handlers.onChainNodeOpen?.(payload as SSEChainNodeEvent);
   } else if (eventType === 'chain_node_patch') {
     handlers.onChainNodePatch?.(payload as SSEChainNodeEvent);
+  } else if (eventType === 'chain_node_replace') {
+    handlers.onChainNodeReplace?.(payload as SSEChainNodeEvent);
   } else if (eventType === 'chain_node_close') {
     handlers.onChainNodeClose?.(payload as SSEChainNodeEvent);
   } else if (eventType === 'chain_collapsed') {

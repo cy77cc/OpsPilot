@@ -12,6 +12,7 @@ type RuntimeEvent =
   | { type: 'chain_started'; data: SSEChainStartedEvent }
   | { type: 'chain_node_open'; data: SSEChainNodeEvent }
   | { type: 'chain_node_patch'; data: SSEChainNodeEvent }
+  | { type: 'chain_node_replace'; data: SSEChainNodeEvent }
   | { type: 'chain_node_close'; data: SSEChainNodeEvent }
   | { type: 'chain_collapsed'; data: SSEChainStartedEvent }
   | { type: 'final_answer_started'; data: SSEFinalAnswerEvent }
@@ -52,6 +53,8 @@ export function reduceThoughtChainRuntimeEvent(
       return upsertNode(state, toRuntimeNode(event.data, 'active'), asString(event.data.turn_id));
     case 'chain_node_patch':
       return patchNode(state, event.data);
+    case 'chain_node_replace':
+      return replaceNode(state, event.data);
     case 'chain_node_close':
       return closeNode(state, event.data);
     case 'chain_collapsed':
@@ -161,6 +164,13 @@ function closeNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent):
   ));
   const activeNode = state.activeNodeId === nodeID ? undefined : state.activeNodeId;
   return { ...state, nodes, activeNodeId: activeNode };
+}
+
+function replaceNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent): ThoughtChainRuntimeState {
+  return upsertNode(state, {
+    ...toRuntimeNode(payload, 'active'),
+    status: normalizeNodeStatus(asString(payload.status)) || 'active',
+  }, asString(payload.turn_id));
 }
 
 function toRuntimeNode(payload: SSEChainNodeEvent, fallbackStatus: RuntimeThoughtChainNodeStatus): RuntimeThoughtChainNode {
