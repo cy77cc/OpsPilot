@@ -61,6 +61,10 @@ type ChainNodeInfo struct {
 	Kind       ChainNodeKind  `json:"kind,omitempty"`
 	Title      string         `json:"title,omitempty"`
 	Status     string         `json:"status,omitempty"`
+	Headline   string         `json:"headline,omitempty"`
+	Body       string         `json:"body,omitempty"`
+	Structured map[string]any `json:"structured,omitempty"`
+	Raw        any            `json:"raw,omitempty"`
 	Summary    string         `json:"summary,omitempty"`
 	Details    []any          `json:"details,omitempty"`
 	Approval   map[string]any `json:"approval,omitempty"`

@@ -5,7 +5,9 @@ import type { ApiResponse } from '../api';
 export interface AIMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
+  turnId?: string;
   content: string;
+  runtime?: Record<string, unknown>;
   thinking?: string;
   rawEvidence?: string[];
   traces?: ToolTrace[];
@@ -181,6 +183,10 @@ export interface SSEChainNodeEvent {
   kind?: 'plan' | 'execute' | 'tool' | 'replan' | 'approval';
   title?: string;
   status?: string;
+  headline?: string;
+  body?: string;
+  structured?: Record<string, unknown>;
+  raw?: unknown;
   summary?: string;
   details?: unknown[];
   approval?: Record<string, unknown>;

@@ -420,7 +420,6 @@ func firstRawString(values ...any) string {
 	return ""
 }
 
-
 func toString(value any) string {
 	switch v := value.(type) {
 	case string:
@@ -473,12 +472,16 @@ func (r *chatRecorder) handleChainNodeOpen(payload map[string]any) {
 		return
 	}
 	node := aistate.RuntimeChainNode{
-		NodeID:    nodeID,
-		Kind:      firstString(payload["kind"]),
-		Title:     firstString(payload["title"]),
-		Status:    firstString(payload["status"]),
-		Summary:   firstString(payload["summary"]),
-		StartedAt: firstString(payload["started_at"]),
+		NodeID:     nodeID,
+		Kind:       firstString(payload["kind"]),
+		Title:      firstString(payload["title"]),
+		Status:     firstString(payload["status"]),
+		Headline:   firstString(payload["headline"]),
+		Body:       firstString(payload["body"]),
+		Structured: mapValue(payload["structured"]),
+		Raw:        payload["raw"],
+		Summary:    firstString(payload["summary"]),
+		StartedAt:  firstString(payload["started_at"]),
 	}
 	if details, ok := payload["details"].([]any); ok {
 		node.Details = details
@@ -522,6 +525,18 @@ func (r *chatRecorder) handleChainNodePatch(payload map[string]any) {
 		if n.NodeID == nodeID {
 			if title := firstString(payload["title"]); title != "" {
 				runtime.Nodes[i].Title = title
+			}
+			if headline := firstString(payload["headline"]); headline != "" {
+				runtime.Nodes[i].Headline = headline
+			}
+			if body := firstString(payload["body"]); body != "" {
+				runtime.Nodes[i].Body = body
+			}
+			if structured := mapValue(payload["structured"]); len(structured) > 0 {
+				runtime.Nodes[i].Structured = structured
+			}
+			if raw, exists := payload["raw"]; exists && raw != nil {
+				runtime.Nodes[i].Raw = raw
 			}
 			if summary := firstString(payload["summary"]); summary != "" {
 				runtime.Nodes[i].Summary = summary
@@ -600,4 +615,15 @@ func (r *chatRecorder) handleFinalAnswerDone(payload map[string]any) {
 	}
 	runtime.FinalAnswer.Streaming = false
 	runtime.FinalAnswer.RevealState = "complete"
+}
+
+func mapValue(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	m, _ := value.(map[string]any)
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }

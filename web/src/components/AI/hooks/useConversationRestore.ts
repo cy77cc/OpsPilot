@@ -138,9 +138,16 @@ export async function loadRestoredConversationDetail(id: string, scene: string):
 
 function toRestoredConversation(session: AISession): RestoredConversation {
   if (session.turns && session.turns.length > 0) {
+    const runtimeByTurnId = new Map(
+      normalizeLegacyMessages(session.messages || [])
+        .filter((message) => message.role === 'assistant' && typeof message.turnId === 'string' && message.turnId.trim())
+        .map((message) => [String(message.turnId), normalizePersistedRuntime(message.runtime)]),
+    );
     const replayMessages = normalizeReplayTurns(session.turns).map((turn) => {
       const hydratedTurn = turnFromReplay(turn);
-      const runtime = turn.role === 'assistant' ? runtimeStateFromReplayTurn(hydratedTurn) : undefined;
+      const runtime = turn.role === 'assistant'
+        ? (runtimeByTurnId.get(turn.id) || runtimeStateFromReplayTurn(hydratedTurn))
+        : undefined;
       const summary = projectTurnSummary(hydratedTurn);
       const fallbackContent = turn.role === 'assistant'
         ? resolveReplayAssistantContent(turn, runtime, summary.content)
@@ -273,6 +280,41 @@ function normalizeLegacyMessages(messages: AISession['messages']) {
   });
 }
 
+function normalizePersistedRuntime(raw: Record<string, unknown> | undefined): ThoughtChainRuntimeState | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const finalAnswerRaw = asRecord(raw.final_answer);
+  const nodes = asArray(raw.nodes).map((item) => asRecord(item)).filter(Boolean).map((node) => ({
+    nodeId: asString(node.node_id) || asString(node.nodeId) || `node:${Date.now()}`,
+    kind: normalizeNodeKind(asString(node.kind)),
+    title: asString(node.title) || '执行步骤',
+    status: normalizeNodeStatus(asString(node.status)),
+    headline: asString(node.headline),
+    body: asString(node.body),
+    structured: asRecord(node.structured),
+    raw: node.raw,
+    summary: asString(node.summary),
+    details: asArray(node.details),
+    approval: asRecord(node.approval) as ThoughtChainRuntimeState['nodes'][number]['approval'],
+  }));
+
+  return {
+    turnId: asString(raw.turn_id) || asString(raw.turnId),
+    nodes,
+    activeNodeId: asString(raw.active_node_id) || asString(raw.activeNodeId) || undefined,
+    isCollapsed: Boolean(raw.is_collapsed ?? raw.isCollapsed),
+    collapsePhase: Boolean(raw.is_collapsed ?? raw.isCollapsed) ? 'collapsed' : 'expanded',
+    finalAnswer: {
+      visible: Boolean(finalAnswerRaw?.visible),
+      streaming: Boolean(finalAnswerRaw?.streaming),
+      content: asString(finalAnswerRaw?.content),
+      revealState: normalizeRevealState(asString(finalAnswerRaw?.reveal_state) || asString(finalAnswerRaw?.revealState)),
+    },
+  };
+}
+
 function resolveUserTurnContent(turn: NonNullable<AISession['turns']>[number], fallback: string): string {
   return firstNonEmpty(
     turn.blocks.find((block) => block.blockType === 'text')?.contentText,
@@ -336,4 +378,61 @@ function firstNonEmpty(...values: Array<string | undefined>): string {
     }
   }
   return '';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function normalizeNodeKind(kind: string): ThoughtChainRuntimeState['nodes'][number]['kind'] {
+  switch (kind) {
+    case 'plan':
+    case 'execute':
+    case 'tool':
+    case 'replan':
+    case 'approval':
+      return kind;
+    default:
+      return 'execute';
+  }
+}
+
+function normalizeNodeStatus(status: string): ThoughtChainRuntimeState['nodes'][number]['status'] {
+  switch (status) {
+    case 'pending':
+      return 'pending';
+    case 'waiting':
+    case 'waiting_approval':
+      return 'waiting';
+    case 'done':
+    case 'success':
+    case 'completed':
+      return 'done';
+    case 'error':
+    case 'failed':
+      return 'error';
+    default:
+      return 'active';
+  }
+}
+
+function normalizeRevealState(state: string): ThoughtChainRuntimeState['finalAnswer']['revealState'] {
+  switch (state) {
+    case 'primed':
+    case 'revealing':
+    case 'complete':
+      return state;
+    default:
+      return 'hidden';
+  }
 }

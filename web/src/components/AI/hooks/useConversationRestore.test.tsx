@@ -213,6 +213,87 @@ describe('useConversationRestore', () => {
     });
   });
 
+  it('prefers persisted assistant runtime over empty replay blocks', async () => {
+    vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
+    vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'sess-runtime',
+        title: 'Runtime-first restore',
+        createdAt: '2026-03-11T00:00:00Z',
+        updatedAt: '2026-03-11T00:00:01Z',
+        messages: [
+          {
+            id: 'assistant-message-1',
+            role: 'assistant',
+            turnId: 'turn-assistant',
+            content: '',
+            runtime: {
+              turn_id: 'turn-assistant',
+              nodes: [
+                {
+                  node_id: 'tool:step-1',
+                  kind: 'tool',
+                  title: 'host_list_inventory',
+                  status: 'done',
+                  headline: '已获取 2 台主机',
+                  structured: { resource: 'hosts', rows: [{ id: 1, name: 'test', status: 'online' }] },
+                },
+              ],
+              final_answer: {
+                visible: true,
+                streaming: false,
+                content: '## 主机状态\n\n全部在线',
+                reveal_state: 'complete',
+              },
+            },
+            timestamp: '2026-03-11T00:00:01Z',
+          },
+        ],
+        turns: [
+          {
+            id: 'turn-assistant',
+            role: 'assistant',
+            status: 'completed',
+            phase: 'done',
+            blocks: [],
+            createdAt: '2026-03-11T00:00:01Z',
+            updatedAt: '2026-03-11T00:00:01Z',
+          },
+        ],
+      },
+      msg: 'ok',
+    } as any);
+
+    const onRestore = vi.fn();
+    renderHook(() => useConversationRestore({ scene: 'global', onRestore }));
+
+    await waitFor(() => {
+      expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
+        activeConversation: expect.objectContaining({
+          id: 'sess-runtime',
+          messages: [
+            expect.objectContaining({
+              role: 'assistant',
+              content: '## 主机状态\n\n全部在线',
+              runtime: expect.objectContaining({
+                finalAnswer: expect.objectContaining({
+                  content: '## 主机状态\n\n全部在线',
+                }),
+                nodes: [
+                  expect.objectContaining({
+                    nodeId: 'tool:step-1',
+                    headline: '已获取 2 台主机',
+                  }),
+                ],
+              }),
+            }),
+          ],
+        }),
+      }));
+    });
+  });
+
   it('keeps persisted legacy user messages when replay turns only contain assistant turns', async () => {
     vi.spyOn(aiApi, 'getSessions').mockResolvedValue({ code: 0, data: [], msg: 'ok' } as any);
     vi.spyOn(aiApi, 'getCurrentSession').mockResolvedValue({

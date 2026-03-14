@@ -14,6 +14,7 @@ import (
 type ChatMessageRecord struct {
 	ID              string           `json:"id"`
 	Role            string           `json:"role"`
+	TurnID          string           `json:"turn_id,omitempty"`
 	Content         string           `json:"content"`
 	Thinking        string           `json:"thinking,omitempty"`
 	Status          string           `json:"status,omitempty"`
@@ -28,30 +29,34 @@ type ChatMessageRecord struct {
 
 // RuntimeState 运行时状态，用于持久化和恢复链节点状态
 type RuntimeState struct {
-	TurnID       string                `json:"turn_id,omitempty"`
-	Nodes        []RuntimeChainNode    `json:"nodes,omitempty"`
-	IsCollapsed  bool                  `json:"is_collapsed,omitempty"`
-	FinalAnswer  *RuntimeFinalAnswer   `json:"final_answer,omitempty"`
-	ActiveNodeID string                `json:"active_node_id,omitempty"`
+	TurnID       string              `json:"turn_id,omitempty"`
+	Nodes        []RuntimeChainNode  `json:"nodes,omitempty"`
+	IsCollapsed  bool                `json:"is_collapsed,omitempty"`
+	FinalAnswer  *RuntimeFinalAnswer `json:"final_answer,omitempty"`
+	ActiveNodeID string              `json:"active_node_id,omitempty"`
 }
 
 // RuntimeChainNode 链节点
 type RuntimeChainNode struct {
-	NodeID    string         `json:"node_id"`
-	Kind      string         `json:"kind"`
-	Title     string         `json:"title"`
-	Status    string         `json:"status"`
-	Summary   string         `json:"summary,omitempty"`
-	Details   []any          `json:"details,omitempty"`
-	Approval  map[string]any `json:"approval,omitempty"`
-	StartedAt string         `json:"started_at,omitempty"`
+	NodeID     string         `json:"node_id"`
+	Kind       string         `json:"kind"`
+	Title      string         `json:"title"`
+	Status     string         `json:"status"`
+	Headline   string         `json:"headline,omitempty"`
+	Body       string         `json:"body,omitempty"`
+	Structured map[string]any `json:"structured,omitempty"`
+	Raw        any            `json:"raw,omitempty"`
+	Summary    string         `json:"summary,omitempty"`
+	Details    []any          `json:"details,omitempty"`
+	Approval   map[string]any `json:"approval,omitempty"`
+	StartedAt  string         `json:"started_at,omitempty"`
 }
 
 // RuntimeFinalAnswer 最终答案状态
 type RuntimeFinalAnswer struct {
-	Visible    bool   `json:"visible"`
-	Streaming  bool   `json:"streaming"`
-	Content    string `json:"content"`
+	Visible     bool   `json:"visible"`
+	Streaming   bool   `json:"streaming"`
+	Content     string `json:"content"`
 	RevealState string `json:"reveal_state,omitempty"`
 }
 
@@ -431,6 +436,7 @@ func decodeMessage(row model.AIChatMessage) ChatMessageRecord {
 	return ChatMessageRecord{
 		ID:              row.ID,
 		Role:            row.Role,
+		TurnID:          stringValue(meta["turn_id"]),
 		Content:         row.Content,
 		Thinking:        row.Thinking,
 		Status:          row.Status,
@@ -462,14 +468,18 @@ func decodeRuntimeState(value any) *RuntimeState {
 		for _, n := range nodes {
 			if node, ok := n.(map[string]any); ok {
 				state.Nodes = append(state.Nodes, RuntimeChainNode{
-					NodeID:    stringValue(node["node_id"]),
-					Kind:      stringValue(node["kind"]),
-					Title:     stringValue(node["title"]),
-					Status:    stringValue(node["status"]),
-					Summary:   stringValue(node["summary"]),
-					Details:   anySlice(node["details"]),
-					Approval:  mapValue(node["approval"]),
-					StartedAt: stringValue(node["started_at"]),
+					NodeID:     stringValue(node["node_id"]),
+					Kind:       stringValue(node["kind"]),
+					Title:      stringValue(node["title"]),
+					Status:     stringValue(node["status"]),
+					Headline:   stringValue(node["headline"]),
+					Body:       stringValue(node["body"]),
+					Structured: mapValue(node["structured"]),
+					Raw:        node["raw"],
+					Summary:    stringValue(node["summary"]),
+					Details:    anySlice(node["details"]),
+					Approval:   mapValue(node["approval"]),
+					StartedAt:  stringValue(node["started_at"]),
 				})
 			}
 		}
