@@ -1,3 +1,10 @@
+// 本文件定义 Executor Agent 的 LLM Prompt 模板。
+//
+// executorPrompt 采用 FString 格式，注入以下变量：
+//   - {input}:          用户原始目标
+//   - {plan}:           完整执行计划（JSON）
+//   - {executed_steps}: 已完成步骤及结果
+//   - {step}:           当前待执行步骤
 package executor
 
 import (

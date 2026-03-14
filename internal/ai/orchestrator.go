@@ -1,3 +1,11 @@
+// 本文件实现基于 eino ADK plan-execute 架构的 AI 编排器。
+//
+// Orchestrator 是 AI 模块对外的唯一入口，负责：
+//   - 初始化 ADK Runner（planner → executor → replanner 三阶段 Agent 管线）
+//   - 接收用户请求，驱动 Agent 流式执行，将事件转换为 SSE 流推送给调用方
+//   - 处理人工审批中断：在敏感变更工具调用前暂停执行，等待外部 Resume 信号
+//   - 持久化执行状态（ExecutionStore）和断点（CheckpointStore）以支持会话恢复
+
 package ai
 
 import (
@@ -18,17 +26,21 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 )
 
+// Orchestrator 封装 ADK Runner，提供流式执行与审批恢复能力。
 type Orchestrator struct {
-	runner           *adk.Runner
-	checkpoints      *airuntime.CheckpointStore
-	executions       *airuntime.ExecutionStore
-	contextProcessor *airuntime.ContextProcessor
-	sceneResolver    *airuntime.SceneConfigResolver
-	converter        *airuntime.SSEConverter
-	approvals        *airuntime.ApprovalDecisionMaker
-	summaries        *approvaltools.SummaryRenderer
+	runner           *adk.Runner                      // ADK plan-execute 运行器；nil 表示模型不可用
+	checkpoints      *airuntime.CheckpointStore       // 保存 Agent 断点，支持审批后续跑
+	executions       *airuntime.ExecutionStore        // 保存每次执行的状态快照
+	contextProcessor *airuntime.ContextProcessor      // 构建各阶段 LLM 输入的上下文处理器
+	sceneResolver    *airuntime.SceneConfigResolver   // 根据场景 key 解析工具白名单和审批策略
+	converter        *airuntime.SSEConverter          // 将 Agent 事件转换为标准 SSE StreamEvent
+	approvals        *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
+	summaries        *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
 }
 
+// NewOrchestrator 创建并初始化 Orchestrator。
+// 若 Agent 构建失败（如模型不可用），返回不含 runner 的降级实例，
+// Run 调用时会立即返回错误，Resume 相关能力仍可正常工作。
 func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps common.PlatformDeps) *Orchestrator {
 	ctx := context.Background()
 	sceneResolver := airuntime.NewSceneConfigResolver(nil)
@@ -89,6 +101,10 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 	}
 }
 
+// Run 启动一次新的 AI 对话执行。
+// 会初始化执行状态并持久化，然后驱动 ADK Runner 流式处理，
+// 将每个 Agent 事件通过 emit 回调推送给调用方。
+// 若执行中途遇到审批中断，会保存断点后返回，调用方通过 ResumeStream 继续。
 func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit airuntime.StreamEmitter) error {
 	startedAt := time.Now().UTC()
 	if o == nil || o.runner == nil {
@@ -159,14 +175,20 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 	return err
 }
 
+// Resume 以非流式方式处理审批结果（通过/拒绝）。
 func (o *Orchestrator) Resume(ctx context.Context, req airuntime.ResumeRequest) (*airuntime.ResumeResult, error) {
 	return o.resume(ctx, req, nil)
 }
 
+// ResumeStream 以流式方式处理审批结果，并将后续执行事件推送给调用方。
 func (o *Orchestrator) ResumeStream(ctx context.Context, req airuntime.ResumeRequest, emit airuntime.StreamEmitter) (*airuntime.ResumeResult, error) {
 	return o.resume(ctx, req, emit)
 }
 
+// resume 是 Resume/ResumeStream 的共享实现。
+// 当 req.Approved==false 时直接更新状态为 rejected 并结束；
+// 当审批通过但找不到断点时将步骤标记为成功（无需继续执行）；
+// 找到断点时通过 ADK ResumeWithParams 将审批结果注入后继续执行。
 func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, emit airuntime.StreamEmitter) (*airuntime.ResumeResult, error) {
 	startedAt := time.Now().UTC()
 	if o == nil {
@@ -301,6 +323,8 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 	return res, streamErr
 }
 
+// streamExecution 消费 ADK 事件迭代器，将事件转换为 SSE 推送，并更新执行状态。
+// 遇到审批中断时保存断点后提前返回，事件循环结束时更新状态为 completed。
 func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncIterator[*adk.AgentEvent], state *airuntime.ExecutionState, emit airuntime.StreamEmitter) (*airuntime.ResumeResult, error) {
 	if iter == nil {
 		return nil, fmt.Errorf("event iterator is nil")
@@ -432,6 +456,8 @@ func (o *Orchestrator) loadExecution(ctx context.Context, req airuntime.ResumeRe
 	return airuntime.ExecutionState{}, false, nil
 }
 
+// pendingApprovalFromInterrupt 从 ADK 中断事件构造 PendingApproval 记录。
+// 若工具未提供 Summary 则由 SummaryRenderer 自动生成人类可读摘要。
 func (o *Orchestrator) pendingApprovalFromInterrupt(state *airuntime.ExecutionState, stepID string, event *adk.AgentEvent) *airuntime.PendingApproval {
 	info := interruptApprovalInfo(event)
 	decision := airuntime.ApprovalDecision{
@@ -467,6 +493,8 @@ func (o *Orchestrator) pendingApprovalFromInterrupt(state *airuntime.ExecutionSt
 	}
 }
 
+// interruptApprovalInfo 从 ADK 中断事件提取审批元信息。
+// 兼容强类型（ApprovalInterruptInfo）和松散 map[string]any 两种形式。
 func interruptApprovalInfo(event *adk.AgentEvent) airuntime.ApprovalInterruptInfo {
 	if event == nil || event.Action == nil || event.Action.Interrupted == nil {
 		return airuntime.ApprovalInterruptInfo{}

@@ -50,6 +50,13 @@ func NewCommonTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTo
 	}
 }
 
+// NewAllTools 创建完整工具集合，并为注册表中的工具包装审批 Gate。
+//
+// 流程：
+//  1. 创建与 NewCommonTools 相同的基础工具列表
+//  2. 通过 ToolRegistry 查找每个工具的元数据（Mode/Risk/Category）
+//  3. 对需要审批的工具用 ApprovalGate 包装，触发时自动中断执行并等待人工确认
+//  4. 未在注册表中登记的工具保持原样，不添加审批拦截
 func NewAllTools(ctx context.Context, deps common.PlatformDeps) []tool.BaseTool {
 	base := collectAllTools(ctx, deps)
 	registry := NewRegistry(deps)

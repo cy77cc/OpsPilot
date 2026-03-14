@@ -1,3 +1,6 @@
+// Package v1 定义 AI 服务 HTTP 接口的请求/响应数据结构。
+//
+// 这些类型是 handler 层与外部调用方之间的契约，不包含任何业务逻辑。
 package v1
 
 import (

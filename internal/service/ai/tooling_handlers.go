@@ -1,3 +1,8 @@
+// 本文件实现 AI 工具相关的 HTTP 处理器：
+//   - 工具能力列表与参数提示
+//   - 工具预览（dry-run）和直接执行
+//   - 审批工单的创建、查询、审批、拒绝
+//   - 场景配置的 CRUD
 package ai
 
 import (
@@ -19,6 +24,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// toolActionRequest 是工具预览和直接执行接口的请求体。
 type toolActionRequest struct {
 	Tool         string         `json:"tool" binding:"required"`
 	Params       map[string]any `json:"params"`
@@ -30,6 +36,7 @@ type toolActionRequest struct {
 	CheckpointID string         `json:"checkpoint_id,omitempty"`
 }
 
+// createApprovalRequest 是创建审批工单接口的请求体。
 type createApprovalRequest struct {
 	SessionID    string         `json:"session_id,omitempty"`
 	PlanID       string         `json:"plan_id,omitempty"`
@@ -43,10 +50,12 @@ type createApprovalRequest struct {
 	Reason       string         `json:"reason,omitempty"`
 }
 
+// approvalDecisionRequest 是审批通过/拒绝接口的请求体。
 type approvalDecisionRequest struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// updateSceneConfigRequest 是更新场景配置接口的请求体。
 type updateSceneConfigRequest struct {
 	Name           string         `json:"name"`
 	Description    string         `json:"description"`
@@ -57,6 +66,7 @@ type updateSceneConfigRequest struct {
 	ApprovalConfig map[string]any `json:"approval_config"`
 }
 
+// Capabilities 返回当前场景下可用的工具能力列表，按 category+name 排序。
 func (h *HTTPHandler) Capabilities(c *gin.Context) {
 	scene := normalizedScene(c.Query("scene"))
 	cfg, err := h.sceneConfig(c.Request.Context(), scene)
@@ -67,6 +77,8 @@ func (h *HTTPHandler) Capabilities(c *gin.Context) {
 	httpx.OK(c, sortedCapabilities(h.registry.FilterByScene(scene, cfg)))
 }
 
+// ToolParamHints 返回指定工具的参数智能提示（枚举选项、默认值、依赖关系）。
+// 提示内容根据当前 RuntimeContext（用户选中资源、项目等）动态解析。
 func (h *HTTPHandler) ToolParamHints(c *gin.Context) {
 	name := c.Param("name")
 	spec, ok := h.registry.Get(name)

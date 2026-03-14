@@ -1,3 +1,4 @@
+// Package v1 定义 AIOps 服务 HTTP 接口的请求数据结构。
 package v1
 
 // RunInspectionRequest is the request body for triggering an AI-powered deployment inspection.

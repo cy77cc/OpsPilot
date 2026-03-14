@@ -47,6 +47,7 @@ type HTTPHandler struct {
 	hintResolver *HintResolver
 }
 
+// aiRuntime 是对 Orchestrator 的最小接口抽象，便于单元测试时替换实现。
 type aiRuntime interface {
 	Run(ctx context.Context, req coreai.RunRequest, emit coreai.StreamEmitter) error
 	Resume(ctx context.Context, req coreai.ResumeRequest) (*coreai.ResumeResult, error)
@@ -283,6 +284,8 @@ func (h *HTTPHandler) resumeRuntimeStream(ctx context.Context, req coreai.Resume
 	return h.orchestrator.ResumeStream(ctx, req, emit)
 }
 
+// buildResumeResponse 将 ResumeResult 序列化为 HTTP 响应 payload。
+// legacyADK=true 时附加废弃标记和迁移提示，用于兼容旧版客户端。
 func buildResumeResponse(res *coreai.ResumeResult, legacyADK bool) gin.H {
 	if res == nil {
 		res = &coreai.ResumeResult{}
@@ -309,6 +312,7 @@ func buildResumeResponse(res *coreai.ResumeResult, legacyADK bool) gin.H {
 	return payload
 }
 
+// legacyResumeMessage 在旧版 resume 消息中追加迁移提示（若尚未包含新接口路径）。
 func legacyResumeMessage(message string) string {
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -320,6 +324,7 @@ func legacyResumeMessage(message string) string {
 	return message + " 请迁移到 /api/v1/ai/resume/step，并使用 session_id + plan_id + step_id。"
 }
 
+// SubmitFeedback 接收用户对 AI 回答的反馈，当前仅做基础记录（未持久化）。
 func (h *HTTPHandler) SubmitFeedback(c *gin.Context) {
 	var req feedbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -336,6 +341,7 @@ func (h *HTTPHandler) SubmitFeedback(c *gin.Context) {
 	})
 }
 
+// ListSessions 返回当前用户在指定场景下的所有会话列表（不含消息详情）。
 func (h *HTTPHandler) ListSessions(c *gin.Context) {
 	rows, err := h.chatStore.ListSessions(c.Request.Context(), httpx.UIDFromCtx(c), normalizedScene(c.Query("scene")))
 	if err != nil {
@@ -349,6 +355,7 @@ func (h *HTTPHandler) ListSessions(c *gin.Context) {
 	httpx.OK(c, out)
 }
 
+// CurrentSession 返回当前用户最近的活跃会话（含消息详情），不存在时返回 null。
 func (h *HTTPHandler) CurrentSession(c *gin.Context) {
 	row, err := h.chatStore.CurrentSession(c.Request.Context(), httpx.UIDFromCtx(c), normalizedScene(c.Query("scene")), true)
 	if err != nil {
@@ -362,6 +369,7 @@ func (h *HTTPHandler) CurrentSession(c *gin.Context) {
 	httpx.OK(c, toAPISession(*row, true))
 }
 
+// GetSession 按 ID 返回指定会话（含消息详情）。
 func (h *HTTPHandler) GetSession(c *gin.Context) {
 	row, err := h.chatStore.GetSession(c.Request.Context(), httpx.UIDFromCtx(c), strings.TrimSpace(c.Query("scene")), c.Param("id"), true)
 	if err != nil {
@@ -375,6 +383,7 @@ func (h *HTTPHandler) GetSession(c *gin.Context) {
 	httpx.OK(c, toAPISession(*row, true))
 }
 
+// BranchSession 克隆指定会话（含历史消息），生成一个独立的新会话分支。
 func (h *HTTPHandler) BranchSession(c *gin.Context) {
 	var req branchSessionRequest
 	_ = c.ShouldBindJSON(&req)
@@ -390,6 +399,7 @@ func (h *HTTPHandler) BranchSession(c *gin.Context) {
 	httpx.OK(c, toAPISession(*row, true))
 }
 
+// UpdateSessionTitle 修改会话标题并返回更新后的会话详情。
 func (h *HTTPHandler) UpdateSessionTitle(c *gin.Context) {
 	var req updateSessionTitleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -412,6 +422,7 @@ func (h *HTTPHandler) UpdateSessionTitle(c *gin.Context) {
 	httpx.OK(c, toAPISession(*row, true))
 }
 
+// DeleteSession 软删除指定会话。
 func (h *HTTPHandler) DeleteSession(c *gin.Context) {
 	if err := h.chatStore.Delete(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id")); err != nil {
 		httpx.ServerErr(c, err)
@@ -420,6 +431,8 @@ func (h *HTTPHandler) DeleteSession(c *gin.Context) {
 	httpx.OK(c, nil)
 }
 
+// normalizeRuntimeContext 将请求体 context 字段与中间件捕获的基础 RuntimeContext 合并。
+// 请求体字段优先级更高，支持 camelCase 和 snake_case 两种键名格式。
 func (h *HTTPHandler) normalizeRuntimeContext(c *gin.Context, raw map[string]any) coreai.RuntimeContext {
 	ctx := h.baseRuntimeContext(c)
 	if ctx.UserContext == nil {
@@ -500,6 +513,8 @@ func mergeScenePayload(scene string, raw map[string]any) map[string]any {
 	return out
 }
 
+// toAPISession 将内部 ChatSessionRecord 转换为 API 响应结构 v1.AISession。
+// includeMessages=true 时同时填充消息列表和 turn 列表。
 func toAPISession(snapshot aistate.ChatSessionRecord, includeMessages bool) v1.AISession {
 	msgs := make([]map[string]any, 0, len(snapshot.Messages))
 	turns := make([]v1.AIReplayTurn, 0, len(snapshot.Turns))
@@ -579,6 +594,8 @@ func toAPISession(snapshot aistate.ChatSessionRecord, includeMessages bool) v1.A
 	}
 }
 
+// writeSSE 向客户端写入一个 SSE 事件帧并立即 Flush。
+// 返回 false 表示写入失败（客户端已断开）。
 func writeSSE(c *gin.Context, flusher http.Flusher, event string, payload map[string]any) bool {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -618,6 +635,8 @@ func boolHeaderValue(v bool) string {
 	return "false"
 }
 
+// attachRolloutMetadata 将当前灰度配置的各开关状态附加到 meta 事件 payload 中，
+// 使前端能感知当前运行时模式，从而渲染对应的 UI 风格。
 func attachRolloutMetadata(payload map[string]any, rollout coreai.RolloutConfig) map[string]any {
 	if payload == nil {
 		payload = map[string]any{}
@@ -629,6 +648,7 @@ func attachRolloutMetadata(payload map[string]any, rollout coreai.RolloutConfig)
 	return payload
 }
 
+// loadSceneConfigs 从数据库加载所有场景配置，以 scene key 为索引返回 map。
 func (h *HTTPHandler) loadSceneConfigs(ctx context.Context) (map[string]aitools.SceneConfig, error) {
 	rows := make([]model.AISceneConfig, 0)
 	if err := h.svcCtx.DB.WithContext(ctx).Order("scene asc").Find(&rows).Error; err != nil {
@@ -642,6 +662,7 @@ func (h *HTTPHandler) loadSceneConfigs(ctx context.Context) (map[string]aitools.
 	return out, nil
 }
 
+// sceneConfig 获取指定场景的配置，场景不存在时降级返回 global 配置。
 func (h *HTTPHandler) sceneConfig(ctx context.Context, scene string) (*aitools.SceneConfig, error) {
 	scene = normalizedScene(scene)
 	configs, err := h.loadSceneConfigs(ctx)
@@ -657,6 +678,8 @@ func (h *HTTPHandler) sceneConfig(ctx context.Context, scene string) (*aitools.S
 	return nil, nil
 }
 
+// resolveApprovalScene 将静态场景配置与数据库中的动态配置合并，供审批决策使用。
+// 数据库配置（工具白/黑名单、审批策略）覆盖静态默认值。
 func (h *HTTPHandler) resolveApprovalScene(scene string) runtime.ResolvedScene {
 	resolved := runtime.NewSceneConfigResolver(nil).Resolve(scene)
 	if h == nil {
