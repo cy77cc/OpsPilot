@@ -156,11 +156,10 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		"session_id": sessionID,
 		"plan_id":    planID,
 		"turn_id":    turnID,
+		"trace_id":   state.TraceID,
 	}})
-	for _, evt := range o.converter.OnPlannerStart(sessionID, planID, turnID) {
-		if !emit(evt) {
-			return nil
-		}
+	if !emit(o.converter.OnChainMeta(sessionID, planID, turnID, state.TraceID)) {
+		return nil
 	}
 
 	iter := o.runner.Query(ctx, strings.TrimSpace(req.Message),
@@ -219,14 +218,35 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			Status:   status,
 			Duration: duration,
 		})
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "approval_resolved",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			NodeID:    fmt.Sprintf("approval:%s", state.PendingApproval.StepID),
+			Scene:     state.Scene,
+			Tool:      state.PendingApproval.ToolName,
+			Kind:      string(airuntime.ChainNodeApproval),
+			Status:    status,
+		})
 	}
 	if emit != nil {
 		emit(airuntime.StreamEvent{Type: airuntime.EventMeta, Data: map[string]any{
 			"session_id": state.SessionID,
 			"plan_id":    state.PlanID,
 			"turn_id":    state.TurnID,
+			"trace_id":   state.TraceID,
 		}})
-		emit(o.converter.OnChainStarted(state.TurnID))
+		emit(o.converter.OnChainMeta(state.SessionID, state.PlanID, state.TurnID, state.TraceID))
+		emit(o.converter.OnChainResumed(state.TurnID))
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "chain_resumed",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			Scene:     state.Scene,
+			Status:    string(state.Status),
+		})
 	}
 
 	if !req.Approved {
@@ -358,6 +378,14 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			return
 		}
 		emit(o.converter.OnChainStarted(state.TurnID))
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "chain_started",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			Scene:     state.Scene,
+			Status:    string(state.Status),
+		})
 		chainStarted = true
 		chainStartedAt = time.Now().UTC()
 	}
@@ -375,6 +403,16 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			Status:   firstNonEmpty(status, "done"),
 			Duration: duration,
 		})
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "node_closed",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			NodeID:    nodeID,
+			Scene:     state.Scene,
+			Kind:      string(kind),
+			Status:    firstNonEmpty(status, "done"),
+		})
 	}
 	openChainNode := func(info airuntime.ChainNodeInfo) {
 		emitChainStarted()
@@ -388,6 +426,17 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			observeNodeClosed(activeNodeID, activeNodeKind, "done", activeNodeStartedAt)
 		}
 		emit(o.converter.OnChainNodeOpen(info))
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "node_opened",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			NodeID:    info.NodeID,
+			Scene:     state.Scene,
+			Tool:      info.Title,
+			Kind:      string(info.Kind),
+			Status:    firstNonEmpty(info.Status, "loading"),
+		})
 		activeNodeID = info.NodeID
 		activeNodeKind = info.Kind
 		activeNodeStartedAt = time.Now().UTC()
@@ -395,6 +444,32 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	patchChainNode := func(info airuntime.ChainNodeInfo) {
 		emitChainStarted()
 		emit(o.converter.OnChainNodePatch(info))
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "node_updated",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			NodeID:    info.NodeID,
+			Scene:     state.Scene,
+			Tool:      info.Title,
+			Kind:      string(info.Kind),
+			Status:    firstNonEmpty(info.Status, "loading"),
+		})
+	}
+	replaceChainNode := func(info airuntime.ChainNodeInfo) {
+		emitChainStarted()
+		emit(o.converter.OnChainNodeReplace(info))
+		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+			Event:     "node_replaced",
+			TraceID:   state.TraceID,
+			SessionID: state.SessionID,
+			ChainID:   state.PlanID,
+			NodeID:    info.NodeID,
+			Scene:     state.Scene,
+			Tool:      info.Title,
+			Kind:      string(info.Kind),
+			Status:    firstNonEmpty(info.Status, "loading"),
+		})
 	}
 	closeActiveNode := func(status string) {
 		if activeNodeID == "" {
@@ -433,6 +508,15 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			continue
 		}
 		if event.Err != nil {
+			emit(o.converter.OnChainError(state.TurnID, state.Phase, event.Err.Error()))
+			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+				Event:     "chain_failed",
+				TraceID:   state.TraceID,
+				SessionID: state.SessionID,
+				ChainID:   state.PlanID,
+				Scene:     state.Scene,
+				Status:    "failed",
+			})
 			emit(o.converter.OnError(state.Phase, event.Err))
 			return nil, event.Err
 		}
@@ -450,6 +534,16 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				Status:   "loading",
 				Headline: reason,
 				Summary:  reason,
+			})
+			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+				Event:     "replan_triggered",
+				TraceID:   state.TraceID,
+				SessionID: state.SessionID,
+				ChainID:   state.PlanID,
+				NodeID:    fmt.Sprintf("replan:%s", state.PlanID),
+				Scene:     state.Scene,
+				Kind:      string(airuntime.ChainNodeReplan),
+				Status:    "loading",
 			})
 			state.Phase = string(airuntime.PhaseReplanning)
 			planningCompleted = false
@@ -500,7 +594,7 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				})
 			}
 			structuredTool, rawTool := toolResultChainPayload(step.ToolName, toolResult)
-			patchChainNode(airuntime.ChainNodeInfo{
+			replaceChainNode(airuntime.ChainNodeInfo{
 				TurnID:     state.TurnID,
 				NodeID:     fmt.Sprintf("tool:%s", stepID),
 				Kind:       airuntime.ChainNodeTool,
@@ -554,7 +648,7 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					Summary: strings.TrimSpace(content),
 				})
 				if plan, ok := parser.Extract(state.PlanID, state.TurnID, planningText); ok {
-					patchChainNode(airuntime.ChainNodeInfo{
+					replaceChainNode(airuntime.ChainNodeInfo{
 						TurnID:     state.TurnID,
 						NodeID:     planNodeID,
 						Kind:       airuntime.ChainNodePlan,
@@ -636,10 +730,33 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				}),
 			})
 			emit(o.converter.OnDone(string(state.Status)))
+			emit(o.converter.OnChainPaused(state.TurnID, "waiting_approval"))
 			aiobs.ObserveThoughtChainApproval(aiobs.ThoughtChainApprovalRecord{
 				Scene:    state.Scene,
 				Status:   "pending",
 				Duration: 0,
+			})
+			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+				Event:     "chain_paused",
+				TraceID:   state.TraceID,
+				SessionID: state.SessionID,
+				ChainID:   state.PlanID,
+				NodeID:    fmt.Sprintf("approval:%s", stepID),
+				Scene:     state.Scene,
+				Tool:      pending.ToolName,
+				Kind:      string(airuntime.ChainNodeApproval),
+				Status:    "pending",
+			})
+			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+				Event:     "approval_pending",
+				TraceID:   state.TraceID,
+				SessionID: state.SessionID,
+				ChainID:   state.PlanID,
+				NodeID:    fmt.Sprintf("approval:%s", stepID),
+				Scene:     state.Scene,
+				Tool:      pending.ToolName,
+				Kind:      string(airuntime.ChainNodeApproval),
+				Status:    "pending",
 			})
 			if !chainStartedAt.IsZero() {
 				aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
@@ -682,7 +799,16 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	if finalAnswerStarted {
 		emit(o.converter.OnFinalAnswerDone(state.TurnID))
 	}
+	emit(o.converter.OnChainCompleted(state.TurnID, string(state.Status)))
 	emit(o.converter.OnDone(string(state.Status)))
+	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+		Event:     "chain_completed",
+		TraceID:   state.TraceID,
+		SessionID: state.SessionID,
+		ChainID:   state.PlanID,
+		Scene:     state.Scene,
+		Status:    string(state.Status),
+	})
 	if !chainStartedAt.IsZero() {
 		aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
 			Scene:    state.Scene,

@@ -64,6 +64,8 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 		r.handleChainNodeOpen(payload)
 	case events.ChainNodePatch:
 		r.handleChainNodePatch(payload)
+	case events.ChainNodeReplace:
+		r.handleChainNodePatch(payload)
 	case events.ChainNodeClose:
 		r.handleChainNodeClose(payload)
 	case events.ChainCollapsed:

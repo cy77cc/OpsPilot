@@ -1,6 +1,6 @@
 ## 1. Legacy Runtime Inventory And Removal
 
-- [ ] 1.1 Inventory all AI chat primary-path uses of legacy `turn/block`, `phase/step`, detached approval, and compatibility SSE events across backend and frontend entry points.
+- [x] 1.1 Inventory all AI chat primary-path uses of legacy `turn/block`, `phase/step`, detached approval, and compatibility SSE events across backend and frontend entry points.
 - [x] 1.2 Remove legacy AI chat primary-path event emission and consumption for `turn/block`, `phase_started`, `phase_complete`, `plan_generated`, `step_started`, `step_complete`, `replan_triggered`, and detached `approval_required` semantics.
 - [x] 1.3 Remove obsolete frontend runtime mergers, fallback JSON dumping paths, and unavailable-state transitions that depend on legacy protocol families.
 - [x] 1.4 Remove duplicate approval resume and confirmation branches that exist only to support the old chat runtime.
@@ -9,7 +9,7 @@
 
 - [x] 2.1 Define the canonical thoughtChain streaming contract, node model, and payload types in backend and frontend API contract layers.
 - [x] 2.2 Split node payload semantics into `headline`, `body`, `structured`, and `raw` layers so plan/replan summaries, tool payloads, and final-answer content do not share one generic text slot.
-- [ ] 2.3 Implement backend chain lifecycle emission for `chain_started`, `chain_meta`, `node_open`, `node_delta`, `node_replace`, `node_close`, `chain_paused`, `chain_resumed`, `chain_completed`, and `chain_error`.
+- [x] 2.3 Implement backend chain lifecycle emission for `chain_started`, `chain_meta`, `node_open`, `node_delta`, `node_replace`, `node_close`, `chain_paused`, `chain_resumed`, `chain_completed`, and `chain_error`.
 - [x] 2.4 Preserve markdown fidelity in SSE parsing and visible chunk normalization by removing user-visible trimming and by unwrapping only explicit complete response envelopes.
 - [x] 2.5 Implement canonical session replay structures that reconstruct assistant history from thoughtChain nodes and final answer state.
 
@@ -36,13 +36,13 @@
 
 ## 6. Observability And Metrics
 
-- [ ] 6.1 Add backend thoughtChain lifecycle callbacks for chain start, node updates, approval resolution, replan, completion, and failure.
+- [x] 6.1 Add backend thoughtChain lifecycle callbacks for chain start, node updates, approval resolution, replan, completion, and failure.
 - [x] 6.2 Export thoughtChain chain/node counters, durations, approval wait metrics, and replan metrics through the existing Prometheus integration.
-- [ ] 6.3 Add trace/span propagation for `trace_id`, `chain_id`, `node_id`, `scene`, `tool`, and status across normal execution and approval resume paths.
+- [x] 6.3 Add trace/span propagation for `trace_id`, `chain_id`, `node_id`, `scene`, `tool`, and status across normal execution and approval resume paths.
 
 ## 7. Validation And Regression Coverage
 
-- [ ] 7.1 Add backend tests covering thoughtChain lifecycle ordering, approval pause/resume, replan behavior, runtime-first persistence, and non-emission of removed legacy primary-path events.
+- [x] 7.1 Add backend tests covering thoughtChain lifecycle ordering, approval pause/resume, replan behavior, runtime-first persistence, and non-emission of removed legacy primary-path events.
 - [x] 7.2 Add frontend tests covering markdown-safe SSE parsing, thoughtChain rendering, structured tool/result presentation, approval node interaction, replay/live consistency, and recommended prompt race handling.
 - [x] 7.3 Add regression tests asserting a completed assistant turn cannot persist as empty replay content.
-- [ ] 7.4 Run `openspec validate --json` and project test suites relevant to AI runtime changes, then remove any temporary migration shims before marking the change complete.
+- [x] 7.4 Run `openspec validate --json` and project test suites relevant to AI runtime changes, then remove any temporary migration shims before marking the change complete.
