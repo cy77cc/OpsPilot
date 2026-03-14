@@ -76,53 +76,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 		r.handleFinalAnswerDone(payload)
 
 	// === 兼容层: 旧事件处理 ===
-	case events.RewriteResult:
-		r.upsertStage(map[string]any{
-			"key":         "rewrite",
-			"title":       "理解你的问题",
-			"status":      "success",
-			"description": "已将口语化输入整理为可规划任务",
-		})
-	case events.PlannerState:
-		r.upsertStage(map[string]any{
-			"key":         "plan",
-			"title":       "整理排查计划",
-			"status":      normalizeThoughtStatus(payload["status"]),
-			"description": firstString(payload["user_visible_summary"], "正在根据 Rewrite 结果整理计划"),
-		})
-	case events.PlanCreated:
-		r.upsertStage(map[string]any{
-			"key":         "plan",
-			"title":       "整理排查计划",
-			"status":      "success",
-			"description": "已生成结构化计划",
-		})
-	case events.StageDelta:
-		stageKey := firstString(payload["stage"])
-		if stageKey != "" {
-			if stageKey == "summary" {
-				break
-			}
-			stage := r.findStage(stageKey)
-			content := firstString(payload["content_chunk"], payload["contentChunk"], payload["message"], payload["content"])
-			if replace, _ := payload["replace"].(bool); replace {
-				stage["content"] = strings.TrimSpace(content)
-			} else {
-				stage["content"] = appendStageContent(toString(stage["content"]), content)
-			}
-			stage["status"] = normalizeThoughtStatus(payload["status"])
-			if toString(stage["title"]) == "" {
-				stage["title"] = resolveThoughtStageTitle(stageKey)
-			}
-			r.upsertStage(stage)
-		}
-	case events.StepUpdate:
-		r.upsertStage(map[string]any{
-			"key":         "execute",
-			"title":       "调用专家执行",
-			"status":      normalizeThoughtStatus(payload["status"]),
-			"description": firstString(payload["title"], "正在推进计划步骤"),
-		})
 	case events.ToolCall:
 		r.upsertStage(map[string]any{
 			"key":         "execute",
@@ -163,23 +116,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 			"status":      "loading",
 			"description": firstString(payload["title"], "当前步骤需要审批后继续执行"),
 			"content":     firstString(payload["user_visible_summary"]),
-		})
-	case events.ClarifyRequired:
-		r.upsertStage(map[string]any{
-			"key":         "user_action",
-			"title":       "等待你补充信息",
-			"status":      "loading",
-			"description": firstString(payload["message"], payload["title"], "当前目标仍有歧义"),
-		})
-		if r.assistant.Content == "" {
-			r.assistant.Content = firstString(payload["message"])
-		}
-	case events.ReplanStarted:
-		r.upsertStage(map[string]any{
-			"key":         "plan",
-			"title":       "整理排查计划",
-			"status":      "loading",
-			"description": "正在开始新一轮规划",
 		})
 	case events.Error:
 		r.assistant.Status = "error"

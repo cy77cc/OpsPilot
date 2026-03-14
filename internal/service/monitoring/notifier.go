@@ -2,7 +2,6 @@ package monitoring
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -57,6 +56,6 @@ func buildNotifier(channelType string) (Notifier, error) {
 	case "webhook":
 		return &webhookNotifier{}, nil
 	default:
-		return nil, errors.New(fmt.Sprintf("unsupported channel type: %s", channelType))
+		return nil, fmt.Errorf("unsupported channel type: %s", channelType)
 	}
 }

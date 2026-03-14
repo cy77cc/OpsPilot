@@ -3,7 +3,6 @@ module github.com/cy77cc/OpsPilot
 go 1.26.1
 
 require (
-	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/cloudwego/eino v0.8.0
 	github.com/cloudwego/eino-ext/components/embedding/ollama v0.0.0-20260305011506-a75910204c1f
@@ -144,7 +143,6 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect

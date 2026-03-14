@@ -423,9 +423,10 @@ func (s *ExecutionStore) Load(ctx context.Context, sessionID, planID string) (Ex
 			}
 			s.mu.Unlock()
 			return state, true, nil
-		}
-		if err != nil && err != redis.Nil {
-			return ExecutionState{}, false, err
+		} else {
+			if err != redis.Nil {
+				return ExecutionState{}, false, err
+			}
 		}
 	}
 	s.mu.RLock()
@@ -502,9 +503,10 @@ func (s *CheckpointStore) Get(ctx context.Context, checkpointID string) ([]byte,
 		raw, err := s.client.Get(ctx, s.prefix+checkpointID).Bytes()
 		if err == nil {
 			return append([]byte(nil), raw...), true, nil
-		}
-		if err != nil && err != redis.Nil {
-			return nil, false, err
+		} else {
+			if err != redis.Nil {
+				return nil, false, err
+			}
 		}
 	}
 	s.mu.RLock()
@@ -579,10 +581,12 @@ func (s *CheckpointStore) Resolve(ctx context.Context, sessionID, planID, stepID
 				target = strings.TrimSpace(stepID)
 			}
 			return checkpointID, target, true, nil
+		} else {
+			if err != redis.Nil {
+				return "", "", false, err
+			}
 		}
-		if err != nil && err != redis.Nil {
-			return "", "", false, err
-		}
+
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
