@@ -55,6 +55,11 @@ type approvalDecisionRequest struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+type chainApprovalDecisionRequest struct {
+	Approved bool   `json:"approved"`
+	Reason   string `json:"reason,omitempty"`
+}
+
 // updateSceneConfigRequest 是更新场景配置接口的请求体。
 type updateSceneConfigRequest struct {
 	Name           string         `json:"name"`
@@ -315,76 +320,135 @@ func (h *HTTPHandler) ApproveApproval(c *gin.Context) {
 		httpx.Fail(c, xcode.NotFound, "approval not found")
 		return
 	}
-	execID := uuid.NewString()
-	now := time.Now().UTC()
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
-			"status":           "approved",
-			"reviewer_user_id": httpx.UIDFromCtx(c),
-			"reason":           firstNonEmpty(strings.TrimSpace(req.Reason), row.Reason),
-			"approved_at":      now,
-			"execution_id":     execID,
-		}).Error; err != nil {
-			return err
+	h.respondApprovalDecision(c, *row, true, req.Reason)
+}
+
+func (h *HTTPHandler) DecideChainApproval(c *gin.Context) {
+	var req chainApprovalDecisionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+
+	nodeID := strings.TrimSpace(c.Param("node_id"))
+	stepID := strings.TrimPrefix(nodeID, "approval:")
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		httpx.Fail(c, xcode.ParamError, "node_id is required")
+		return
+	}
+
+	chainID := strings.TrimSpace(c.Param("chain_id"))
+	query := h.svcCtx.DB.WithContext(c.Request.Context()).Order("created_at desc")
+	if chainID != "" {
+		query = query.Where("plan_id = ?", chainID)
+	}
+	var row model.AIApproval
+	if err := query.Where("step_id = ?", stepID).First(&row).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			httpx.Fail(c, xcode.NotFound, "approval not found")
+			return
 		}
-		return tx.Create(&model.AIExecution{
-			ID:            execID,
-			SessionID:     row.SessionID,
-			PlanID:        row.PlanID,
-			StepID:        row.StepID,
-			CheckpointID:  firstNonEmpty(row.CheckpointID, row.StepID),
-			ApprovalID:    row.ID,
-			RequestUserID: row.RequestUserID,
-			ToolName:      row.ToolName,
-			ToolMode:      row.ToolMode,
-			RiskLevel:     row.RiskLevel,
-			Scene:         row.Scene,
-			Status:        "running",
-			ParamsJSON:    row.ParamsJSON,
-			StartedAt:     &now,
-		}).Error
-	}); err != nil {
 		httpx.ServerErr(c, err)
 		return
 	}
-	res, err := h.resumeRuntime(c.Request.Context(), coreai.ResumeRequest{
+
+	h.respondApprovalDecision(c, row, req.Approved, req.Reason)
+}
+
+func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApproval, approved bool, reason string) {
+	execID := uuid.NewString()
+	now := time.Now().UTC()
+	if approved {
+		if err := h.svcCtx.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
+				"status":           "approved",
+				"reviewer_user_id": httpx.UIDFromCtx(c),
+				"reason":           firstNonEmpty(strings.TrimSpace(reason), row.Reason),
+				"approved_at":      now,
+				"execution_id":     execID,
+			}).Error; err != nil {
+				return err
+			}
+			return tx.Create(&model.AIExecution{
+				ID:            execID,
+				SessionID:     row.SessionID,
+				PlanID:        row.PlanID,
+				StepID:        row.StepID,
+				CheckpointID:  firstNonEmpty(row.CheckpointID, row.StepID),
+				ApprovalID:    row.ID,
+				RequestUserID: row.RequestUserID,
+				ToolName:      row.ToolName,
+				ToolMode:      row.ToolMode,
+				RiskLevel:     row.RiskLevel,
+				Scene:         row.Scene,
+				Status:        "running",
+				ParamsJSON:    row.ParamsJSON,
+				StartedAt:     &now,
+			}).Error
+		}); err != nil {
+			httpx.ServerErr(c, err)
+			return
+		}
+		res, err := h.resumeRuntime(c.Request.Context(), coreai.ResumeRequest{
+			SessionID:    row.SessionID,
+			PlanID:       row.PlanID,
+			StepID:       row.StepID,
+			CheckpointID: row.CheckpointID,
+			Approved:     true,
+			Reason:       reason,
+		})
+		approvalExec := model.AIExecution{
+			ID:           execID,
+			SessionID:    row.SessionID,
+			PlanID:       row.PlanID,
+			StepID:       row.StepID,
+			CheckpointID: firstNonEmpty(row.CheckpointID, row.StepID),
+			ApprovalID:   row.ID,
+			ToolName:     row.ToolName,
+			ToolMode:     row.ToolMode,
+			RiskLevel:    row.RiskLevel,
+			Scene:        row.Scene,
+			Status:       executionStatusFromResume(res, err),
+			ParamsJSON:   row.ParamsJSON,
+			StartedAt:    &now,
+		}
+		if err != nil {
+			finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, nil, err)
+		} else {
+			finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, &aitools.Execution{
+				Result: res,
+				Metadata: map[string]any{
+					"token_accounting_status": "unavailable",
+					"token_accounting_source": "resume_runtime_result",
+				},
+			}, nil)
+		}
+		httpx.OK(c, gin.H{
+			"approval":  gin.H{"id": row.ID, "status": "approved"},
+			"execution": gin.H{"id": execID, "status": firstNonEmpty(executionStatusFromResume(res, err), "running")},
+		})
+		return
+	}
+
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
+		"status":           "rejected",
+		"reviewer_user_id": httpx.UIDFromCtx(c),
+		"reason":           strings.TrimSpace(reason),
+		"rejected_at":      now,
+	}).Error; err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	_, _ = h.resumeRuntime(c.Request.Context(), coreai.ResumeRequest{
 		SessionID:    row.SessionID,
 		PlanID:       row.PlanID,
 		StepID:       row.StepID,
 		CheckpointID: row.CheckpointID,
-		Approved:     true,
-		Reason:       req.Reason,
+		Approved:     false,
+		Reason:       reason,
 	})
-	approvalExec := model.AIExecution{
-		ID:           execID,
-		SessionID:    row.SessionID,
-		PlanID:       row.PlanID,
-		StepID:       row.StepID,
-		CheckpointID: firstNonEmpty(row.CheckpointID, row.StepID),
-		ApprovalID:   row.ID,
-		ToolName:     row.ToolName,
-		ToolMode:     row.ToolMode,
-		RiskLevel:    row.RiskLevel,
-		Scene:        row.Scene,
-		Status:       executionStatusFromResume(res, err),
-		ParamsJSON:   row.ParamsJSON,
-		StartedAt:    &now,
-	}
-	if err != nil {
-		finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, nil, err)
-	} else {
-		finalizeExecutionRecord(c.Request.Context(), h.svcCtx.DB, approvalExec, &aitools.Execution{
-			Result: res,
-			Metadata: map[string]any{
-				"token_accounting_status": "unavailable",
-				"token_accounting_source": "resume_runtime_result",
-			},
-		}, nil)
-	}
-	httpx.OK(c, gin.H{
-		"approval":  gin.H{"id": row.ID, "status": "approved"},
-		"execution": gin.H{"id": execID, "status": firstNonEmpty(executionStatusFromResume(res, err), "running")},
-	})
+	httpx.OK(c, gin.H{"id": row.ID, "status": "rejected", "reason": strings.TrimSpace(reason)})
 }
 
 func (h *HTTPHandler) RejectApproval(c *gin.Context) {
@@ -399,25 +463,7 @@ func (h *HTTPHandler) RejectApproval(c *gin.Context) {
 		httpx.Fail(c, xcode.NotFound, "approval not found")
 		return
 	}
-	now := time.Now().UTC()
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.AIApproval{}).Where("id = ?", row.ID).Updates(map[string]any{
-		"status":           "rejected",
-		"reviewer_user_id": httpx.UIDFromCtx(c),
-		"reason":           strings.TrimSpace(req.Reason),
-		"rejected_at":      now,
-	}).Error; err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	_, _ = h.resumeRuntime(c.Request.Context(), coreai.ResumeRequest{
-		SessionID:    row.SessionID,
-		PlanID:       row.PlanID,
-		StepID:       row.StepID,
-		CheckpointID: row.CheckpointID,
-		Approved:     false,
-		Reason:       req.Reason,
-	})
-	httpx.OK(c, gin.H{"id": row.ID, "status": "rejected", "reason": strings.TrimSpace(req.Reason)})
+	h.respondApprovalDecision(c, *row, false, req.Reason)
 }
 
 func (h *HTTPHandler) SceneTools(c *gin.Context) {

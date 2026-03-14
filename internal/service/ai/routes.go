@@ -36,6 +36,7 @@ func registerHandlers(g *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	g.POST("/tools/preview", h.PreviewTool)
 	g.POST("/tools/execute", h.ExecuteTool)
 	g.GET("/executions/:id", h.ExecutionStatus)
+	g.POST("/chains/:chain_id/approvals/:node_id/decision", h.DecideChainApproval)
 	g.POST("/approvals", h.CreateApproval)
 	g.GET("/approvals", h.ListApprovals)
 	g.GET("/approvals/:id", h.GetApproval)
