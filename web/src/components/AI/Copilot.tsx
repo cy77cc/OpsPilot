@@ -921,12 +921,16 @@ export const Copilot: React.FC<CopilotProps> = ({
       overrides: Partial<ExtendedChatMessage> = {},
     ): ExtendedChatMessage => {
       const nextTurn = overrides.turn !== undefined ? overrides.turn : message.turn;
+      const nextRuntime = overrides.runtime !== undefined ? overrides.runtime : message.runtime;
       const projected = projectTurnSummary(nextTurn);
       return {
         ...message,
         ...overrides,
         turn: nextTurn,
-        runtime: overrides.runtime !== undefined ? overrides.runtime : message.runtime,
+        runtime: nextRuntime,
+        thoughtChain: nextRuntime
+          ? message.thoughtChain
+          : (overrides.thoughtChain !== undefined ? overrides.thoughtChain : message.thoughtChain),
         content: overrides.content !== undefined
           ? overrides.content
           : (projected.content || message.content || assistantContent),
@@ -943,6 +947,11 @@ export const Copilot: React.FC<CopilotProps> = ({
         traceId: overrides.traceId ?? assistantTraceId ?? message.traceId,
       };
     };
+
+    const legacyThoughtChainOrCurrent = (
+      message: ExtendedChatMessage,
+      nextThoughtChain: ThoughtStageItem[] | undefined,
+    ) => (message.runtime ? message.thoughtChain : nextThoughtChain);
 
     return {
       onMeta: (data: { sessionId?: string; traceId?: string; turn_id?: string }) => {
@@ -1119,7 +1128,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       onRewriteResult: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
             key: 'rewrite',
             title: resolveThoughtStageTitle('rewrite'),
             status: 'success',
@@ -1128,13 +1137,13 @@ export const Copilot: React.FC<CopilotProps> = ({
               (message.thoughtChain || []).find((item) => item.key === 'rewrite')?.content,
               buildStageMilestone('rewrite', 'event', data),
             ),
-          }),
+          })),
         }));
       },
       onPlannerState: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
             key: 'plan',
             title: resolveThoughtStageTitle('plan'),
             status: normalizeThoughtStatus(data.status as string | undefined, 'loading'),
@@ -1143,13 +1152,13 @@ export const Copilot: React.FC<CopilotProps> = ({
               (message.thoughtChain || []).find((item) => item.key === 'plan')?.content,
               buildStageMilestone('plan', 'delta', data),
             ),
-          }),
+          })),
         }));
       },
       onPlanCreated: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
             key: 'plan',
             title: resolveThoughtStageTitle('plan'),
             status: 'success',
@@ -1158,7 +1167,7 @@ export const Copilot: React.FC<CopilotProps> = ({
               (message.thoughtChain || []).find((item) => item.key === 'plan')?.content,
               buildStageMilestone('plan', 'event', data),
             ),
-          }),
+          })),
         }));
       },
       onStepUpdate: (data: SSEStepUpdateEvent) => {
@@ -1172,13 +1181,13 @@ export const Copilot: React.FC<CopilotProps> = ({
         if (rawStatus === 'waiting_approval') {
           patchAssistantMessage(conversationKey, assistantId, (message) => ({
             ...message,
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
               key: 'user_action',
               title: '等待你确认',
               status: 'loading',
               description: String(data.title || data.user_visible_summary || '当前步骤需要确认后继续执行'),
               content: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-            }),
+            })),
           }));
           return;
         }
@@ -1210,14 +1219,14 @@ export const Copilot: React.FC<CopilotProps> = ({
           return {
             ...message,
             confirmation: undefined,
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
               key: 'execute',
               title: '调用专家执行',
               status: nextStatus,
               description: buildStageDescription('execute', nextStatus, stepData),
               content: buildExecutionStageSummary(stepData) || buildStageMilestone('execute', 'event', stepData),
               details,
-            }),
+            })),
           };
         });
       },
@@ -1225,13 +1234,13 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           return {
             ...message,
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
               key: 'execute',
               title: '调用专家执行',
               status: 'loading',
               description: buildStageDescription('execute', 'loading', data),
               content: buildExecutionStageSummary(data),
-            }),
+            })),
           };
         });
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
@@ -1254,13 +1263,13 @@ export const Copilot: React.FC<CopilotProps> = ({
           const status = data.status === 'error' || result?.ok === false ? 'error' : 'success';
           return {
             ...message,
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
               key: 'execute',
               title: '调用专家执行',
               status: status === 'error' ? 'error' : 'loading',
               description: buildStageDescription('execute', status === 'error' ? 'error' : 'loading', data),
               content: buildExecutionStageSummary(data),
-            }),
+            })),
           };
         });
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
@@ -1332,12 +1341,12 @@ export const Copilot: React.FC<CopilotProps> = ({
       onClarifyRequired: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
             key: 'user_action',
             title: '等待你补充信息',
             status: 'loading',
             description: String(data.message || data.title || '当前目标仍有歧义'),
-          }),
+          })),
         }));
         assistantContent ||= String(data.message || '');
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
@@ -1443,13 +1452,13 @@ export const Copilot: React.FC<CopilotProps> = ({
                 })
               : message.turn,
           }),
-          thoughtChain: (message.thoughtChain || []).map((item) => ({
+          thoughtChain: legacyThoughtChainOrCurrent(message, (message.thoughtChain || []).map((item) => ({
             ...item,
             blink: false,
             status: item.key === 'user_action' && message.confirmation
               ? item.status
               : item.status === 'loading' ? 'success' : item.status,
-          })),
+          }))),
         }));
         setIsLoading(false);
       },
@@ -1482,7 +1491,7 @@ export const Copilot: React.FC<CopilotProps> = ({
                 stage: stageKey || undefined,
               },
             }),
-            thoughtChain: nextThoughtChain,
+            thoughtChain: legacyThoughtChainOrCurrent(message, nextThoughtChain),
             confirmation: message.confirmation ? { ...message.confirmation, status: 'failed', errorMessage: errorText } : message.confirmation,
           });
         });
