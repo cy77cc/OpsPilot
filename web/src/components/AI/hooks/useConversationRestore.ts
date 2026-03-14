@@ -140,9 +140,10 @@ function toRestoredConversation(session: AISession): RestoredConversation {
   if (session.turns && session.turns.length > 0) {
     const replayMessages = normalizeReplayTurns(session.turns).map((turn) => {
       const hydratedTurn = turnFromReplay(turn);
+      const runtime = turn.role === 'assistant' ? runtimeStateFromReplayTurn(hydratedTurn) : undefined;
       const summary = projectTurnSummary(hydratedTurn);
       const fallbackContent = turn.role === 'assistant'
-        ? resolveReplayAssistantContent(turn, summary.content)
+        ? resolveReplayAssistantContent(turn, runtime, summary.content)
         : resolveUserTurnContent(turn, summary.content);
       return {
         id: turn.id,
@@ -154,7 +155,7 @@ function toRestoredConversation(session: AISession): RestoredConversation {
         rawEvidence: turn.role === 'assistant' ? summary.rawEvidence : undefined,
         status: hydratedTurn.status,
         turn: hydratedTurn,
-        runtime: turn.role === 'assistant' ? runtimeStateFromReplayTurn(hydratedTurn) : undefined,
+        runtime,
         restored: true,
         createdAt: turn.createdAt,
       };
@@ -281,8 +282,13 @@ function resolveUserTurnContent(turn: NonNullable<AISession['turns']>[number], f
 
 function resolveReplayAssistantContent(
   turn: NonNullable<AISession['turns']>[number],
+  runtime: ThoughtChainRuntimeState | undefined,
   fallback: string,
 ): string {
+  if (runtime?.finalAnswer.content?.trim()) {
+    return runtime.finalAnswer.content;
+  }
+
   const textBlock = turn.blocks.find((block) => block.blockType === 'text' && block.contentText?.trim());
   if (textBlock?.contentText?.trim()) {
     return textBlock.contentText;
