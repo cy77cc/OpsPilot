@@ -36,11 +36,7 @@ import type {
   SSEFinalAnswerEvent,
   SSEPhaseCompleteEvent,
   SSEPhaseStartedEvent,
-  SSEPlanGeneratedEvent,
-  SSEReplanTriggeredEvent,
   SSEStageDeltaEvent,
-  SSEStepCompleteEvent,
-  SSEStepStartedEvent,
   SSEStepUpdateEvent,
 } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
@@ -69,8 +65,6 @@ import {
   applyBlockReplace,
   applyPhaseComplete,
   applyPhaseStarted,
-  applyPlanGenerated,
-  applyReplanTriggered,
   applyStepComplete,
   applyStepStarted,
   applyTurnDone,
@@ -1080,11 +1074,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           turn: applyPhaseComplete(message.turn, data),
         }));
       },
-      onPlanGenerated: (data: SSEPlanGeneratedEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyPlanGenerated(message.turn, data),
-        }));
-      },
       onStageDelta: (data: SSEStageDeltaEvent) => {
         const stageKey = String(data.stage || '').trim() as ThoughtStageItem['key'];
         if (!stageKey) {
@@ -1183,16 +1172,6 @@ export const Copilot: React.FC<CopilotProps> = ({
               buildStageMilestone('plan', 'event', data),
             ),
           }),
-        }));
-      },
-      onStepStarted: (data: SSEStepStartedEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyStepStarted(message.turn, data),
-        }));
-      },
-      onStepComplete: (data: SSEStepCompleteEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyStepComplete(message.turn, data),
         }));
       },
       onStepUpdate: (data: SSEStepUpdateEvent) => {
@@ -1363,50 +1342,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
-      onApprovalRequired: (data: ApprovalRequiredEvent) => {
-        const confirmation: ConfirmationRequest = {
-          id: String(data.id || data.step_id || data.checkpoint_id || assistantId),
-          title: String(data.title || data.tool_name || data.tool || '等待确认'),
-          description: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-          risk: (data.risk || data.risk_level || 'high') as 'low' | 'medium' | 'high',
-          status: 'waiting_user',
-          details: data as unknown as Record<string, unknown>,
-          onConfirm: () => {},
-          onCancel: () => {},
-        };
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          return syncMessageFromBuffers(message, {
-            confirmation,
-            runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-              type: 'chain_node_open',
-              data: {
-                turn_id: data.turn_id || message.turn?.id || assistantId,
-                node_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
-                kind: 'approval',
-                title: String(data.title || data.tool_name || data.tool || '等待确认'),
-                status: 'waiting',
-                summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-                approval: data as unknown as Record<string, unknown>,
-              },
-            }),
-            turn: applyBlockReplace(message.turn, {
-              turn_id: String(data.turn_id || message.turn?.id || assistantId),
-              block_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
-              block_type: 'approval',
-              payload: data as unknown as Record<string, unknown>,
-            }),
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
-              key: 'user_action',
-              title: '等待你确认',
-              status: 'loading',
-              description: String(data.title || '当前步骤需要确认后继续执行'),
-              content: String(data.user_visible_summary || ''),
-            }),
-          });
-        });
-        setIsLoading(false);
-        refreshAnnouncement('等待确认');
-      },
       onClarifyRequired: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
@@ -1423,10 +1358,47 @@ export const Copilot: React.FC<CopilotProps> = ({
         }));
         setIsLoading(false);
       },
-      onReplanTriggered: (data: SSEReplanTriggeredEvent) => {
+      onApprovalRequired: (data: ApprovalRequiredEvent) => {
+        const confirmation: ConfirmationRequest = {
+          id: String(data.id || data.step_id || data.checkpoint_id || assistantId),
+          title: String(data.title || data.tool_name || data.tool || '等待确认'),
+          description: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
+          risk: (data.risk || data.risk_level || 'high') as 'low' | 'medium' | 'high',
+          status: 'waiting_user',
+          details: data as unknown as Record<string, unknown>,
+          onConfirm: () => {},
+          onCancel: () => {},
+        };
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyReplanTriggered(message.turn, data),
+          confirmation,
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_node_open',
+            data: {
+              turn_id: data.turn_id || message.turn?.id || assistantId,
+              node_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
+              kind: 'approval',
+              title: String(data.title || data.tool_name || data.tool || '等待确认'),
+              status: 'waiting',
+              summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
+              approval: data as unknown as Record<string, unknown>,
+            },
+          }),
+          turn: applyBlockReplace(message.turn, {
+            turn_id: String(data.turn_id || message.turn?.id || assistantId),
+            block_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
+            block_type: 'approval',
+            payload: data as unknown as Record<string, unknown>,
+          }),
+          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
+            key: 'user_action',
+            title: '等待你确认',
+            status: 'loading',
+            description: String(data.title || '当前步骤需要确认后继续执行'),
+            content: String(data.user_visible_summary || ''),
+          }),
         }));
+        setIsLoading(false);
+        refreshAnnouncement('等待确认');
       },
       onSummary: () => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {

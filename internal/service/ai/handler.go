@@ -54,17 +54,6 @@ type aiRuntime interface {
 	ResumeStream(ctx context.Context, req coreai.ResumeRequest, emit coreai.StreamEmitter) (*coreai.ResumeResult, error)
 }
 
-// approvalResponseRequest 审批响应请求结构。
-type approvalResponseRequest struct {
-	CheckpointID string `json:"checkpoint_id,omitempty"` // 检查点 ID（兼容旧版）
-	SessionID    string `json:"session_id,omitempty"`    // 会话 ID
-	PlanID       string `json:"plan_id,omitempty"`       // 计划 ID
-	StepID       string `json:"step_id,omitempty"`       // 步骤 ID
-	Target       string `json:"target,omitempty"`        // 目标标识
-	Approved     bool   `json:"approved"`                // 是否批准
-	Reason       string `json:"reason,omitempty"`        // 原因说明
-}
-
 // updateSessionTitleRequest 更新会话标题请求。
 type updateSessionTitleRequest struct {
 	Title string `json:"title" binding:"required"` // 新标题
@@ -191,83 +180,6 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 	}
 }
 
-// ResumeStep 处理步骤恢复请求。
-func (h *HTTPHandler) ResumeStep(c *gin.Context) {
-	h.handleResume(c, false)
-}
-
-// ResumeStepStream 处理流式步骤恢复请求。
-func (h *HTTPHandler) ResumeStepStream(c *gin.Context) {
-	var req approvalResponseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.BindErr(c, err)
-		return
-	}
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		httpx.Fail(c, xcode.ServerError, "streaming is not supported")
-		return
-	}
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	rollout := coreai.CurrentRolloutConfig()
-	c.Writer.Header().Set("X-AI-Runtime-Mode", h.runtimeModeHeader(rollout))
-	c.Writer.Header().Set("X-AI-Compatibility-Enabled", boolHeaderValue(rollout.CompatibilityEnabled()))
-	c.Writer.Header().Set("X-AI-Model-First-Enabled", boolHeaderValue(rollout.ModelFirstEnabled()))
-	c.Writer.Header().Set("X-AI-Turn-Block-Streaming-Enabled", boolHeaderValue(rollout.TurnBlockStreamingEnabled()))
-	c.Status(http.StatusOK)
-
-	emit := func(evt coreai.StreamEvent) bool {
-		payload := cloneMap(evt.Data)
-		if evt.Type == events.Meta {
-			payload = attachRolloutMetadata(payload, rollout)
-		}
-		return writeSSE(c, flusher, string(evt.Type), payload)
-	}
-	if _, err := h.resumeRuntimeStream(c.Request.Context(), buildResumeRequest(req), emit); err != nil {
-		writeSSE(c, flusher, "error", map[string]any{
-			"message": err.Error(),
-		})
-	}
-}
-
-// handleResume 统一处理恢复请求。
-func (h *HTTPHandler) handleResume(c *gin.Context, legacyADK bool) {
-	var req approvalResponseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.BindErr(c, err)
-		return
-	}
-	res, err := h.resumeRuntime(c.Request.Context(), buildResumeRequest(req))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	httpx.OK(c, buildResumeResponse(res, legacyADK))
-}
-
-// ResumeADKApproval 处理 ADK 审批恢复请求（兼容旧版）。
-func (h *HTTPHandler) ResumeADKApproval(c *gin.Context) {
-	h.handleResume(c, true)
-}
-
-// buildResumeRequest 构建恢复请求对象。
-func buildResumeRequest(req approvalResponseRequest) coreai.ResumeRequest {
-	return coreai.ResumeRequest{
-		SessionID:    req.SessionID,
-		PlanID:       req.PlanID,
-		StepID:       firstNonEmpty(req.StepID, req.Target, req.CheckpointID),
-		CheckpointID: req.CheckpointID,
-		Target:       firstNonEmpty(req.Target, req.CheckpointID),
-		Approved:     req.Approved,
-		Reason:       req.Reason,
-	}
-}
-
 func (h *HTTPHandler) runtimeModeHeader(rollout coreai.RolloutConfig) string {
 	return rollout.RuntimeMode()
 }
@@ -282,46 +194,6 @@ func (h *HTTPHandler) resumeRuntime(ctx context.Context, req coreai.ResumeReques
 
 func (h *HTTPHandler) resumeRuntimeStream(ctx context.Context, req coreai.ResumeRequest, emit coreai.StreamEmitter) (*coreai.ResumeResult, error) {
 	return h.orchestrator.ResumeStream(ctx, req, emit)
-}
-
-// buildResumeResponse 将 ResumeResult 序列化为 HTTP 响应 payload。
-// legacyADK=true 时附加废弃标记和迁移提示，用于兼容旧版客户端。
-func buildResumeResponse(res *coreai.ResumeResult, legacyADK bool) gin.H {
-	if res == nil {
-		res = &coreai.ResumeResult{}
-	}
-	payload := gin.H{
-		"resumed":           res.Resumed,
-		"interrupted":       res.Interrupted,
-		"sessionId":         res.SessionID,
-		"session_id":        res.SessionID,
-		"plan_id":           res.PlanID,
-		"step_id":           res.StepID,
-		"checkpoint_id":     res.StepID,
-		"turn_id":           res.TurnID,
-		"message":           res.Message,
-		"status":            res.Status,
-		"interrupt_error":   "",
-		"approval_required": false,
-	}
-	if legacyADK {
-		payload["deprecated"] = true
-		payload["compat_mode"] = "legacy_adk_resume"
-		payload["message"] = legacyResumeMessage(res.Message)
-	}
-	return payload
-}
-
-// legacyResumeMessage 在旧版 resume 消息中追加迁移提示（若尚未包含新接口路径）。
-func legacyResumeMessage(message string) string {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		message = "旧版恢复请求已按 step resume 语义处理。"
-	}
-	if strings.Contains(message, "/api/v1/ai/resume/step") {
-		return message
-	}
-	return message + " 请迁移到 /api/v1/ai/resume/step，并使用 session_id + plan_id + step_id。"
 }
 
 // SubmitFeedback 接收用户对 AI 回答的反馈，当前仅做基础记录（未持久化）。
