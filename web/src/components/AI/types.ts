@@ -97,6 +97,10 @@ export interface RuntimeThoughtChainNode {
   kind: RuntimeThoughtChainNodeKind;
   title: string;
   status: RuntimeThoughtChainNodeStatus;
+  headline?: string;
+  body?: string;
+  structured?: Record<string, unknown>;
+  raw?: unknown;
   summary?: string;
   details?: unknown[];
   approval?: Omit<ConfirmationRequest, 'onConfirm' | 'onCancel'> & {
