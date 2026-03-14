@@ -245,46 +245,6 @@ export function applyPhaseComplete(
   };
 }
 
-export function applyPlanGenerated(
-  current: ChatTurn | undefined,
-  payload: {
-    turn_id?: string;
-    plan_id?: string;
-    title?: string;
-    summary?: string;
-    user_visible_summary?: string;
-    total?: number;
-    steps?: Array<Record<string, unknown>>;
-    plan?: Record<string, unknown>;
-  },
-): ChatTurn {
-  const turn = ensureLifecycleTurn(current, payload.turn_id, 'plan');
-  const blockID = `plan:${payload.plan_id || 'main'}`;
-  const content = resolveLifecycleSummary(payload);
-  return {
-    ...turn,
-    phase: turn.phase === 'replanning' ? 'replanning' : 'plan',
-    blocks: upsertBlock(turn.blocks, {
-      id: blockID,
-      type: 'plan',
-      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
-      title: payload.title || '执行计划',
-      status: 'success',
-      content,
-      data: compactRecord({
-        plan_id: payload.plan_id,
-        total: payload.total ?? (Array.isArray(payload.steps) ? payload.steps.length : undefined),
-        steps: payload.steps,
-        plan: payload.plan,
-        summary: payload.summary,
-        user_visible_summary: payload.user_visible_summary,
-      }),
-      streaming: false,
-    }),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
 export function applyStepStarted(
   current: ChatTurn | undefined,
   payload: {
@@ -373,43 +333,6 @@ export function applyStepComplete(
         params: payload.params,
       }), {}),
       streaming: false,
-    }),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-export function applyReplanTriggered(
-  current: ChatTurn | undefined,
-  payload: {
-    turn_id?: string;
-    plan_id?: string;
-    previous_plan_id?: string;
-    reason?: string;
-    title?: string;
-    summary?: string;
-    user_visible_summary?: string;
-    completed_steps?: number;
-  },
-): ChatTurn {
-  const turn = ensureLifecycleTurn(current, payload.turn_id, 'replanning');
-  const blockID = `replan:${payload.plan_id || payload.previous_plan_id || 'active'}`;
-  return {
-    ...turn,
-    phase: 'replanning',
-    blocks: upsertBlock(turn.blocks, {
-      id: blockID,
-      type: 'status',
-      position: findBlock(turn.blocks, blockID)?.position ?? nextBlockPosition(turn.blocks),
-      title: payload.title || '触发重新规划',
-      status: 'loading',
-      content: resolveLifecycleSummary(payload) || '执行路径已调整，正在生成新计划。',
-      data: compactRecord({
-        plan_id: payload.plan_id,
-        previous_plan_id: payload.previous_plan_id,
-        completed_steps: payload.completed_steps,
-        reason: payload.reason,
-      }),
-      streaming: true,
     }),
     updatedAt: new Date().toISOString(),
   };
