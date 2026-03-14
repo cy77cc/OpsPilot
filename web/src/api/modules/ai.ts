@@ -66,7 +66,7 @@ export interface EmbeddedRecommendation {
 
 export interface ToolTrace {
   id: string;
-  type: 'tool_call' | 'tool_result' | 'approval_required' | 'tool_missing';
+  type: 'tool_call' | 'tool_result' | 'tool_missing';
   payload: Record<string, any>;
   timestamp: string;
 }
@@ -202,64 +202,6 @@ interface SSEDeltaEvent {
   turn_id?: string;
 }
 
-export interface SSERewriteResultEvent {
-  rewrite?: Record<string, unknown>;
-  user_visible_summary?: string;
-}
-
-export interface SSEPlannerStateEvent {
-  status?: string;
-  user_visible_summary?: string;
-}
-
-export interface SSEPlanCreatedEvent {
-  plan?: Record<string, unknown>;
-  user_visible_summary?: string;
-}
-
-export interface SSEStageDeltaEvent {
-  stage?: string;
-  status?: string;
-  session_id?: string;
-  plan_id?: string;
-  step_id?: string;
-  checkpoint_id?: string;
-  content_chunk?: string;
-  contentChunk?: string;
-  content?: string;
-  detail?: string;
-  details?: string[];
-  summary?: string;
-  user_visible_summary?: string;
-  message?: string;
-  title?: string;
-  description?: string;
-  steps?: string[];
-  replace?: boolean;
-}
-
-export interface SSEStepUpdateEvent {
-  session_id?: string;
-  plan_id?: string;
-  step_id?: string;
-  checkpoint_id?: string;
-  status?: string;
-  title?: string;
-  expert?: string;
-  tool?: string;
-  tool_name?: string;
-  params?: Record<string, unknown>;
-  result?: {
-    ok?: boolean;
-    data?: unknown;
-    error?: string;
-    latency_ms?: number;
-  };
-  error?: string;
-  summary?: string;
-  user_visible_summary?: string;
-}
-
 export interface SSEClarifyRequiredEvent {
   kind?: 'clarify';
   title?: string;
@@ -270,10 +212,6 @@ export interface SSEClarifyRequiredEvent {
 export interface SSEReplanStartedEvent {
   reason?: string;
   previous_plan_id?: string;
-}
-
-export interface SSESummaryEvent {
-  summary?: string;
 }
 
 function toContentChunk(payload: unknown): string {
@@ -347,35 +285,6 @@ function normalizeFinalAnswerEventPayload(payload: unknown): SSEFinalAnswerEvent
   };
 }
 
-function normalizeResumeIdentity<T extends Record<string, unknown>>(payload: T): T {
-  const resume = (payload.resume || {}) as Record<string, unknown>;
-  const sessionID = payload.session_id ?? resume.session_id;
-  const planID = payload.plan_id ?? resume.plan_id;
-  const stepID = payload.step_id ?? resume.step_id;
-  const checkpointID = payload.checkpoint_id ?? resume.checkpoint_id;
-
-  return {
-    ...payload,
-    ...(sessionID ? { session_id: String(sessionID) } : {}),
-    ...(planID ? { plan_id: String(planID) } : {}),
-    ...(stepID ? { step_id: String(stepID) } : {}),
-    ...(checkpointID ? { checkpoint_id: String(checkpointID) } : {}),
-  };
-}
-
-function normalizeStageDeltaEvent(payload: unknown): SSEStageDeltaEvent {
-  const base = typeof payload === 'object' && payload ? normalizeResumeIdentity(payload as Record<string, unknown>) : {};
-  const contentChunk = toContentChunk(base);
-  return {
-    ...(base as SSEStageDeltaEvent),
-    ...(contentChunk ? { contentChunk, content_chunk: typeof base.content_chunk === 'string' ? base.content_chunk : contentChunk } : {}),
-  };
-}
-
-function normalizeStepUpdateEvent(payload: unknown): SSEStepUpdateEvent {
-  return normalizeResumeIdentity((typeof payload === 'object' && payload ? payload : {}) as Record<string, unknown>) as SSEStepUpdateEvent;
-}
-
 function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
   const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
   if (!errorPayload.code && errorPayload.error_code) {
@@ -433,21 +342,14 @@ export interface AIChatStreamHandlers {
   onBlockClose?: (payload: SSEBlockCloseEvent) => void;
   onTurnState?: (payload: SSETurnStateEvent) => void;
   onTurnDone?: (payload: SSETurnDoneEvent) => void;
-  onRewriteResult?: (payload: SSERewriteResultEvent) => void;
-  onPlannerState?: (payload: SSEPlannerStateEvent) => void;
-  onPlanCreated?: (payload: SSEPlanCreatedEvent) => void;
-  onStageDelta?: (payload: SSEStageDeltaEvent) => void;
-  onStepUpdate?: (payload: SSEStepUpdateEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
   onReplanStarted?: (payload: SSEReplanStartedEvent) => void;
-  onSummary?: (payload: SSESummaryEvent) => void;
   onDone?: (payload: SSEDoneEvent) => void;
   onError?: (payload: SSEErrorEvent) => void;
   onThinkingDelta?: (payload: SSEThinkingEvent) => void;
   onToolCall?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; ts?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> }) => void;
   onToolResult?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; result?: { ok: boolean; data?: any; error?: string; error_code?: string; source?: string; latency_ms?: number }; ts?: string }) => void;
-  onApprovalRequired?: (payload: ApprovalRequiredEvent) => void;
   onHeartbeat?: (payload: { turn_id?: string; status?: string }) => void;
 }
 
@@ -519,16 +421,6 @@ function dispatchAIStreamEvent(
     handlers.onTurnState?.(payload as SSETurnStateEvent);
   } else if (eventType === 'turn_done') {
     handlers.onTurnDone?.(payload as SSETurnDoneEvent);
-  } else if (eventType === 'rewrite_result') {
-    handlers.onRewriteResult?.(payload as SSERewriteResultEvent);
-  } else if (eventType === 'planner_state') {
-    handlers.onPlannerState?.(payload as SSEPlannerStateEvent);
-  } else if (eventType === 'plan_created') {
-    handlers.onPlanCreated?.(payload as SSEPlanCreatedEvent);
-  } else if (eventType === 'stage_delta') {
-    handlers.onStageDelta?.(normalizeStageDeltaEvent(payload));
-  } else if (eventType === 'step_update') {
-    handlers.onStepUpdate?.(normalizeStepUpdateEvent(payload));
   } else if (eventType === 'delta' || eventType === 'message') {
     const contentChunk = normalizeVisibleDelta
       ? normalizeVisibleStreamChunk(toContentChunk(payload))
@@ -553,8 +445,6 @@ function dispatchAIStreamEvent(
     handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
   } else if (eventType === 'replan_started') {
     handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
-  } else if (eventType === 'summary') {
-    handlers.onSummary?.(payload as SSESummaryEvent);
   } else if (eventType === 'heartbeat') {
     handlers.onHeartbeat?.(payload as { turn_id?: string; status?: string });
   }
@@ -656,14 +546,6 @@ export interface ApprovalTicket {
     step_id?: string;
     checkpoint_id?: string;
   };
-}
-
-export interface ApprovalRequiredEvent extends ApprovalTicket {
-  turn_id?: string;
-  approval_required?: boolean;
-  previewDiff?: string;
-  title?: string;
-  user_visible_summary?: string;
 }
 
 export interface KnowledgeEntry {

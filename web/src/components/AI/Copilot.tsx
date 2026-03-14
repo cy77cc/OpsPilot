@@ -29,16 +29,13 @@ import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Ske
 import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
 import type {
-  ApprovalRequiredEvent,
   SSEChainNodeEvent,
   SSEChainStartedEvent,
   SSEDoneEvent,
   SSEFinalAnswerEvent,
-  SSEStageDeltaEvent,
-  SSEStepUpdateEvent,
 } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
+import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
 import {
   loadRestoredConversationDetail,
@@ -61,10 +58,6 @@ import {
   applyBlockDelta,
   applyBlockOpen,
   applyBlockReplace,
-  applyPhaseComplete,
-  applyPhaseStarted,
-  applyStepComplete,
-  applyStepStarted,
   applyTurnDone,
   applyTurnStarted,
   applyTurnState,
@@ -191,16 +184,6 @@ function finalizeThoughtStage(
   ));
 }
 
-function buildToolDetailID(data: Record<string, unknown>): string {
-  const callID = String(data.call_id || '').trim();
-  if (callID) {
-    return callID;
-  }
-  const stepID = String(data.step_id || '').trim();
-  const toolName = String(data.tool_name || data.tool || data.expert || 'tool').trim();
-  return ['tool', stepID || 'step', toolName || 'tool'].join(':');
-}
-
 function upsertThoughtStage(
   stages: ThoughtStageItem[],
   patch: Partial<ThoughtStageItem> & Pick<ThoughtStageItem, 'key' | 'title' | 'status'>
@@ -233,22 +216,6 @@ function upsertThoughtStage(
 }
 
 
-function buildExecutionStageSummary(data: Record<string, unknown>): string | undefined {
-  const title = String(data.title || data.summary || data.user_visible_summary || '').trim();
-  const toolName = String(data.tool_name || data.tool || data.expert || '').trim();
-  const error = String(data.error || '').trim();
-  if (error) {
-    return error;
-  }
-  if (title) {
-    return `当前步骤: ${title}`;
-  }
-  if (toolName) {
-    return `正在调用工具: ${toolName}`;
-  }
-  return undefined;
-}
-
 function resolveDefaultExpandedThoughtKeys(
   stages: ThoughtStageItem[],
   opts: { restored?: boolean; streaming?: boolean },
@@ -264,28 +231,6 @@ function resolveDefaultExpandedThoughtKeys(
     return [active[active.length - 1]];
   }
   return stages.map((item) => item.key);
-}
-
-function normalizeThoughtStatus(status: string | undefined, fallback: ThoughtStageStatus = 'loading'): ThoughtStageStatus {
-  switch (status) {
-    case 'completed':
-    case 'success':
-      return 'success';
-    case 'failed':
-    case 'error':
-    case 'blocked':
-      return 'error';
-    case 'cancelled':
-    case 'rejected':
-      return 'abort';
-    case 'running':
-    case 'waiting_approval':
-    case 'planning':
-    case 'replanning':
-      return 'loading';
-    default:
-      return fallback;
-  }
 }
 
 function resolveThoughtStageTitle(stage: string | undefined): ThoughtStageItem['title'] {
@@ -1070,61 +1015,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           turn: applyTurnDone(message.turn, data),
         }));
       },
-      onStageDelta: (data: SSEStageDeltaEvent) => {
-        const stageKey = String(data.stage || '').trim() as ThoughtStageItem['key'];
-        if (!stageKey) {
-          return;
-        }
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const stageSummary = String(
-            data.contentChunk
-            || data.content_chunk
-            || data.detail
-            || data.summary
-            || buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>)
-            || '',
-          ).trim();
-          const phase = stageKey === 'plan'
-            ? 'planning'
-            : stageKey === 'execute'
-              ? 'executing'
-              : stageKey === 'summary'
-                ? 'summary'
-                : stageKey;
-          const nextTurn = normalizeThoughtStatus(data.status as string | undefined, 'loading') === 'success'
-            ? applyPhaseComplete(message.turn, {
-                turn_id: message.turn?.id || assistantId,
-                phase,
-                status: String(data.status || 'success'),
-                title: resolveThoughtStageTitle(stageKey),
-                summary: stageSummary,
-              })
-            : applyPhaseStarted(message.turn, {
-                turn_id: message.turn?.id || assistantId,
-                phase,
-                status: String(data.status || 'loading'),
-                title: resolveThoughtStageTitle(stageKey),
-                summary: stageSummary,
-              });
-          return syncMessageFromBuffers(message, { turn: nextTurn });
-        });
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const currentStage = (message.thoughtChain || []).find((item) => item.key === stageKey);
-          const status = normalizeThoughtStatus(data.status as string | undefined, 'loading');
-          return syncMessageFromBuffers(message, {
-            thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
-              key: stageKey,
-              title: resolveThoughtStageTitle(stageKey),
-              status,
-              description: buildStageDescription(stageKey, status, data as unknown as Record<string, unknown>) || currentStage?.description,
-              content: appendStageContent(
-                data.replace ? '' : currentStage?.content,
-                String(data.contentChunk || data.content_chunk || data.detail || data.summary || buildStageMilestone(stageKey, 'delta', data as unknown as Record<string, unknown>) || '').trim(),
-              ),
-            }),
-          });
-        });
-      },
       onRewriteResult: (data: Record<string, unknown>) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...message,
@@ -1138,154 +1028,6 @@ export const Copilot: React.FC<CopilotProps> = ({
               buildStageMilestone('rewrite', 'event', data),
             ),
           })),
-        }));
-      },
-      onPlannerState: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-            key: 'plan',
-            title: resolveThoughtStageTitle('plan'),
-            status: normalizeThoughtStatus(data.status as string | undefined, 'loading'),
-            description: buildStageDescription('plan', normalizeThoughtStatus(data.status as string | undefined, 'loading')),
-            content: appendStageContent(
-              (message.thoughtChain || []).find((item) => item.key === 'plan')?.content,
-              buildStageMilestone('plan', 'delta', data),
-            ),
-          })),
-        }));
-      },
-      onPlanCreated: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-            key: 'plan',
-            title: resolveThoughtStageTitle('plan'),
-            status: 'success',
-            description: buildStageDescription('plan', 'success'),
-            content: appendStageContent(
-              (message.thoughtChain || []).find((item) => item.key === 'plan')?.content,
-              buildStageMilestone('plan', 'event', data),
-            ),
-          })),
-        }));
-      },
-      onStepUpdate: (data: SSEStepUpdateEvent) => {
-        const rawStatus = String(data.status || '').trim();
-        const stepData = data as unknown as Record<string, unknown>;
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: rawStatus === 'success' || rawStatus === 'completed' || rawStatus === 'error' || rawStatus === 'failed'
-            ? applyStepComplete(message.turn, data)
-            : applyStepStarted(message.turn, data),
-        }));
-        if (rawStatus === 'waiting_approval') {
-          patchAssistantMessage(conversationKey, assistantId, (message) => ({
-            ...message,
-            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-              key: 'user_action',
-              title: '等待你确认',
-              status: 'loading',
-              description: String(data.title || data.user_visible_summary || '当前步骤需要确认后继续执行'),
-              content: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-            })),
-          }));
-          return;
-        }
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const nextStatus = normalizeThoughtStatus(data.status as string | undefined, 'loading');
-          const detailID = buildToolDetailID(stepData);
-          const currentStage = (message.thoughtChain || []).find((item) => item.key === 'execute');
-          const details = [...(currentStage?.details || [])];
-          const detailIndex = details.findIndex((item) => item.id === detailID);
-          const nextDetail: ThoughtStageDetailItem = {
-            id: detailID,
-            kind: 'tool',
-            label: String(data.title || data.tool_name || data.tool || data.expert || data.step_id || '执行步骤'),
-            tool: String(data.tool_name || data.tool || data.expert || '').trim() || undefined,
-            status: nextStatus,
-            content: String(data.user_visible_summary || data.summary || data.error || '').trim() || undefined,
-            params: data.params,
-            result: data.result,
-            session_id: data.session_id,
-            plan_id: data.plan_id,
-            step_id: data.step_id,
-            checkpoint_id: data.checkpoint_id,
-          };
-          if (detailIndex === -1) {
-            details.push(nextDetail);
-          } else {
-            details[detailIndex] = { ...details[detailIndex], ...nextDetail };
-          }
-          return {
-            ...message,
-            confirmation: undefined,
-            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-              key: 'execute',
-              title: '调用专家执行',
-              status: nextStatus,
-              description: buildStageDescription('execute', nextStatus, stepData),
-              content: buildExecutionStageSummary(stepData) || buildStageMilestone('execute', 'event', stepData),
-              details,
-            })),
-          };
-        });
-      },
-      onToolCall: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          return {
-            ...message,
-            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-              key: 'execute',
-              title: '调用专家执行',
-              status: 'loading',
-              description: buildStageDescription('execute', 'loading', data),
-              content: buildExecutionStageSummary(data),
-            })),
-          };
-        });
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyStepStarted(message.turn, {
-            turn_id: String(data.turn_id || message.turn?.id || assistantId),
-            step_id: typeof data.step_id === 'string' ? data.step_id : undefined,
-            title: typeof data.title === 'string' ? data.title : undefined,
-            tool_name: typeof data.tool_name === 'string' ? data.tool_name : typeof data.tool === 'string' ? data.tool : undefined,
-            tool: typeof data.tool === 'string' ? data.tool : undefined,
-            status: 'running',
-            summary: typeof data.summary === 'string' ? data.summary : undefined,
-            user_visible_summary: typeof data.user_visible_summary === 'string' ? data.user_visible_summary : undefined,
-            params: data.params as Record<string, unknown> | undefined,
-          }),
-        }));
-      },
-      onToolResult: (data: Record<string, unknown>) => {
-        const result = data.result as Record<string, unknown> | undefined;
-        patchAssistantMessage(conversationKey, assistantId, (message) => {
-          const status = data.status === 'error' || result?.ok === false ? 'error' : 'success';
-          return {
-            ...message,
-            thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-              key: 'execute',
-              title: '调用专家执行',
-              status: status === 'error' ? 'error' : 'loading',
-              description: buildStageDescription('execute', status === 'error' ? 'error' : 'loading', data),
-              content: buildExecutionStageSummary(data),
-            })),
-          };
-        });
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyStepComplete(message.turn, {
-            turn_id: String(data.turn_id || message.turn?.id || assistantId),
-            step_id: typeof data.step_id === 'string' ? data.step_id : undefined,
-            title: typeof data.title === 'string' ? data.title : undefined,
-            tool_name: typeof data.tool_name === 'string' ? data.tool_name : typeof data.tool === 'string' ? data.tool : undefined,
-            tool: typeof data.tool === 'string' ? data.tool : undefined,
-            status: data.status === 'error' || result?.ok === false ? 'error' : 'success',
-            summary: typeof data.summary === 'string' ? data.summary : undefined,
-            user_visible_summary: typeof data.user_visible_summary === 'string' ? data.user_visible_summary : undefined,
-            result,
-            error: typeof data.error === 'string' ? data.error : undefined,
-            params: data.params as Record<string, unknown> | undefined,
-          }),
         }));
       },
       onDelta: (data: { contentChunk: string }) => {
@@ -1353,74 +1095,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           content: assistantContent,
         }));
         setIsLoading(false);
-      },
-      onApprovalRequired: (data: ApprovalRequiredEvent) => {
-        const confirmation: ConfirmationRequest = {
-          id: String(data.id || data.step_id || data.checkpoint_id || assistantId),
-          title: String(data.title || data.tool_name || data.tool || '等待确认'),
-          description: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-          risk: (data.risk || data.risk_level || 'high') as 'low' | 'medium' | 'high',
-          status: 'waiting_user',
-          details: data as unknown as Record<string, unknown>,
-          onConfirm: () => {},
-          onCancel: () => {},
-        };
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          confirmation,
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_node_open',
-            data: {
-              turn_id: data.turn_id || message.turn?.id || assistantId,
-              node_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
-              kind: 'approval',
-              title: String(data.title || data.tool_name || data.tool || '等待确认'),
-              status: 'waiting',
-              summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-              approval: data as unknown as Record<string, unknown>,
-            },
-          }),
-          turn: applyBlockReplace(message.turn, {
-            turn_id: String(data.turn_id || message.turn?.id || assistantId),
-            block_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
-            block_type: 'approval',
-            payload: data as unknown as Record<string, unknown>,
-          }),
-          thoughtChain: upsertThoughtStage(message.thoughtChain || [], {
-            key: 'user_action',
-            title: '等待你确认',
-            status: 'loading',
-            description: String(data.title || '当前步骤需要确认后继续执行'),
-            content: String(data.user_visible_summary || ''),
-          }),
-        }));
-        setIsLoading(false);
-        refreshAnnouncement('等待确认');
-      },
-      onSummary: () => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          turn: applyPhaseComplete(message.turn, {
-            turn_id: message.turn?.id || assistantId,
-            phase: 'summary',
-            status: 'success',
-            title: '整理最终结论',
-            summary: '已整理出最终结论与建议',
-          }),
-          thoughtChain: finalizeThoughtStage(
-            finalizeThoughtStage(
-              finalizeThoughtStage(
-                message.thoughtChain || [],
-                'execute',
-                'success',
-                buildStageDescription('execute', 'success'),
-              ),
-              'summary',
-              'success',
-              '已整理出最终结论与建议',
-            ),
-            'user_action',
-            'success',
-          ),
-        }));
       },
       onDone: (data: SSEDoneEvent) => {
         if (data.turn_recommendations) {

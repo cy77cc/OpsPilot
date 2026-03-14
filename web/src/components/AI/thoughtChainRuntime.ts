@@ -1,4 +1,4 @@
-import type { ApprovalRequiredEvent, SSEChainNodeEvent, SSEChainStartedEvent, SSEFinalAnswerEvent } from '../../api/modules/ai';
+import type { SSEChainNodeEvent, SSEChainStartedEvent, SSEFinalAnswerEvent } from '../../api/modules/ai';
 import type {
   ChatTurn,
   ConfirmationRequest,
@@ -337,16 +337,4 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
-}
-
-export function approvalNodeFromEvent(data: ApprovalRequiredEvent): RuntimeThoughtChainNode {
-  return {
-    nodeId: `approval:${String(data.id || data.step_id || data.checkpoint_id || 'current')}`,
-    kind: 'approval',
-    title: String(data.title || data.tool_name || data.tool || 'Approval required'),
-    status: 'waiting',
-    headline: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-    summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
-    approval: approvalFromPayload(data as unknown as Record<string, unknown>),
-  };
 }
