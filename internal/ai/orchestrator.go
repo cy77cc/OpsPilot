@@ -10,6 +10,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -442,12 +443,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				reason = "执行结果触发重新规划"
 			}
 			openChainNode(airuntime.ChainNodeInfo{
-				TurnID:  state.TurnID,
-				NodeID:  fmt.Sprintf("replan:%s", state.PlanID),
-				Kind:    airuntime.ChainNodeReplan,
-				Title:   "发现新信息，正在调整计划",
-				Status:  "loading",
-				Summary: reason,
+				TurnID:   state.TurnID,
+				NodeID:   fmt.Sprintf("replan:%s", state.PlanID),
+				Kind:     airuntime.ChainNodeReplan,
+				Title:    "发现新信息，正在调整计划",
+				Status:   "loading",
+				Headline: reason,
+				Summary:  reason,
 			})
 			state.Phase = string(airuntime.PhaseReplanning)
 			planningCompleted = false
@@ -461,12 +463,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		if isToolOutputEvent(event) {
 			if !executingStarted {
 				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:  state.TurnID,
-					NodeID:  executeNodeID,
-					Kind:    airuntime.ChainNodeExecute,
-					Title:   "正在执行步骤",
-					Status:  "loading",
-					Summary: "开始执行计划步骤",
+					TurnID:   state.TurnID,
+					NodeID:   executeNodeID,
+					Kind:     airuntime.ChainNodeExecute,
+					Title:    "正在执行步骤",
+					Status:   "loading",
+					Headline: "开始执行计划步骤",
+					Summary:  "开始执行计划步骤",
 				})
 				planningCompleted = true
 				executingStarted = true
@@ -487,19 +490,24 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			state.Steps[stepID] = step
 			if startingStep {
 				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:  state.TurnID,
-					NodeID:  fmt.Sprintf("tool:%s", stepID),
-					Kind:    airuntime.ChainNodeTool,
-					Title:   firstNonEmpty(step.Title, step.ToolName, "正在调用工具"),
-					Status:  "loading",
-					Summary: firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
+					TurnID:   state.TurnID,
+					NodeID:   fmt.Sprintf("tool:%s", stepID),
+					Kind:     airuntime.ChainNodeTool,
+					Title:    firstNonEmpty(step.Title, step.ToolName, "正在调用工具"),
+					Status:   "loading",
+					Headline: firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
+					Summary:  firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
 				})
 			}
+			structuredTool, rawTool := toolResultChainPayload(step.ToolName, toolResult)
 			patchChainNode(airuntime.ChainNodeInfo{
-				TurnID:  state.TurnID,
-				NodeID:  fmt.Sprintf("tool:%s", stepID),
-				Kind:    airuntime.ChainNodeTool,
-				Summary: firstNonEmpty(step.UserVisibleSummary, toolResult),
+				TurnID:     state.TurnID,
+				NodeID:     fmt.Sprintf("tool:%s", stepID),
+				Kind:       airuntime.ChainNodeTool,
+				Headline:   firstNonEmpty(step.UserVisibleSummary, toolResult),
+				Structured: structuredTool,
+				Raw:        rawTool,
+				Summary:    firstNonEmpty(step.UserVisibleSummary, toolResult),
 				Details: []any{compactEventData(map[string]any{
 					"tool_name": step.ToolName,
 					"result": map[string]any{
@@ -526,12 +534,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					summary = "正在根据最新结果调整执行计划"
 				}
 				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:  state.TurnID,
-					NodeID:  planNodeID,
-					Kind:    airuntime.ChainNodePlan,
-					Title:   title,
-					Status:  "loading",
-					Summary: summary,
+					TurnID:   state.TurnID,
+					NodeID:   planNodeID,
+					Kind:     airuntime.ChainNodePlan,
+					Title:    title,
+					Status:   "loading",
+					Headline: summary,
+					Summary:  summary,
 				})
 				planningStarted = true
 			}
@@ -541,15 +550,19 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					TurnID:  state.TurnID,
 					NodeID:  planNodeID,
 					Kind:    airuntime.ChainNodePlan,
+					Body:    strings.TrimSpace(content),
 					Summary: strings.TrimSpace(content),
 				})
 				if plan, ok := parser.Extract(state.PlanID, state.TurnID, planningText); ok {
 					patchChainNode(airuntime.ChainNodeInfo{
-						TurnID:  state.TurnID,
-						NodeID:  planNodeID,
-						Kind:    airuntime.ChainNodePlan,
-						Summary: firstNonEmpty(plan.Summary, "已生成执行步骤"),
-						Details: stepsToChainDetails(plan.Steps),
+						TurnID:     state.TurnID,
+						NodeID:     planNodeID,
+						Kind:       airuntime.ChainNodePlan,
+						Headline:   firstNonEmpty(plan.Summary, "已生成执行步骤"),
+						Structured: planStepsToStructured(plan.Steps),
+						Raw:        plan.Raw,
+						Summary:    firstNonEmpty(plan.Summary, "已生成执行步骤"),
+						Details:    stepsToChainDetails(plan.Steps),
 					})
 					for i := range plan.Steps {
 						state.Steps[plan.Steps[i].ID] = airuntime.StepState{
@@ -560,12 +573,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 					}
 					closeActiveNode("done")
 					openChainNode(airuntime.ChainNodeInfo{
-						TurnID:  state.TurnID,
-						NodeID:  executeNodeID,
-						Kind:    airuntime.ChainNodeExecute,
-						Title:   "正在执行步骤",
-						Status:  "loading",
-						Summary: "开始执行计划步骤",
+						TurnID:   state.TurnID,
+						NodeID:   executeNodeID,
+						Kind:     airuntime.ChainNodeExecute,
+						Title:    "正在执行步骤",
+						Status:   "loading",
+						Headline: "开始执行计划步骤",
+						Summary:  "开始执行计划步骤",
 					})
 					state.Phase = string(airuntime.PhaseExecuting)
 					planningCompleted = true
@@ -602,12 +616,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
 			_ = o.executions.Save(ctx, *state)
 			openChainNode(airuntime.ChainNodeInfo{
-				TurnID:  state.TurnID,
-				NodeID:  fmt.Sprintf("approval:%s", stepID),
-				Kind:    airuntime.ChainNodeApproval,
-				Title:   pending.Title,
-				Status:  "waiting",
-				Summary: pending.Summary,
+				TurnID:   state.TurnID,
+				NodeID:   fmt.Sprintf("approval:%s", stepID),
+				Kind:     airuntime.ChainNodeApproval,
+				Title:    pending.Title,
+				Status:   "waiting",
+				Headline: pending.Summary,
+				Summary:  pending.Summary,
 				Approval: compactEventData(map[string]any{
 					"id":         pending.ID,
 					"request_id": pending.ID,
@@ -647,12 +662,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 
 	if !executingStarted {
 		openChainNode(airuntime.ChainNodeInfo{
-			TurnID:  state.TurnID,
-			NodeID:  executeNodeID,
-			Kind:    airuntime.ChainNodeExecute,
-			Title:   "正在执行步骤",
-			Status:  "loading",
-			Summary: "开始执行计划步骤",
+			TurnID:   state.TurnID,
+			NodeID:   executeNodeID,
+			Kind:     airuntime.ChainNodeExecute,
+			Title:    "正在执行步骤",
+			Status:   "loading",
+			Headline: "开始执行计划步骤",
+			Summary:  "开始执行计划步骤",
 		})
 	}
 	state.Status = airuntime.ExecutionStatusCompleted
@@ -700,6 +716,82 @@ func stepsToChainDetails(steps []airuntime.PlanStep) []any {
 		}))
 	}
 	return out
+}
+
+func planStepsToStructured(steps []airuntime.PlanStep) map[string]any {
+	if len(steps) == 0 {
+		return nil
+	}
+	rows := make([]map[string]any, 0, len(steps))
+	for _, step := range steps {
+		rows = append(rows, compactEventData(map[string]any{
+			"id":          step.ID,
+			"title":       step.Title,
+			"description": step.Content,
+			"status":      step.Status,
+			"tool_hint":   step.ToolHint,
+		}))
+	}
+	return compactEventData(map[string]any{"steps": rows})
+}
+
+func toolResultChainPayload(toolName, raw string) (map[string]any, any) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return nil, trimmed
+	}
+	record, ok := parsed.(map[string]any)
+	if !ok {
+		return nil, parsed
+	}
+	rows := rowsFromPayload(record["list"])
+	if len(rows) == 0 {
+		rows = rowsFromPayload(record["items"])
+	}
+	if len(rows) == 0 {
+		return nil, record
+	}
+	structured := compactEventData(map[string]any{
+		"resource": inferStructuredResource(toolName),
+		"rows":     rows,
+	})
+	if total, ok := record["total"]; ok {
+		structured["total"] = total
+	}
+	return structured, record
+}
+
+func rowsFromPayload(value any) []map[string]any {
+	items, ok := value.([]any)
+	if !ok || len(items) == 0 {
+		return nil
+	}
+	rows := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if row, ok := item.(map[string]any); ok && len(row) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows
+}
+
+func inferStructuredResource(toolName string) string {
+	name := strings.ToLower(strings.TrimSpace(toolName))
+	switch {
+	case strings.Contains(name, "host"):
+		return "hosts"
+	case strings.Contains(name, "cluster"):
+		return "clusters"
+	default:
+		return "items"
+	}
 }
 
 func stepEventFromState(state airuntime.ExecutionState, step airuntime.StepState, status, result string) airuntime.StepEvent {

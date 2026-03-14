@@ -18,6 +18,13 @@ function asStructuredSteps(structured: Record<string, unknown> | undefined): Arr
     : [];
 }
 
+function asStructuredRows(structured: Record<string, unknown> | undefined): Array<Record<string, unknown>> {
+  const rows = structured?.rows;
+  return Array.isArray(rows)
+    ? rows.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
+}
+
 function renderDetail(detail: unknown, key: string) {
   if (typeof detail === 'string') {
     return <div key={key} className="runtime-chain__detailLine">{detail}</div>;
@@ -50,6 +57,20 @@ function renderStructuredStep(step: Record<string, unknown>, key: string) {
       {title ? <div className="runtime-chain__detailTitle">{title}</div> : null}
       {secondary ? <div className="runtime-chain__detailText">{secondary}</div> : null}
       {hint ? <div className="runtime-chain__detailMeta">{hint}</div> : null}
+    </div>
+  );
+}
+
+function renderToolRow(row: Record<string, unknown>, key: string) {
+  const title = String(row.name || row.hostname || row.id || '').trim();
+  const status = String(row.status || '').trim();
+  const secondary = [row.ip, row.hostname].filter(Boolean).map((value) => String(value).trim()).filter(Boolean).join(' / ');
+
+  return (
+    <div key={key} className="runtime-chain__detailCard runtime-chain__detailCard--toolRow">
+      {title ? <div className="runtime-chain__detailTitle">{title}</div> : null}
+      {secondary ? <div className="runtime-chain__detailText">{secondary}</div> : null}
+      {status ? <div className="runtime-chain__detailMeta">{status}</div> : null}
     </div>
   );
 }
@@ -89,6 +110,11 @@ export function RuntimeThoughtChain({ nodes, isCollapsed = false, onApprovalDeci
               {asStructuredSteps(node.structured).length > 0 ? (
                 <div className="runtime-chain__nodeBody">
                   {asStructuredSteps(node.structured).map((step, index) => renderStructuredStep(step, `${node.nodeId}:step:${index}`))}
+                </div>
+              ) : null}
+              {node.kind === 'tool' && node.structured?.resource === 'hosts' && asStructuredRows(node.structured).length > 0 ? (
+                <div className="runtime-chain__nodeBody">
+                  {asStructuredRows(node.structured).map((row, index) => renderToolRow(row, `${node.nodeId}:row:${index}`))}
                 </div>
               ) : null}
               {Array.isArray(node.details) && node.details.length > 0 ? (

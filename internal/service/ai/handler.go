@@ -403,8 +403,14 @@ func toAPISession(snapshot aistate.ChatSessionRecord, includeMessages bool) v1.A
 			if msg.TraceID != "" {
 				payload["traceId"] = msg.TraceID
 			}
+			if msg.TurnID != "" {
+				payload["turnId"] = msg.TurnID
+			}
 			if len(msg.ThoughtChain) > 0 {
 				payload["thoughtChain"] = msg.ThoughtChain
+			}
+			if msg.Runtime != nil {
+				payload["runtime"] = msg.Runtime
 			}
 			if len(msg.Recommendations) > 0 {
 				payload["recommendations"] = msg.Recommendations
@@ -418,6 +424,8 @@ func toAPISession(snapshot aistate.ChatSessionRecord, includeMessages bool) v1.A
 				"content":         payload["content"],
 				"thinking":        payload["thinking"],
 				"status":          payload["status"],
+				"turnId":          payload["turnId"],
+				"runtime":         payload["runtime"],
 				"traceId":         payload["traceId"],
 				"thoughtChain":    payload["thoughtChain"],
 				"recommendations": payload["recommendations"],

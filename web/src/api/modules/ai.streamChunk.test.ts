@@ -21,7 +21,6 @@ describe('normalizeVisibleStreamChunk', () => {
         'data: {"chunk":"  ## Title\\n\\n| A | B |\\n| - | - |\\n"}\n\n',
       ]),
     }) as Response;
-    // @ts-expect-error test override
     globalThis.fetch = fetchMock;
 
     const onFinalAnswerDelta = vi.fn();
