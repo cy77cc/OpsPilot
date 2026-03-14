@@ -366,17 +366,18 @@ const AssistantMessage: React.FC<{
     [turnBlocks, fallbackBlocks],
   );
   const hasApprovalBlock = assistantBlocks.some((block) => block.type === 'approval');
+  const hasRuntimeChain = Boolean(runtime && (runtime.nodes.length > 0 || runtime.finalAnswer.visible || runtime.finalAnswer.content));
   const chainItems = useMemo(
-    () => (isRestoredAssistant ? [] : visibleThoughtChain(thoughtChain)),
-    [isRestoredAssistant, thoughtChain],
+    () => (isRestoredAssistant || hasRuntimeChain ? [] : visibleThoughtChain(thoughtChain)),
+    [hasRuntimeChain, isRestoredAssistant, thoughtChain],
   );
   const defaultExpandedKeys = useMemo(
     () => resolveDefaultExpandedThoughtKeys(chainItems, { restored, streaming: Boolean(isStreaming) }),
     [chainItems, isStreaming, restored],
   );
   const showThinking = useMemo(
-    () => !isRestoredAssistant && (Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading'))),
-    [isRestoredAssistant, thinking, thoughtChain],
+    () => !isRestoredAssistant && !hasRuntimeChain && (Boolean((thinking || '').trim()) || Boolean((thoughtChain || []).some((item) => item.key === 'summary' && item.status === 'loading'))),
+    [hasRuntimeChain, isRestoredAssistant, thinking, thoughtChain],
   );
   const effectiveConfirmation = useMemo(() => {
     if (!confirmation) {
@@ -391,7 +392,6 @@ const AssistantMessage: React.FC<{
       onCancel: () => onApprovalDecision(confirmation.details || {}, false),
     };
   }, [confirmation, onApprovalDecision]);
-  const hasRuntimeChain = Boolean(runtime && (runtime.nodes.length > 0 || runtime.finalAnswer.visible || runtime.finalAnswer.content));
   const useTurnBlockRendering = Boolean(turn) && assistantBlocks.length > 0;
 
   return (
@@ -1815,8 +1815,9 @@ export const Copilot: React.FC<CopilotProps> = ({
     }
 
     // 助手消息
-    const hasThoughtChain = visibleThoughtChain(msg.thoughtChain).length > 0;
-    const hasVisibleAssistantState = Boolean(msg.content || msg.thinking || hasThoughtChain || msg.confirmation);
+    const hasRuntimeChain = Boolean(msg.runtime && (msg.runtime.nodes.length > 0 || msg.runtime.finalAnswer.visible || msg.runtime.finalAnswer.content));
+    const hasThoughtChain = hasRuntimeChain ? false : visibleThoughtChain(msg.thoughtChain).length > 0;
+    const hasVisibleAssistantState = Boolean(msg.content || (!hasRuntimeChain && msg.thinking) || hasThoughtChain || msg.confirmation || hasRuntimeChain);
     const isStreaming = isCurrentStreaming && !hasVisibleAssistantState;
 
     // 只有当消息内容正在生成时（内容为空）才显示 loading
