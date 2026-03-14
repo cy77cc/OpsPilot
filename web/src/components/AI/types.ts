@@ -121,7 +121,8 @@ export interface ThoughtChainRuntimeState {
   finalAnswer: FinalAnswerState;
 }
 
-// === Turn/block 主模型 ===
+// === Replay compatibility structures ===
+// These remain only for persisted history projection and transitional UI fallback.
 
 export type TurnBlockType =
   | 'status'
@@ -207,21 +208,14 @@ export type SSEEventType =
   | 'rewrite_result'
   | 'planner_state'
   | 'plan_created'
-  | 'phase_started'
-  | 'phase_complete'
-  | 'plan_generated'
   | 'stage_delta'
-  | 'step_started'
-  | 'step_complete'
   | 'step_update'
   | 'delta'
   | 'message'
   | 'thinking_delta'
   | 'tool_call'
   | 'tool_result'
-  | 'approval_required'
   | 'clarify_required'
-  | 'replan_triggered'
   | 'replan_started'
   | 'summary'
   | 'done'
@@ -235,6 +229,7 @@ export interface SSEEventPayload {
 }
 
 // === Legacy compatibility types ===
+// Legacy thought-stage structures are preserved only for restoration and narrow test bridges.
 
 export type ThoughtStageKey = 'rewrite' | 'plan' | 'execute' | 'user_action' | 'summary';
 
