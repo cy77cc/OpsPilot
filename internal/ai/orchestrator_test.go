@@ -255,6 +255,51 @@ func TestStreamExecutionEmitsToolLifecycleForToolOutputs(t *testing.T) {
 	assertEventPayload(t, events, "step_complete", "step_id", "step-1")
 }
 
+func TestStreamExecutionEmitsNativeThoughtChainAndFinalAnswerEvents(t *testing.T) {
+	t.Parallel()
+
+	orchestrator := &Orchestrator{
+		converter:  airuntime.NewSSEConverter(),
+		executions: airuntime.NewExecutionStore(nil, ""),
+	}
+	state := newExecutionStateForTest()
+
+	events := collectStreamEvents(orchestrator, &state, iteratorFromEvents(
+		&adk.AgentEvent{
+			AgentName: "planner",
+			Output: &adk.AgentOutput{
+				MessageOutput: &adk.MessageVariant{
+					IsStreaming: false,
+					Message:     schema.AssistantMessage("```json\n[{\"id\":\"step-1\",\"content\":\"检查集群状态\",\"toolHint\":\"get_cluster_info\"},{\"id\":\"step-2\",\"content\":\"确认 deployment 副本数\",\"toolHint\":\"get_deployment\"}]\n```", nil),
+				},
+			},
+		},
+		&adk.AgentEvent{
+			AgentName: "executor",
+			Output: &adk.AgentOutput{
+				MessageOutput: &adk.MessageVariant{
+					IsStreaming: false,
+					Message:     schema.AssistantMessage("集群状态正常", nil),
+				},
+			},
+		},
+	))
+
+	assertEventType(t, events, "chain_started")
+	assertEventType(t, events, "chain_node_open")
+	assertEventPayload(t, events, "chain_node_open", "kind", "plan")
+	assertEventType(t, events, "chain_collapsed")
+	assertEventType(t, events, "final_answer_started")
+	assertEventType(t, events, "final_answer_delta")
+	assertEventPayload(t, events, "final_answer_delta", "chunk", "集群状态正常")
+
+	collapsedIndex := eventIndex(t, events, "chain_collapsed")
+	answerStartIndex := eventIndex(t, events, "final_answer_started")
+	if collapsedIndex > answerStartIndex {
+		t.Fatalf("chain_collapsed index %d should be before final_answer_started index %d", collapsedIndex, answerStartIndex)
+	}
+}
+
 func TestResumeApprovedStreamEmitsStepCompleteBeforeExecutionCompletion(t *testing.T) {
 	t.Parallel()
 
@@ -360,4 +405,15 @@ func assertEventPayload(t *testing.T, events []airuntime.StreamEvent, eventType 
 		return
 	}
 	t.Fatalf("event %q not found in %#v", eventType, events)
+}
+
+func eventIndex(t *testing.T, events []airuntime.StreamEvent, want string) int {
+	t.Helper()
+	for index, event := range events {
+		if string(event.Type) == want {
+			return index
+		}
+	}
+	t.Fatalf("event %q not found in %#v", want, events)
+	return -1
 }

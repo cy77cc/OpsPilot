@@ -237,6 +237,60 @@ func TestChatStreamsNativePlanExecuteReplanEvents(t *testing.T) {
 	}
 }
 
+func TestChatStreamsNativeThoughtChainRuntimeEvents(t *testing.T) {
+	suite := testutil.NewIntegrationSuite(t)
+	t.Cleanup(suite.Cleanup)
+
+	handler := &HTTPHandler{
+		svcCtx: &svc.ServiceContext{DB: suite.DB},
+		orchestrator: &fakeRuntime{
+			runFn: func(_ context.Context, _ coreai.RunRequest, emit coreai.StreamEmitter) error {
+				emit(coreai.StreamEvent{Type: "meta", Data: map[string]any{"session_id": "session-chain", "turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "chain_started", Data: map[string]any{"turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "chain_node_open", Data: map[string]any{"turn_id": "turn-1", "node_id": "plan-1", "kind": "plan", "title": "正在整理执行计划", "status": "loading"}})
+				emit(coreai.StreamEvent{Type: "chain_node_close", Data: map[string]any{"turn_id": "turn-1", "node_id": "plan-1", "status": "done"}})
+				emit(coreai.StreamEvent{Type: "chain_collapsed", Data: map[string]any{"turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "final_answer_started", Data: map[string]any{"turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "final_answer_delta", Data: map[string]any{"turn_id": "turn-1", "chunk": "nginx 当前状态正常"}})
+				emit(coreai.StreamEvent{Type: "final_answer_done", Data: map[string]any{"turn_id": "turn-1"}})
+				emit(coreai.StreamEvent{Type: "done", Data: map[string]any{"status": "completed"}})
+				return nil
+			},
+			resumeFn: func(context.Context, coreai.ResumeRequest) (*coreai.ResumeResult, error) { return nil, nil },
+			resumeStreamFn: func(context.Context, coreai.ResumeRequest, coreai.StreamEmitter) (*coreai.ResumeResult, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/v1/ai/chat", bytes.NewBufferString(`{"message":"检查 nginx 状态","context":{"scene":"global"}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("uid", uint64(1))
+
+	handler.Chat(c)
+
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, body)
+	}
+	for _, fragment := range []string{
+		"event: chain_started",
+		"event: chain_node_open",
+		"\"kind\":\"plan\"",
+		"event: chain_collapsed",
+		"event: final_answer_started",
+		"event: final_answer_delta",
+		"nginx 当前状态正常",
+		"event: final_answer_done",
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("stream body missing %q: %s", fragment, body)
+		}
+	}
+}
+
 func TestResumeStepStreamPassesCheckpointIdentityToRuntime(t *testing.T) {
 	suite := testutil.NewIntegrationSuite(t)
 	t.Cleanup(suite.Cleanup)

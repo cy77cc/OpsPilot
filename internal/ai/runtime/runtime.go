@@ -41,9 +41,45 @@ const (
 	EventStepStarted      EventType = events.StepStarted
 	EventStepComplete     EventType = events.StepComplete
 	EventReplanTriggered  EventType = events.ReplanTriggered
+	EventChainStarted     EventType = events.ChainStarted
+	EventChainNodeOpen    EventType = events.ChainNodeOpen
+	EventChainNodePatch   EventType = events.ChainNodePatch
+	EventChainNodeClose   EventType = events.ChainNodeClose
+	EventChainCollapsed   EventType = events.ChainCollapsed
+	EventFinalAnswerStart EventType = events.FinalAnswerStart
+	EventFinalAnswerDelta EventType = events.FinalAnswerDelta
+	EventFinalAnswerDone  EventType = events.FinalAnswerDone
 	EventDone             EventType = events.Done
 	EventError            EventType = events.Error
 )
+
+type ChainNodeKind string
+
+const (
+	ChainNodePlan     ChainNodeKind = "plan"
+	ChainNodeExecute  ChainNodeKind = "execute"
+	ChainNodeTool     ChainNodeKind = "tool"
+	ChainNodeReplan   ChainNodeKind = "replan"
+	ChainNodeApproval ChainNodeKind = "approval"
+)
+
+type ChainNodeInfo struct {
+	TurnID     string         `json:"turn_id,omitempty"`
+	NodeID     string         `json:"node_id,omitempty"`
+	Kind       ChainNodeKind  `json:"kind,omitempty"`
+	Title      string         `json:"title,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	Summary    string         `json:"summary,omitempty"`
+	Details    []any          `json:"details,omitempty"`
+	Approval   map[string]any `json:"approval,omitempty"`
+	StartedAt  string         `json:"started_at,omitempty"`
+	FinishedAt string         `json:"finished_at,omitempty"`
+}
+
+type FinalAnswerEvent struct {
+	TurnID string `json:"turn_id,omitempty"`
+	Chunk  string `json:"chunk,omitempty"`
+}
 
 // StreamEvent 是推送给前端的 SSE 事件单元。
 type StreamEvent struct {

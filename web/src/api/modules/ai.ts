@@ -245,6 +245,26 @@ export interface SSEReplanTriggeredEvent {
   completed_steps?: number;
 }
 
+export interface SSEChainStartedEvent {
+  turn_id?: string;
+}
+
+export interface SSEChainNodeEvent {
+  turn_id?: string;
+  node_id?: string;
+  kind?: 'plan' | 'execute' | 'tool' | 'replan' | 'approval';
+  title?: string;
+  status?: string;
+  summary?: string;
+  details?: unknown[];
+  approval?: Record<string, unknown>;
+}
+
+export interface SSEFinalAnswerEvent {
+  turn_id?: string;
+  chunk?: string;
+}
+
 interface SSEDeltaEvent {
   contentChunk: string;
   turn_id?: string;
@@ -429,6 +449,14 @@ interface SSEThinkingEvent {
 }
 
 export interface AIChatStreamHandlers {
+  onChainStarted?: (payload: SSEChainStartedEvent) => void;
+  onChainNodeOpen?: (payload: SSEChainNodeEvent) => void;
+  onChainNodePatch?: (payload: SSEChainNodeEvent) => void;
+  onChainNodeClose?: (payload: SSEChainNodeEvent) => void;
+  onChainCollapsed?: (payload: SSEChainStartedEvent) => void;
+  onFinalAnswerStarted?: (payload: SSEFinalAnswerEvent) => void;
+  onFinalAnswerDelta?: (payload: SSEFinalAnswerEvent) => void;
+  onFinalAnswerDone?: (payload: SSEFinalAnswerEvent) => void;
   onMeta?: (payload: SSEMetaEvent) => void;
   onTurnStarted?: (payload: SSETurnStartedEvent) => void;
   onBlockOpen?: (payload: SSEBlockOpenEvent) => void;
@@ -717,6 +745,22 @@ export const aiApi = {
 
       if (eventType === 'meta') {
         handlers.onMeta?.(payload as SSEMetaEvent);
+      } else if (eventType === 'chain_started') {
+        handlers.onChainStarted?.(payload as SSEChainStartedEvent);
+      } else if (eventType === 'chain_node_open') {
+        handlers.onChainNodeOpen?.(payload as SSEChainNodeEvent);
+      } else if (eventType === 'chain_node_patch') {
+        handlers.onChainNodePatch?.(payload as SSEChainNodeEvent);
+      } else if (eventType === 'chain_node_close') {
+        handlers.onChainNodeClose?.(payload as SSEChainNodeEvent);
+      } else if (eventType === 'chain_collapsed') {
+        handlers.onChainCollapsed?.(payload as SSEChainStartedEvent);
+      } else if (eventType === 'final_answer_started') {
+        handlers.onFinalAnswerStarted?.(payload as SSEFinalAnswerEvent);
+      } else if (eventType === 'final_answer_delta') {
+        handlers.onFinalAnswerDelta?.(payload as SSEFinalAnswerEvent);
+      } else if (eventType === 'final_answer_done') {
+        handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
       } else if (eventType === 'turn_started') {
         handlers.onTurnStarted?.(payload as SSETurnStartedEvent);
       } else if (eventType === 'block_open') {

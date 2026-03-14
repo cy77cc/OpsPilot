@@ -88,6 +88,39 @@ export interface PlanStep {
   summary?: string;
 }
 
+export type RuntimeThoughtChainNodeKind = 'plan' | 'execute' | 'tool' | 'replan' | 'approval';
+export type RuntimeThoughtChainNodeStatus = 'pending' | 'active' | 'done' | 'error' | 'waiting';
+export type FinalAnswerRevealState = 'hidden' | 'primed' | 'revealing' | 'complete';
+
+export interface RuntimeThoughtChainNode {
+  nodeId: string;
+  kind: RuntimeThoughtChainNodeKind;
+  title: string;
+  status: RuntimeThoughtChainNodeStatus;
+  summary?: string;
+  details?: unknown[];
+  approval?: Omit<ConfirmationRequest, 'onConfirm' | 'onCancel'> & {
+    requestId?: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+export interface FinalAnswerState {
+  visible: boolean;
+  streaming: boolean;
+  content: string;
+  revealState: FinalAnswerRevealState;
+}
+
+export interface ThoughtChainRuntimeState {
+  turnId?: string;
+  nodes: RuntimeThoughtChainNode[];
+  activeNodeId?: string;
+  isCollapsed: boolean;
+  collapsePhase: 'expanded' | 'collapsing' | 'collapsed';
+  finalAnswer: FinalAnswerState;
+}
+
 // === Turn/block 主模型 ===
 
 export type TurnBlockType =
@@ -131,6 +164,7 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   turn?: ChatTurn;
+  runtime?: ThoughtChainRuntimeState;
 
   // Legacy compatibility for the pre-turn/block rendering path.
   thinking?: string;

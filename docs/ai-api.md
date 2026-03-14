@@ -18,8 +18,9 @@ AI streaming now uses a `plan -> execute -> replan` transport built on top of th
 The backend still emits some legacy compatibility events, but the current primary visualization path is:
 
 - lifecycle: `meta`, `turn_started`, `turn_state`, `turn_done`, `done`, `error`
-- plan/execute/replan: `phase_started`, `phase_complete`, `plan_generated`, `step_started`, `step_complete`, `replan_triggered`
-- content/detail: `delta`, `tool_call`, `tool_result`, `approval_required`
+- native ThoughtChain: `chain_started`, `chain_node_open`, `chain_node_patch`, `chain_node_close`, `chain_collapsed`
+- final answer: `final_answer_started`, `final_answer_delta`, `final_answer_done`
+- compatibility detail: `phase_started`, `phase_complete`, `plan_generated`, `step_started`, `step_complete`, `replan_triggered`, `delta`, `tool_call`, `tool_result`, `approval_required`
 
 Response headers:
 
@@ -56,25 +57,22 @@ Recommended native event order:
 ```text
 meta
 turn_started
-phase_started(planning)
-delta*
-plan_generated?
-phase_complete(planning)
-phase_started(executing)
-step_started*
-tool_call*
-tool_result*
-step_complete*
-replan_triggered?
-phase_started(replanning)?
-approval_required?
-delta*
-phase_complete(executing)?
+chain_started
+chain_node_open(plan)
+chain_node_patch(plan)*
+chain_node_close(plan)
+chain_node_open(execute|tool|approval|replan)*
+chain_node_patch(...)*
+chain_node_close(...)*
+chain_collapsed
+final_answer_started
+final_answer_delta*
+final_answer_done
 turn_state
 done
 ```
 
-## Native SSE Events
+## Native ThoughtChain SSE Events
 
 ### `meta`
 
@@ -108,6 +106,101 @@ done
   "status": "running"
 }
 ```
+
+### `chain_started`
+
+```json
+{
+  "turn_id": "turn-1"
+}
+```
+
+### `chain_node_open`
+
+```json
+{
+  "turn_id": "turn-1",
+  "node_id": "plan:plan-1",
+  "kind": "plan",
+  "title": "正在整理执行计划",
+  "status": "loading",
+  "summary": "正在分析并整理执行计划"
+}
+```
+
+Fields:
+
+- `kind`: `plan | execute | tool | replan | approval`
+- `status`: `loading | waiting | done | error`
+- `summary`: user-visible node summary
+- `details`: optional structured details; typically plan steps or tool result payload snippets
+- `approval`: only present for approval nodes
+
+### `chain_node_patch`
+
+```json
+{
+  "turn_id": "turn-1",
+  "node_id": "plan:plan-1",
+  "kind": "plan",
+  "summary": "已提取结构化计划",
+  "details": [
+    {
+      "id": "step-1",
+      "content": "检查集群状态",
+      "tool_hint": "get_cluster_info"
+    }
+  ]
+}
+```
+
+### `chain_node_close`
+
+```json
+{
+  "turn_id": "turn-1",
+  "node_id": "plan:plan-1",
+  "kind": "plan",
+  "status": "done"
+}
+```
+
+### `chain_collapsed`
+
+```json
+{
+  "turn_id": "turn-1"
+}
+```
+
+`chain_collapsed` is a protocol boundary, not just a UI hint. The final answer MUST NOT begin before this event.
+
+### `final_answer_started`
+
+```json
+{
+  "turn_id": "turn-1"
+}
+```
+
+### `final_answer_delta`
+
+```json
+{
+  "turn_id": "turn-1",
+  "chunk": "nginx 当前状态正常"
+}
+```
+
+### `final_answer_done`
+
+```json
+{
+  "turn_id": "turn-1"
+}
+```
+
+## Compatibility SSE Events
 
 ### `phase_started`
 
@@ -254,7 +347,7 @@ Fields:
 
 ### `delta`
 
-Final assistant answer stream:
+Compatibility text stream:
 
 ```json
 {

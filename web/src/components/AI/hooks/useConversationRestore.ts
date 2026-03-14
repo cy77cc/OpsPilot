@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { aiApi } from '../../../api/modules/ai';
 import type { AISession } from '../../../api/modules/ai';
-import type { ChatTurn, EmbeddedRecommendation, ThoughtStageItem } from '../types';
+import type { ChatTurn, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageItem } from '../types';
 import { projectTurnSummary, turnFromReplay } from '../turnLifecycle';
+import { runtimeStateFromReplayTurn } from '../thoughtChainRuntime';
 
 export interface RestoredConversation {
   id: string;
@@ -18,6 +19,7 @@ export interface RestoredConversation {
     rawEvidence?: string[];
     status?: string;
     turn?: ChatTurn;
+    runtime?: ThoughtChainRuntimeState;
     restored?: boolean;
     createdAt: string;
   }>;
@@ -152,6 +154,7 @@ function toRestoredConversation(session: AISession): RestoredConversation {
         rawEvidence: turn.role === 'assistant' ? summary.rawEvidence : undefined,
         status: hydratedTurn.status,
         turn: hydratedTurn,
+        runtime: turn.role === 'assistant' ? runtimeStateFromReplayTurn(hydratedTurn) : undefined,
         restored: true,
         createdAt: turn.createdAt,
       };

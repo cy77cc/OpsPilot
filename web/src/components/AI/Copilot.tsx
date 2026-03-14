@@ -30,7 +30,10 @@ import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
 import type {
   ApprovalRequiredEvent,
+  SSEChainNodeEvent,
+  SSEChainStartedEvent,
   SSEDoneEvent,
+  SSEFinalAnswerEvent,
   SSEPhaseCompleteEvent,
   SSEPhaseStartedEvent,
   SSEPlanGeneratedEvent,
@@ -41,7 +44,7 @@ import type {
   SSEStepUpdateEvent,
 } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
+import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageDetailItem, ThoughtStageItem, ThoughtStageStatus } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
 import {
   loadRestoredConversationDetail,
@@ -52,10 +55,13 @@ import {
 import { useScenePrompts } from './hooks/useScenePrompts';
 import { MessageActions } from './components/MessageActions';
 import { ConfirmationPanel } from './components/ConfirmationPanel';
+import FinalAnswerStream from './components/FinalAnswerStream';
 import { RecommendedActions } from './components/RecommendedActions';
+import RuntimeThoughtChain from './components/RuntimeThoughtChain';
 import { ToolCard } from './components/ToolCard';
 import AssistantMessageBlocks from './components/AssistantMessageBlocks';
 import { mergeAssistantBlocks, normalizeAssistantMessage, normalizeTurnBlocks } from './messageBlocks';
+import { createThoughtChainRuntimeState, reduceThoughtChainRuntimeEvent } from './thoughtChainRuntime';
 import {
   applyBlockClose,
   applyBlockDelta,
@@ -316,6 +322,7 @@ const AssistantMessage: React.FC<{
   recommendations?: EmbeddedRecommendation[];
   thoughtChain?: ThoughtStageItem[];
   turn?: ChatTurn;
+  runtime?: ThoughtChainRuntimeState;
   rawEvidence?: string[];
   isStreaming?: boolean;
   restored?: boolean;
@@ -333,6 +340,7 @@ const AssistantMessage: React.FC<{
   recommendations,
   thoughtChain,
   turn,
+  runtime,
   rawEvidence,
   isStreaming,
   restored,
@@ -391,11 +399,36 @@ const AssistantMessage: React.FC<{
       onCancel: () => onApprovalDecision(confirmation.details || {}, false),
     };
   }, [confirmation, onApprovalDecision]);
+  const hasRuntimeChain = Boolean(runtime && (runtime.nodes.length > 0 || runtime.finalAnswer.visible || runtime.finalAnswer.content));
   const useTurnBlockRendering = Boolean(turn) && assistantBlocks.length > 0;
 
   return (
     <div>
-      {useTurnBlockRendering ? (
+      {hasRuntimeChain ? (
+        <>
+          {runtime?.nodes.length ? (
+            <RuntimeThoughtChain
+              nodes={runtime.nodes}
+              isCollapsed={runtime.isCollapsed}
+              onApprovalDecision={onApprovalDecision}
+            />
+          ) : null}
+          <FinalAnswerStream
+            content={runtime?.finalAnswer.content || content}
+            visible={Boolean(runtime?.finalAnswer.visible)}
+            streaming={runtime?.finalAnswer.streaming}
+            reducedMotion={reducedMotion}
+          />
+          {showActions && !isStreaming && (runtime?.finalAnswer.content || content) ? (
+            <MessageActions
+              content={runtime?.finalAnswer.content || content}
+              messageId=""
+              isLoading={isLoading}
+              onRegenerate={onRegenerate}
+            />
+          ) : null}
+        </>
+      ) : useTurnBlockRendering ? (
         <>
           <AssistantMessageBlocks
             blocks={assistantBlocks}
@@ -883,6 +916,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         ...message,
         ...overrides,
         turn: nextTurn,
+        runtime: overrides.runtime !== undefined ? overrides.runtime : message.runtime,
         content: overrides.content !== undefined
           ? overrides.content
           : (projected.content || message.content || assistantContent),
@@ -908,6 +942,73 @@ export const Copilot: React.FC<CopilotProps> = ({
         if (data.traceId) {
           assistantTraceId = String(data.traceId);
         }
+      },
+      onChainStarted: (data: SSEChainStartedEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_started',
+            data,
+          }),
+        }));
+      },
+      onChainNodeOpen: (data: SSEChainNodeEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_node_open',
+            data,
+          }),
+        }));
+      },
+      onChainNodePatch: (data: SSEChainNodeEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_node_patch',
+            data,
+          }),
+        }));
+      },
+      onChainNodeClose: (data: SSEChainNodeEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_node_close',
+            data,
+          }),
+        }));
+      },
+      onChainCollapsed: (data: SSEChainStartedEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'chain_collapsed',
+            data,
+          }),
+        }));
+      },
+      onFinalAnswerStarted: (data: SSEFinalAnswerEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'final_answer_started',
+            data,
+          }),
+        }));
+      },
+      onFinalAnswerDelta: (data: SSEFinalAnswerEvent) => {
+        assistantContent = `${assistantContent}${String(data.chunk || '')}`;
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'final_answer_delta',
+            data,
+          }),
+          content: assistantContent,
+        }));
+      },
+      onFinalAnswerDone: (data: SSEFinalAnswerEvent) => {
+        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
+          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+            type: 'final_answer_done',
+            data,
+          }),
+          content: message.runtime?.finalAnswer.content || assistantContent || message.content,
+        }));
       },
       onTurnStarted: (data: { turn_id: string; phase?: string; status?: string; role?: string }) => {
         refreshAnnouncement(`${resolveThoughtStageTitle(data.phase)} ${data.status || ''}`);
@@ -1258,6 +1359,18 @@ export const Copilot: React.FC<CopilotProps> = ({
         patchAssistantMessage(conversationKey, assistantId, (message) => {
           return syncMessageFromBuffers(message, {
             confirmation,
+            runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
+              type: 'chain_node_open',
+              data: {
+                turn_id: data.turn_id || message.turn?.id || assistantId,
+                node_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
+                kind: 'approval',
+                title: String(data.title || data.tool_name || data.tool || '等待确认'),
+                status: 'waiting',
+                summary: String(data.user_visible_summary || data.title || '当前步骤需要确认后继续执行'),
+                approval: data as unknown as Record<string, unknown>,
+              },
+            }),
             turn: applyBlockReplace(message.turn, {
               turn_id: String(data.turn_id || message.turn?.id || assistantId),
               block_id: `approval:${String(data.id || data.step_id || data.checkpoint_id || assistantId)}`,
@@ -1341,7 +1454,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         }
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...syncMessageFromBuffers(message, {
-            content: assistantContent || message.content,
+            content: message.runtime?.finalAnswer.content || assistantContent || message.content,
             thinking: assistantThinking || undefined,
             recommendations: assistantRecommendations || message.recommendations,
             traceId: assistantTraceId || message.traceId,
@@ -1456,6 +1569,7 @@ export const Copilot: React.FC<CopilotProps> = ({
           id: assistantId,
           role: 'assistant',
           content: '',
+          runtime: createThoughtChainRuntimeState(),
           turn: createAssistantTurn(assistantId),
           thoughtChain: [],
           createdAt: new Date().toISOString(),
@@ -1709,6 +1823,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       confirmation: undefined,
       recommendations: undefined,
       rawEvidence: undefined,
+      runtime: createThoughtChainRuntimeState(),
       turn: createAssistantTurn(message.turn?.id || assistantMsgId),
       thoughtChain: [],
       traceId: undefined,
@@ -1746,6 +1861,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         recommendations={msg.recommendations}
         thoughtChain={msg.thoughtChain}
         turn={msg.turn}
+        runtime={msg.runtime}
         rawEvidence={msg.rawEvidence}
         restored={msg.restored}
         displayMode={displayMode}

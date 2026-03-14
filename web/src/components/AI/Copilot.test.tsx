@@ -296,8 +296,65 @@ describe('Copilot', () => {
       expect(aiApi.chatStream).toHaveBeenCalledTimes(1);
     });
 
-    expect(await screen.findByText('整理执行步骤')).toBeInTheDocument();
-    expect(screen.getByText('扩容 nginx 需要确认')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '扩容 nginx 需要确认，确认执行' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '扩容 nginx 需要确认，确认执行' })).toBeInTheDocument();
+  });
+
+  it('renders native runtime thought chain first and final answer after collapse', async () => {
+    restoredConversation = {
+      conversations: [{ id: 'sess-native', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:01Z' }],
+      activeConversation: {
+        id: 'sess-native',
+        title: '当前会话',
+        messages: [
+          {
+            id: 'msg-user',
+            role: 'user',
+            content: '检查 nginx 当前状态',
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '旧答案',
+            createdAt: '2026-03-12T00:00:01Z',
+          },
+        ],
+      },
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ sessionId: 'sess-native', createdAt: new Date().toISOString() });
+      handlers.onChainStarted?.({ turn_id: 'turn-native' } as any);
+      handlers.onChainNodeOpen?.({
+        turn_id: 'turn-native',
+        node_id: 'plan-1',
+        kind: 'plan',
+        title: '正在整理执行计划',
+        status: 'loading',
+        summary: '准备检查 nginx deployment',
+      } as any);
+      handlers.onChainNodeClose?.({
+        turn_id: 'turn-native',
+        node_id: 'plan-1',
+        status: 'done',
+      } as any);
+      handlers.onChainCollapsed?.({ turn_id: 'turn-native' } as any);
+      handlers.onFinalAnswerStarted?.({ turn_id: 'turn-native' } as any);
+      handlers.onFinalAnswerDelta?.({ turn_id: 'turn-native', chunk: 'nginx 当前状态正常' } as any);
+      handlers.onFinalAnswerDone?.({ turn_id: 'turn-native' } as any);
+      handlers.onDone?.({ stream_state: 'ok' } as any);
+    });
+
+    render(<Copilot open scene="global" />);
+
+    const regenerateButtons = await screen.findAllByRole('button', { name: '重新生成' });
+    fireEvent.click(regenerateButtons[regenerateButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(aiApi.chatStream).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText('正在整理执行计划')).toBeInTheDocument();
+    expect(await screen.findByText('nginx 当前状态正常')).toBeInTheDocument();
   });
 });

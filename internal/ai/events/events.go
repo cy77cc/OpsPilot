@@ -27,8 +27,16 @@ const (
 	StepStarted      Name = "step_started"      // 结构化步骤开始
 	StepComplete     Name = "step_complete"     // 结构化步骤完成
 	ReplanTriggered  Name = "replan_triggered"  // 触发重新规划
-	Done             Name = "done"              // 本次执行结束
-	Error            Name = "error"             // 执行出错
+	ChainStarted     Name = "chain_started"     // 原生思维链开始
+	ChainNodeOpen    Name = "chain_node_open"   // 原生思维链节点开始
+	ChainNodePatch   Name = "chain_node_patch"  // 原生思维链节点增量更新
+	ChainNodeClose   Name = "chain_node_close"  // 原生思维链节点结束
+	ChainCollapsed   Name = "chain_collapsed"   // 原生思维链可折叠完成
+	FinalAnswerStart Name = "final_answer_started"
+	FinalAnswerDelta Name = "final_answer_delta"
+	FinalAnswerDone  Name = "final_answer_done"
+	Done             Name = "done"  // 本次执行结束
+	Error            Name = "error" // 执行出错
 
 	// --- 旧 ThoughtChain/Stage 事件 ---
 	//
