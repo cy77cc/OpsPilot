@@ -295,17 +295,20 @@ function toContentChunk(payload: unknown): string {
 // - 其他内容原样透传
 export function normalizeVisibleStreamChunk(rawChunk: string): string {
   const chunk = typeof rawChunk === 'string' ? rawChunk : '';
-  const trimmed = chunk.trim();
-  if (!trimmed) {
+  if (!chunk) {
     return '';
   }
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+  const trimmedForJSON = chunk.trim();
+  if (!trimmedForJSON) {
+    return '';
+  }
+  if (!trimmedForJSON.startsWith('{') || !trimmedForJSON.endsWith('}')) {
     return chunk;
   }
 
   let payload: Record<string, unknown>;
   try {
-    payload = JSON.parse(trimmed) as Record<string, unknown>;
+    payload = JSON.parse(trimmedForJSON) as Record<string, unknown>;
   } catch {
     return chunk;
   }
@@ -457,7 +460,8 @@ function dispatchAIStreamEvent(
       return;
     }
     if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim());
+      const value = line.slice(5);
+      dataLines.push(value.startsWith(' ') ? value.slice(1) : value);
     }
   });
 

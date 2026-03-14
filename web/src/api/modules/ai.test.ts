@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiApi } from './ai';
+import { aiApi, normalizeVisibleStreamChunk } from './ai';
 import apiService from '../api';
 
 function buildStream(chunks: string[]) {
@@ -213,5 +213,11 @@ describe('aiApi.chatStream', () => {
     expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-approval' }));
     expect(onChainNodeOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 'tool:step-1', kind: 'tool' }));
     expect(onFinalAnswerDelta).toHaveBeenCalledWith(expect.objectContaining({ chunk: '已继续执行' }));
+  });
+
+  it('unwraps only complete response envelopes', () => {
+    expect(normalizeVisibleStreamChunk('{"response":" ok\\n\\n| a | b |\\n"}')).toBe(' ok\n\n| a | b |\n');
+    expect(normalizeVisibleStreamChunk('{"response":')).toBe('{"response":');
+    expect(normalizeVisibleStreamChunk('\n\n| a | b |\n')).toBe('\n\n| a | b |\n');
   });
 });
