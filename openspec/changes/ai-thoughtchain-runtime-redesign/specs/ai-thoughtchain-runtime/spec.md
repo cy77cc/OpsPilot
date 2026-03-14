@@ -9,6 +9,11 @@ The system MUST emit `thoughtChain` lifecycle as the only primary runtime protoc
 - **THEN** the runtime MUST emit native chain lifecycle events with stable chain and node identity
 - **AND** the frontend MUST be able to render the user-visible chain directly from those events without reconstructing stage ownership from unrelated event families
 
+#### Scenario: node payloads distinguish narrative, structured, and raw content
+- **WHEN** the runtime emits a user-visible ThoughtChain node
+- **THEN** the node payload MUST distinguish short headline text, detailed narrative body, structured renderable data, and explicit raw/debug payloads
+- **AND** plan steps, tool results, replanning summaries, and final-answer text MUST NOT be forced through one generic summary field
+
 #### Scenario: primary chat flow does not depend on legacy runtime families
 - **WHEN** the primary AI chat runtime streams a live assistant response
 - **THEN** the runtime MUST NOT require legacy `turn/block`, `phase/step`, or detached approval event families to describe the user-visible process chain
@@ -43,3 +48,13 @@ The persisted chat session model MUST preserve enough lifecycle state to reconst
 - **THEN** the session detail response MUST allow the client to reconstruct the same ordered thoughtChain nodes and final answer separately
 - **AND** planner JSON, tool arguments, or replanning notes MUST NOT be replayed as ordinary final-answer prose
 - **AND** restored sessions MUST use the same rendering model as live assistant responses
+
+### Requirement: tool nodes MUST present readable structured results by default
+
+The runtime and UI contract MUST allow tool nodes to render beautified raw-result views without requiring AI-generated prose summaries.
+
+#### Scenario: structured tool result renders without flattening into text blobs
+- **WHEN** a tool node carries object or array results
+- **THEN** the contract MUST support structured rendering such as grouped fields, lists, or tables
+- **AND** the default user-facing tool view MUST NOT be one flattened JSON or summary blob
+- **AND** raw fallback payloads MAY remain available through an explicit disclosure surface
