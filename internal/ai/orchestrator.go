@@ -10,8 +10,8 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -346,16 +346,17 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			emit(o.converter.OnError(state.Phase, event.Err))
 			return nil, event.Err
 		}
-		msg, _, err := adk.GetMessage(event)
+		contents, err := eventTextContents(event)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse agent message: %w", err)
+			return nil, fmt.Errorf("failed to parse agent message chunks: %w", err)
 		}
-		if msg != nil && strings.TrimSpace(msg.Content) != "" {
-			chunk, nextText, shouldEmit := computeTextDelta(lastText, msg.Content)
-			lastText = nextText
-			if shouldEmit {
-				emit(o.converter.OnTextDelta(chunk))
+		for _, content := range contents {
+			if strings.TrimSpace(content) == "" {
+				continue
 			}
+			// 始终透传每个文本分片，避免因前缀判断丢失用户可见内容。
+			emit(o.converter.OnTextDelta(content))
+			lastText = mergeTextProgress(lastText, content)
 		}
 		if event.Action != nil && event.Action.Interrupted != nil {
 			stepID := interruptStepID(event)
@@ -410,37 +411,59 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}, nil
 }
 
-func computeTextDelta(lastContent, currentContent string) (chunk, next string, emit bool) {
-	current := strings.TrimSpace(currentContent)
-	last := strings.TrimSpace(lastContent)
-	if current == "" {
-		return "", last, false
+func mergeTextProgress(previous, current string) string {
+	if strings.TrimSpace(current) == "" {
+		return previous
 	}
-	if looksLikeInternalJSONPayload(current) {
-		return "", last, false
+	if previous == "" {
+		return current
 	}
-	if last == "" {
-		return current, current, true
+	if current == previous {
+		return previous
 	}
-	if current == last {
-		return "", last, false
+	if strings.HasPrefix(current, previous) {
+		return current
 	}
-	if strings.HasPrefix(current, last) {
-		return current[len(last):], current, true
+	if strings.HasPrefix(previous, current) {
+		return previous
 	}
-	return "", last, false
+	return previous + current
 }
 
-func looksLikeInternalJSONPayload(content string) bool {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" || !strings.HasPrefix(trimmed, "{") || !strings.HasSuffix(trimmed, "}") {
-		return false
+// eventTextContents 从 AgentEvent 提取消息文本分片。
+// 对流式事件按 MessageStream 的原始 chunk 读取，避免被拼接成单个大文本。
+func eventTextContents(event *adk.AgentEvent) ([]string, error) {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return nil, nil
 	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
-		return false
+
+	output := event.Output.MessageOutput
+	if !output.IsStreaming {
+		if output.Message == nil {
+			return nil, nil
+		}
+		return []string{output.Message.Content}, nil
 	}
-	return len(payload) > 0
+
+	if output.MessageStream == nil {
+		return nil, nil
+	}
+
+	chunks := make([]string, 0, 4)
+	for {
+		frame, err := output.MessageStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("recv message stream: %w", err)
+		}
+		if frame == nil {
+			continue
+		}
+		chunks = append(chunks, frame.Content)
+	}
+	return chunks, nil
 }
 
 func (o *Orchestrator) loadExecution(ctx context.Context, req airuntime.ResumeRequest) (airuntime.ExecutionState, bool, error) {

@@ -1,75 +1,99 @@
 package ai
 
-import "testing"
+import (
+	"testing"
 
-func TestComputeTextDelta(t *testing.T) {
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
+)
+
+func TestMergeTextProgress(t *testing.T) {
 	tests := []struct {
-		name      string
-		last      string
-		current   string
-		wantChunk string
-		wantNext  string
-		wantEmit  bool
+		name     string
+		previous string
+		current  string
+		wantText string
 	}{
 		{
-			name:      "first chunk emits full content",
-			current:   "你",
-			wantChunk: "你",
-			wantNext:  "你",
-			wantEmit:  true,
+			name:     "first chunk",
+			current:  "你",
+			wantText: "你",
 		},
 		{
-			name:      "cumulative content emits suffix only",
-			last:      "你",
-			current:   "你好",
-			wantChunk: "好",
-			wantNext:  "你好",
-			wantEmit:  true,
-		},
-		{
-			name:     "unchanged content emits nothing",
-			last:     "你好",
+			name:     "cumulative content",
+			previous: "你",
 			current:  "你好",
-			wantNext: "你好",
+			wantText: "你好",
 		},
 		{
-			name:     "non prefix reset emits nothing until stable user text resumes",
-			last:     "你好",
-			current:  "{\"steps\":[\"check\"]}",
-			wantNext: "你好",
+			name:     "unchanged content",
+			previous: "你好",
+			current:  "你好",
+			wantText: "你好",
+		},
+		{
+			name:     "delta append",
+			previous: "你",
+			current:  "好",
+			wantText: "你好",
+		},
+		{
+			name:     "json content should not be swallowed",
+			previous: "结果：",
+			current:  "{\"ok\":true}",
+			wantText: "结果：{\"ok\":true}",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotChunk, gotNext, gotEmit := computeTextDelta(tt.last, tt.current)
-			if gotChunk != tt.wantChunk {
-				t.Fatalf("chunk = %q, want %q", gotChunk, tt.wantChunk)
-			}
-			if gotNext != tt.wantNext {
-				t.Fatalf("next = %q, want %q", gotNext, tt.wantNext)
-			}
-			if gotEmit != tt.wantEmit {
-				t.Fatalf("emit = %v, want %v", gotEmit, tt.wantEmit)
+			got := mergeTextProgress(tt.previous, tt.current)
+			if got != tt.wantText {
+				t.Fatalf("mergeTextProgress(%q, %q) = %q, want %q", tt.previous, tt.current, got, tt.wantText)
 			}
 		})
 	}
 }
 
-func TestLooksLikeInternalJSONPayload(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{input: "{\"steps\":[\"check\"]}", want: true},
-		{input: "{\"deployment\":\"nginx\",\"replicas\":3}", want: true},
-		{input: "正常回答", want: false},
-		{input: " {not-json", want: false},
-	}
-
-	for _, tt := range tests {
-		if got := looksLikeInternalJSONPayload(tt.input); got != tt.want {
-			t.Fatalf("looksLikeInternalJSONPayload(%q) = %v, want %v", tt.input, got, tt.want)
+func TestEventTextContents(t *testing.T) {
+	t.Run("non streaming message", func(t *testing.T) {
+		event := &adk.AgentEvent{
+			Output: &adk.AgentOutput{
+				MessageOutput: &adk.MessageVariant{
+					IsStreaming: false,
+					Message:     schema.AssistantMessage("你好", nil),
+				},
+			},
 		}
-	}
+
+		got, err := eventTextContents(event)
+		if err != nil {
+			t.Fatalf("eventTextContents returned error: %v", err)
+		}
+		if len(got) != 1 || got[0] != "你好" {
+			t.Fatalf("eventTextContents = %#v, want [\"你好\"]", got)
+		}
+	})
+
+	t.Run("streaming message keeps chunk granularity", func(t *testing.T) {
+		event := &adk.AgentEvent{
+			Output: &adk.AgentOutput{
+				MessageOutput: &adk.MessageVariant{
+					IsStreaming: true,
+					MessageStream: schema.StreamReaderFromArray([]*schema.Message{
+						schema.AssistantMessage("你", nil),
+						schema.AssistantMessage("你好", nil),
+					}),
+				},
+			},
+		}
+
+		got, err := eventTextContents(event)
+		if err != nil {
+			t.Fatalf("eventTextContents returned error: %v", err)
+		}
+		if len(got) != 2 || got[0] != "你" || got[1] != "你好" {
+			t.Fatalf("eventTextContents = %#v, want [\"你\", \"你好\"]", got)
+		}
+	})
 }
