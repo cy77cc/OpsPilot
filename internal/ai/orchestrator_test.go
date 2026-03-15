@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
@@ -11,6 +12,120 @@ import (
 	aiobs "github.com/cy77cc/OpsPilot/internal/ai/observability"
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 )
+
+func TestBuildRuntimeContextEnvelope_OmitsEmptyBlock(t *testing.T) {
+	if got := buildRuntimeContextEnvelope(airuntime.RuntimeContext{}); got != "" {
+		t.Fatalf("expected empty envelope, got %q", got)
+	}
+}
+
+func TestBuildRuntimeContextEnvelope_UsesCanonicalFieldOrder(t *testing.T) {
+	got := buildRuntimeContextEnvelope(airuntime.RuntimeContext{
+		Scene:       "deployment:hosts",
+		ProjectID:   "1",
+		CurrentPage: "/deployment/infrastructure/hosts",
+		SelectedResources: []airuntime.SelectedResource{
+			{Name: "host-a", Type: "host"},
+			{ID: "svc-1", Type: "service"},
+		},
+	})
+
+	want := strings.Join([]string{
+		"[Runtime Context]",
+		"scene: deployment:hosts",
+		"project: 1",
+		"page: /deployment/infrastructure/hosts",
+		"selected_resources: host-a(host), svc-1(service)",
+	}, "\n")
+	if got != want {
+		t.Fatalf("unexpected envelope:\n%s", got)
+	}
+}
+
+func TestBuildRuntimeContextEnvelope_SummarizesSelectedResourcesAndNormalizesWhitespace(t *testing.T) {
+	got := buildRuntimeContextEnvelope(airuntime.RuntimeContext{
+		Scene: "host:detail",
+		SelectedResources: []airuntime.SelectedResource{
+			{Name: "host-a\nprod", Type: " host "},
+			{Name: " svc-a\tblue ", Type: "service"},
+		},
+	})
+
+	if !strings.Contains(got, "selected_resources: host-a prod(host), svc-a blue(service)") {
+		t.Fatalf("expected normalized selected resources, got %q", got)
+	}
+	if strings.Contains(got, "\nprod") || strings.Contains(got, "\t") {
+		t.Fatalf("expected whitespace normalization, got %q", got)
+	}
+}
+
+func TestBuildRuntimeContextEnvelope_DoesNotDumpMetadataOrUserContext(t *testing.T) {
+	got := buildRuntimeContextEnvelope(airuntime.RuntimeContext{
+		Scene:       "deployment:hosts",
+		ProjectID:   "1",
+		UserContext: map[string]any{"uid": 7},
+		Metadata:    map[string]any{"scene": "shadow"},
+	})
+
+	if strings.Contains(got, "uid") || strings.Contains(got, "shadow") {
+		t.Fatalf("expected metadata and user context to be omitted, got %q", got)
+	}
+}
+
+func TestComposeUserInput_PreservesRawUserRequest(t *testing.T) {
+	envelope := "[Runtime Context]\nscene: deployment:hosts"
+	raw := "  请检查主机状态\n并告诉我异常点。  "
+
+	got := composeUserInput(envelope, raw)
+	want := envelope + "\n\n[User Request]\n" + raw
+	if got != want {
+		t.Fatalf("unexpected composed input:\n%s", got)
+	}
+}
+
+func TestRun_UsesEnvelopeAndPreservesRawUserRequest(t *testing.T) {
+	ctx := context.Background()
+	var capturedQuery string
+
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	gen.Send(assistantEvent("agent", "已收到请求。"))
+	gen.Close()
+
+	orchestrator := &Orchestrator{
+		executions: airuntime.NewExecutionStore(nil, ""),
+		converter:  airuntime.NewSSEConverter(),
+		runQuery: func(_ context.Context, query string, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+			capturedQuery = query
+			return iter
+		},
+	}
+
+	err := orchestrator.Run(ctx, airuntime.RunRequest{
+		Message: "  请检查主机状态\n并告诉我异常点。  ",
+		RuntimeContext: airuntime.RuntimeContext{
+			Scene:       "deployment:hosts",
+			ProjectID:   "1",
+			CurrentPage: "/deployment/infrastructure/hosts",
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := strings.Join([]string{
+		"[Runtime Context]",
+		"scene: deployment:hosts",
+		"project: 1",
+		"page: /deployment/infrastructure/hosts",
+		"",
+		"[User Request]",
+		"  请检查主机状态",
+		"并告诉我异常点。  ",
+	}, "\n")
+	if capturedQuery != want {
+		t.Fatalf("unexpected query:\n%s", capturedQuery)
+	}
+}
 
 type lifecycleObserver struct {
 	records []aiobs.ThoughtChainLifecycleRecord

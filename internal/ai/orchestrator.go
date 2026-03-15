@@ -36,6 +36,7 @@ type Orchestrator struct {
 	approvals   *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
 	summaries   *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
 	initErr     error                            // 初始化阶段的根因错误，runner 不可用时向上返回
+	runQuery    func(context.Context, string, ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent]
 }
 
 // NewOrchestrator 创建并初始化 Orchestrator。
@@ -94,6 +95,7 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 		converter:   airuntime.NewSSEConverter(),
 		approvals:   approvals,
 		summaries:   summaries,
+		runQuery:    nil,
 	}
 }
 
@@ -104,11 +106,15 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit airuntime.StreamEmitter) error {
 	startedAt := time.Now().UTC()
 	if o == nil || o.runner == nil {
+		if o != nil && o.runQuery != nil {
+			goto runnerReady
+		}
 		if o != nil && o.initErr != nil {
 			return fmt.Errorf("orchestrator unavailable: %w", o.initErr)
 		}
 		return fmt.Errorf("orchestrator runner is nil")
 	}
+runnerReady:
 	if strings.TrimSpace(req.Message) == "" {
 		return fmt.Errorf("message is empty")
 	}
@@ -121,13 +127,13 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 	planID := uuid.NewString()
 	turnID := uuid.NewString()
 	checkpointID := uuid.NewString()
-	instruction := airuntime.BuildInstruction(req.RuntimeContext)
+	envelope := buildRuntimeContextEnvelope(req.RuntimeContext)
+	composedInput := composeUserInput(envelope, req.Message)
 	adkValues := map[string]any{
 		airuntime.SessionKeyRuntimeContext: req.RuntimeContext,
 		airuntime.SessionKeySessionID:      sessionID,
 		airuntime.SessionKeyPlanID:         planID,
 		airuntime.SessionKeyTurnID:         turnID,
-		airuntime.SessionKeyInstruction:    instruction,
 	}
 
 	state := airuntime.ExecutionState{
@@ -155,7 +161,11 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		return nil
 	}
 
-	iter := o.runner.Query(ctx, strings.TrimSpace(req.Message),
+	query := o.runQuery
+	if query == nil {
+		query = o.runner.Query
+	}
+	iter := query(ctx, composedInput,
 		adk.WithCheckPointID(checkpointID),
 		adk.WithSessionValues(adkValues),
 	)
@@ -167,6 +177,62 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		Duration:  time.Since(startedAt),
 	})
 	return err
+}
+
+func buildRuntimeContextEnvelope(runtimeCtx airuntime.RuntimeContext) string {
+	lines := make([]string, 0, 5)
+	appendLine := func(key, value string) {
+		value = normalizeRuntimeLine(value)
+		if value == "" {
+			return
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+	}
+
+	appendLine("scene", runtimeCtx.Scene)
+	appendLine("project", firstNonEmpty(runtimeCtx.ProjectName, runtimeCtx.ProjectID))
+	appendLine("page", firstNonEmpty(runtimeCtx.CurrentPage, runtimeCtx.Route))
+	appendLine("selected_resources", summarizeSelectedResources(runtimeCtx.SelectedResources))
+
+	if len(lines) == 0 {
+		return ""
+	}
+	return "[Runtime Context]\n" + strings.Join(lines, "\n")
+}
+
+func composeUserInput(envelope, raw string) string {
+	if strings.TrimSpace(envelope) == "" {
+		return "[User Request]\n" + raw
+	}
+	return envelope + "\n\n[User Request]\n" + raw
+}
+
+func normalizeRuntimeLine(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+}
+
+func summarizeSelectedResources(resources []airuntime.SelectedResource) string {
+	if len(resources) == 0 {
+		return ""
+	}
+
+	items := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		name := normalizeRuntimeLine(firstNonEmpty(resource.Name, resource.ID))
+		typ := normalizeRuntimeLine(resource.Type)
+		if name == "" && typ == "" {
+			continue
+		}
+		switch {
+		case name != "" && typ != "":
+			items = append(items, fmt.Sprintf("%s(%s)", name, typ))
+		case name != "":
+			items = append(items, name)
+		default:
+			items = append(items, fmt.Sprintf("unknown(%s)", typ))
+		}
+	}
+	return strings.Join(items, ", ")
 }
 
 // Resume 以非流式方式处理审批结果（通过/拒绝）。
