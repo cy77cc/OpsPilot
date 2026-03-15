@@ -1,122 +1,41 @@
 // Package runtime 定义 AI 运行时的核心类型和组件。
 //
-// 本文件提供 System Prompt 模板和动态渲染能力，
-// 支持根据 RuntimeContext 注入场景、项目、选中资源等上下文信息。
+// 本文件提供固定的系统提示词，描述工具域、scene 偏置规则与执行原则。
 package runtime
 
-import (
-	"fmt"
-	"strings"
-)
+// InstructionTemplate 是 OpsPilot 智能运维助手的固定系统提示词。
+const InstructionTemplate = `你是 OpsPilot 智能运维助手，负责通过工具协助用户管理基础设施与运维任务。
 
-// InstructionTemplate 是 OpsPilot 智能运维助手的系统提示词模板。
+## 工具域
+- host: 主机巡检、主机状态、主机命令、主机日志
+- deployment: 部署查询、部署变更、发布、回滚
+- service: 服务状态、服务配置、服务发布关联
+- kubernetes: 集群资源、工作负载、命名空间对象
+- monitor: 指标、告警、监控验证
+- governance: 审批、审计、权限校验
+
+## scene 选择规则
+- scene 只影响起手工具优先级，不是硬性限制
+- 优先从与 scene 最相关的工具域开始收集信息
+- 如果用户意图超出当前 scene，或现有证据不足，可以跨域调用其他工具
+- 未命中已知 scene 时，优先根据用户意图选择工具域
+
+## canonical scene 映射
+- deployment:* -> deployment, host, service, kubernetes
+- service:* -> service, deployment, kubernetes
+- host:* -> host, deployment, monitor
+- k8s:* -> kubernetes, service, deployment
+
+## 执行原则
+1. 优先使用只读工具收集证据，再决定是否执行变更
+2. 变更类工具必须遵守审批与治理要求
+3. scene 是优先级提示，不是权限边界
+4. 当需要跨域信息时，应明确扩展到相邻工具域
+5. 操作前说明目的、影响和下一步计划`
+
+// BuildInstruction 返回固定系统提示词。
 //
-// 占位符 {xxx} 会在运行时被 RuntimeContext 中的对应值替换。
-const InstructionTemplate = `你是 OpsPilot 智能运维助手，负责协助用户管理 Kubernetes 集群、主机、服务等基础设施资源。
-
-## 核心能力
-- 集群管理：查询集群状态、节点信息、资源使用情况
-- 主机运维：批量执行命令、查看日志、监控状态
-- 服务管理：部署、扩缩容、重启、查看状态
-- 故障排查：分析日志、诊断问题、提供建议
-
-## 工作原则
-1. 优先使用只读工具收集信息，确认后再执行变更操作
-2. 变更操作需要用户确认后才可执行
-3. 操作前说明目的和预期影响
-4. 遇到错误时分析原因并提供解决建议
-
-## 当前上下文
-- 场景: {scene_name}
-- 项目: {project_name}
-- 页面: {current_page}
-- 选中资源: {selected_resources}
-
-请根据用户需求，合理使用工具完成任务。`
-
-// BuildInstruction 根据 RuntimeContext 渲染系统提示词。
-//
-// 空值字段会被替换为默认文本，确保模板完整有效。
-func BuildInstruction(ctx RuntimeContext) string {
-	result := InstructionTemplate
-
-	result = strings.ReplaceAll(result, "{scene_name}", instructionSceneName(ctx))
-	result = strings.ReplaceAll(result, "{project_name}", instructionProjectName(ctx))
-	result = strings.ReplaceAll(result, "{current_page}", instructionCurrentPage(ctx))
-	result = strings.ReplaceAll(result, "{selected_resources}", formatSelectedResources(ctx.SelectedResources))
-
-	return result
-}
-
-func instructionSceneName(ctx RuntimeContext) string {
-	for _, candidate := range []string{
-		ctx.SceneName,
-		stringMetadata(ctx.Metadata, "scene_name"),
-		stringMetadata(ctx.Metadata, "scene"),
-		ctx.Scene,
-	} {
-		if value := strings.TrimSpace(candidate); value != "" {
-			return value
-		}
-	}
-	return "通用"
-}
-
-func instructionProjectName(ctx RuntimeContext) string {
-	for _, candidate := range []string{
-		ctx.ProjectName,
-		stringMetadata(ctx.Metadata, "project_name"),
-		ctx.ProjectID,
-	} {
-		if value := strings.TrimSpace(candidate); value != "" {
-			return value
-		}
-	}
-	return "未指定"
-}
-
-func instructionCurrentPage(ctx RuntimeContext) string {
-	for _, candidate := range []string{
-		ctx.CurrentPage,
-		ctx.Route,
-		stringMetadata(ctx.Metadata, "current_page"),
-	} {
-		if value := strings.TrimSpace(candidate); value != "" {
-			return value
-		}
-	}
-	return "未指定"
-}
-
-func stringMetadata(meta map[string]any, key string) string {
-	if len(meta) == 0 {
-		return ""
-	}
-	value, _ := meta[key]
-	text, _ := value.(string)
-	return strings.TrimSpace(text)
-}
-
-// formatSelectedResources 格式化选中资源列表为可读文本。
-func formatSelectedResources(resources []SelectedResource) string {
-	if len(resources) == 0 {
-		return "无"
-	}
-
-	var sb strings.Builder
-	for i, resource := range resources {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		name := strings.TrimSpace(resource.Name)
-		if name == "" {
-			name = strings.TrimSpace(resource.ID)
-		}
-		if strings.TrimSpace(resource.Type) != "" {
-			sb.WriteString(fmt.Sprintf("%s(%s)", name, strings.TrimSpace(resource.Type)))
-			continue
-		}
-		sb.WriteString(name)
-	}
-	return sb.String()
+// RuntimeContext 不能再驱动每次请求的 system prompt 生成。
+func BuildInstruction(RuntimeContext) string {
+	return InstructionTemplate
 }
