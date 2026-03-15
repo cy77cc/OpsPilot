@@ -548,6 +548,61 @@ export interface AISessionBranchParams {
   title?: string;
 }
 
+export interface UsageStats {
+  total_requests: number;
+  total_tokens: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cost_usd: number;
+  avg_first_token_ms: number;
+  avg_tokens_per_second: number;
+  approval_rate: number;
+  approval_pass_rate: number;
+  tool_error_rate: number;
+  by_scene: SceneStats[];
+  by_date: DateStats[];
+}
+
+export interface SceneStats {
+  scene: string;
+  count: number;
+  tokens: number;
+}
+
+export interface DateStats {
+  date: string;
+  requests: number;
+  tokens: number;
+}
+
+export interface UsageLog {
+  id: number;
+  trace_id: string;
+  session_id: string;
+  scene: string;
+  status: string;
+  total_tokens: number;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface UsageLogsResult {
+  total: number;
+  items: UsageLog[];
+}
+
+export interface UsageStatsParams {
+  start_date?: string;
+  end_date?: string;
+  scene?: string;
+}
+
+export interface UsageLogsParams extends UsageStatsParams {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
 // AI功能API
 export const aiApi = {
   // AI对话（SSE流式）
@@ -792,6 +847,16 @@ export const aiApi = {
 
   async getScenePrompts(scene: string): Promise<ApiResponse<AIScenePromptsPayload>> {
     return apiService.get(`/ai/scene/${scene}/prompts`);
+  },
+
+  // 获取使用统计概览
+  async getUsageStats(params?: UsageStatsParams): Promise<ApiResponse<UsageStats>> {
+    return apiService.get('/ai/usage/stats', params ? { params } : undefined);
+  },
+
+  // 获取使用日志列表
+  async getUsageLogs(params?: UsageLogsParams): Promise<ApiResponse<UsageLogsResult>> {
+    return apiService.get('/ai/usage/logs', params ? { params } : undefined);
   },
 
 };

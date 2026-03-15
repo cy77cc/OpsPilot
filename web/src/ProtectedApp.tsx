@@ -62,6 +62,7 @@ const ConfigDiffPage = lazy(() => import('./pages/ConfigCenter/ConfigDiffPage'))
 const ConfigMultiEnvPage = lazy(() => import('./pages/ConfigCenter/ConfigMultiEnvPage'));
 const ConfigCenterAuditLogsPage = lazy(() => import('./pages/ConfigCenter/AuditLogsPage'));
 const HelpCenterPage = lazy(() => import('./pages/Help/HelpCenterPage'));
+const AIUsagePage = lazy(() => import('./pages/AI/Usage'));
 
 const RouteFallback: React.FC = () => (
   <div className="min-h-screen flex items-center justify-center">加载中...</div>
@@ -172,6 +173,7 @@ export default function ProtectedApp() {
                 <Route path="/automation" element={withAuth('automation', 'read', <AutomationPage />)} />
                 <Route path="/cicd" element={withAuth('cicd', 'read', <CICDPage />)} />
                 <Route path="/help" element={<HelpCenterPage />} />
+                <Route path="/ai/usage" element={<AIUsagePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </PageTransition>
