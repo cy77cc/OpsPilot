@@ -85,5 +85,6 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&model.RiskFinding{},
 		&model.Anomaly{},
 		&model.Suggestion{},
+		&model.AIUsageLog{},
 	)
 }
