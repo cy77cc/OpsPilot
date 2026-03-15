@@ -1,5 +1,7 @@
 # ChatModelAgent 架构重构实施计划
 
+> Obsolete: 本文中的动态 `BuildInstruction(ctx)` / 动态 system prompt 方向已被 superseded。当前实现与后续修改请以 `docs/superpowers/specs/2026-03-15-fixed-instruction-scene-guidance-design.md` 为准，采用固定 instruction + runtime-context envelope 模型。
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将现有 plan-execute 架构重构为 `adk.NewChatModelAgent`，简化执行流程，统一审批机制。

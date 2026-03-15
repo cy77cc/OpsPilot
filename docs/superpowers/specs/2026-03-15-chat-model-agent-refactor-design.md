@@ -1,5 +1,7 @@
 # AI 模块架构重构：迁移至 ChatModelAgent
 
+> Obsolete: 本设计中“静态模板 + 动态变量注入”的 `BuildInstruction(ctx)` 方向已被 superseded。当前 source of truth 是 `docs/superpowers/specs/2026-03-15-fixed-instruction-scene-guidance-design.md`，采用固定 instruction + runtime-context envelope 模型。
+
 ## 概述
 
 将现有 plan-execute 架构重构为 `adk.NewChatModelAgent`，简化执行流程，统一审批机制。
