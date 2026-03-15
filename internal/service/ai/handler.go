@@ -25,6 +25,7 @@ import (
 	aitools "github.com/cy77cc/OpsPilot/internal/ai/tools"
 	approvaltools "github.com/cy77cc/OpsPilot/internal/ai/tools/approval"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/dao"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
@@ -45,6 +46,7 @@ type HTTPHandler struct {
 	approvals    *runtime.ApprovalDecisionMaker
 	summaries    *approvaltools.SummaryRenderer
 	hintResolver *HintResolver
+	usageLogDAO  *dao.UsageLogDAO // 使用统计 DAO
 }
 
 // aiRuntime 是对 Orchestrator 的最小接口抽象，便于单元测试时替换实现。
@@ -82,17 +84,23 @@ func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 		DB:         svcCtx.DB,
 		Prometheus: svcCtx.Prometheus,
 	})
+
+	// 创建 usageLogDAO 并复用于 orchestrator 和 handler
+	usageLogDAO := dao.NewUsageLogDAO(svcCtx.DB)
+
 	handler := &HTTPHandler{
 		svcCtx:    svcCtx,
 		sessions:  sessionState,
 		chatStore: aistate.NewChatStore(svcCtx.DB),
 		orchestrator: coreai.NewOrchestrator(sessionState, executionStore, common.PlatformDeps{
-			DB:         svcCtx.DB,
-			Prometheus: svcCtx.Prometheus,
+			DB:          svcCtx.DB,
+			Prometheus:  svcCtx.Prometheus,
+			UsageLogDAO: usageLogDAO,
 		}),
 		registry:     registry,
 		summaries:    approvaltools.NewSummaryRenderer(),
 		hintResolver: NewHintResolver(common.PlatformDeps{DB: svcCtx.DB, Prometheus: svcCtx.Prometheus}),
+		usageLogDAO:  usageLogDAO,
 	}
 	handler.approvals = runtime.NewApprovalDecisionMaker(runtime.ApprovalDecisionMakerOptions{
 		ResolveScene: handler.resolveApprovalScene,
