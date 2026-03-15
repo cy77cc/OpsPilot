@@ -321,6 +321,7 @@ type ListQuery struct {
     EndDate   time.Time
     Scene     string
     Status    string
+    UserID    uint64  // 用户过滤（非管理员只能查看自己的日志）
     Page      int
     PageSize  int
 }
@@ -342,6 +343,9 @@ func (d *UsageLogDAO) List(ctx context.Context, query ListQuery) (*ListResult, e
     }
     if query.Status != "" {
         q = q.Where("status = ?", query.Status)
+    }
+    if query.UserID > 0 {
+        q = q.Where("user_id = ?", query.UserID)
     }
 
     if err := q.Count(&result.Total).Error; err != nil {
@@ -626,22 +630,25 @@ usage := aiGroup.Group("/usage", middleware.JWTAuth())
 package handler
 
 import (
+    "fmt"
     "time"
 
     "github.com/gin-gonic/gin"
     "github.com/cy77cc/OpsPilot/internal/dao/ai_usage_log"
     "github.com/cy77cc/OpsPilot/internal/httpx"
-    "github.com/cy77cc/OpsPilot/internal/middleware"
+    "github.com/cy77cc/OpsPilot/internal/svc"
+    "gorm.io/gorm"
 )
 
 // UsageHandler 处理使用统计相关请求。
 type UsageHandler struct {
-    dao *dao.UsageLogDAO
+    svcCtx *svc.ServiceContext
+    dao    *dao.UsageLogDAO
 }
 
 // NewUsageHandler 创建 UsageHandler 实例。
-func NewUsageHandler(dao *dao.UsageLogDAO) *UsageHandler {
-    return &UsageHandler{dao: dao}
+func NewUsageHandler(svcCtx *svc.ServiceContext, dao *dao.UsageLogDAO) *UsageHandler {
+    return &UsageHandler{svcCtx: svcCtx, dao: dao}
 }
 
 // GetUsageStats 获取使用统计概览。
@@ -649,9 +656,9 @@ func (h *UsageHandler) GetUsageStats(c *gin.Context) {
     // 解析时间范围
     startDate, endDate := parseDateRange(c)
 
-    // 获取当前用户
-    userID := middleware.GetUserID(c)
-    isAdmin := middleware.IsAdmin(c)
+    // 获取当前用户并检查权限
+    userID := httpx.UIDFromCtx(c)
+    isAdmin := httpx.IsAdmin(h.svcCtx.DB, userID)
 
     // 构建查询
     query := dao.StatsQuery{
@@ -707,9 +714,9 @@ func (h *UsageHandler) GetUsageLogs(c *gin.Context) {
     // 解析时间范围
     startDate, endDate := parseDateRange(c)
 
-    // 获取当前用户
-    userID := middleware.GetUserID(c)
-    isAdmin := middleware.IsAdmin(c)
+    // 获取当前用户并检查权限
+    userID := httpx.UIDFromCtx(c)
+    isAdmin := httpx.IsAdmin(h.svcCtx.DB, userID)
 
     // 构建查询
     query := dao.ListQuery{
@@ -723,8 +730,7 @@ func (h *UsageHandler) GetUsageLogs(c *gin.Context) {
 
     // 非管理员只能查看自己的日志
     if !isAdmin {
-        // 注意：ListQuery 需要添加 UserID 字段
-        // 这里假设已添加
+        query.UserID = userID
     }
 
     // 获取列表
@@ -770,6 +776,8 @@ func parseInt(s string, defaultValue int) int {
     return v
 }
 ```
+
+> **注意**：`ListQuery` 结构体需要添加 `UserID uint64` 字段以支持用户过滤。
 
 ## 前端页面
 
