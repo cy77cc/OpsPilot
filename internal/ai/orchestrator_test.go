@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
@@ -228,4 +229,120 @@ func assertLifecycleEvent(t *testing.T, records []aiobs.ThoughtChainLifecycleRec
 		}
 	}
 	t.Fatalf("expected lifecycle event %q in %#v", want, records)
+}
+
+// TestOrchestratorApprovalInterruptIncludesArgumentsAndResumeIdentity 验证审批中断事件
+// 被转成的 PendingApproval / SSE approval payload 包含完整的恢复身份和参数信息。
+func TestOrchestratorApprovalInterruptIncludesArgumentsAndResumeIdentity(t *testing.T) {
+	ctx := context.Background()
+	executions := airuntime.NewExecutionStore(nil, "")
+	checkpoints := airuntime.NewCheckpointStore(nil, "")
+	orchestrator := &Orchestrator{
+		executions:  executions,
+		checkpoints: checkpoints,
+		converter:   airuntime.NewSSEConverter(),
+	}
+	state := airuntime.ExecutionState{
+		TraceID:      "trace-approval-1",
+		SessionID:    "sess-approval-1",
+		PlanID:       "plan-approval-1",
+		TurnID:       "turn-approval-1",
+		Scene:        "deployment:hosts",
+		Status:       airuntime.ExecutionStatusRunning,
+		Phase:        string(airuntime.PhaseExecuting),
+		CheckpointID: "checkpoint-approval-1",
+		Steps:        map[string]airuntime.StepState{},
+	}
+
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	// 模拟带有完整参数的审批中断事件
+	gen.Send(&adk.AgentEvent{
+		Action: &adk.AgentAction{
+			Interrupted: &adk.InterruptInfo{
+				InterruptContexts: []*adk.InterruptCtx{{
+					ID: "step-delete-host",
+					Info: airuntime.ApprovalInterruptInfo{
+						PlanID:          "plan-approval-1",
+						StepID:          "step-delete-host",
+						CheckpointID:    "checkpoint-approval-1",
+						Target:          "step-delete-host",
+						ToolName:        "host_delete",
+						ToolDisplayName: "删除主机",
+						Mode:            "mutating",
+						RiskLevel:       "high",
+						Summary:         "删除主机前需要审批",
+						Params:          map[string]any{"id": 7, "force": false},
+						ArgumentsInJSON: `{"id":7,"force":false}`,
+					},
+				}},
+			},
+		},
+	})
+	gen.Close()
+
+	var pauseEvents []airuntime.StreamEvent
+	_, err := orchestrator.streamExecution(ctx, iter, &state, func(event airuntime.StreamEvent) bool {
+		pauseEvents = append(pauseEvents, event)
+		return true
+	})
+	if err != nil {
+		t.Fatalf("streamExecution returned error: %v", err)
+	}
+
+	// 验证 ExecutionState 中的 PendingApproval 包含完整字段
+	state, ok, err := executions.Load(ctx, "sess-approval-1", "plan-approval-1")
+	if err != nil || !ok {
+		t.Fatalf("expected persisted execution state, got ok=%v err=%v", ok, err)
+	}
+	if state.PendingApproval == nil {
+		t.Fatalf("expected pending approval to be stored")
+	}
+
+	// 验证关键恢复身份字段
+	pending := state.PendingApproval
+	if pending.CheckpointID != "checkpoint-approval-1" {
+		t.Errorf("expected checkpoint_id='checkpoint-approval-1', got %q", pending.CheckpointID)
+	}
+	if pending.Target != "step-delete-host" {
+		t.Errorf("expected target='step-delete-host', got %q", pending.Target)
+	}
+	if pending.ArgumentsInJSON != `{"id":7,"force":false}` {
+		t.Errorf("expected arguments_json='{\"id\":7,\"force\":false}', got %q", pending.ArgumentsInJSON)
+	}
+	if pending.ToolDisplayName != "删除主机" {
+		t.Errorf("expected tool_display_name='删除主机', got %q", pending.ToolDisplayName)
+	}
+
+	// 验证 SSE approval payload 包含完整字段
+	var approvalNode *airuntime.ChainNodeInfo
+	for _, event := range pauseEvents {
+		if event.Type == airuntime.EventChainNodeOpen {
+			var node airuntime.ChainNodeInfo
+			data, _ := json.Marshal(event.Data)
+			if err := json.Unmarshal(data, &node); err == nil {
+				if node.Kind == airuntime.ChainNodeApproval {
+					approvalNode = &node
+					break
+				}
+			}
+		}
+	}
+	if approvalNode == nil {
+		t.Fatalf("expected approval chain node to be emitted")
+	}
+
+	// 验证 SSE approval payload 包含 canonical 字段
+	approval := approvalNode.Approval
+	if approval == nil {
+		t.Fatalf("expected approval payload in chain node")
+	}
+	if approval["checkpoint_id"] != "checkpoint-approval-1" {
+		t.Errorf("expected approval.checkpoint_id='checkpoint-approval-1', got %v", approval["checkpoint_id"])
+	}
+	if approval["target"] != "step-delete-host" {
+		t.Errorf("expected approval.target='step-delete-host', got %v", approval["target"])
+	}
+	if approval["arguments_json"] != `{"id":7,"force":false}` {
+		t.Errorf("expected approval.arguments_json='{\"id\":7,\"force\":false}', got %v", approval["arguments_json"])
+	}
 }

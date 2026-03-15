@@ -204,13 +204,14 @@ type SelectedResource struct {
 
 // ResumeRequest 是审批回调的请求参数。
 type ResumeRequest struct {
-	SessionID    string `json:"session_id,omitempty"`    // 会话 ID
-	PlanID       string `json:"plan_id,omitempty"`       // 执行计划 ID
-	StepID       string `json:"step_id,omitempty"`       // 待审批步骤 ID
-	Target       string `json:"target,omitempty"`        // ADK 中断目标节点名
-	CheckpointID string `json:"checkpoint_id,omitempty"` // ADK 断点 ID
-	Approved     bool   `json:"approved"`                // true=通过，false=拒绝
-	Reason       string `json:"reason,omitempty"`        // 审批意见（可选）
+	SessionID       string `json:"session_id,omitempty"`       // 会话 ID
+	PlanID          string `json:"plan_id,omitempty"`          // 执行计划 ID
+	StepID          string `json:"step_id,omitempty"`          // 待审批步骤 ID
+	Target          string `json:"target,omitempty"`           // ADK 中断目标节点名
+	CheckpointID    string `json:"checkpoint_id,omitempty"`    // ADK 断点 ID
+	Approved        bool   `json:"approved"`                   // true=通过，false=拒绝
+	Reason          string `json:"reason,omitempty"`           // 审批意见（可选）
+	EditedArguments string `json:"edited_arguments,omitempty"` // 修改后的参数 JSON（可选）
 }
 
 // ResumeResult 是审批处理后的返回结果。
@@ -321,19 +322,23 @@ type StepState struct {
 // PendingApproval 记录一次等待人工确认的审批请求。
 // 由 orchestrator 在检测到中断事件时创建，恢复执行后更新状态。
 type PendingApproval struct {
-	ID          string         `json:"id,omitempty"`
-	PlanID      string         `json:"plan_id,omitempty"`
-	StepID      string         `json:"step_id,omitempty"`
-	Status      string         `json:"status,omitempty"` // pending / approved / rejected
-	Title       string         `json:"title,omitempty"`
-	Mode        string         `json:"mode,omitempty"`
-	Risk        string         `json:"risk,omitempty"`
-	Summary     string         `json:"summary,omitempty"`      // 人类可读的操作摘要
-	ApprovalKey string         `json:"approval_key,omitempty"` // 用于幂等恢复的复合键
-	ToolName    string         `json:"tool_name,omitempty"`
-	Params      map[string]any `json:"params,omitempty"`
-	CreatedAt   time.Time      `json:"created_at,omitempty"`
-	ExpiresAt   time.Time      `json:"expires_at,omitempty"` // 审批超时时间
+	ID              string         `json:"id,omitempty"`
+	PlanID          string         `json:"plan_id,omitempty"`
+	StepID          string         `json:"step_id,omitempty"`
+	CheckpointID    string         `json:"checkpoint_id,omitempty"`
+	Target          string         `json:"target,omitempty"`
+	Status          string         `json:"status,omitempty"` // pending / approved / rejected
+	Title           string         `json:"title,omitempty"`
+	Mode            string         `json:"mode,omitempty"`
+	Risk            string         `json:"risk,omitempty"`
+	Summary         string         `json:"summary,omitempty"`      // 人类可读的操作摘要
+	ApprovalKey     string         `json:"approval_key,omitempty"` // 用于幂等恢复的复合键
+	ToolName        string         `json:"tool_name,omitempty"`
+	ToolDisplayName string         `json:"tool_display_name,omitempty"`
+	Params          map[string]any `json:"params,omitempty"`
+	ArgumentsInJSON string         `json:"arguments_json,omitempty"`
+	CreatedAt       time.Time      `json:"created_at,omitempty"`
+	ExpiresAt       time.Time      `json:"expires_at,omitempty"` // 审批超时时间
 }
 
 // ExecutionState 是单次 AI 执行的完整状态快照，持久化到 ExecutionStore。

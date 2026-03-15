@@ -40,12 +40,15 @@ type ApprovalDecision struct {
 type ApprovalInterruptInfo struct {
 	PlanID          string         `json:"plan_id,omitempty"`
 	StepID          string         `json:"step_id,omitempty"`
+	CheckpointID    string         `json:"checkpoint_id,omitempty"`
+	Target          string         `json:"target,omitempty"`
 	ToolName        string         `json:"tool_name,omitempty"`
 	ToolDisplayName string         `json:"tool_display_name,omitempty"`
 	Mode            string         `json:"mode,omitempty"`
 	RiskLevel       string         `json:"risk_level,omitempty"`
 	Summary         string         `json:"summary,omitempty"`
 	Params          map[string]any `json:"params,omitempty"`
+	ArgumentsInJSON string         `json:"arguments_json,omitempty"`
 	Environment     string         `json:"environment,omitempty"`
 	Namespace       string         `json:"namespace,omitempty"`
 }
