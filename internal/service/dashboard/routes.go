@@ -15,5 +15,6 @@ func RegisterDashboardHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) 
 	g := v1.Group("", middleware.JWTAuth())
 	{
 		g.GET("/dashboard/overview", h.GetOverview)
+		g.GET("/dashboard/overview/v2", h.GetOverviewV2)
 	}
 }
