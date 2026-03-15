@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createToolChainState,
   reduceToolChainEvent,
+  toThoughtChainRuntimeState,
   toolChainStateFromReplayTurn,
 } from './thoughtChainRuntime';
 import type { ChatTurn } from './types';
@@ -240,5 +241,21 @@ describe('thoughtChainRuntime', () => {
     });
 
     expect(state.nodes).toHaveLength(0);
+  });
+
+  it('maps running tool status to active in runtime compatibility state', () => {
+    const state = reduceToolChainEvent(undefined, {
+      type: 'tool_call',
+      data: {
+        call_id: 'call-runtime-1',
+        tool_name: 'get_nodes',
+      },
+    });
+
+    const runtime = toThoughtChainRuntimeState(state);
+
+    expect(runtime).toBeDefined();
+    expect(runtime?.nodes).toHaveLength(1);
+    expect(runtime?.nodes[0]?.status).toBe('active');
   });
 });

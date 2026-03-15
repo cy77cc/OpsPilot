@@ -7,6 +7,7 @@ import type { SSEToolCallEvent, SSEToolApprovalEvent, SSEToolResultEvent } from 
 import type {
   ChatTurn,
   ConfirmationRequest,
+  RuntimeThoughtChainNodeStatus,
   ToolChainNode,
   ToolChainState,
   ToolChainNodeKind,
@@ -312,6 +313,19 @@ function normalizeBlockStatus(
   return 'pending';
 }
 
+function toRuntimeNodeStatus(status: ToolChainNodeStatus): RuntimeThoughtChainNodeStatus {
+  if (status === 'waiting_approval') {
+    return 'waiting';
+  }
+  if (status === 'success') {
+    return 'done';
+  }
+  if (status === 'running') {
+    return 'active';
+  }
+  return status;
+}
+
 /**
  * 将 ToolChainState 转换为 ThoughtChainRuntimeState
  * 用于向后兼容旧版渲染组件
@@ -326,7 +340,7 @@ export function toThoughtChainRuntimeState(state: ToolChainState | undefined): T
       nodeId: node.id,
       kind: node.kind,
       title: node.toolDisplayName || node.toolName,
-      status: node.status === 'waiting_approval' ? 'waiting' : node.status === 'success' ? 'done' : node.status,
+      status: toRuntimeNodeStatus(node.status),
       summary: node.result?.error || node.result?.data ? String(node.result.data || node.result.error) : undefined,
       approval: node.approval,
     })),
@@ -371,7 +385,7 @@ export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined) {
       nodeId: node.id,
       kind: node.kind,
       title: node.toolDisplayName || node.toolName,
-      status: node.status === 'waiting_approval' ? 'waiting' : node.status === 'success' ? 'done' : node.status,
+      status: toRuntimeNodeStatus(node.status),
       summary: node.result?.error || node.result?.data ? String(node.result.data || node.result.error) : undefined,
       approval: node.approval,
     })),

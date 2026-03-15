@@ -57,26 +57,6 @@ func (r *chatRecorder) HandleEvent(ctx context.Context, eventType events.Name, p
 	case events.Meta:
 		r.handleMeta(ctx, payload)
 
-	// === 新增: 原生链节点事件处理 ===
-	case events.ChainStarted:
-		r.handleChainStarted(payload)
-	case events.ChainNodeOpen:
-		r.handleChainNodeOpen(payload)
-	case events.ChainNodePatch:
-		r.handleChainNodePatch(payload)
-	case events.ChainNodeReplace:
-		r.handleChainNodePatch(payload)
-	case events.ChainNodeClose:
-		r.handleChainNodeClose(payload)
-	case events.ChainCollapsed:
-		r.handleChainCollapsed(payload)
-	case events.FinalAnswerStart:
-		r.handleFinalAnswerStart(payload)
-	case events.FinalAnswerDelta:
-		r.handleFinalAnswerDelta(payload)
-	case events.FinalAnswerDone:
-		r.handleFinalAnswerDone(payload)
-
 	// === 兼容层: 旧事件处理 ===
 	case events.ToolCall:
 		r.upsertStage(map[string]any{
