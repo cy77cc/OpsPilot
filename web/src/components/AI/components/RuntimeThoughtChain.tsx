@@ -75,7 +75,7 @@ function renderToolRow(row: Record<string, unknown>, key: string) {
   );
 }
 
-function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string) => void): ConfirmationRequest | null {
+function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string, reason?: string) => void): ConfirmationRequest | null {
   if (!node.approval) {
     return null;
   }
