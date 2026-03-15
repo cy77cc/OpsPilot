@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/middlewares/dynamictool/toolsearch"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
@@ -33,7 +35,18 @@ func NewAgent(ctx context.Context, deps Deps) (adk.ResumableAgent, error) {
 		return nil, err
 	}
 
+	middleware, err := toolsearch.New(ctx, &toolsearch.Config{
+		DynamicTools: []tool.BaseTool{
+			// TODO
+
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Model: model,
+		Model:    model,
+		Handlers: []adk.ChatModelAgentMiddleware{middleware},
 	})
 }
