@@ -726,10 +726,17 @@ export const aiApi = {
     return apiService.post(`/ai/approvals/${id}/confirm`, { approve });
   },
 
-  async decideChainApproval(chainId: string, nodeId: string, approved: boolean, reason?: string): Promise<ApiResponse<{ approval?: Record<string, unknown>; execution?: Record<string, unknown> }>> {
+  async decideChainApproval(
+    chainId: string,
+    nodeId: string,
+    approved: boolean,
+    reason?: string,
+    editedArguments?: string,
+  ): Promise<ApiResponse<{ approval?: Record<string, unknown>; execution?: Record<string, unknown> }>> {
     return apiService.post(`/ai/chains/${chainId}/approvals/${nodeId}/decision`, {
       approved,
       ...(reason ? { reason } : {}),
+      ...(editedArguments ? { edited_arguments: editedArguments } : {}),
     });
   },
 
@@ -739,6 +746,7 @@ export const aiApi = {
     approved: boolean,
     handlers: AIChatStreamHandlers,
     reason?: string,
+    editedArguments?: string,
   ): Promise<void> {
     const base = import.meta.env.VITE_API_BASE || '/api/v1';
     const token = localStorage.getItem('token');
@@ -755,6 +763,7 @@ export const aiApi = {
       body: JSON.stringify({
         approved,
         ...(reason ? { reason } : {}),
+        ...(editedArguments ? { edited_arguments: editedArguments } : {}),
       }),
     });
 
