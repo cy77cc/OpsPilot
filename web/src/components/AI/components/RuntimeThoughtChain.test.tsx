@@ -7,12 +7,13 @@ vi.mock('@ant-design/x', () => ({
   ThoughtChain: ({
     items,
   }: {
-    items: Array<{ key: string; title: string; content?: React.ReactNode }>;
+    items: Array<{ key: string; title: string; description?: string; content?: React.ReactNode }>;
   }) => (
     <div>
       {items.map((item) => (
         <div key={item.key}>
           <div>{item.title}</div>
+          {item.description ? <div>{item.description}</div> : null}
           <div>{item.content}</div>
         </div>
       ))}

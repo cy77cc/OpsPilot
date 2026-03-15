@@ -1,6 +1,8 @@
-import React from 'react';
-import { Button, Space, Spin, theme } from 'antd';
+import React, { useState } from 'react';
+import { Button, Space, Spin, theme, Input, Collapse, Alert } from 'antd';
 import type { ConfirmationRequest, RiskLevel } from '../types';
+
+const { TextArea } = Input;
 
 interface ConfirmationPanelProps {
   confirmation: ConfirmationRequest;
@@ -8,6 +10,7 @@ interface ConfirmationPanelProps {
 
 /**
  * 审批确认面板
+ * 支持查看和编辑工具参数
  */
 export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
   const { token } = theme.useToken();
@@ -16,6 +19,45 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
   const waiting = status === 'waiting_user';
   const submitting = status === 'submitting';
   const failed = status === 'failed';
+
+  // JSON 编辑状态
+  const [showEditor, setShowEditor] = useState(false);
+  const [editedJson, setEditedJson] = useState(confirmation.argumentsJson || '');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // JSON 验证函数
+  const validateJson = (value: string): boolean => {
+    if (!value.trim()) {
+      setJsonError('参数不能为空');
+      return false;
+    }
+    try {
+      JSON.parse(value);
+      setJsonError(null);
+      return true;
+    } catch {
+      setJsonError('JSON 格式无效');
+      return false;
+    }
+  };
+
+  // 处理确认（带编辑参数）
+  const handleConfirm = () => {
+    // 如果展开了编辑器且参数有变化，验证并传递编辑后的参数
+    if (showEditor && confirmation.argumentsJson && editedJson !== confirmation.argumentsJson) {
+      if (!validateJson(editedJson)) {
+        return;
+      }
+      confirmation.onConfirm(editedJson);
+    } else {
+      confirmation.onConfirm();
+    }
+  };
+
+  // 处理取消
+  const handleCancel = () => {
+    confirmation.onCancel();
+  };
 
   if (submitting) {
     return (
@@ -41,16 +83,19 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
           </div>
         </div>
         <div className="confirmation-compact-actions">
-          <Button type="link" onClick={() => confirmation.onConfirm()}>
+          <Button type="link" onClick={handleConfirm}>
             重试
           </Button>
-          <Button type="text" onClick={() => confirmation.onCancel()}>
+          <Button type="text" onClick={handleCancel}>
             取消
           </Button>
         </div>
       </div>
     );
   }
+
+  // 判断是否需要显示参数编辑器
+  const showParamEditor = confirmation.argumentsJson && confirmation.editable !== false;
 
   return (
     <div
@@ -87,7 +132,50 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
         {confirmation.description}
       </div>
 
-      {confirmation.details && (
+      {/* 参数编辑区域 */}
+      {showParamEditor && (
+        <div style={{ marginTop: 12 }}>
+          <Collapse
+            ghost
+            size="small"
+            items={[
+              {
+                key: 'params',
+                label: showEditor ? '隐藏参数' : '查看/编辑参数',
+                children: (
+                  <div style={{ marginTop: 8 }}>
+                    <TextArea
+                      value={editedJson}
+                      onChange={(e) => {
+                        setEditedJson(e.target.value);
+                        if (jsonError) validateJson(e.target.value);
+                      }}
+                      placeholder="JSON 格式的工具参数"
+                      autoSize={{ minRows: 4, maxRows: 12 }}
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        background: token.colorBgContainer,
+                      }}
+                      disabled={!waiting}
+                    />
+                    {jsonError && (
+                      <Alert
+                        type="error"
+                        message={jsonError}
+                        style={{ marginTop: 8, fontSize: 12 }}
+                      />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            onChange={(keys) => setShowEditor(keys.includes('params'))}
+          />
+        </div>
+      )}
+
+      {confirmation.details && !showParamEditor && (
         <details
           className="confirmation-details"
           style={{
@@ -113,14 +201,15 @@ export function ConfirmationPanel({ confirmation }: ConfirmationPanelProps) {
           type="primary"
           aria-label={`${confirmation.title}，确认执行`}
           style={{ minHeight: 44 }}
-          onClick={() => confirmation.onConfirm()}
+          onClick={handleConfirm}
+          disabled={jsonError !== null}
         >
           确认执行
         </Button>
         <Button
           aria-label={`${confirmation.title}，取消`}
           style={{ minHeight: 44 }}
-          onClick={() => confirmation.onCancel()}
+          onClick={handleCancel}
         >
           取消
         </Button>
