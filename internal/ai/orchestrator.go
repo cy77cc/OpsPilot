@@ -318,11 +318,16 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 
 	params := &adk.ResumeParams{}
 	if strings.TrimSpace(target) != "" {
+		resumeData := map[string]any{
+			"approved": true,
+			"reason":   strings.TrimSpace(req.Reason),
+		}
+		// 如果有编辑后的参数，传递给 ADK
+		if strings.TrimSpace(req.EditedArguments) != "" {
+			resumeData["edited_arguments"] = strings.TrimSpace(req.EditedArguments)
+		}
 		params.Targets = map[string]any{
-			target: map[string]any{
-				"approved": true,
-				"reason":   strings.TrimSpace(req.Reason),
-			},
+			target: resumeData,
 		}
 	}
 	iter, err := o.runner.ResumeWithParams(ctx, checkpointID, params)

@@ -12,9 +12,10 @@ import (
 )
 
 type interruptState struct {
-	ArgumentsInJSON string `json:"arguments_json"`
-	Approved        bool   `json:"approved,omitempty"`
-	Reason          string `json:"reason,omitempty"`
+	ArgumentsInJSON  string `json:"arguments_json"`
+	EditedArguments  string `json:"edited_arguments,omitempty"`
+	Approved         bool   `json:"approved,omitempty"`
+	Reason           string `json:"reason,omitempty"`
 }
 
 type Gate struct {
@@ -75,6 +76,10 @@ func (g *Gate) handleResume(ctx context.Context, hasState bool, state interruptS
 	if hasData {
 		state.Approved = resume.Approved
 		state.Reason = resume.Reason
+		// 保存编辑后的参数
+		if resume.EditedArguments != "" {
+			state.EditedArguments = resume.EditedArguments
+		}
 	}
 	return g.executeResumed(ctx, state, opts...)
 }
@@ -87,7 +92,12 @@ func (g *Gate) executeResumed(ctx context.Context, state interruptState, opts ..
 		}
 		return message, nil
 	}
-	return g.inner.InvokableRun(ctx, state.ArgumentsInJSON, opts...)
+	// 优先使用编辑后的参数，否则使用原始参数
+	argumentsToUse := state.ArgumentsInJSON
+	if strings.TrimSpace(state.EditedArguments) != "" {
+		argumentsToUse = state.EditedArguments
+	}
+	return g.inner.InvokableRun(ctx, argumentsToUse, opts...)
 }
 
 func (g *Gate) triggerInterrupt(ctx context.Context, argumentsInJSON string, decision airuntime.ApprovalDecision, params map[string]any) (string, error) {
@@ -98,6 +108,7 @@ func (g *Gate) triggerInterrupt(ctx context.Context, argumentsInJSON string, dec
 		RiskLevel:       decision.Tool.Risk,
 		Summary:         g.summaryRenderer.Render(decision, params),
 		Params:          params,
+		ArgumentsInJSON: argumentsInJSON,
 		Environment:     decision.Environment,
 		Namespace:       firstValue(stringValue(params["namespace"]), namespaceFromResources(g.runtimeContext(ctx).SelectedResources)),
 	}
