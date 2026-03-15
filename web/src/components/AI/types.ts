@@ -64,8 +64,20 @@ export interface ConfirmationRequest {
   status?: 'waiting_user' | 'submitting' | 'failed';
   errorMessage?: string;
   details?: Record<string, unknown>;
-  onConfirm: () => void;
-  onCancel: () => void;
+  // 工具信息
+  toolName?: string;
+  toolDisplayName?: string;
+  // 恢复身份字段
+  planId?: string;
+  stepId?: string;
+  checkpointId?: string;
+  target?: string;
+  // 参数编辑支持
+  argumentsJson?: string;
+  editable?: boolean;
+  // 回调
+  onConfirm: (editedArgs?: string) => void;
+  onCancel: (reason?: string) => void;
 }
 
 // 推荐建议

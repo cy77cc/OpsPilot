@@ -198,6 +198,17 @@ function approvalFromPayload(payload: Record<string, unknown>): Omit<Confirmatio
     risk: (asString(payload.risk || payload.risk_level) || 'medium') as ConfirmationRequest['risk'],
     status: 'waiting_user',
     details: payload.details as Record<string, unknown> | undefined,
+    // 工具信息
+    toolName: asString(payload.tool_name),
+    toolDisplayName: asString(payload.tool_display_name),
+    // 恢复身份字段
+    planId: asString(payload.plan_id),
+    stepId: asString(payload.step_id),
+    checkpointId: asString(payload.checkpoint_id),
+    target: asString(payload.target),
+    // 参数编辑支持
+    argumentsJson: asString(payload.arguments_json),
+    editable: true,
   };
 }
 
