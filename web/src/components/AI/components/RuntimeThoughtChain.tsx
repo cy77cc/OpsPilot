@@ -8,7 +8,7 @@ import './RuntimeChain.css';
 interface RuntimeThoughtChainProps {
   nodes: RuntimeThoughtChainNode[];
   isCollapsed?: boolean;
-  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void;
+  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string, reason?: string) => void;
 }
 
 function asStructuredSteps(structured: Record<string, unknown> | undefined): Array<Record<string, unknown>> {
@@ -75,14 +75,25 @@ function renderToolRow(row: Record<string, unknown>, key: string) {
   );
 }
 
-function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void): ConfirmationRequest | null {
+function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string) => void): ConfirmationRequest | null {
   if (!node.approval) {
     return null;
   }
+  const approvalPayload: Record<string, unknown> = {
+    ...node.approval,
+    // Ensure canonical fields are at the top level for resume identity
+    plan_id: node.approval.planId,
+    step_id: node.approval.stepId,
+    checkpoint_id: node.approval.checkpointId,
+    target: node.approval.target,
+    tool_name: node.approval.toolName,
+    tool_display_name: node.approval.toolDisplayName,
+    arguments_json: node.approval.argumentsJson,
+  };
   return {
     ...node.approval,
-    onConfirm: () => onApprovalDecision?.(node.approval?.details || {}, true),
-    onCancel: () => onApprovalDecision?.(node.approval?.details || {}, false),
+    onConfirm: (editedArgs?: string) => onApprovalDecision?.(approvalPayload, true, editedArgs),
+    onCancel: (reason?: string) => onApprovalDecision?.(approvalPayload, false, undefined, reason),
   };
 }
 

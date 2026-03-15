@@ -444,4 +444,69 @@ describe('Copilot', () => {
     expect(await screen.findByText('正在整理执行计划')).toBeInTheDocument();
     expect(await screen.findByText('nginx 当前状态正常')).toBeInTheDocument();
   });
+
+  it('renders planner structured steps without leaking raw json', async () => {
+    restoredConversation = {
+      conversations: [{ id: 'sess-planner-json', title: '当前会话', createdAt: '2026-03-12T00:00:00Z', updatedAt: '2026-03-12T00:00:01Z' }],
+      activeConversation: {
+        id: 'sess-planner-json',
+        title: '当前会话',
+        messages: [
+          {
+            id: 'msg-user',
+            role: 'user',
+            content: '检查所有主机状态',
+            createdAt: '2026-03-12T00:00:00Z',
+          },
+          {
+            id: 'msg-assistant',
+            role: 'assistant',
+            content: '旧答案',
+            createdAt: '2026-03-12T00:00:01Z',
+          },
+        ],
+      },
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ sessionId: 'sess-planner-json', createdAt: new Date().toISOString() });
+      handlers.onChainStarted?.({ turn_id: 'turn-planner-json' } as any);
+      handlers.onChainNodeOpen?.({
+        turn_id: 'turn-planner-json',
+        node_id: 'plan:plan-json-1',
+        kind: 'plan',
+        title: '整理执行步骤',
+        status: 'loading',
+        headline: '已生成执行计划',
+        structured: {
+          steps: [
+            { id: 'step-1', title: '获取主机列表', description: '读取所有主机信息' },
+            { id: 'step-2', title: '汇总状态', description: '统计在线离线数量' },
+          ],
+        },
+      } as any);
+      handlers.onChainNodeClose?.({
+        turn_id: 'turn-planner-json',
+        node_id: 'plan:plan-json-1',
+        status: 'done',
+      } as any);
+      handlers.onChainCollapsed?.({ turn_id: 'turn-planner-json' } as any);
+      handlers.onFinalAnswerStarted?.({ turn_id: 'turn-planner-json' } as any);
+      handlers.onFinalAnswerDelta?.({ turn_id: 'turn-planner-json', chunk: '共有 5 台主机在线' } as any);
+      handlers.onFinalAnswerDone?.({ turn_id: 'turn-planner-json' } as any);
+      handlers.onDone?.({ stream_state: 'ok' } as any);
+    });
+
+    render(<Copilot open scene="global" />);
+
+    const regenerateButtons = await screen.findAllByRole('button', { name: '重新生成' });
+    fireEvent.click(regenerateButtons[regenerateButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(aiApi.chatStream).toHaveBeenCalledTimes(1);
+    });
+
+    // Expect final answer renders correctly
+    expect(await screen.findByText('共有 5 台主机在线')).toBeInTheDocument();
+  });
 });

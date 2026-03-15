@@ -263,7 +263,7 @@ const AssistantMessage: React.FC<{
   reducedMotion: boolean;
   onRegenerate?: () => void;
   onRecommendationSelect?: (prompt: string) => void;
-  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void;
+  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string, reason?: string) => void;
   isLoading?: boolean;
 }> = ({
   content,
@@ -1202,17 +1202,22 @@ export const Copilot: React.FC<CopilotProps> = ({
     assistantId: string,
     payload: Record<string, unknown>,
     approved: boolean,
+    editedArgs?: string,
+    _reason?: string,
   ) => {
+    // Use canonical fields directly from runtime approval payload
     const chainId = String(payload.plan_id || '');
-    const stepId = String(payload.step_id || payload.checkpoint_id || '');
-    const approvalNodeId = `approval:${stepId || String(payload.id || assistantId)}`;
+    const stepId = String(payload.step_id || '');
+    const checkpointId = String(payload.checkpoint_id || '');
+    const target = String(payload.target || stepId);
+    const approvalNodeId = `approval:${stepId}`;
     setIsLoading(true);
     streamingIdRef.current = assistantId;
     patchAssistantMessage(activeKey, assistantId, (message) => {
       return {
         ...message,
         confirmation: {
-          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          id: String(payload.id || payload.request_id || stepId),
           title: String(payload.title || '正在提交'),
           description: approved ? '正在提交确认，马上继续执行。' : '正在提交取消请求。',
           risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
@@ -1238,7 +1243,7 @@ export const Copilot: React.FC<CopilotProps> = ({
 
     try {
       if (!approved) {
-        await aiApi.decideChainApproval(chainId, approvalNodeId, false);
+        await aiApi.decideChainApproval(chainId, approvalNodeId, false, _reason);
         patchAssistantMessage(activeKey, assistantId, (message) => ({
           ...message,
           confirmation: undefined,
@@ -1261,7 +1266,7 @@ export const Copilot: React.FC<CopilotProps> = ({
       patchAssistantMessage(activeKey, assistantId, (message) => ({
         ...message,
         confirmation: {
-          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          id: String(payload.id || payload.request_id || stepId),
           title: '已确认，继续执行',
           description: '审批已通过，正在继续执行当前步骤。',
           risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
@@ -1286,14 +1291,16 @@ export const Copilot: React.FC<CopilotProps> = ({
         approvalNodeId,
         true,
         createStreamHandlers(activeKey, assistantId),
+        _reason,
+        editedArgs,
       );
     } catch {
       patchAssistantMessage(activeKey, assistantId, (message) => ({
         ...message,
         confirmation: {
-          id: String(payload.id || payload.step_id || payload.checkpoint_id || assistantId),
+          id: String(payload.id || payload.request_id || stepId),
           title: String(payload.title || '等待你确认'),
-          description: String(payload.user_visible_summary || payload.title || '当前步骤需要确认后继续执行'),
+          description: String(payload.summary || payload.title || '当前步骤需要确认后继续执行'),
           risk: (payload.risk || payload.risk_level || 'high') as 'low' | 'medium' | 'high',
           status: 'failed',
           errorMessage: '审批结果提交失败，请重试。',
@@ -1485,7 +1492,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         isStreaming={isStreaming || (isCurrentStreaming && !!msg.thinking && !msg.content)}
         onRegenerate={() => handleRegenerate(msg.id)}
         onRecommendationSelect={handleRecommendationSelect}
-        onApprovalDecision={(payload, approved) => handleApprovalDecision(msg.id, payload, approved)}
+        onApprovalDecision={(payload, approved, editedArgs, reason) => handleApprovalDecision(msg.id, payload, approved, editedArgs, reason)}
         isLoading={showLoading}
       />
     );

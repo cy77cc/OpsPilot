@@ -311,18 +311,27 @@ const ToolMessageBlock: React.FC<{ block: ToolExecutionBlock }> = ({ block }) =>
   return <ToolCard tool={tool} />;
 };
 
-const ApprovalMessageBlock: React.FC<{ block: ApprovalBlock; onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void }> = ({ block, onApprovalDecision }) => {
+const ApprovalMessageBlock: React.FC<{ block: ApprovalBlock; onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string, reason?: string) => void }> = ({ block, onApprovalDecision }) => {
   const payload = block.payload || {};
   const confirmation: ConfirmationRequest = {
     id: block.id,
     title: String(payload.title || block.title || '等待确认'),
-    description: String(payload.user_visible_summary || payload.summary || '此操作需要你的确认后继续执行'),
+    description: String(payload.summary || payload.title || '此操作需要你的确认后继续执行'),
     risk: (payload.risk || 'high') as 'low' | 'medium' | 'high',
     status: (payload.status || 'waiting_user') as 'waiting_user' | 'submitting' | 'failed',
     errorMessage: typeof payload.error_message === 'string' ? payload.error_message : undefined,
     details: payload,
-    onConfirm: () => onApprovalDecision?.(payload, true),
-    onCancel: () => onApprovalDecision?.(payload, false),
+    // Canonical fields for resume identity
+    toolName: payload.tool_name ? String(payload.tool_name) : undefined,
+    toolDisplayName: payload.tool_display_name ? String(payload.tool_display_name) : undefined,
+    planId: payload.plan_id ? String(payload.plan_id) : undefined,
+    stepId: payload.step_id ? String(payload.step_id) : undefined,
+    checkpointId: payload.checkpoint_id ? String(payload.checkpoint_id) : undefined,
+    target: payload.target ? String(payload.target) : undefined,
+    argumentsJson: payload.arguments_json ? String(payload.arguments_json) : undefined,
+    editable: true,
+    onConfirm: (editedArgs?: string) => onApprovalDecision?.(payload, true, editedArgs),
+    onCancel: (reason?: string) => onApprovalDecision?.(payload, false, undefined, reason),
   };
   return <ConfirmationPanel confirmation={confirmation} />;
 };
@@ -354,7 +363,7 @@ export function AssistantMessageBlocks({
 }: {
   blocks: AssistantMessageBlock[];
   onRecommendationSelect?: (prompt: string) => void;
-  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean) => void;
+  onApprovalDecision?: (payload: Record<string, unknown>, approved: boolean, editedArgs?: string, reason?: string) => void;
 }) {
   const { token } = theme.useToken();
 
