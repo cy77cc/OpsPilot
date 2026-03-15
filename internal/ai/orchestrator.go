@@ -12,7 +12,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -26,6 +28,98 @@ import (
 	approvaltools "github.com/cy77cc/OpsPilot/internal/ai/tools/approval"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 )
+
+// executionStats 累加单次执行的统计数据。
+type executionStats struct {
+	startedAt     time.Time
+	firstTokenAt  time.Time
+	firstTokenOnce sync.Once
+
+	promptTokens     int64
+	completionTokens int64
+	totalTokens      int64
+
+	toolCallCount  int
+	toolErrorCount int
+
+	approvalCount  int
+	approvalWaitMs int64
+}
+
+func newExecutionStats() *executionStats {
+	return &executionStats{
+		startedAt: time.Now().UTC(),
+	}
+}
+
+func (s *executionStats) recordTokens(prompt, completion, total int64) {
+	s.promptTokens += prompt
+	s.completionTokens += completion
+	s.totalTokens += total
+}
+
+func (s *executionStats) recordFirstToken() {
+	s.firstTokenOnce.Do(func() {
+		s.firstTokenAt = time.Now().UTC()
+	})
+}
+
+func (s *executionStats) firstTokenMs() int {
+	if s.firstTokenAt.IsZero() {
+		return 0
+	}
+	return int(s.firstTokenAt.Sub(s.startedAt).Milliseconds())
+}
+
+func (s *executionStats) tokensPerSecond() float64 {
+	if s.firstTokenAt.IsZero() {
+		return 0
+	}
+	elapsed := time.Since(s.firstTokenAt).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(s.completionTokens) / elapsed
+}
+
+// extractTokenUsage 从 AgentEvent 提取 token 使用量。
+func extractTokenUsage(event *adk.AgentEvent) (prompt, completion, total int64) {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return 0, 0, 0
+	}
+	msg := event.Output.MessageOutput.Message
+	if msg == nil || msg.ResponseMeta == nil || msg.ResponseMeta.Usage == nil {
+		return 0, 0, 0
+	}
+	usage := msg.ResponseMeta.Usage
+	return int64(usage.PromptTokens), int64(usage.CompletionTokens), int64(usage.TotalTokens)
+}
+
+// isToolError 检查工具输出是否包含错误。
+func isToolError(event *adk.AgentEvent) bool {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return false
+	}
+	msg := event.Output.MessageOutput.Message
+	if msg == nil {
+		return false
+	}
+	content := strings.TrimSpace(msg.Content)
+	if strings.Contains(content, `"error"`) || strings.Contains(content, `"failed"`) {
+		return true
+	}
+	return false
+}
+
+// sanitizeErrorMessage 脱敏错误信息。
+func sanitizeErrorMessage(msg string) string {
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	msg = regexp.MustCompile(`(?i)(api[_-]?key|token|secret)[\s:=]*[\w-]{20,}`).ReplaceAllString(msg, "[REDACTED]")
+	msg = regexp.MustCompile(`/[\w/.-]+`).ReplaceAllString(msg, "[PATH]")
+	return msg
+}
 
 // Orchestrator 封装 ADK Runner，提供流式执行与审批恢复能力。
 type Orchestrator struct {
