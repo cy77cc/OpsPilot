@@ -23,6 +23,22 @@ const HostMetricsCard: React.FC<HostMetricsCardProps> = ({ cpuSeries, memorySeri
 
   const series = metricType === 'cpu' ? cpuSeries : memorySeries;
 
+  // 根据指标类型获取单位
+  const getUnit = React.useCallback((type: MetricType) => {
+    return type === 'cpu' ? '%' : '%';
+  }, []);
+
+  // 根据指标类型获取 Y 轴标题
+  const getYAxisTitle = React.useCallback((type: MetricType) => {
+    return type === 'cpu' ? 'CPU 使用率 (%)' : '内存使用率 (%)';
+  }, []);
+
+  // 格式化数值为两位小数
+  const formatValue = React.useCallback((val: number | undefined) => {
+    if (val === undefined || val === null) return '0.00';
+    return val.toFixed(2);
+  }, []);
+
   const chartData = useMemo(() => {
     const result: Array<{
       time: string;
@@ -61,6 +77,12 @@ const HostMetricsCard: React.FC<HostMetricsCardProps> = ({ cpuSeries, memorySeri
       position: 'top' as const,
       itemSpacing: 16,
     },
+    axis: {
+      y: {
+        title: getYAxisTitle(metricType),
+        labelFormatter: (val: number) => `${val.toFixed(0)}%`,
+      },
+    },
     tooltip: {
       shared: true,
       showCrosshairs: true,
@@ -80,10 +102,11 @@ const HostMetricsCard: React.FC<HostMetricsCardProps> = ({ cpuSeries, memorySeri
         return _title;
       },
       customItems: (originalItems: any[]) => {
+        const unit = getUnit(metricType);
         return originalItems.map((item) => ({
           ...item,
           name: item.data?.host || item.name,
-          value: `${(item.data?.value ?? item.value)?.toFixed?.(2) ?? item.value}%`,
+          value: `${formatValue(item.data?.value ?? item.value)}${unit}`,
           marker: {
             style: { fill: item.data?.color || item.color },
           },
