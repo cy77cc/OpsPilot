@@ -49,7 +49,7 @@ The fixed instruction should not depend on `RuntimeContext` values. It should re
 
 Per-request runtime context is prepended to the user's message as a short structured envelope.
 
-Recommended format:
+Required format:
 
 ```text
 [Runtime Context]
@@ -64,14 +64,19 @@ selected_resources: none
 
 This envelope is part of the effective user input, not part of the system prompt. The raw user request remains intact under a separate section.
 
-Only high-value fields should be injected:
+The envelope is a stable prompt contract and must obey these rules:
 
-- `scene`
-- `project`
-- `page`
-- `selected_resources`
+- Header names are fixed: `[Runtime Context]` and `[User Request]`.
+- Field order is fixed: `scene`, `project`, `page`, `selected_resources`.
+- `scene` is the only required field when present in normalized runtime context.
+- `project`, `page`, and `selected_resources` are optional and omitted when empty.
+- Omitted fields are removed entirely rather than rendered as `unknown`, `none`, or `未指定`.
+- `selected_resources` is rendered as a comma-separated summary of `name(type)` items. If no resources exist, the line is omitted.
+- Values are plain text single-line summaries. Newlines in source values must be collapsed to spaces before injection.
+- The backend must not inject arbitrary `UserContext` or raw `Metadata` maps.
+- The raw user request is appended unchanged after the `[User Request]` header.
 
-Low-value or noisy fields such as the full `UserContext` and arbitrary metadata maps should not be dumped into the prompt.
+Low-value or noisy fields such as the full `UserContext` and arbitrary metadata maps must not be dumped into the prompt.
 
 ### Scene Guidance Model
 
@@ -88,7 +93,7 @@ Example domain preference rules:
 - `host:*` prefers `host`, then `deployment`, then `monitor`
 - `k8s:*` prefers `kubernetes`, then `service`, then `deployment`
 
-These are guidance rules for the prompt, not enforcement rules in the tool registry.
+These mappings are owned by the fixed instruction text, not by the runtime-context envelope. The envelope carries only factual runtime hints such as the current scene key. The fixed instruction explains how the agent should interpret scene values when choosing a starting tool domain.
 
 ### Tool Information In Prompt
 
@@ -121,11 +126,11 @@ Concrete tool availability still comes from the runtime tool list provided by AD
 
 ### Orchestrator
 
-The orchestrator should stop generating per-request system instructions from runtime context. Instead, it should construct the input envelope and pass the combined text as the message payload for the run.
+The orchestrator is responsible for normalizing `RuntimeContext` into the required input envelope format. It should stop generating per-request system instructions from runtime context and instead construct the envelope plus raw user request as the message payload for the run.
 
 ### Runtime
 
-`BuildInstruction` becomes unnecessary for runtime-scoped personalization. It can either be removed entirely or replaced with a thin fixed-prompt accessor, depending on how the code is organized.
+`BuildInstruction` is removed as a runtime personalization mechanism. Per-request or per-scene system-prompt generation is explicitly forbidden by this design. If a helper remains, it may only return the same fixed instruction constant for every request.
 
 ### Tool Selection
 
@@ -134,7 +139,7 @@ No hard scene filtering is introduced in the registry by this design. Tool acces
 ## Data Flow
 
 1. Frontend sends user message plus `RuntimeContext`.
-2. Backend builds a compact runtime-context prefix.
+2. Orchestrator normalizes `RuntimeContext` into the stable envelope format.
 3. Backend combines prefix and raw user message into the effective user input.
 4. Agent receives:
    - fixed instruction
@@ -145,9 +150,21 @@ No hard scene filtering is introduced in the registry by this design. Tool acces
 ## Error Handling
 
 - Missing `scene` should not be treated as an error.
-- Missing `project` or `page` should simply omit those lines from the context envelope.
+- Missing `project`, `page`, or `selected_resources` should omit those lines from the envelope.
+- Runtime-context normalization is owned by the orchestrator boundary. The agent receives only normalized text, not raw runtime maps.
+- Invalid scene keys are passed through as plain scene strings when available; they do not trigger validation failure or dynamic prompt branching.
 - Invalid or noisy metadata should not leak into the prompt by default.
 - If runtime context cannot be normalized, the agent should still run with fixed instruction and raw user input.
+
+## Supersession
+
+This design supersedes the earlier dynamic-instruction direction in the current ChatModelAgent refactor work. Any existing design notes, plans, or implementation steps that require `BuildInstruction(ctx)` to generate a per-request system prompt are obsolete once this design is adopted.
+
+Implementation planning for this topic must treat the following as mandatory:
+
+- fixed agent instruction
+- runtime-context envelope in user input
+- no dynamic instruction rendering from `RuntimeContext`
 
 ## Testing
 
