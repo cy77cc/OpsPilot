@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, Progress, Select, Empty, Typography } from 'antd';
 import {
   DashboardOutlined,
-  MemoryOutlined,
+  DatabaseOutlined,
   CloudOutlined,
 } from '@ant-design/icons';
 import type { ClusterResource } from '../../api/modules/dashboard';
@@ -85,7 +85,7 @@ const ClusterResourceCard: React.FC<Props> = ({ data, loading }) => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <MemoryOutlined className="text-green-500" />
+                <DatabaseOutlined className="text-green-500" />
                 <Text strong>内存</Text>
               </div>
               <Text type="secondary" className="text-xs">

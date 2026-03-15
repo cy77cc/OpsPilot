@@ -9,13 +9,26 @@ import type { OperationsOverview } from '../../api/modules/dashboard';
 
 const { Text } = Typography;
 
+interface DetailItem {
+  label: string;
+  value: number;
+  type?: 'success' | 'error';
+}
+
 interface Props {
   data: OperationsOverview;
   loading?: boolean;
 }
 
 const OperationsCard: React.FC<Props> = ({ data, loading }) => {
-  const items = [
+  const items: Array<{
+    key: string;
+    icon: React.ReactNode;
+    label: string;
+    badge: number;
+    badgeStatus?: 'success' | 'error' | 'processing';
+    details: DetailItem[];
+  }> = [
     {
       key: 'deployments',
       icon: <RocketOutlined />,
