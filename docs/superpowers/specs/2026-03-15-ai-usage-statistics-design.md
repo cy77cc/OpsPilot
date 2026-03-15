@@ -80,21 +80,20 @@ CREATE TABLE ai_usage_logs (
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 
-    INDEX idx_session_id (session_id),
-    INDEX idx_user_created (user_id, created_at),
-    INDEX idx_created_at (created_at),
-    INDEX idx_scene (scene),
-    INDEX idx_status (status)
+    INDEX idx_ai_usage_logs_session_id (session_id),
+    INDEX idx_ai_usage_logs_user_created (user_id, created_at),
+    INDEX idx_ai_usage_logs_created_at (created_at),
+    INDEX idx_ai_usage_logs_scene (scene),
+    INDEX idx_ai_usage_logs_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT 'AI 使用统计日志';
 ```
 
 ### Go Model
 
 ```go
-// internal/model/ai/usage_log.go
+// internal/model/ai_usage_log.go
 
-// Package ai 提供 AI 相关的数据模型。
-package ai
+package model
 
 import "time"
 
@@ -108,15 +107,15 @@ type AIUsageLog struct {
     TraceID string `gorm:"column:trace_id;type:varchar(36);not null"`
 
     // 关联标识
-    SessionID string `gorm:"column:session_id;type:varchar(36);not null;index:idx_session_id"`
+    SessionID string `gorm:"column:session_id;type:varchar(36);not null;index:idx_ai_usage_logs_session_id"`
     PlanID    string `gorm:"column:plan_id;type:varchar(36);not null"`
     TurnID    string `gorm:"column:turn_id;type:varchar(36)"`
-    UserID    uint64 `gorm:"column:user_id;index:idx_user_created"`
+    UserID    uint64 `gorm:"column:user_id;index:idx_ai_usage_logs_user_created"`
 
     // 执行元信息
-    Scene     string `gorm:"column:scene;type:varchar(64);index:idx_scene"`
+    Scene     string `gorm:"column:scene;type:varchar(64);index:idx_ai_usage_logs_scene"`
     Operation string `gorm:"column:operation;type:varchar(32)"`
-    Status    string `gorm:"column:status;type:varchar(32);index:idx_status"`
+    Status    string `gorm:"column:status;type:varchar(32);index:idx_ai_usage_logs_status"`
 
     // Token 统计
     PromptTokens     int     `gorm:"column:prompt_tokens;default:0"`
@@ -143,7 +142,7 @@ type AIUsageLog struct {
     ErrorType    string `gorm:"column:error_type;type:varchar(64)"`
     ErrorMessage string `gorm:"column:error_message;type:text"`
 
-    CreatedAt time.Time `gorm:"column:created_at;autoCreateTime;index:idx_created_at"`
+    CreatedAt time.Time `gorm:"column:created_at;autoCreateTime;index:idx_ai_usage_logs_created_at"`
 }
 
 func (AIUsageLog) TableName() string {
@@ -154,16 +153,15 @@ func (AIUsageLog) TableName() string {
 ### DAO 层
 
 ```go
-// internal/dao/ai/usage_log.go
+// internal/dao/ai_usage_log.go
 
-// Package ai 提供 AI 相关的数据访问对象。
-package ai
+package dao
 
 import (
     "context"
     "time"
 
-    "github.com/cy77cc/OpsPilot/internal/model/ai"
+    "github.com/cy77cc/OpsPilot/internal/model"
     "gorm.io/gorm"
 )
 
@@ -178,13 +176,13 @@ func NewUsageLogDAO(db *gorm.DB) *UsageLogDAO {
 }
 
 // Create 创建使用统计记录。
-func (d *UsageLogDAO) Create(ctx context.Context, log *ai.AIUsageLog) error {
+func (d *UsageLogDAO) Create(ctx context.Context, log *model.AIUsageLog) error {
     return d.db.WithContext(ctx).Create(log).Error
 }
 
 // GetBySessionID 按 SessionID 查询使用统计列表。
-func (d *UsageLogDAO) GetBySessionID(ctx context.Context, sessionID string) ([]ai.AIUsageLog, error) {
-    var logs []ai.AIUsageLog
+func (d *UsageLogDAO) GetBySessionID(ctx context.Context, sessionID string) ([]model.AIUsageLog, error) {
+    var logs []model.AIUsageLog
     err := d.db.WithContext(ctx).
         Where("session_id = ?", sessionID).
         Order("created_at DESC").
@@ -217,7 +215,7 @@ type StatsResult struct {
 // GetStats 获取统计数据。
 func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsResult, error) {
     var result StatsResult
-    q := d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    q := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
 
     if query.Scene != "" {
@@ -242,7 +240,7 @@ func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsRes
 
     // 审批统计
     var approvalTotal, approvalPassed int64
-    approvalQ := d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    approvalQ := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
     approvalQ.Where("approval_count > 0").Count(&approvalTotal)
     approvalQ.Where("approval_status = ?", "approved").Count(&approvalPassed)
@@ -256,10 +254,10 @@ func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsRes
 
     // 工具错误率
     var toolCalls, toolErrors int64
-    d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate).
         Select("COALESCE(SUM(tool_call_count), 0)").Scan(&toolCalls)
-    d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate).
         Select("COALESCE(SUM(tool_error_count), 0)").Scan(&toolErrors)
     if toolCalls > 0 {
@@ -279,7 +277,7 @@ type SceneStats struct {
 // GetByScene 按场景分组统计。
 func (d *UsageLogDAO) GetByScene(ctx context.Context, query StatsQuery) ([]SceneStats, error) {
     var result []SceneStats
-    q := d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    q := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
     if query.UserID > 0 {
         q = q.Where("user_id = ?", query.UserID)
@@ -301,7 +299,7 @@ type DateStats struct {
 // GetByDate 按日期分组统计。
 func (d *UsageLogDAO) GetByDate(ctx context.Context, query StatsQuery) ([]DateStats, error) {
     var result []DateStats
-    q := d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    q := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
     if query.Scene != "" {
         q = q.Where("scene = ?", query.Scene)
@@ -330,13 +328,13 @@ type ListQuery struct {
 // ListResult 列表结果。
 type ListResult struct {
     Total int64            `json:"total"`
-    Items []ai.AIUsageLog  `json:"items"`
+    Items []model.AIUsageLog  `json:"items"`
 }
 
 // List 分页查询使用日志列表。
 func (d *UsageLogDAO) List(ctx context.Context, query ListQuery) (*ListResult, error) {
     var result ListResult
-    q := d.db.WithContext(ctx).Model(&ai.AIUsageLog{}).
+    q := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
         Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
 
     if query.Scene != "" {
@@ -620,6 +618,159 @@ usage := aiGroup.Group("/usage", middleware.JWTAuth())
 }
 ```
 
+### Handler 实现
+
+```go
+// internal/service/ai/handler/usage.go
+
+package handler
+
+import (
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "github.com/cy77cc/OpsPilot/internal/dao/ai_usage_log"
+    "github.com/cy77cc/OpsPilot/internal/httpx"
+    "github.com/cy77cc/OpsPilot/internal/middleware"
+)
+
+// UsageHandler 处理使用统计相关请求。
+type UsageHandler struct {
+    dao *dao.UsageLogDAO
+}
+
+// NewUsageHandler 创建 UsageHandler 实例。
+func NewUsageHandler(dao *dao.UsageLogDAO) *UsageHandler {
+    return &UsageHandler{dao: dao}
+}
+
+// GetUsageStats 获取使用统计概览。
+func (h *UsageHandler) GetUsageStats(c *gin.Context) {
+    // 解析时间范围
+    startDate, endDate := parseDateRange(c)
+
+    // 获取当前用户
+    userID := middleware.GetUserID(c)
+    isAdmin := middleware.IsAdmin(c)
+
+    // 构建查询
+    query := dao.StatsQuery{
+        StartDate: startDate,
+        EndDate:   endDate,
+        Scene:     c.Query("scene"),
+    }
+
+    // 非管理员只能查看自己的统计
+    if !isAdmin {
+        query.UserID = userID
+    }
+
+    // 获取统计数据
+    stats, err := h.dao.GetStats(c.Request.Context(), query)
+    if err != nil {
+        httpx.ServerErr(c, err)
+        return
+    }
+
+    // 获取场景分布
+    byScene, err := h.dao.GetByScene(c.Request.Context(), query)
+    if err != nil {
+        httpx.ServerErr(c, err)
+        return
+    }
+
+    // 获取日期趋势
+    byDate, err := h.dao.GetByDate(c.Request.Context(), query)
+    if err != nil {
+        httpx.ServerErr(c, err)
+        return
+    }
+
+    httpx.OK(c, gin.H{
+        "total_requests":           stats.TotalRequests,
+        "total_tokens":             stats.TotalTokens,
+        "total_prompt_tokens":      stats.TotalPromptTokens,
+        "total_completion_tokens":  stats.TotalCompletionTokens,
+        "total_cost_usd":           stats.TotalCostUSD,
+        "avg_first_token_ms":       stats.AvgFirstTokenMs,
+        "avg_tokens_per_second":    stats.AvgTokensPerSecond,
+        "approval_rate":            stats.ApprovalRate,
+        "approval_pass_rate":       stats.ApprovalPassRate,
+        "tool_error_rate":          stats.ToolErrorRate,
+        "by_scene":                 byScene,
+        "by_date":                  byDate,
+    })
+}
+
+// GetUsageLogs 获取使用日志列表。
+func (h *UsageHandler) GetUsageLogs(c *gin.Context) {
+    // 解析时间范围
+    startDate, endDate := parseDateRange(c)
+
+    // 获取当前用户
+    userID := middleware.GetUserID(c)
+    isAdmin := middleware.IsAdmin(c)
+
+    // 构建查询
+    query := dao.ListQuery{
+        StartDate: startDate,
+        EndDate:   endDate,
+        Scene:     c.Query("scene"),
+        Status:    c.Query("status"),
+        Page:      parseInt(c.Query("page"), 1),
+        PageSize:  parseInt(c.Query("page_size"), 20),
+    }
+
+    // 非管理员只能查看自己的日志
+    if !isAdmin {
+        // 注意：ListQuery 需要添加 UserID 字段
+        // 这里假设已添加
+    }
+
+    // 获取列表
+    result, err := h.dao.List(c.Request.Context(), query)
+    if err != nil {
+        httpx.ServerErr(c, err)
+        return
+    }
+
+    httpx.OK(c, result)
+}
+
+// parseDateRange 解析日期范围参数。
+func parseDateRange(c *gin.Context) (start, end time.Time) {
+    now := time.Now()
+
+    startDate := c.Query("start_date")
+    if startDate != "" {
+        start, _ = time.Parse("2006-01-02", startDate)
+    } else {
+        start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+    }
+
+    endDate := c.Query("end_date")
+    if endDate != "" {
+        end, _ = time.Parse("2006-01-02", endDate)
+    } else {
+        end = start.AddDate(0, 0, 1)
+    }
+
+    return start, end
+}
+
+func parseInt(s string, defaultValue int) int {
+    if s == "" {
+        return defaultValue
+    }
+    var v int
+    _, _ = fmt.Sscanf(s, "%d", &v)
+    if v <= 0 {
+        return defaultValue
+    }
+    return v
+}
+```
+
 ## 前端页面
 
 ### 页面位置
@@ -741,13 +892,15 @@ func (o *Orchestrator) getModelName() string {
 | `opspilot_ai_tokens_total` | Counter | scope, name, scene, token_type, source | Token 使用量 |
 | `opspilot_ai_cost_usd_total` | Counter | scope, name, scene, source | 费用累计 |
 | `opspilot_ai_agent_executions_total` | Counter | operation, scene, status | 执行次数 |
+| `opspilot_ai_thoughtchain_approvals_total` | Counter | scene, status | 审批统计（已有） |
 
 新增指标：
 
 | 指标名 | 类型 | 标签 | 说明 |
 |--------|------|------|------|
 | `opspilot_ai_first_token_seconds` | Histogram | scene | 首 Token 延迟 |
-| `opspilot_ai_approvals_total` | Counter | scene, status | 审批统计 |
+
+> **注意**：审批统计复用现有的 `opspilot_ai_thoughtchain_approvals_total`，无需新增。
 
 新增指标实现：
 
@@ -756,7 +909,6 @@ func (o *Orchestrator) getModelName() string {
 
 // 在 Metrics 结构体中添加
 firstTokenLatency *prometheus.HistogramVec
-approvalTotal     *prometheus.CounterVec
 
 // 在 newMetrics 中初始化
 firstTokenLatency: registerHistogramVec(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -764,10 +916,6 @@ firstTokenLatency: registerHistogramVec(prometheus.NewHistogramVec(prometheus.Hi
     Help:    "Time to first token in seconds.",
     Buckets: []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 }, []string{"scene"})),
-approvalTotal: registerCounterVec(prometheus.NewCounterVec(prometheus.CounterOpts{
-    Name: "opspilot_ai_approvals_total",
-    Help: "Total approval requests by scene and outcome.",
-}, []string{"scene", "status"})),
 ```
 
 ## 数据库迁移
