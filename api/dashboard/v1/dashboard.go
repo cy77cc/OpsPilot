@@ -93,3 +93,98 @@ type OverviewResponse struct {
 	Metrics  MetricsSeries `json:"metrics"`
 	AI       AIActivity    `json:"ai"` // AI 助手活动数据
 }
+
+// WorkloadHealth 单类工作负载健康统计。
+type WorkloadHealth struct {
+	Total   int `json:"total"`
+	Healthy int `json:"healthy"`
+}
+
+// WorkloadStats K8s 工作负载健康统计。
+type WorkloadStats struct {
+	Deployments  WorkloadHealth `json:"deployments"`
+	StatefulSets WorkloadHealth `json:"statefulsets"`
+	DaemonSets   WorkloadHealth `json:"daemonsets"`
+	Services     int            `json:"services"`
+	Ingresses    int            `json:"ingresses"`
+}
+
+// ResourceMetric 资源指标。
+type ResourceMetric struct {
+	Allocatable  float64 `json:"allocatable"`
+	Requested    float64 `json:"requested"`
+	Usage        float64 `json:"usage"`
+	UsagePercent float64 `json:"usagePercent"`
+}
+
+// PodStats Pod 状态统计。
+type PodStats struct {
+	Total   int `json:"total"`
+	Running int `json:"running"`
+	Pending int `json:"pending"`
+	Failed  int `json:"failed"`
+}
+
+// ClusterResource 集群资源概览。
+type ClusterResource struct {
+	ClusterID   uint           `json:"clusterId"`
+	ClusterName string         `json:"clusterName"`
+	CPU         ResourceMetric `json:"cpu"`
+	Memory      ResourceMetric `json:"memory"`
+	Pods        PodStats       `json:"pods"`
+}
+
+// DeploymentStats 部署状态统计。
+type DeploymentStats struct {
+	Running         int `json:"running"`
+	PendingApproval int `json:"pendingApproval"`
+	TodayTotal      int `json:"todayTotal"`
+	TodaySuccess    int `json:"todaySuccess"`
+	TodayFailed     int `json:"todayFailed"`
+}
+
+// CICDStats CI/CD 状态统计。
+type CICDStats struct {
+	Running    int `json:"running"`
+	Queued     int `json:"queued"`
+	TodayTotal int `json:"todayTotal"`
+	Success    int `json:"success"`
+	Failed     int `json:"failed"`
+}
+
+// IssuePodStats 异常 Pod 统计。
+type IssuePodStats struct {
+	Total  int            `json:"total"`
+	ByType map[string]int `json:"byType"`
+}
+
+// HealthOverview 健康概览。
+type HealthOverview struct {
+	Hosts        HealthStats   `json:"hosts"`
+	Clusters     HealthStats   `json:"clusters"`
+	Applications HealthStats   `json:"applications"`
+	Workloads    WorkloadStats `json:"workloads"`
+}
+
+// ResourcesOverview 资源使用概览。
+type ResourcesOverview struct {
+	Hosts    []MetricSeries    `json:"hosts"`
+	Clusters []ClusterResource `json:"clusters"`
+}
+
+// OperationsOverview 运行状态概览。
+type OperationsOverview struct {
+	Deployments DeploymentStats `json:"deployments"`
+	CICD        CICDStats       `json:"cicd"`
+	IssuePods   IssuePodStats   `json:"issuePods"`
+}
+
+// OverviewResponseV2 主控台概览响应 V2（增强版）。
+type OverviewResponseV2 struct {
+	Health     HealthOverview     `json:"health"`
+	Resources  ResourcesOverview  `json:"resources"`
+	Operations OperationsOverview `json:"operations"`
+	Alerts     AlertSummary       `json:"alerts"`
+	Events     []EventItem        `json:"events"`
+	AI         AIActivity         `json:"ai"`
+}
