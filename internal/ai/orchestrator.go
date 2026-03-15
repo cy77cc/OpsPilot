@@ -35,6 +35,7 @@ type Orchestrator struct {
 	converter   *airuntime.SSEConverter          // 将 Agent 事件转换为标准 SSE StreamEvent
 	approvals   *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
 	summaries   *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
+	initErr     error                            // 初始化阶段的根因错误，runner 不可用时向上返回
 }
 
 // NewOrchestrator 创建并初始化 Orchestrator。
@@ -78,6 +79,7 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 			converter:   airuntime.NewSSEConverter(),
 			approvals:   approvals,
 			summaries:   summaries,
+			initErr:     err,
 		}
 	}
 
@@ -102,6 +104,9 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit airuntime.StreamEmitter) error {
 	startedAt := time.Now().UTC()
 	if o == nil || o.runner == nil {
+		if o != nil && o.initErr != nil {
+			return fmt.Errorf("orchestrator unavailable: %w", o.initErr)
+		}
 		return fmt.Errorf("orchestrator runner is nil")
 	}
 	if strings.TrimSpace(req.Message) == "" {

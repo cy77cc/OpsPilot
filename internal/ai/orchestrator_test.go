@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
@@ -167,6 +168,22 @@ func TestOrchestratorApprovalPauseAndResumeEmitLifecycleCallbacks(t *testing.T) 
 	assertEventTypePresent(t, resumeEvents, airuntime.EventDone)
 	assertLifecycleEvent(t, observer.records, "approval_resolved")
 	assertLifecycleEvent(t, observer.records, "chain_resumed")
+}
+
+func TestOrchestratorRun_ReturnsInitializationErrorWhenRunnerUnavailable(t *testing.T) {
+	orchestrator := &Orchestrator{
+		initErr: errors.New("llm disabled"),
+	}
+
+	err := orchestrator.Run(context.Background(), airuntime.RunRequest{
+		Message: "check cluster status",
+	}, nil)
+	if err == nil {
+		t.Fatal("expected initialization error")
+	}
+	if got := err.Error(); got != "orchestrator unavailable: llm disabled" {
+		t.Fatalf("unexpected error: %s", got)
+	}
 }
 
 func assistantEvent(agentName, content string) *adk.AgentEvent {
