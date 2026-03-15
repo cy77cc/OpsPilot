@@ -100,6 +100,7 @@ func TestRun_UsesEnvelopeAndPreservesRawUserRequest(t *testing.T) {
 		},
 	}
 
+	// scene bias is encoded in the runtime envelope, but the raw user request stays untouched.
 	err := orchestrator.Run(ctx, airuntime.RunRequest{
 		Message: "  请检查主机状态\n并告诉我异常点。  ",
 		RuntimeContext: airuntime.RuntimeContext{
