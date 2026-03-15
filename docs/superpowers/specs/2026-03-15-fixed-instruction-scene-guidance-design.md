@@ -56,7 +56,6 @@ Required format:
 scene: deployment:hosts
 project: 1
 page: /deployment/infrastructure/hosts
-selected_resources: none
 
 [User Request]
 帮我检查这批主机状态
@@ -75,6 +74,7 @@ The envelope is a stable prompt contract and must obey these rules:
 - Values are plain text single-line summaries. Newlines in source values must be collapsed to spaces before injection.
 - The backend must not inject arbitrary `UserContext` or raw `Metadata` maps.
 - The raw user request is appended unchanged after the `[User Request]` header.
+- If no normalized runtime-context fields remain after omission, the entire `[Runtime Context]` block is omitted and only `[User Request]` is sent.
 
 Low-value or noisy fields such as the full `UserContext` and arbitrary metadata maps must not be dumped into the prompt.
 
@@ -86,12 +86,13 @@ The scene is used as an initial routing hint:
 - If a `scene` is present, the agent prefers tool domains related to that scene for the first investigation steps.
 - If the request clearly exceeds the scene domain, or if scene-relevant tools do not provide enough evidence, the agent may expand to other domains.
 
-Example domain preference rules:
+Canonical scene-to-domain preference rules:
 
 - `deployment:*` prefers `deployment`, then `host`, then `service` and `kubernetes`
 - `service:*` prefers `service`, then `deployment`, then `kubernetes`
 - `host:*` prefers `host`, then `deployment`, then `monitor`
 - `k8s:*` prefers `kubernetes`, then `service`, then `deployment`
+- any other or unknown scene prefers the domain inferred from user intent first, with scene used only as a secondary hint
 
 These mappings are owned by the fixed instruction text, not by the runtime-context envelope. The envelope carries only factual runtime hints such as the current scene key. The fixed instruction explains how the agent should interpret scene values when choosing a starting tool domain.
 
@@ -154,7 +155,7 @@ No hard scene filtering is introduced in the registry by this design. Tool acces
 - Runtime-context normalization is owned by the orchestrator boundary. The agent receives only normalized text, not raw runtime maps.
 - Invalid scene keys are passed through as plain scene strings when available; they do not trigger validation failure or dynamic prompt branching.
 - Invalid or noisy metadata should not leak into the prompt by default.
-- If runtime context cannot be normalized, the agent should still run with fixed instruction and raw user input.
+- If runtime context cannot be normalized into any allowed fields, the agent should run with fixed instruction and raw user input only, without emitting a `[Runtime Context]` block.
 
 ## Supersession
 
