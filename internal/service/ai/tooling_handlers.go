@@ -52,8 +52,9 @@ type createApprovalRequest struct {
 }
 
 type chainApprovalDecisionRequest struct {
-	Approved bool   `json:"approved"`
-	Reason   string `json:"reason,omitempty"`
+	Approved        bool   `json:"approved"`
+	Reason          string `json:"reason,omitempty"`
+	EditedArguments string `json:"edited_arguments,omitempty"`
 }
 
 // updateSceneConfigRequest 是更新场景配置接口的请求体。
@@ -335,20 +336,20 @@ func (h *HTTPHandler) DecideChainApproval(c *gin.Context) {
 	}
 
 	if req.Approved && wantsEventStream(c) {
-		h.respondChainApprovalDecisionStream(c, row, req.Reason)
+		h.respondChainApprovalDecisionStream(c, row, req.Reason, req.EditedArguments)
 		return
 	}
-	h.respondApprovalDecision(c, row, req.Approved, req.Reason)
+	h.respondApprovalDecision(c, row, req.Approved, req.Reason, req.EditedArguments)
 }
 
-func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApproval, approved bool, reason string) {
+func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApproval, approved bool, reason, editedArguments string) {
 	if approved {
 		execID, startedAt, err := h.markApprovalApproved(c, row, reason)
 		if err != nil {
 			httpx.ServerErr(c, err)
 			return
 		}
-		res, err := h.resumeRuntime(c.Request.Context(), approvalResumeRequest(row, true, reason))
+		res, err := h.resumeRuntime(c.Request.Context(), approvalResumeRequest(row, true, reason, editedArguments))
 		approvalExec := model.AIExecution{
 			ID:           execID,
 			SessionID:    row.SessionID,
@@ -403,7 +404,7 @@ func (h *HTTPHandler) respondApprovalDecision(c *gin.Context, row model.AIApprov
 	httpx.OK(c, gin.H{"id": row.ID, "status": "rejected", "reason": strings.TrimSpace(reason)})
 }
 
-func (h *HTTPHandler) respondChainApprovalDecisionStream(c *gin.Context, row model.AIApproval, reason string) {
+func (h *HTTPHandler) respondChainApprovalDecisionStream(c *gin.Context, row model.AIApproval, reason, editedArguments string) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		httpx.Fail(c, xcode.ServerError, "streaming is not supported")
@@ -435,7 +436,7 @@ func (h *HTTPHandler) respondChainApprovalDecisionStream(c *gin.Context, row mod
 		return writeSSE(c, flusher, string(evt.Type), payload)
 	}
 
-	res, streamErr := h.resumeRuntimeStream(c.Request.Context(), approvalResumeRequest(row, true, reason), emit)
+	res, streamErr := h.resumeRuntimeStream(c.Request.Context(), approvalResumeRequest(row, true, reason, editedArguments), emit)
 	approvalExec := model.AIExecution{
 		ID:           execID,
 		SessionID:    row.SessionID,
@@ -500,14 +501,15 @@ func (h *HTTPHandler) markApprovalApproved(c *gin.Context, row model.AIApproval,
 	return execID, &now, nil
 }
 
-func approvalResumeRequest(row model.AIApproval, approved bool, reason string) coreai.ResumeRequest {
+func approvalResumeRequest(row model.AIApproval, approved bool, reason, editedArguments string) coreai.ResumeRequest {
 	return coreai.ResumeRequest{
-		SessionID:    row.SessionID,
-		PlanID:       row.PlanID,
-		StepID:       row.StepID,
-		CheckpointID: row.CheckpointID,
-		Approved:     approved,
-		Reason:       reason,
+		SessionID:       row.SessionID,
+		PlanID:          row.PlanID,
+		StepID:          row.StepID,
+		CheckpointID:    row.CheckpointID,
+		Approved:        approved,
+		Reason:          reason,
+		EditedArguments: editedArguments,
 	}
 }
 
