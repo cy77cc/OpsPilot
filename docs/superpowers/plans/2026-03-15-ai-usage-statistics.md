@@ -697,21 +697,7 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 }
 ```
 
-	// 在返回时添加 usageLogDAO
-	return &Orchestrator{
-		runner:        adk.NewRunner(ctx, adk.RunnerConfig{...}),
-		checkpoints:   checkpointStore,
-		executions:    executionStore,
-		converter:     airuntime.NewSSEConverter(),
-		approvals:     approvals,
-		summaries:     summaries,
-		usageLogDAO:   usageLogDAO, // 新增
-		runQuery:      nil,
-	}
-}
-```
-
-- [ ] **Step 3: 在 streamExecution 中采集统计数据**
+- [ ] **Step 4: 在 streamExecution 中采集统计数据**
 
 在 `streamExecution` 方法的 for 循环中添加统计采集：
 
@@ -753,6 +739,9 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 
 		if isToolOutputEvent(event) {
 			stats.toolCallCount++ // 新增
+			if isToolError(event) {
+				stats.toolErrorCount++ // 新增
+			}
 			// ... 现有工具输出处理 ...
 		}
 
@@ -769,7 +758,27 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 }
 ```
 
-- [ ] **Step 4: 添加 writeUsageLog 方法**
+- [ ] **Step 5: 修改 handleInterrupt 签名接收 stats 参数**
+
+修改 `handleInterrupt` 方法签名和实现：
+
+```go
+func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, stats *executionStats, chainStartedAt time.Time) (*airuntime.ResumeResult, error) {
+	stepID := interruptStepID(event)
+	pending := o.pendingApprovalFromInterrupt(state, stepID, event)
+
+	state.Status = airuntime.ExecutionStatusWaitingApproval
+	state.Phase = "waiting_approval"
+	// ... 现有代码 ...
+
+	// 写入等待审批记录
+	o.writeUsageLog(ctx, state, stats, "waiting_approval", "", nil)
+
+	// ... 现有返回代码 ...
+}
+```
+
+- [ ] **Step 6: 添加 writeUsageLog 方法**
 
 ```go
 // writeUsageLog 写入使用统计记录。
