@@ -728,6 +728,9 @@ export const Copilot: React.FC<CopilotProps> = ({
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
 
+  // 当前正在流式传输的消息 ID（用于精确控制 loading 状态）
+  const streamingIdRef = useRef<string | null>(null);
+
   // 恢复会话的回调
   const handleRestoreConversation = useCallback((restoredState: RestoredConversationState) => {
     const summaryItems: ConversationItem[] = restoredState.conversations.map((item) => ({
@@ -1126,6 +1129,7 @@ export const Copilot: React.FC<CopilotProps> = ({
     messageText: string,
   ) => {
     abortControllerRef.current = new AbortController();
+    streamingIdRef.current = assistantId;
     try {
       await aiApi.chatStream(
         {
@@ -1141,6 +1145,8 @@ export const Copilot: React.FC<CopilotProps> = ({
         message.error('请求失败，请稍后重试');
       }
       setIsLoading(false);
+    } finally {
+      streamingIdRef.current = null;
     }
   }, [createStreamHandlers, scene, sessionId]);
 
@@ -1188,6 +1194,7 @@ export const Copilot: React.FC<CopilotProps> = ({
   // 中止请求
   const handleAbort = useCallback(() => {
     abortControllerRef.current?.abort();
+    streamingIdRef.current = null;
     setIsLoading(false);
   }, []);
 
@@ -1200,6 +1207,7 @@ export const Copilot: React.FC<CopilotProps> = ({
     const stepId = String(payload.step_id || payload.checkpoint_id || '');
     const approvalNodeId = `approval:${stepId || String(payload.id || assistantId)}`;
     setIsLoading(true);
+    streamingIdRef.current = assistantId;
     patchAssistantMessage(activeKey, assistantId, (message) => {
       return {
         ...message,
@@ -1245,6 +1253,7 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
           content: message.content || '已取消该操作。',
         }));
+        streamingIdRef.current = null;
         setIsLoading(false);
         return;
       }
@@ -1312,7 +1321,10 @@ export const Copilot: React.FC<CopilotProps> = ({
             }),
       }));
       message.error('确认操作失败');
+      streamingIdRef.current = null;
       setIsLoading(false);
+    } finally {
+      streamingIdRef.current = null;
     }
   }, [activeKey, createStreamHandlers, patchAssistantMessage, sessionId]);
 
@@ -1580,10 +1592,11 @@ export const Copilot: React.FC<CopilotProps> = ({
               style={{ paddingInline: 16, height: '100%' }}
               items={messages.map(m => ({
                 key: m.id,
-                content: renderMessageContent(m, isLoading && messages[messages.length - 1]?.id === m.id),
+                content: renderMessageContent(m, isLoading && streamingIdRef.current === m.id),
                 role: m.role,
                 loading: m.role === 'assistant'
                   && isLoading
+                  && streamingIdRef.current === m.id
                   && !m.content
                   && !m.thinking
                   && !(m.thoughtChain && m.thoughtChain.length > 0)

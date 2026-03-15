@@ -1,10 +1,37 @@
 import React, { useEffect, useState } from 'react';
+import { CodeHighlighter } from '@ant-design/x';
+import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 
 interface FinalAnswerStreamProps {
   content: string;
   visible: boolean;
   streaming?: boolean;
   reducedMotion?: boolean;
+}
+
+const MarkdownCode: React.FC<ComponentProps> = ({ className, children }) => {
+  const lang = className?.match(/language-(\w+)/)?.[1] || '';
+  if (typeof children !== 'string') return null;
+  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+};
+
+class BlockErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('FinalAnswerStream markdown render failed', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
 }
 
 export function FinalAnswerStream({
@@ -45,7 +72,11 @@ export function FinalAnswerStream({
 
   return (
     <div className={`final-answer-stream ${streaming ? 'final-answer-stream--revealing' : 'final-answer-stream--complete'}`}>
-      <div className="ai-markdown-content">{displayContent}</div>
+      <BlockErrorBoundary fallback={<pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{displayContent}</pre>}>
+        <div className="ai-markdown-content">
+          <XMarkdown components={{ code: MarkdownCode }}>{displayContent}</XMarkdown>
+        </div>
+      </BlockErrorBoundary>
       {streaming ? <span aria-label="final-answer-streaming" className="final-answer-stream__caret">|</span> : null}
     </div>
   );
