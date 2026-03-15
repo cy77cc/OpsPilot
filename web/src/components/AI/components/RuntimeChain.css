@@ -2,18 +2,16 @@
 
 /* ===== 链节点基础样式 ===== */
 .runtime-chain {
-  transition: all 0.3s ease-out;
+  /* 不限制高度，让内容自适应 */
 }
 
 .runtime-chain--expanded {
   opacity: 1;
-  max-height: 2000px;
 }
 
 .runtime-chain--collapsed {
   opacity: 0.8;
-  max-height: 60px;
-  overflow: hidden;
+  /* 移除固定高度限制，让 ThoughtChain 组件自己控制折叠 */
 }
 
 /* ===== 节点出现动画 ===== */
@@ -90,24 +88,7 @@
 }
 
 /* ===== 链折叠动画 ===== */
-.runtime-chain--collapsed .runtime-chain__node {
-  animation: chain-collapse 0.4s ease-out forwards;
-}
-
-@keyframes chain-collapse {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-    max-height: 200px;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.95);
-    max-height: 0;
-    margin: 0;
-    padding: 0;
-  }
-}
+/* 折叠状态由 ThoughtChain 组件内部控制，外层容器不做限制 */
 
 /* 折叠后显示"思考完成"标题 */
 .runtime-chain__collapsed-title {
@@ -117,6 +98,7 @@
   padding: 8px 0;
 }
 
+/* 历史会话中的思考链样式 */
 .runtime-chain--collapsed .runtime-chain__collapsed-title {
   display: block;
   animation: fade-in 0.3s ease-out;

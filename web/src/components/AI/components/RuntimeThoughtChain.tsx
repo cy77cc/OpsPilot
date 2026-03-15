@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ThoughtChain } from '@ant-design/x';
 import { theme } from 'antd';
 import { ConfirmationPanel } from './ConfirmationPanel';
@@ -86,27 +86,77 @@ function toConfirmation(node: RuntimeThoughtChainNode, onApprovalDecision?: (pay
   };
 }
 
+/**
+ * 判断body是否为JSON片段（如 {"steps":, }, ["xxx"] 等）
+ * 这些片段不应该直接显示给用户
+ */
+function isJsonFragment(body: string): boolean {
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+  // JSON对象片段: {, }, {"key":, "value"}
+  if (/^[{}\[\]",:]/.test(trimmed)) return true;
+  if (/^\\"/.test(trimmed)) return true; // 转义引号开头
+  // 纯JSON数组片段: ["xxx", "yyy"]
+  if (/^\[.*\]$/.test(trimmed) && trimmed.includes('\\"')) return true;
+  return false;
+}
+
+/**
+ * 获取可显示的body文本
+ * 过滤掉JSON片段，只返回有意义的文本
+ */
+function getDisplayBody(node: RuntimeThoughtChainNode): string | null {
+  const body = node.body?.trim();
+  if (!body) return null;
+  // 如果是JSON片段，不显示
+  if (isJsonFragment(body)) return null;
+  return body;
+}
+
 export function RuntimeThoughtChain({ nodes, isCollapsed = false, onApprovalDecision }: RuntimeThoughtChainProps) {
   const { token } = theme.useToken();
+
+  // 计算所有节点ID
+  const allNodeIds = useMemo(() => nodes.map((n) => n.nodeId), [nodes]);
+
+  // 非受控模式：使用 defaultExpandedKeys
+  // isCollapsed=true 时默认折叠所有节点，false 时默认展开所有节点
+  // 但用户可以手动展开/折叠
+  const defaultExpandedKeys = isCollapsed ? [] : allNodeIds;
+
   if (nodes.length === 0) {
     return null;
   }
+
+  // 是否有实际内容需要展示（除了 description 之外）
+  const hasExtraContent = (node: RuntimeThoughtChainNode): boolean => {
+    const displayBody = getDisplayBody(node);
+    return Boolean(
+      displayBody ||
+      asStructuredSteps(node.structured).length > 0 ||
+      (node.kind === 'tool' && node.structured?.resource === 'hosts' && asStructuredRows(node.structured).length > 0) ||
+      (Array.isArray(node.details) && node.details.length > 0) ||
+      node.kind === 'approval'
+    );
+  };
+
   return (
     <div className={`runtime-chain ${isCollapsed ? 'runtime-chain--collapsed' : 'runtime-chain--expanded'}`}>
-      {isCollapsed ? (
-        <div className="runtime-chain__collapsed-title" style={{ color: token.colorTextSecondary }}>
-          思考完成
-        </div>
-      ) : null}
       <ThoughtChain
-        items={nodes.map((node) => ({
-          key: node.nodeId,
-          title: isCollapsed ? (node.title || '思考完成') : node.title,
-          status: node.status === 'done' ? 'success' : node.status === 'error' ? 'error' : 'loading',
-          content: (
-            <div className={`runtime-chain__node is-${node.status}`} style={{ color: token.colorText }}>
-              {node.headline || node.summary ? <div className="runtime-chain__nodeSummary">{node.headline || node.summary}</div> : null}
-              {node.body ? <div className="runtime-chain__nodeBodyText">{node.body}</div> : null}
+        items={nodes.map((node) => {
+          const displayBody = getDisplayBody(node);
+          const description = node.headline || node.summary;
+          const showContent = hasExtraContent(node);
+
+          return {
+            key: node.nodeId,
+            title: node.title || '思考完成',
+            description: description || undefined,
+            status: node.status === 'done' ? 'success' : node.status === 'error' ? 'error' : 'loading',
+            collapsible: showContent, // 只有有额外内容时才可折叠
+            content: showContent ? (
+              <div className={`runtime-chain__node is-${node.status}`} style={{ color: token.colorText }}>
+                {displayBody ? <div className="runtime-chain__nodeBodyText">{displayBody}</div> : null}
               {asStructuredSteps(node.structured).length > 0 ? (
                 <div className="runtime-chain__nodeBody">
                   {asStructuredSteps(node.structured).map((step, index) => renderStructuredStep(step, `${node.nodeId}:step:${index}`))}
@@ -130,10 +180,11 @@ export function RuntimeThoughtChain({ nodes, isCollapsed = false, onApprovalDeci
                   })()}
                 </div>
               ) : null}
-            </div>
-          ),
-        }))}
-        defaultExpandedKeys={isCollapsed ? [] : nodes.map((node) => node.nodeId)}
+              </div>
+            ) : undefined,
+          };
+        })}
+        defaultExpandedKeys={defaultExpandedKeys}
       />
     </div>
   );
