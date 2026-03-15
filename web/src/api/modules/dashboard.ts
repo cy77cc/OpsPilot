@@ -124,7 +124,8 @@ export interface HealthOverview {
 }
 
 export interface ResourcesOverview {
-  hosts: MetricSeries[];
+  cpuUsage: MetricSeries[];
+  memoryUsage: MetricSeries[];
   clusters: ClusterResource[];
 }
 
@@ -316,8 +317,11 @@ export const dashboardApi = {
           workloads: normalizeWorkloadStats(raw?.health?.workloads),
         },
         resources: {
-          hosts: Array.isArray(raw?.resources?.hosts)
-            ? raw.resources.hosts.map(normalizeMetricSeries)
+          cpuUsage: Array.isArray(raw?.resources?.cpuUsage)
+            ? raw.resources.cpuUsage.map(normalizeMetricSeries)
+            : [],
+          memoryUsage: Array.isArray(raw?.resources?.memoryUsage)
+            ? raw.resources.memoryUsage.map(normalizeMetricSeries)
             : [],
           clusters: Array.isArray(raw?.resources?.clusters)
             ? raw.resources.clusters.map(normalizeClusterResource)

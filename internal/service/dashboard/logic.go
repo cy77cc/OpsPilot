@@ -613,7 +613,8 @@ func (l *Logic) GetOverviewV2(ctx context.Context, timeRange string) (*dashboard
 		if err != nil {
 			return err
 		}
-		out.Resources.Hosts = metrics.CPUUsage
+		out.Resources.CPUUsage = metrics.CPUUsage
+		out.Resources.MemoryUsage = metrics.MemoryUsage
 		return nil
 	})
 

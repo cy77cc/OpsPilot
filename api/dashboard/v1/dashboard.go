@@ -168,8 +168,9 @@ type HealthOverview struct {
 
 // ResourcesOverview 资源使用概览。
 type ResourcesOverview struct {
-	Hosts    []MetricSeries    `json:"hosts"`
-	Clusters []ClusterResource `json:"clusters"`
+	CPUUsage    []MetricSeries    `json:"cpuUsage"`
+	MemoryUsage []MetricSeries    `json:"memoryUsage"`
+	Clusters    []ClusterResource `json:"clusters"`
 }
 
 // OperationsOverview 运行状态概览。

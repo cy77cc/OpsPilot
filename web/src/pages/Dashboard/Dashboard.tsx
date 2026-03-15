@@ -9,7 +9,7 @@ import HealthCard from '../../components/Dashboard/HealthCard';
 import WorkloadHealthCard from '../../components/Dashboard/WorkloadHealthCard';
 import ClusterResourceCard from '../../components/Dashboard/ClusterResourceCard';
 import OperationsCard from '../../components/Dashboard/OperationsCard';
-import TimeseriesChart from '../../components/Dashboard/TimeseriesChart';
+import HostMetricsCard from '../../components/Dashboard/HostMetricsCard';
 import AlertPanel from '../../components/Dashboard/AlertPanel';
 import EventStream from '../../components/Dashboard/EventStream';
 import AIActivityCard from '../../components/Dashboard/AIActivityCard';
@@ -28,7 +28,8 @@ const emptyOverview: OverviewResponseV2 = {
     },
   },
   resources: {
-    hosts: [],
+    cpuUsage: [],
+    memoryUsage: [],
     clusters: [],
   },
   operations: {
@@ -116,7 +117,11 @@ const Dashboard: React.FC = () => {
       {/* 资源使用 - 2 列 */}
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
-          <TimeseriesChart title="CPU 使用率" series={overview.resources.hosts} loading={loading} />
+          <HostMetricsCard
+            cpuSeries={overview.resources.cpuUsage}
+            memorySeries={overview.resources.memoryUsage}
+            loading={loading}
+          />
         </Col>
         <Col xs={24} xl={12}>
           <ClusterResourceCard data={overview.resources.clusters} loading={loading} />
