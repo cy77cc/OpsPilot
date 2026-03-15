@@ -13,6 +13,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 )
 
 type Logic struct {
@@ -550,4 +551,408 @@ func defaultString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// GetOverviewV2 返回增强版主控台概览。
+//
+// 参数:
+//   - ctx: 上下文
+//   - timeRange: 时间范围 (1h/6h/24h)
+//
+// 返回: 增强版概览响应，包含健康概览、资源使用、运行状态、告警、事件和 AI 活动
+func (l *Logic) GetOverviewV2(ctx context.Context, timeRange string) (*dashboardv1.OverviewResponseV2, error) {
+	now := time.Now()
+	since, err := parseTimeRange(now, timeRange)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &dashboardv1.OverviewResponseV2{}
+	group, gctx := errgroup.WithContext(ctx)
+
+	// 健康概览
+	group.Go(func() error {
+		hostStats, err := l.aggregateHostStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Health.Hosts = hostStats
+		return nil
+	})
+
+	group.Go(func() error {
+		clusterStats, err := l.aggregateClusterStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Health.Clusters = clusterStats
+		return nil
+	})
+
+	group.Go(func() error {
+		appStats, err := l.aggregateServiceStats(gctx, now)
+		if err != nil {
+			return err
+		}
+		out.Health.Applications = appStats
+		return nil
+	})
+
+	group.Go(func() error {
+		workloadStats, err := l.getWorkloadStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Health.Workloads = workloadStats
+		return nil
+	})
+
+	// 资源使用
+	group.Go(func() error {
+		metrics, err := l.getMetricsSeries(gctx, since, now)
+		if err != nil {
+			return err
+		}
+		out.Resources.Hosts = metrics.CPUUsage
+		return nil
+	})
+
+	group.Go(func() error {
+		clusterResources, err := l.getClusterResources(gctx)
+		if err != nil {
+			return err
+		}
+		out.Resources.Clusters = clusterResources
+		return nil
+	})
+
+	// 运行状态
+	group.Go(func() error {
+		deployStats, err := l.getDeploymentStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Operations.Deployments = deployStats
+		return nil
+	})
+
+	group.Go(func() error {
+		cicdStats, err := l.getCICDStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Operations.CICD = cicdStats
+		return nil
+	})
+
+	group.Go(func() error {
+		issueStats, err := l.getIssuePodStats(gctx)
+		if err != nil {
+			return err
+		}
+		out.Operations.IssuePods = issueStats
+		return nil
+	})
+
+	// 告警事件
+	group.Go(func() error {
+		alerts, err := l.getRecentAlerts(gctx)
+		if err != nil {
+			return err
+		}
+		out.Alerts = alerts
+		return nil
+	})
+
+	// 事件流（增强版）
+	group.Go(func() error {
+		events, err := l.getEnrichedEvents(gctx)
+		if err != nil {
+			return err
+		}
+		out.Events = events
+		return nil
+	})
+
+	// AI 活动
+	group.Go(func() error {
+		aiActivity, err := l.getAIActivity(gctx, since, now)
+		if err != nil {
+			return err
+		}
+		out.AI = aiActivity
+		return nil
+	})
+
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// getClusterResources 获取集群资源概览。
+//
+// 从缓存表读取最新的集群资源快照，返回每个集群的 CPU/内存/Pod 使用情况。
+func (l *Logic) getClusterResources(ctx context.Context) ([]dashboardv1.ClusterResource, error) {
+	type snapshotWithCluster struct {
+		model.ClusterResourceSnapshot
+		ClusterName string
+	}
+	var snapshots []snapshotWithCluster
+	err := l.svcCtx.DB.WithContext(ctx).
+		Table("cluster_resource_snapshots crs").
+		Select("crs.*, c.name as cluster_name").
+		Joins("JOIN clusters c ON c.id = crs.cluster_id").
+		Where("crs.id IN (SELECT MAX(id) FROM cluster_resource_snapshots GROUP BY cluster_id)").
+		Find(&snapshots).Error
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]dashboardv1.ClusterResource, 0, len(snapshots))
+	for _, s := range snapshots {
+		cpuUsagePercent := float64(0)
+		if s.CPUAllocatableCores > 0 {
+			cpuUsagePercent = s.CPUUsageCores / s.CPUAllocatableCores * 100
+		}
+		memUsagePercent := float64(0)
+		if s.MemoryAllocatableMB > 0 {
+			memUsagePercent = float64(s.MemoryUsageMB) / float64(s.MemoryAllocatableMB) * 100
+		}
+		out = append(out, dashboardv1.ClusterResource{
+			ClusterID:   s.ClusterID,
+			ClusterName: s.ClusterName,
+			CPU: dashboardv1.ResourceMetric{
+				Allocatable:  s.CPUAllocatableCores,
+				Requested:    s.CPURequestedCores,
+				Usage:        s.CPUUsageCores,
+				UsagePercent: cpuUsagePercent,
+			},
+			Memory: dashboardv1.ResourceMetric{
+				Allocatable:  float64(s.MemoryAllocatableMB),
+				Requested:    float64(s.MemoryRequestedMB),
+				Usage:        float64(s.MemoryUsageMB),
+				UsagePercent: memUsagePercent,
+			},
+			Pods: dashboardv1.PodStats{
+				Total:   s.PodTotal,
+				Running: s.PodRunning,
+				Pending: s.PodPending,
+				Failed:  s.PodFailed,
+			},
+		})
+	}
+	return out, nil
+}
+
+// getWorkloadStats 获取工作负载健康统计。
+//
+// 从缓存表读取最新的工作负载统计，返回 Deployment/StatefulSet/DaemonSet 健康状态。
+func (l *Logic) getWorkloadStats(ctx context.Context) (dashboardv1.WorkloadStats, error) {
+	var stats model.K8sWorkloadStats
+	err := l.svcCtx.DB.WithContext(ctx).
+		Where("id = (SELECT MAX(id) FROM k8s_workload_stats WHERE namespace = '')").
+		First(&stats).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return dashboardv1.WorkloadStats{}, err
+	}
+	return dashboardv1.WorkloadStats{
+		Deployments: dashboardv1.WorkloadHealth{
+			Total:   stats.DeploymentTotal,
+			Healthy: stats.DeploymentHealthy,
+		},
+		StatefulSets: dashboardv1.WorkloadHealth{
+			Total:   stats.StatefulSetTotal,
+			Healthy: stats.StatefulSetHealthy,
+		},
+		DaemonSets: dashboardv1.WorkloadHealth{
+			Total:   stats.DaemonSetTotal,
+			Healthy: stats.DaemonSetHealthy,
+		},
+		Services:  stats.ServiceCount,
+		Ingresses: stats.IngressCount,
+	}, nil
+}
+
+// getDeploymentStats 获取部署状态统计。
+//
+// 统计正在部署、待审批、今日发布成功/失败的数量。
+func (l *Logic) getDeploymentStats(ctx context.Context) (dashboardv1.DeploymentStats, error) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	var stats dashboardv1.DeploymentStats
+	var running, pendingApproval, todayTotal, todaySuccess, todayFailed int64
+
+	// 正在部署的数量
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.DeploymentRelease{}).
+		Where("status IN ?", []string{"deploying", "applying"}).
+		Count(&running)
+	stats.Running = int(running)
+
+	// 待审批的数量
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.DeploymentRelease{}).
+		Where("status = ?", "pending_approval").
+		Count(&pendingApproval)
+	stats.PendingApproval = int(pendingApproval)
+
+	// 今日发布统计
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.DeploymentRelease{}).
+		Where("created_at >= ?", today).
+		Count(&todayTotal)
+	stats.TodayTotal = int(todayTotal)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.DeploymentRelease{}).
+		Where("created_at >= ? AND status = ?", today, "success").
+		Count(&todaySuccess)
+	stats.TodaySuccess = int(todaySuccess)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.DeploymentRelease{}).
+		Where("created_at >= ? AND status = ?", today, "failed").
+		Count(&todayFailed)
+	stats.TodayFailed = int(todayFailed)
+
+	return stats, nil
+}
+
+// getCICDStats 获取 CI/CD 状态统计。
+//
+// 统计运行中、排队中、今日构建成功/失败的数量。
+func (l *Logic) getCICDStats(ctx context.Context) (dashboardv1.CICDStats, error) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	var stats dashboardv1.CICDStats
+	var running, queued, todayTotal, success, failed int64
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.CICDServiceCIRun{}).
+		Where("status = ?", "running").
+		Count(&running)
+	stats.Running = int(running)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.CICDServiceCIRun{}).
+		Where("status = ?", "queued").
+		Count(&queued)
+	stats.Queued = int(queued)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.CICDServiceCIRun{}).
+		Where("triggered_at >= ?", today).
+		Count(&todayTotal)
+	stats.TodayTotal = int(todayTotal)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.CICDServiceCIRun{}).
+		Where("triggered_at >= ? AND status = ?", today, "success").
+		Count(&success)
+	stats.Success = int(success)
+
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.CICDServiceCIRun{}).
+		Where("triggered_at >= ? AND status = ?", today, "failed").
+		Count(&failed)
+	stats.Failed = int(failed)
+
+	return stats, nil
+}
+
+// getIssuePodStats 获取异常 Pod 统计。
+//
+// 从缓存表统计异常 Pod 总数和按类型分组的数量。
+func (l *Logic) getIssuePodStats(ctx context.Context) (dashboardv1.IssuePodStats, error) {
+	var stats dashboardv1.IssuePodStats
+	stats.ByType = make(map[string]int)
+
+	var total int64
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.K8sIssuePod{}).
+		Count(&total)
+	stats.Total = int(total)
+
+	var byType []struct {
+		IssueType string
+		Count     int64
+	}
+	l.svcCtx.DB.WithContext(ctx).
+		Model(&model.K8sIssuePod{}).
+		Select("issue_type, COUNT(*) as count").
+		Group("issue_type").
+		Find(&byType)
+
+	for _, bt := range byType {
+		stats.ByType[bt.IssueType] = int(bt.Count)
+	}
+
+	return stats, nil
+}
+
+// getEnrichedEvents 获取增强版事件流（包含部署事件）。
+//
+// 合并主机事件、告警事件和部署事件，按时间排序返回最近的 20 条。
+func (l *Logic) getEnrichedEvents(ctx context.Context) ([]dashboardv1.EventItem, error) {
+	events := make([]dashboardv1.EventItem, 0, 20)
+
+	// 主机事件
+	nodeEvents := make([]model.NodeEvent, 0, 10)
+	l.svcCtx.DB.WithContext(ctx).
+		Order("created_at DESC").
+		Limit(10).
+		Find(&nodeEvents)
+	for _, e := range nodeEvents {
+		events = append(events, dashboardv1.EventItem{
+			ID:        fmt.Sprintf("node-%d", e.ID),
+			Type:      "host_event",
+			Message:   e.Message,
+			CreatedAt: e.CreatedAt,
+		})
+	}
+
+	// 告警事件
+	alertEvents := make([]model.AlertEvent, 0, 10)
+	l.svcCtx.DB.WithContext(ctx).
+		Order("created_at DESC").
+		Limit(10).
+		Find(&alertEvents)
+	for _, e := range alertEvents {
+		events = append(events, dashboardv1.EventItem{
+			ID:        fmt.Sprintf("alert-%d", e.ID),
+			Type:      "alert",
+			Message:   e.Title,
+			CreatedAt: e.CreatedAt,
+		})
+	}
+
+	// 部署事件
+	releaseEvents := make([]model.DeploymentRelease, 0, 10)
+	l.svcCtx.DB.WithContext(ctx).
+		Order("created_at DESC").
+		Limit(10).
+		Find(&releaseEvents)
+	for _, r := range releaseEvents {
+		events = append(events, dashboardv1.EventItem{
+			ID:        fmt.Sprintf("release-%d", r.ID),
+			Type:      "deployment",
+			Message:   fmt.Sprintf("发布状态: %s", r.Status),
+			CreatedAt: r.CreatedAt,
+		})
+	}
+
+	// 按时间排序
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].CreatedAt.After(events[j].CreatedAt)
+	})
+
+	// 取最近的 20 条
+	if len(events) > 20 {
+		events = events[:20]
+	}
+
+	return events, nil
 }
