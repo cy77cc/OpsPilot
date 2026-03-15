@@ -23,8 +23,14 @@ import (
 //
 // 所有工具通过此结构访问数据库、配置和外部客户端。
 type PlatformDeps struct {
-	DB         *gorm.DB         // 数据库连接
-	Prometheus prominfra.Client // Prometheus HTTP API 客户端
+	DB          *gorm.DB           // 数据库连接
+	Prometheus  prominfra.Client   // Prometheus HTTP API 客户端
+	UsageLogDAO UsageLogDAOInterface // 使用统计 DAO（可选）
+}
+
+// UsageLogDAOInterface 定义 UsageLogDAO 的接口，便于测试时 mock。
+type UsageLogDAOInterface interface {
+	Create(ctx context.Context, log *model.AIUsageLog) error
 }
 
 // PlatformDepsFromContext 从 context 中提取 PlatformDeps。

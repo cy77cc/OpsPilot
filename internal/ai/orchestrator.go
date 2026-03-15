@@ -27,6 +27,7 @@ import (
 	aitools "github.com/cy77cc/OpsPilot/internal/ai/tools"
 	approvaltools "github.com/cy77cc/OpsPilot/internal/ai/tools/approval"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
 // executionStats 累加单次执行的统计数据。
@@ -129,6 +130,7 @@ type Orchestrator struct {
 	converter   *airuntime.SSEConverter          // 将 Agent 事件转换为标准 SSE StreamEvent
 	approvals   *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
 	summaries   *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
+	usageLogDAO common.UsageLogDAOInterface      // 使用统计 DAO（从 deps 获取）
 	initErr     error                            // 初始化阶段的根因错误，runner 不可用时向上返回
 	runQuery    func(context.Context, string, ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent]
 }
@@ -169,12 +171,13 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 	})
 	if err != nil {
 		return &Orchestrator{
-			executions:  executionStore,
-			checkpoints: checkpointStore,
-			converter:   airuntime.NewSSEConverter(),
-			approvals:   approvals,
-			summaries:   summaries,
-			initErr:     err,
+			executions:    executionStore,
+			checkpoints:   checkpointStore,
+			converter:     airuntime.NewSSEConverter(),
+			approvals:     approvals,
+			summaries:     summaries,
+			usageLogDAO:   deps.UsageLogDAO,
+			initErr:       err,
 		}
 	}
 
@@ -184,12 +187,13 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 			CheckPointStore: checkpointStore,
 			EnableStreaming: true,
 		}),
-		checkpoints: checkpointStore,
-		executions:  executionStore,
-		converter:   airuntime.NewSSEConverter(),
-		approvals:   approvals,
-		summaries:   summaries,
-		runQuery:    nil,
+		checkpoints:   checkpointStore,
+		executions:    executionStore,
+		converter:     airuntime.NewSSEConverter(),
+		approvals:     approvals,
+		summaries:     summaries,
+		usageLogDAO:   deps.UsageLogDAO,
+		runQuery:      nil,
 	}
 }
 
@@ -515,6 +519,9 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		emit = func(airuntime.StreamEvent) bool { return true }
 	}
 
+	// 初始化统计累加器
+	stats := newExecutionStats()
+
 	var lastText string
 	chainStarted := false
 	chainStartedAt := time.Time{}
@@ -544,7 +551,16 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		if event == nil {
 			continue
 		}
+
+		// 提取 token 使用量
+		prompt, completion, total := extractTokenUsage(event)
+		if total > 0 {
+			stats.recordTokens(prompt, completion, total)
+		}
+
 		if event.Err != nil {
+			// 写入失败记录
+			o.writeUsageLog(ctx, state, stats, "failed", "model_error", event.Err)
 			state.Status = airuntime.ExecutionStatusFailed
 			state.Phase = "failed"
 			_ = o.executions.Save(ctx, *state)
@@ -566,6 +582,10 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		}
 		if isToolOutputEvent(event) {
 			emitChainStarted()
+			stats.toolCallCount++
+			if isToolError(event) {
+				stats.toolErrorCount++
+			}
 			toolName := strings.TrimSpace(event.Output.MessageOutput.ToolName)
 			toolResult := strings.TrimSpace(strings.Join(contents, ""))
 			emit(airuntime.StreamEvent{
@@ -582,6 +602,7 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 				continue
 			}
 			emitChainStarted()
+			stats.recordFirstToken()
 			emit(airuntime.StreamEvent{
 				Type: airuntime.EventDelta,
 				Data: map[string]any{"content": content},
@@ -589,9 +610,13 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			lastText = mergeTextProgress(lastText, content)
 		}
 		if event.Action != nil && event.Action.Interrupted != nil {
-			return o.handleInterrupt(ctx, event, state, emit, chainStartedAt)
+			stats.approvalCount++
+			return o.handleInterrupt(ctx, event, state, emit, stats, chainStartedAt)
 		}
 	}
+
+	// 循环结束，写入成功记录
+	o.writeUsageLog(ctx, state, stats, "completed", "", nil)
 
 	state.Status = airuntime.ExecutionStatusCompleted
 	state.Phase = "completed"
@@ -624,7 +649,7 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}, nil
 }
 
-func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, chainStartedAt time.Time) (*airuntime.ResumeResult, error) {
+func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, stats *executionStats, chainStartedAt time.Time) (*airuntime.ResumeResult, error) {
 	stepID := interruptStepID(event)
 	pending := o.pendingApprovalFromInterrupt(state, stepID, event)
 
@@ -644,6 +669,9 @@ func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEven
 	}
 	_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
 	_ = o.executions.Save(ctx, *state)
+
+	// 写入等待审批记录
+	o.writeUsageLog(ctx, state, stats, "waiting_approval", "", nil)
 
 	emit(airuntime.StreamEvent{
 		Type: airuntime.EventChainPaused,
@@ -952,4 +980,46 @@ func statusFromExecutionState(status airuntime.ExecutionStatus, err error) strin
 		return string(airuntime.ExecutionStatusCompleted)
 	}
 	return string(status)
+}
+
+// writeUsageLog 写入使用统计记录。
+func (o *Orchestrator) writeUsageLog(ctx context.Context, state *airuntime.ExecutionState, stats *executionStats, status, errorType string, err error) {
+	if o.usageLogDAO == nil {
+		return
+	}
+
+	log := &model.AIUsageLog{
+		TraceID:          state.TraceID,
+		SessionID:        state.SessionID,
+		PlanID:           state.PlanID,
+		TurnID:           state.TurnID,
+		UserID:           0,
+		Scene:            state.Scene,
+		Operation:        "run",
+		Status:           status,
+		PromptTokens:     int(stats.promptTokens),
+		CompletionTokens: int(stats.completionTokens),
+		TotalTokens:      int(stats.totalTokens),
+		DurationMs:       int(time.Since(stats.startedAt).Milliseconds()),
+		FirstTokenMs:     stats.firstTokenMs(),
+		TokensPerSecond:  stats.tokensPerSecond(),
+		ApprovalCount:    stats.approvalCount,
+		ApprovalStatus:   "none",
+		ToolCallCount:    stats.toolCallCount,
+		ToolErrorCount:   stats.toolErrorCount,
+		ErrorType:        errorType,
+	}
+
+	if err != nil {
+		log.ErrorMessage = sanitizeErrorMessage(err.Error())
+	}
+
+	if err := o.usageLogDAO.Create(ctx, log); err != nil {
+		// 记录日志但不影响主流程
+	}
+
+	// 上报 Prometheus 指标
+	if stats.firstTokenMs() > 0 {
+		aiobs.ObserveFirstToken(state.Scene, time.Duration(stats.firstTokenMs())*time.Millisecond)
+	}
 }
