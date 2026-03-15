@@ -41,6 +41,7 @@ func NewAgent(ctx context.Context, deps Deps) (adk.ResumableAgent, error) {
 
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "OpsPilotAgent",
+		Description: "OpsPilot infrastructure operations assistant with approval-gated tool execution",
 		Instruction: "{" + airuntime.SessionKeyInstruction + "}",
 		Model:       model,
 		ToolsConfig: adk.ToolsConfig{
