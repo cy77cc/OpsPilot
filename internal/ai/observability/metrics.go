@@ -59,6 +59,7 @@ type Metrics struct {
 	thoughtNodeLatency  *prometheus.HistogramVec
 	thoughtApprovals    *prometheus.CounterVec
 	approvalWaitLatency *prometheus.HistogramVec
+	firstTokenLatency   *prometheus.HistogramVec
 }
 
 var (
@@ -91,6 +92,10 @@ func ObserveThoughtChainNode(record ThoughtChainNodeRecord) {
 
 func ObserveThoughtChainApproval(record ThoughtChainApprovalRecord) {
 	DefaultMetrics().ObserveThoughtChainApproval(record)
+}
+
+func ObserveFirstToken(scene string, duration time.Duration) {
+	DefaultMetrics().ObserveFirstToken(scene, duration)
 }
 
 func newMetrics() *Metrics {
@@ -148,6 +153,11 @@ func newMetrics() *Metrics {
 			Help:    "Wait time for thoughtChain approvals in seconds.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"scene", "status"})),
+		firstTokenLatency: registerHistogramVec(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "opspilot_ai_first_token_seconds",
+			Help:    "Time to first token in seconds.",
+			Buckets: []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		}, []string{"scene"})),
 	}
 }
 
@@ -208,6 +218,14 @@ func (m *Metrics) ObserveThoughtChainApproval(record ThoughtChainApprovalRecord)
 	status := normalizeStatus(record.Status)
 	m.thoughtApprovals.WithLabelValues(scene, status).Inc()
 	m.approvalWaitLatency.WithLabelValues(scene, status).Observe(durationSeconds(record.Duration))
+}
+
+// ObserveFirstToken 记录首 token 延迟。
+func (m *Metrics) ObserveFirstToken(scene string, duration time.Duration) {
+	if m == nil || duration <= 0 {
+		return
+	}
+	m.firstTokenLatency.WithLabelValues(normalizeLabel(scene)).Observe(duration.Seconds())
 }
 
 func (m *Metrics) observeUsage(scope, name, scene string, usage *Usage) {
