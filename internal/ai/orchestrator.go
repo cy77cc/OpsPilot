@@ -2,7 +2,7 @@
 //
 // Orchestrator 是 AI 模块对外的唯一入口，负责：
 //   - 初始化 ADK Runner，并驱动单条后端主路径执行
-//   - 接收用户请求，将执行进度收口为 turn lifecycle + delta/approval 事件
+//   - 接收用户请求，将执行进度收口为 tool_call/tool_approval/tool_result 事件
 //   - 处理人工审批中断：在敏感变更工具调用前暂停执行，等待外部 Resume 信号
 //   - 持久化执行状态（ExecutionStore）和断点（CheckpointStore）以支持会话恢复
 
@@ -10,6 +10,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -110,6 +111,16 @@ func isToolError(event *adk.AgentEvent) bool {
 		return true
 	}
 	return false
+}
+
+// isToolCallEvent 检查是否为工具调用请求事件。
+func isToolCallEvent(event *adk.AgentEvent) bool {
+	return event != nil &&
+		event.Output != nil &&
+		event.Output.MessageOutput != nil &&
+		event.Output.MessageOutput.Role == schema.Assistant &&
+		event.Output.MessageOutput.Message != nil &&
+		len(event.Output.MessageOutput.Message.ToolCalls) > 0
 }
 
 // sanitizeErrorMessage 脱敏错误信息。
@@ -249,15 +260,13 @@ runnerReady:
 	}
 	_ = o.executions.Save(ctx, state)
 
+	// 发送 meta 事件
 	emit(airuntime.StreamEvent{Type: airuntime.EventMeta, Data: map[string]any{
 		"session_id": sessionID,
 		"plan_id":    planID,
 		"turn_id":    turnID,
 		"trace_id":   state.TraceID,
 	}})
-	if !emit(o.converter.OnChainMeta(sessionID, planID, turnID, state.TraceID)) {
-		return nil
-	}
 
 	query := o.runQuery
 	if query == nil {
@@ -375,15 +384,11 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			Status:   status,
 			Duration: duration,
 		})
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+		aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
 			Event:     "approval_resolved",
 			TraceID:   state.TraceID,
 			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			NodeID:    fmt.Sprintf("approval:%s", state.PendingApproval.StepID),
-			Scene:     state.Scene,
-			Tool:      state.PendingApproval.ToolName,
-			Kind:      "approval",
+			ToolName:  state.PendingApproval.ToolName,
 			Status:    status,
 		})
 	}
@@ -394,16 +399,6 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			"turn_id":    state.TurnID,
 			"trace_id":   state.TraceID,
 		}})
-		emit(o.converter.OnChainMeta(state.SessionID, state.PlanID, state.TurnID, state.TraceID))
-		emit(o.converter.OnChainResumed(state.TurnID))
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "chain_resumed",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			Scene:     state.Scene,
-			Status:    string(state.Status),
-		})
 	}
 
 	if !req.Approved {
@@ -418,9 +413,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			state.PendingApproval.Status = "rejected"
 		}
 		_ = o.executions.Save(ctx, state)
-		if emit != nil {
-			emit(o.converter.OnDone(string(state.Status)))
-		}
+		emit(o.converter.OnDone(string(state.Status)))
 		aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
 			Operation: "resume",
 			Scene:     state.Scene,
@@ -453,9 +446,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			state.PendingApproval.Status = "approved"
 		}
 		_ = o.executions.Save(ctx, state)
-		if emit != nil {
-			emit(o.converter.OnDone(string(state.Status)))
-		}
+		emit(o.converter.OnDone(string(state.Status)))
 		aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
 			Operation: "resume",
 			Scene:     state.Scene,
@@ -523,25 +514,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	stats := newExecutionStats()
 
 	var lastText string
-	chainStarted := false
-	chainStartedAt := time.Time{}
-
-	emitChainStarted := func() {
-		if chainStarted {
-			return
-		}
-		emit(o.converter.OnChainStarted(state.TurnID))
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "chain_started",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			Scene:     state.Scene,
-			Status:    string(state.Status),
-		})
-		chainStarted = true
-		chainStartedAt = time.Now().UTC()
-	}
 
 	for {
 		event, ok := iter.Next()
@@ -564,44 +536,76 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			state.Status = airuntime.ExecutionStatusFailed
 			state.Phase = "failed"
 			_ = o.executions.Save(ctx, *state)
-			emit(o.converter.OnChainError(state.TurnID, state.Phase, event.Err.Error()))
-			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-				Event:     "chain_failed",
+			emit(o.converter.OnError(state.Phase, event.Err))
+			aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
+				Event:     "execution_failed",
 				TraceID:   state.TraceID,
 				SessionID: state.SessionID,
-				ChainID:   state.PlanID,
-				Scene:     state.Scene,
 				Status:    "failed",
 			})
-			emit(o.converter.OnError(state.Phase, event.Err))
 			return nil, event.Err
 		}
+
+		// 检测工具调用请求事件
+		if isToolCallEvent(event) {
+			stats.toolCallCount++
+			stats.recordFirstToken()
+			for _, tc := range event.Output.MessageOutput.Message.ToolCalls {
+				emit(o.converter.OnToolCall(
+					tc.ID,
+					tc.Function.Name,
+					"", // tool_display_name 将由工具注册表解析
+					tc.Function.Arguments,
+				))
+				aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
+					Event:     "tool_call",
+					TraceID:   state.TraceID,
+					SessionID: state.SessionID,
+					ToolName:  tc.Function.Name,
+					Status:    "pending",
+				})
+			}
+			continue
+		}
+
 		contents, err := eventTextContents(event)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse agent message chunks: %w", err)
 		}
+
+		// 处理工具输出事件
 		if isToolOutputEvent(event) {
-			emitChainStarted()
 			stats.toolCallCount++
 			if isToolError(event) {
 				stats.toolErrorCount++
 			}
 			toolName := strings.TrimSpace(event.Output.MessageOutput.ToolName)
 			toolResult := strings.TrimSpace(strings.Join(contents, ""))
+			// 提取 call_id（如果有）
+			callID := extractCallIDFromToolResult(event)
 			emit(airuntime.StreamEvent{
 				Type: airuntime.EventToolResult,
 				Data: compactEventData(map[string]any{
+					"call_id":   callID,
 					"tool_name": toolName,
 					"result":    toolResult,
 				}),
 			})
+			aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
+				Event:     "tool_result",
+				TraceID:   state.TraceID,
+				SessionID: state.SessionID,
+				ToolName:  toolName,
+				Status:    "completed",
+			})
 			continue
 		}
+
+		// 处理文本增量事件
 		for _, content := range contents {
 			if strings.TrimSpace(content) == "" {
 				continue
 			}
-			emitChainStarted()
 			stats.recordFirstToken()
 			emit(airuntime.StreamEvent{
 				Type: airuntime.EventDelta,
@@ -609,9 +613,11 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			})
 			lastText = mergeTextProgress(lastText, content)
 		}
+
+		// 处理审批中断事件
 		if event.Action != nil && event.Action.Interrupted != nil {
 			stats.approvalCount++
-			return o.handleInterrupt(ctx, event, state, emit, stats, chainStartedAt)
+			return o.handleInterrupt(ctx, event, state, emit, stats)
 		}
 	}
 
@@ -621,23 +627,14 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	state.Status = airuntime.ExecutionStatusCompleted
 	state.Phase = "completed"
 	_ = o.executions.Save(ctx, *state)
-	emit(o.converter.OnChainCompleted(state.TurnID, string(state.Status)))
 	emit(o.converter.OnDone(string(state.Status)))
-	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-		Event:     "chain_completed",
+
+	aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
+		Event:     "execution_completed",
 		TraceID:   state.TraceID,
 		SessionID: state.SessionID,
-		ChainID:   state.PlanID,
-		Scene:     state.Scene,
-		Status:    string(state.Status),
+		Status:    "completed",
 	})
-	if !chainStartedAt.IsZero() {
-		aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
-			Scene:    state.Scene,
-			Status:   string(state.Status),
-			Duration: time.Since(chainStartedAt),
-		})
-	}
 	return &airuntime.ResumeResult{
 		Resumed:   true,
 		SessionID: state.SessionID,
@@ -649,7 +646,8 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}, nil
 }
 
-func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, stats *executionStats, chainStartedAt time.Time) (*airuntime.ResumeResult, error) {
+// handleInterrupt 处理审批中断事件。
+func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, stats *executionStats) (*airuntime.ResumeResult, error) {
 	stepID := interruptStepID(event)
 	pending := o.pendingApprovalFromInterrupt(state, stepID, event)
 
@@ -673,24 +671,20 @@ func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEven
 	// 写入等待审批记录
 	o.writeUsageLog(ctx, state, stats, "waiting_approval", "", nil)
 
+	// 发送 tool_approval 事件
 	emit(airuntime.StreamEvent{
-		Type: airuntime.EventChainPaused,
+		Type: airuntime.EventToolApproval,
 		Data: compactEventData(map[string]any{
-			"turn_id": state.TurnID,
-			"reason":  "waiting_approval",
-			"approval": map[string]any{
-				"id":                pending.ID,
-				"plan_id":           pending.PlanID,
-				"step_id":           pending.StepID,
-				"checkpoint_id":     pending.CheckpointID,
-				"target":            pending.Target,
-				"title":             pending.Title,
-				"tool_name":         pending.ToolName,
-				"tool_display_name": pending.ToolDisplayName,
-				"risk":              pending.Risk,
-				"summary":           pending.Summary,
-				"arguments_json":    pending.ArgumentsInJSON,
-			},
+			"call_id":           stepID,
+			"tool_name":         pending.ToolName,
+			"tool_display_name": pending.ToolDisplayName,
+			"risk":              pending.Risk,
+			"summary":           pending.Summary,
+			"arguments_json":    pending.ArgumentsInJSON,
+			"approval_id":       pending.ID,
+			"checkpoint_id":     pending.CheckpointID,
+			"plan_id":           pending.PlanID,
+			"step_id":           pending.StepID,
 		}),
 	})
 	emit(o.converter.OnDone(string(state.Status)))
@@ -700,35 +694,13 @@ func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEven
 		Status:   "pending",
 		Duration: 0,
 	})
-	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-		Event:     "chain_paused",
+	aiobs.ObserveToolExecutionLifecycle(aiobs.ToolExecutionLifecycleRecord{
+		Event:     "tool_approval_pending",
 		TraceID:   state.TraceID,
 		SessionID: state.SessionID,
-		ChainID:   state.PlanID,
-		NodeID:    fmt.Sprintf("approval:%s", stepID),
-		Scene:     state.Scene,
-		Tool:      pending.ToolName,
-		Kind:      "approval",
-		Status:    "pending",
+		ToolName:  pending.ToolName,
+		Status:    "waiting_approval",
 	})
-	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-		Event:     "approval_pending",
-		TraceID:   state.TraceID,
-		SessionID: state.SessionID,
-		ChainID:   state.PlanID,
-		NodeID:    fmt.Sprintf("approval:%s", stepID),
-		Scene:     state.Scene,
-		Tool:      pending.ToolName,
-		Kind:      "approval",
-		Status:    "pending",
-	})
-	if !chainStartedAt.IsZero() {
-		aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
-			Scene:    state.Scene,
-			Status:   string(state.Status),
-			Duration: time.Since(chainStartedAt),
-		})
-	}
 
 	return &airuntime.ResumeResult{
 		Interrupted: true,
@@ -739,6 +711,34 @@ func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEven
 		Status:      string(state.Status),
 		Message:     "执行已中断，等待审批。",
 	}, nil
+}
+
+// extractCallIDFromToolResult 从工具结果事件中提取 call_id。
+func extractCallIDFromToolResult(event *adk.AgentEvent) string {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return ""
+	}
+	msg := event.Output.MessageOutput.Message
+	if msg == nil {
+		return ""
+	}
+	// 尝试从 Message 的 ToolCallID 字段获取
+	if msg.ToolCallID != "" {
+		return msg.ToolCallID
+	}
+	// 尝试从 Content 中解析 call_id
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		return ""
+	}
+	// 尝试解析 JSON 格式的结果
+	var result map[string]any
+	if err := json.Unmarshal([]byte(content), &result); err == nil {
+		if callID, ok := result["call_id"].(string); ok {
+			return callID
+		}
+	}
+	return ""
 }
 
 func isToolOutputEvent(event *adk.AgentEvent) bool {

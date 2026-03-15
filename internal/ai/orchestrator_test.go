@@ -129,11 +129,16 @@ func TestRun_UsesEnvelopeAndPreservesRawUserRequest(t *testing.T) {
 }
 
 type lifecycleObserver struct {
-	records []aiobs.ThoughtChainLifecycleRecord
+	records     []aiobs.ThoughtChainLifecycleRecord
+	toolRecords []aiobs.ToolExecutionLifecycleRecord
 }
 
 func (o *lifecycleObserver) OnThoughtChainLifecycle(record aiobs.ThoughtChainLifecycleRecord) {
 	o.records = append(o.records, record)
+}
+
+func (o *lifecycleObserver) OnToolExecutionLifecycle(record aiobs.ToolExecutionLifecycleRecord) {
+	o.toolRecords = append(o.toolRecords, record)
 }
 
 func TestOrchestratorStreamExecution_EmitsPrimaryEvents(t *testing.T) {
@@ -176,22 +181,26 @@ func TestOrchestratorStreamExecution_EmitsPrimaryEvents(t *testing.T) {
 		t.Fatalf("expected completed result, got %#v", result)
 	}
 
-	assertEventTypePresent(t, emitted, airuntime.EventChainStarted)
+	// 验证简化后的事件流：delta -> tool_result -> delta -> done
 	assertEventTypePresent(t, emitted, airuntime.EventDelta)
 	assertEventTypePresent(t, emitted, airuntime.EventToolResult)
-	assertEventTypePresent(t, emitted, airuntime.EventChainCompleted)
 	assertEventTypePresent(t, emitted, airuntime.EventDone)
-	assertEventTypeAbsent(t, emitted, airuntime.EventChainNodeOpen)
-	assertEventTypeAbsent(t, emitted, airuntime.EventFinalAnswerStart)
+
+	// 验证不再发送 Chain 相关事件
+	assertEventTypeAbsent(t, emitted, "chain_started")
+	assertEventTypeAbsent(t, emitted, "chain_completed")
+	assertEventTypeAbsent(t, emitted, "chain_node_open")
 
 	if state.Status != airuntime.ExecutionStatusCompleted {
 		t.Fatalf("expected completed state, got %q", state.Status)
 	}
-	assertLifecycleEvent(t, observer.records, "chain_started")
-	assertLifecycleEvent(t, observer.records, "chain_completed")
+
+	// 验证工具执行生命周期事件
+	assertToolLifecycleEvent(t, observer.toolRecords, "tool_result")
+	assertToolLifecycleEvent(t, observer.toolRecords, "execution_completed")
 }
 
-func TestOrchestratorApprovalPauseAndResumeEmitLifecycleCallbacks(t *testing.T) {
+func TestOrchestratorApprovalPauseAndResume(t *testing.T) {
 	ctx := context.Background()
 	observer := &lifecycleObserver{}
 	unregister := aiobs.RegisterObserver(observer)
@@ -249,9 +258,13 @@ func TestOrchestratorApprovalPauseAndResumeEmitLifecycleCallbacks(t *testing.T) 
 	if resumeState == nil || !resumeState.Interrupted {
 		t.Fatalf("expected interrupted resume result, got %#v", resumeState)
 	}
-	assertEventTypePresent(t, pauseEvents, airuntime.EventChainPaused)
-	assertLifecycleEvent(t, observer.records, "chain_paused")
-	assertLifecycleEvent(t, observer.records, "approval_pending")
+
+	// 验证发送 tool_approval 事件
+	assertEventTypePresent(t, pauseEvents, airuntime.EventToolApproval)
+	assertEventTypePresent(t, pauseEvents, airuntime.EventDone)
+
+	// 验证工具执行生命周期事件
+	assertToolLifecycleEvent(t, observer.toolRecords, "tool_approval_pending")
 
 	saved, ok, err := executions.Load(ctx, "sess-2", "plan-2")
 	if err != nil || !ok {
@@ -279,11 +292,12 @@ func TestOrchestratorApprovalPauseAndResumeEmitLifecycleCallbacks(t *testing.T) 
 		t.Fatalf("expected completed resume result, got %#v", result)
 	}
 
-	assertEventTypePresent(t, resumeEvents, airuntime.EventChainMeta)
-	assertEventTypePresent(t, resumeEvents, airuntime.EventChainResumed)
+	// 验证恢复事件
+	assertEventTypePresent(t, resumeEvents, airuntime.EventMeta)
 	assertEventTypePresent(t, resumeEvents, airuntime.EventDone)
-	assertLifecycleEvent(t, observer.records, "approval_resolved")
-	assertLifecycleEvent(t, observer.records, "chain_resumed")
+
+	// 验证审批解决生命周期事件
+	assertToolLifecycleEvent(t, observer.toolRecords, "approval_resolved")
 }
 
 func TestOrchestratorRun_ReturnsInitializationErrorWhenRunnerUnavailable(t *testing.T) {
@@ -354,4 +368,14 @@ func assertLifecycleEvent(t *testing.T, records []aiobs.ThoughtChainLifecycleRec
 		}
 	}
 	t.Fatalf("expected lifecycle event %q in %#v", want, records)
+}
+
+func assertToolLifecycleEvent(t *testing.T, records []aiobs.ToolExecutionLifecycleRecord, want string) {
+	t.Helper()
+	for _, record := range records {
+		if record.Event == want {
+			return
+		}
+	}
+	t.Fatalf("expected tool lifecycle event %q in %#v", want, records)
 }

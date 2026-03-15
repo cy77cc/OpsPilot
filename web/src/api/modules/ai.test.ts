@@ -18,7 +18,7 @@ describe('aiApi.chatStream', () => {
     localStorage.clear();
   });
 
-  it('maps legacy message events to onDelta content', async () => {
+  it('maps message events to onDelta content', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
@@ -43,61 +43,37 @@ describe('aiApi.chatStream', () => {
     expect(onDone).toHaveBeenCalled();
   });
 
-  it('does not dispatch deprecated orchestration events on the primary stream path', async () => {
+  it('dispatches tool_call, tool_approval, and tool_result events', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: rewrite_result\ndata: {"user_visible_summary":"rewrite ok"}\n\n',
-        'event: stage_delta\ndata: {"stage":"plan","status":"loading","title":"整理执行步骤","description":"正在根据你的需求整理执行步骤","steps":["检查告警","查看副本数"],"content_chunk":"正在理解"}\n\n',
-        'event: plan_created\ndata: {"user_visible_summary":"plan ok"}\n\n',
-        'event: step_update\ndata: {"step_id":"step-1","status":"running","user_visible_summary":"executing"}\n\n',
-        'event: thinking_delta\ndata: {"contentChunk":"thinking"}\n\n',
-        'event: summary\ndata: {"status":"success"}\n\n',
+        'event: tool_call\ndata: {"call_id":"call-1","tool_name":"get_pods","arguments":"{\\"namespace\\":\\"default\\"}"}\n\n',
+        'event: tool_approval\ndata: {"call_id":"call-1","tool_name":"delete_pod","risk":"high","summary":"即将删除 pod"}\n\n',
+        'event: tool_result\ndata: {"call_id":"call-1","result":"{\\"ok\\":true}"}\n\n',
       ]),
     } as Response);
 
-    const onThinkingDelta = vi.fn();
+    const onToolCall = vi.fn();
+    const onToolApproval = vi.fn();
+    const onToolResult = vi.fn();
 
     await aiApi.chatStream(
       { message: 'hi', context: { scene: 'global' } },
-      {
-        onThinkingDelta,
-        onRewriteResult: vi.fn(),
-        onStageDelta: vi.fn(),
-        onPlanCreated: vi.fn(),
-        onStepUpdate: vi.fn(),
-        onSummary: vi.fn(),
-      } as any,
+      { onToolCall, onToolApproval, onToolResult },
     );
 
-    expect(onThinkingDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: 'thinking' }));
-  });
-
-  it('does not dispatch legacy phase lifecycle events on the primary stream path', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: phase_started\ndata: {"phase":"planning","status":"loading","title":"整理执行步骤"}\n\n',
-        'event: turn_started\ndata: {"turn_id":"turn-1","phase":"rewrite","status":"streaming"}\n\n',
-        'event: block_open\ndata: {"turn_id":"turn-1","block_id":"status:rewrite","block_type":"status"}\n\n',
-        'event: chain_started\ndata: {"turn_id":"turn-1"}\n\n',
-      ]),
-    } as Response);
-
-    const onPhaseStarted = vi.fn();
-    const onTurnStarted = vi.fn();
-    const onBlockOpen = vi.fn();
-    const onChainStarted = vi.fn();
-
-    await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onPhaseStarted, onTurnStarted, onBlockOpen, onChainStarted } as any,
-    );
-
-    expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }));
-    expect(onPhaseStarted).not.toHaveBeenCalled();
-    expect(onTurnStarted).not.toHaveBeenCalled();
-    expect(onBlockOpen).not.toHaveBeenCalled();
+    expect(onToolCall).toHaveBeenCalledWith(expect.objectContaining({
+      call_id: 'call-1',
+      tool_name: 'get_pods',
+    }));
+    expect(onToolApproval).toHaveBeenCalledWith(expect.objectContaining({
+      call_id: 'call-1',
+      tool_name: 'delete_pod',
+      risk: 'high',
+    }));
+    expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({
+      call_id: 'call-1',
+    }));
   });
 
   it('preserves stage-aware error payloads', async () => {
@@ -141,21 +117,21 @@ describe('aiApi.chatStream', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: chain_started\ndata: {"turn_id":"turn-approval"}\n\n',
-        'event: chain_node_open\ndata: {"node_id":"tool:step-1","kind":"tool","title":"执行审批后的步骤"}\n\n',
-        'event: final_answer_delta\ndata: {"turn_id":"turn-approval","chunk":"已继续执行"}\n\n',
+        'event: tool_call\ndata: {"call_id":"call-after-approval","tool_name":"execute_step"}\n\n',
+        'event: tool_result\ndata: {"call_id":"call-after-approval","result":"{\\"ok\\":true}"}\n\n',
+        'event: delta\ndata: {"contentChunk":"已继续执行"}\n\n',
       ]),
     } as Response);
 
-    const onChainStarted = vi.fn();
-    const onChainNodeOpen = vi.fn();
-    const onFinalAnswerDelta = vi.fn();
+    const onToolCall = vi.fn();
+    const onToolResult = vi.fn();
+    const onDelta = vi.fn();
 
     await aiApi.decideChainApprovalStream(
       'plan-1',
       'approval:step-1',
       true,
-      { onChainStarted, onChainNodeOpen, onFinalAnswerDelta },
+      { onToolCall, onToolResult, onDelta },
       'looks safe',
     );
 
@@ -170,9 +146,9 @@ describe('aiApi.chatStream', () => {
         body: JSON.stringify({ approved: true, reason: 'looks safe' }),
       }),
     );
-    expect(onChainStarted).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-approval' }));
-    expect(onChainNodeOpen).toHaveBeenCalledWith(expect.objectContaining({ node_id: 'tool:step-1', kind: 'tool' }));
-    expect(onFinalAnswerDelta).toHaveBeenCalledWith(expect.objectContaining({ chunk: '已继续执行' }));
+    expect(onToolCall).toHaveBeenCalledWith(expect.objectContaining({ call_id: 'call-after-approval' }));
+    expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({ call_id: 'call-after-approval' }));
+    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: '已继续执行' }));
   });
 
   it('unwraps only complete response envelopes', () => {

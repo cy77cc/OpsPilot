@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { aiApi } from '../../../api/modules/ai';
 import type { AISession } from '../../../api/modules/ai';
-import type { ChatTurn, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageItem } from '../types';
+import type { ChatTurn, EmbeddedRecommendation, ToolChainState, ThoughtStageItem, ThoughtChainRuntimeState } from '../types';
 import { projectTurnSummary, turnFromReplay } from '../turnLifecycle';
-import { runtimeStateFromReplayTurn } from '../thoughtChainRuntime';
+import { toolChainStateFromReplayTurn, runtimeStateFromReplayTurn } from '../thoughtChainRuntime';
 
 export interface RestoredConversation {
   id: string;
@@ -285,20 +285,33 @@ function normalizePersistedRuntime(raw: Record<string, unknown> | undefined): Th
     return undefined;
   }
 
-  const finalAnswerRaw = asRecord(raw.final_answer);
   const nodes = asArray(raw.nodes).map((item) => asRecord(item)).filter(Boolean).map((node) => ({
-    nodeId: asString(node.node_id) || asString(node.nodeId) || `node:${Date.now()}`,
+    nodeId: asString(node.node_id) || asString(node.nodeId) || asString(node.id) || `node:${Date.now()}`,
     kind: normalizeNodeKind(asString(node.kind)),
-    title: asString(node.title) || '执行步骤',
+    title: asString(node.tool_name) || asString(node.tool_display_name) || asString(node.title) || 'tool',
     status: normalizeNodeStatus(asString(node.status)),
     headline: asString(node.headline),
     body: asString(node.body),
-    structured: asRecord(node.structured),
-    raw: node.raw,
     summary: asString(node.summary),
-    details: asArray(node.details),
-    approval: asRecord(node.approval) as ThoughtChainRuntimeState['nodes'][number]['approval'],
+    approval: asRecord(node.approval) ? {
+      id: asString((node.approval as Record<string, unknown>).id),
+      title: asString((node.approval as Record<string, unknown>).title) || '待确认操作',
+      description: asString((node.approval as Record<string, unknown>).description) || asString((node.approval as Record<string, unknown>).summary) || '此操作需要确认',
+      risk: (asString((node.approval as Record<string, unknown>).risk) || 'medium') as 'low' | 'medium' | 'high',
+      status: 'waiting_user' as const,
+      toolName: asString((node.approval as Record<string, unknown>).tool_name),
+      toolDisplayName: asString((node.approval as Record<string, unknown>).tool_display_name),
+      planId: asString((node.approval as Record<string, unknown>).plan_id),
+      stepId: asString((node.approval as Record<string, unknown>).step_id),
+      checkpointId: asString((node.approval as Record<string, unknown>).checkpoint_id),
+      argumentsJson: asString((node.approval as Record<string, unknown>).arguments_json),
+      editable: true,
+    } : undefined,
   }));
+
+  if (nodes.length === 0) {
+    return undefined;
+  }
 
   return {
     turnId: asString(raw.turn_id) || asString(raw.turnId),
@@ -307,12 +320,47 @@ function normalizePersistedRuntime(raw: Record<string, unknown> | undefined): Th
     isCollapsed: Boolean(raw.is_collapsed ?? raw.isCollapsed),
     collapsePhase: Boolean(raw.is_collapsed ?? raw.isCollapsed) ? 'collapsed' : 'expanded',
     finalAnswer: {
-      visible: Boolean(finalAnswerRaw?.visible),
-      streaming: Boolean(finalAnswerRaw?.streaming),
-      content: asString(finalAnswerRaw?.content),
-      revealState: normalizeRevealState(asString(finalAnswerRaw?.reveal_state) || asString(finalAnswerRaw?.revealState)),
+      visible: false,
+      streaming: false,
+      content: '',
+      revealState: 'hidden',
     },
   };
+}
+
+function normalizeNodeKind(kind: string): ThoughtChainRuntimeState['nodes'][number]['kind'] {
+  switch (kind) {
+    case 'plan':
+    case 'execute':
+    case 'tool':
+    case 'replan':
+    case 'approval':
+      return kind;
+    default:
+      return 'tool';
+  }
+}
+
+function normalizeNodeStatus(status: string): ThoughtChainRuntimeState['nodes'][number]['status'] {
+  switch (status) {
+    case 'pending':
+      return 'pending';
+    case 'running':
+    case 'active':
+      return 'active';
+    case 'waiting':
+    case 'waiting_approval':
+      return 'waiting';
+    case 'done':
+    case 'success':
+    case 'completed':
+      return 'done';
+    case 'error':
+    case 'failed':
+      return 'error';
+    default:
+      return 'pending';
+  }
 }
 
 function resolveUserTurnContent(turn: NonNullable<AISession['turns']>[number], fallback: string): string {
@@ -327,10 +375,6 @@ function resolveReplayAssistantContent(
   runtime: ThoughtChainRuntimeState | undefined,
   fallback: string,
 ): string {
-  if (runtime?.finalAnswer.content?.trim()) {
-    return runtime.finalAnswer.content;
-  }
-
   const textBlock = turn.blocks.find((block) => block.blockType === 'text' && block.contentText?.trim());
   if (textBlock?.contentText?.trim()) {
     return textBlock.contentText;
@@ -392,47 +436,4 @@ function asArray(value: unknown): unknown[] {
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
-}
-
-function normalizeNodeKind(kind: string): ThoughtChainRuntimeState['nodes'][number]['kind'] {
-  switch (kind) {
-    case 'plan':
-    case 'execute':
-    case 'tool':
-    case 'replan':
-    case 'approval':
-      return kind;
-    default:
-      return 'execute';
-  }
-}
-
-function normalizeNodeStatus(status: string): ThoughtChainRuntimeState['nodes'][number]['status'] {
-  switch (status) {
-    case 'pending':
-      return 'pending';
-    case 'waiting':
-    case 'waiting_approval':
-      return 'waiting';
-    case 'done':
-    case 'success':
-    case 'completed':
-      return 'done';
-    case 'error':
-    case 'failed':
-      return 'error';
-    default:
-      return 'active';
-  }
-}
-
-function normalizeRevealState(state: string): ThoughtChainRuntimeState['finalAnswer']['revealState'] {
-  switch (state) {
-    case 'primed':
-    case 'revealing':
-    case 'complete':
-      return state;
-    default:
-      return 'hidden';
-  }
 }

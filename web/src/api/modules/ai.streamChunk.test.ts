@@ -17,26 +17,25 @@ describe('normalizeVisibleStreamChunk', () => {
     const fetchMock = async () => ({
       ok: true,
       body: buildStream([
-        'event: final_answer_delta\n',
-        'data: {"chunk":"  ## Title\\n\\n| A | B |\\n| - | - |\\n"}\n\n',
+        'event: delta\ndata: {"contentChunk":"  ## Title\\n\\n| A | B |\\n| - | - |\\n"}\n\n',
       ]),
     }) as Response;
     globalThis.fetch = fetchMock;
 
-    const onFinalAnswerDelta = vi.fn();
+    const onDelta = vi.fn();
 
     try {
       await aiApi.chatStream(
         { message: 'hi', context: { scene: 'global' } },
-        { onFinalAnswerDelta },
+        { onDelta },
       );
     } finally {
       globalThis.fetch = originalFetch;
     }
 
-    expect(onFinalAnswerDelta).toHaveBeenCalledWith(
+    expect(onDelta).toHaveBeenCalledWith(
       expect.objectContaining({
-        chunk: '  ## Title\n\n| A | B |\n| - | - |\n',
+        contentChunk: '  ## Title\n\n| A | B |\n| - | - |\n',
       }),
     );
   });

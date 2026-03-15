@@ -22,38 +22,7 @@ vi.mock('@ant-design/x', () => ({
 }));
 
 describe('RuntimeThoughtChain', () => {
-  it('renders structured plan steps without dumping raw JSON', () => {
-    render(
-      <RuntimeThoughtChain
-        nodes={[
-          {
-            nodeId: 'plan-1',
-            kind: 'plan',
-            title: '整理执行步骤',
-            status: 'done',
-            headline: '已生成执行计划',
-            structured: {
-              steps: [
-                { id: 'step-1', title: '检查集群状态', description: '读取当前节点和 deployment 信息', status: 'pending' },
-                { id: 'step-2', title: '确认副本数', description: '准备评估扩容影响', tool_hint: 'scale_deployment' },
-              ],
-            },
-            raw: {
-              steps: ['检查集群状态', '确认副本数'],
-            },
-          },
-        ]}
-      />,
-    );
-
-    expect(screen.getByText('已生成执行计划')).toBeInTheDocument();
-    expect(screen.getByText('检查集群状态')).toBeInTheDocument();
-    expect(screen.getByText('读取当前节点和 deployment 信息')).toBeInTheDocument();
-    expect(screen.getByText('确认副本数')).toBeInTheDocument();
-    expect(screen.queryByText(/^\{.*"title":/)).not.toBeInTheDocument();
-  });
-
-  it('renders tool results as readable host rows before raw fallback', () => {
+  it('renders tool nodes with structured rows', () => {
     render(
       <RuntimeThoughtChain
         nodes={[
@@ -87,31 +56,125 @@ describe('RuntimeThoughtChain', () => {
     expect(screen.queryByText('"total": 2')).not.toBeInTheDocument();
   });
 
-  it('renders replan body and structured step groups together', () => {
+  it('renders approval nodes with confirmation panel', () => {
     render(
       <RuntimeThoughtChain
         nodes={[
           {
-            nodeId: 'replan-1',
-            kind: 'replan',
-            title: '发现新信息，正在调整计划',
-            status: 'done',
-            headline: '执行结果触发重新规划',
-            body: '集群查询结果返回的是 cluster 维度，需要切换到 host 维度继续。',
-            structured: {
-              steps: [
-                { id: 'step-1', title: '改用 host_list_inventory', description: '读取主机列表与在线状态', status: 'pending' },
-                { id: 'step-2', title: '输出汇总表格', description: '整理所有主机状态和统计信息', status: 'pending' },
-              ],
+            nodeId: 'approval-1',
+            kind: 'approval',
+            title: '扩容 nginx 需要确认',
+            status: 'waiting',
+            headline: '该步骤会修改工作负载副本数',
+            approval: {
+              id: 'approval-1',
+              title: '扩容 nginx 需要确认',
+              description: '该步骤会修改工作负载副本数',
+              risk: 'high',
+              status: 'waiting_user',
+              toolName: 'scale_deployment',
+              toolDisplayName: '扩容 Deployment',
+              planId: 'plan-1',
+              stepId: 'step-1',
+              checkpointId: 'cp-1',
+              argumentsJson: '{"replicas":3}',
+              editable: true,
             },
           },
         ]}
       />,
     );
 
-    expect(screen.getByText('执行结果触发重新规划')).toBeInTheDocument();
-    expect(screen.getByText('集群查询结果返回的是 cluster 维度，需要切换到 host 维度继续。')).toBeInTheDocument();
-    expect(screen.getByText('改用 host_list_inventory')).toBeInTheDocument();
-    expect(screen.getByText('输出汇总表格')).toBeInTheDocument();
+    // Check for title (may appear multiple times - use getAllByText)
+    expect(screen.getAllByText('扩容 nginx 需要确认').length).toBeGreaterThan(0);
+    // Description may also appear multiple times
+    expect(screen.getAllByText('该步骤会修改工作负载副本数').length).toBeGreaterThan(0);
+    // ConfirmationPanel should render confirm/cancel buttons
+    expect(screen.getByRole('button', { name: /确认执行/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /取消/ })).toBeInTheDocument();
+  });
+
+  it('renders structured plan steps without dumping raw JSON', () => {
+    render(
+      <RuntimeThoughtChain
+        nodes={[
+          {
+            nodeId: 'plan-1',
+            kind: 'plan',
+            title: '整理执行步骤',
+            status: 'done',
+            headline: '已生成执行计划',
+            structured: {
+              steps: [
+                { id: 'step-1', title: '检查集群状态', description: '读取当前节点和 deployment 信息', status: 'pending' },
+                { id: 'step-2', title: '确认副本数', description: '准备评估扩容影响', tool_hint: 'scale_deployment' },
+              ],
+            },
+            raw: {
+              steps: ['检查集群状态', '确认副本数'],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('已生成执行计划')).toBeInTheDocument();
+    expect(screen.getByText('检查集群状态')).toBeInTheDocument();
+    expect(screen.getByText('读取当前节点和 deployment 信息')).toBeInTheDocument();
+    expect(screen.getByText('确认副本数')).toBeInTheDocument();
+    expect(screen.queryByText(/^\{.*"title":/)).not.toBeInTheDocument();
+  });
+
+  it('renders multiple tool nodes in sequence', () => {
+    render(
+      <RuntimeThoughtChain
+        nodes={[
+          {
+            nodeId: 'tool-1',
+            kind: 'tool',
+            title: 'get_pods',
+            status: 'done',
+            headline: '已获取 Pod 列表',
+          },
+          {
+            nodeId: 'tool-2',
+            kind: 'tool',
+            title: 'get_deployments',
+            status: 'done',
+            headline: '已获取 Deployment 列表',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('已获取 Pod 列表')).toBeInTheDocument();
+    expect(screen.getByText('已获取 Deployment 列表')).toBeInTheDocument();
+  });
+
+  it('returns null for empty nodes', () => {
+    const { container } = render(
+      <RuntimeThoughtChain nodes={[]} />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('applies collapsed class when isCollapsed is true', () => {
+    const { container } = render(
+      <RuntimeThoughtChain
+        nodes={[
+          {
+            nodeId: 'tool-1',
+            kind: 'tool',
+            title: 'get_pods',
+            status: 'done',
+            headline: '已获取 Pod 列表',
+          },
+        ]}
+        isCollapsed
+      />,
+    );
+
+    expect(container.firstChild).toHaveClass('runtime-chain--collapsed');
   });
 });

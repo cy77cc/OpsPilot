@@ -1,173 +1,244 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createThoughtChainRuntimeState,
-  reduceThoughtChainRuntimeEvent,
+  createToolChainState,
+  reduceToolChainEvent,
+  toolChainStateFromReplayTurn,
 } from './thoughtChainRuntime';
+import type { ChatTurn } from './types';
 
 describe('thoughtChainRuntime', () => {
-  it('ignores legacy phase events for the primary chain reducer', () => {
-    const legacyPhaseEvent = {
-      type: 'phase_started',
-      data: { phase: 'planning', status: 'loading' },
-    } as unknown as Parameters<typeof reduceThoughtChainRuntimeEvent>[1];
-
-    const state = reduceThoughtChainRuntimeEvent(undefined, legacyPhaseEvent);
-
-    expect(state.nodes).toHaveLength(0);
-    expect(state.turnId).toBeUndefined();
-  });
-
-  it('opens, patches, closes, and collapses native chain nodes before final answer becomes visible', () => {
-    let state = createThoughtChainRuntimeState();
-
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_started',
-      data: { turn_id: 'turn-1' },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_node_open',
+  it('handles tool_call event and creates a running tool node', () => {
+    const state = reduceToolChainEvent(undefined, {
+      type: 'tool_call',
       data: {
-        turn_id: 'turn-1',
-        node_id: 'plan-1',
-        kind: 'plan',
-        title: '正在整理执行计划',
-        status: 'loading',
-        headline: '准备检查集群状态',
-        body: '先确认集群可用性，再检查 deployment 副本数。',
-        structured: {
-          steps: ['检查集群状态'],
-        },
+        call_id: 'call-1',
+        tool_name: 'get_pods',
+        tool_display_name: '获取 Pod 列表',
+        arguments: '{"namespace":"default"}',
       },
     });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_node_patch',
-      data: {
-        turn_id: 'turn-1',
-        node_id: 'plan-1',
-        headline: '已整理出 2 个执行步骤',
-        structured: {
-          steps: ['检查集群状态', '确认 deployment 副本数'],
-        },
-        raw: {
-          source: 'planner',
-        },
-      },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_node_close',
-      data: {
-        turn_id: 'turn-1',
-        node_id: 'plan-1',
-        status: 'done',
-      },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_collapsed',
-      data: { turn_id: 'turn-1' },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'final_answer_started',
-      data: { turn_id: 'turn-1' },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'final_answer_delta',
-      data: { turn_id: 'turn-1', chunk: '扩容已完成' },
-    });
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'final_answer_done',
-      data: { turn_id: 'turn-1' },
-    });
 
-    expect(state.turnId).toBe('turn-1');
-    expect(state.nodes).toEqual([
-      expect.objectContaining({
-        nodeId: 'plan-1',
-        kind: 'plan',
-        status: 'done',
-        headline: '已整理出 2 个执行步骤',
-        body: '先确认集群可用性，再检查 deployment 副本数。',
-        structured: {
-          steps: ['检查集群状态', '确认 deployment 副本数'],
-        },
-        raw: {
-          source: 'planner',
-        },
-      }),
-    ]);
-    expect(state.isCollapsed).toBe(true);
-    expect(state.collapsePhase).toBe('collapsed');
-    expect(state.finalAnswer).toEqual(expect.objectContaining({
-      visible: true,
-      streaming: false,
-      content: '扩容已完成',
+    expect(state.nodes).toHaveLength(1);
+    expect(state.nodes[0]).toEqual(expect.objectContaining({
+      id: 'call-1',
+      kind: 'tool',
+      toolName: 'get_pods',
+      toolDisplayName: '获取 Pod 列表',
+      status: 'running',
     }));
+    expect(state.activeNodeId).toBe('call-1');
   });
 
-  it('maps approval payload into the active approval node', () => {
-    let state = createThoughtChainRuntimeState();
-
-    state = reduceThoughtChainRuntimeEvent(state, {
-      type: 'chain_node_open',
+  it('handles tool_approval event and creates a waiting approval node', () => {
+    const state = reduceToolChainEvent(undefined, {
+      type: 'tool_approval',
       data: {
-        node_id: 'approval-1',
-        kind: 'approval',
-        title: '扩容 nginx 需要确认',
-        status: 'waiting',
-        summary: '该步骤会修改工作负载副本数',
-        approval: {
-          request_id: 'approval-1',
-          title: '扩容 nginx 需要确认',
-          risk: 'medium',
-          details: {
-            step_id: 'step-1',
+        call_id: 'call-2',
+        tool_name: 'delete_pod',
+        tool_display_name: '删除 Pod',
+        risk: 'high',
+        summary: '即将删除 pod/nginx-deployment-xxx',
+        arguments_json: '{"name":"nginx-deployment-xxx"}',
+        approval_id: 'approval-1',
+        checkpoint_id: 'cp-1',
+        plan_id: 'plan-1',
+        step_id: 'step-1',
+      },
+    });
+
+    expect(state.nodes).toHaveLength(1);
+    expect(state.nodes[0]).toEqual(expect.objectContaining({
+      id: 'call-2',
+      kind: 'approval',
+      toolName: 'delete_pod',
+      toolDisplayName: '删除 Pod',
+      status: 'waiting_approval',
+      approval: expect.objectContaining({
+        id: 'approval-1',
+        title: '删除 Pod',
+        risk: 'high',
+        description: '即将删除 pod/nginx-deployment-xxx',
+        status: 'waiting_user',
+      }),
+    }));
+    expect(state.activeNodeId).toBe('call-2');
+  });
+
+  it('handles tool_result event and updates node status', () => {
+    let state = reduceToolChainEvent(undefined, {
+      type: 'tool_call',
+      data: {
+        call_id: 'call-3',
+        tool_name: 'get_pods',
+      },
+    });
+
+    state = reduceToolChainEvent(state, {
+      type: 'tool_result',
+      data: {
+        call_id: 'call-3',
+        tool_name: 'get_pods',
+        result: '{"items":[],"ok":true}',
+      },
+    });
+
+    expect(state.nodes).toHaveLength(1);
+    expect(state.nodes[0].status).toBe('success');
+    expect(state.nodes[0].result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({ items: [] }),
+    }));
+    expect(state.activeNodeId).toBeUndefined();
+  });
+
+  it('handles tool_result with error status', () => {
+    let state = reduceToolChainEvent(undefined, {
+      type: 'tool_call',
+      data: {
+        call_id: 'call-4',
+        tool_name: 'get_pods',
+      },
+    });
+
+    state = reduceToolChainEvent(state, {
+      type: 'tool_result',
+      data: {
+        call_id: 'call-4',
+        result: '{"error":"connection refused"}',
+      },
+    });
+
+    expect(state.nodes[0].status).toBe('error');
+    expect(state.nodes[0].result?.error).toBeTruthy();
+  });
+
+  it('updates existing node when receiving tool_call for same call_id', () => {
+    let state = reduceToolChainEvent(undefined, {
+      type: 'tool_call',
+      data: {
+        call_id: 'call-5',
+        tool_name: 'get_pods',
+      },
+    });
+
+    expect(state.nodes[0].status).toBe('running');
+
+    state = reduceToolChainEvent(state, {
+      type: 'tool_call',
+      data: {
+        call_id: 'call-5',
+        tool_name: 'get_pods',
+      },
+    });
+
+    expect(state.nodes).toHaveLength(1);
+    expect(state.activeNodeId).toBe('call-5');
+  });
+
+  it('builds tool chain from replay turn with tool blocks', () => {
+    const turn: ChatTurn = {
+      id: 'turn-1',
+      role: 'assistant',
+      status: 'completed',
+      blocks: [
+        {
+          id: 'tool-1',
+          type: 'tool',
+          title: 'get_pods',
+          position: 0,
+          status: 'success',
+          data: {
+            params: { namespace: 'default' },
+            result: { ok: true, data: { items: [] } },
           },
         },
-      },
-    });
+        {
+          id: 'approval-1',
+          type: 'approval',
+          title: '删除 Pod',
+          position: 1,
+          status: 'waiting_approval',
+          data: {
+            tool_name: 'delete_pod',
+            tool_display_name: '删除 Pod',
+            risk: 'high',
+            summary: '即将删除 pod',
+            plan_id: 'plan-1',
+            step_id: 'step-1',
+            checkpoint_id: 'cp-1',
+            arguments_json: '{"name":"nginx"}',
+          },
+        },
+      ],
+      createdAt: '2026-03-15T00:00:00Z',
+      updatedAt: '2026-03-15T00:00:00Z',
+    };
 
-    expect(state.activeNodeId).toBe('approval-1');
-    expect(state.nodes[0]).toEqual(expect.objectContaining({
-      nodeId: 'approval-1',
+    const state = toolChainStateFromReplayTurn(turn);
+
+    expect(state).not.toBeUndefined();
+    expect(state!.nodes).toHaveLength(2);
+    expect(state!.nodes[0]).toEqual(expect.objectContaining({
+      id: 'tool-1',
+      kind: 'tool',
+      toolName: 'get_pods',
+      status: 'success',
+    }));
+    expect(state!.nodes[1]).toEqual(expect.objectContaining({
+      id: 'approval-1',
       kind: 'approval',
+      toolName: 'delete_pod',
+      status: 'waiting_approval',
       approval: expect.objectContaining({
-        requestId: 'approval-1',
-        title: '扩容 nginx 需要确认',
-        risk: 'medium',
+        risk: 'high',
+        title: '删除 Pod',
       }),
     }));
   });
 
-  it('stores separated narrative and raw fields on tool nodes', () => {
-    const state = reduceThoughtChainRuntimeEvent(undefined, {
-      type: 'chain_node_open',
-      data: {
-        turn_id: 'turn-1',
-        node_id: 'tool-1',
-        kind: 'tool',
-        title: 'host_list_inventory',
-        status: 'loading',
-        headline: '已获取 5 台主机',
-        body: '当前所有主机均在线。',
-        structured: {
-          resource: 'hosts',
-          rows: [{ id: 1, name: 'test', status: 'online' }],
+  it('returns undefined for user replay turns', () => {
+    const turn: ChatTurn = {
+      id: 'turn-user',
+      role: 'user',
+      status: 'completed',
+      blocks: [],
+      createdAt: '2026-03-15T00:00:00Z',
+      updatedAt: '2026-03-15T00:00:00Z',
+    };
+
+    const state = toolChainStateFromReplayTurn(turn);
+
+    expect(state).toBeUndefined();
+  });
+
+  it('returns undefined for assistant turns with no tool blocks', () => {
+    const turn: ChatTurn = {
+      id: 'turn-simple',
+      role: 'assistant',
+      status: 'completed',
+      blocks: [
+        {
+          id: 'text-1',
+          type: 'text',
+          position: 0,
+          content: 'Hello!',
         },
-        raw: {
-          total: 5,
-        },
-      },
+      ],
+      createdAt: '2026-03-15T00:00:00Z',
+      updatedAt: '2026-03-15T00:00:00Z',
+    };
+
+    const state = toolChainStateFromReplayTurn(turn);
+
+    expect(state).toBeUndefined();
+  });
+
+  it('ignores unknown event types', () => {
+    const state = reduceToolChainEvent(undefined, {
+      type: 'unknown_event' as any,
+      data: {},
     });
 
-    expect(state.nodes[0]).toEqual(expect.objectContaining({
-      nodeId: 'tool-1',
-      headline: '已获取 5 台主机',
-      body: '当前所有主机均在线。',
-      structured: expect.objectContaining({
-        resource: 'hosts',
-      }),
-      raw: expect.objectContaining({
-        total: 5,
-      }),
-    }));
+    expect(state.nodes).toHaveLength(0);
   });
 });

@@ -25,30 +25,16 @@ import (
 type EventType = events.Name
 
 // 以下常量将 events 包的名称重新导出为 EventXxx 形式，供 runtime 包内使用。
-// 主运行时路径只依赖 turn lifecycle、正文流和审批事件；旧 stage 事件仅做兼容保留。
+// 简化后的事件流：tool_call -> tool_approval(可选) -> tool_result
 const (
-	EventMeta             EventType = events.Meta
-	EventDelta            EventType = events.Delta
-	EventThinkingDelta    EventType = events.ThinkingDelta
-	EventToolCall         EventType = events.ToolCall
-	EventToolResult       EventType = events.ToolResult
-	EventTurnState        EventType = events.TurnState
-	EventChainMeta        EventType = events.ChainMeta
-	EventChainStarted     EventType = events.ChainStarted
-	EventChainNodeOpen    EventType = events.ChainNodeOpen
-	EventChainNodePatch   EventType = events.ChainNodePatch
-	EventChainNodeReplace EventType = events.ChainNodeReplace
-	EventChainNodeClose   EventType = events.ChainNodeClose
-	EventChainPaused      EventType = events.ChainPaused
-	EventChainResumed     EventType = events.ChainResumed
-	EventChainCollapsed   EventType = events.ChainCollapsed
-	EventChainCompleted   EventType = events.ChainCompleted
-	EventChainError       EventType = events.ChainError
-	EventFinalAnswerStart EventType = events.FinalAnswerStart
-	EventFinalAnswerDelta EventType = events.FinalAnswerDelta
-	EventFinalAnswerDone  EventType = events.FinalAnswerDone
-	EventDone             EventType = events.Done
-	EventError            EventType = events.Error
+	EventMeta          EventType = events.Meta
+	EventDelta         EventType = events.Delta
+	EventThinkingDelta EventType = events.ThinkingDelta
+	EventToolCall      EventType = events.ToolCall
+	EventToolApproval  EventType = events.ToolApproval
+	EventToolResult    EventType = events.ToolResult
+	EventDone          EventType = events.Done
+	EventError         EventType = events.Error
 )
 
 // StreamEvent 是推送给前端的 SSE 事件单元。

@@ -240,12 +240,6 @@ describe('useConversationRestore', () => {
                   structured: { resource: 'hosts', rows: [{ id: 1, name: 'test', status: 'online' }] },
                 },
               ],
-              final_answer: {
-                visible: true,
-                streaming: false,
-                content: '## 主机状态\n\n全部在线',
-                reveal_state: 'complete',
-              },
             },
             timestamp: '2026-03-11T00:00:01Z',
           },
@@ -275,15 +269,11 @@ describe('useConversationRestore', () => {
           messages: [
             expect.objectContaining({
               role: 'assistant',
-              content: '## 主机状态\n\n全部在线',
               runtime: expect.objectContaining({
-                finalAnswer: expect.objectContaining({
-                  content: '## 主机状态\n\n全部在线',
-                }),
                 nodes: [
                   expect.objectContaining({
                     nodeId: 'tool:step-1',
-                    headline: '已获取 2 台主机',
+                    title: 'host_list_inventory',
                   }),
                 ],
               }),
@@ -495,11 +485,11 @@ describe('useConversationRestore', () => {
           phase: 'done',
           blocks: [
             {
-              id: 'plan-1',
-              blockType: 'plan',
+              id: 'tool-1',
+              blockType: 'tool',
               position: 1,
-              title: '正在整理执行计划',
-              contentText: '已生成执行步骤',
+              title: 'get_deployment',
+              contentText: 'nginx status',
               createdAt: '2026-03-11T00:00:01Z',
               updatedAt: '2026-03-11T00:00:01Z',
             },
@@ -527,12 +517,9 @@ describe('useConversationRestore', () => {
       expect(onRestore).toHaveBeenCalledWith(expect.objectContaining({
         activeConversation: expect.objectContaining({
           messages: [expect.objectContaining({
-            runtime: expect.objectContaining({
-              turnId: 'turn-native',
-              isCollapsed: true,
-              finalAnswer: expect.objectContaining({
-                content: 'nginx 当前状态正常',
-              }),
+            content: 'nginx 当前状态正常',
+            turn: expect.objectContaining({
+              id: 'turn-native',
             }),
           })],
         }),

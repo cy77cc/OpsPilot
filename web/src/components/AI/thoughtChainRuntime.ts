@@ -1,361 +1,399 @@
-import type { SSEChainNodeEvent, SSEChainStartedEvent, SSEFinalAnswerEvent } from '../../api/modules/ai';
+/**
+ * 工具链运行时状态管理
+ *
+ * 处理简化后的事件流：tool_call -> tool_approval(可选) -> tool_result
+ */
+import type { SSEToolCallEvent, SSEToolApprovalEvent, SSEToolResultEvent } from '../../api/modules/ai';
 import type {
   ChatTurn,
   ConfirmationRequest,
+  ToolChainNode,
+  ToolChainState,
+  ToolChainNodeKind,
+  ToolChainNodeStatus,
   ThoughtChainRuntimeState,
-  RuntimeThoughtChainNode,
-  RuntimeThoughtChainNodeKind,
-  RuntimeThoughtChainNodeStatus,
 } from './types';
 
-type RuntimeEvent =
-  | { type: 'chain_started'; data: SSEChainStartedEvent }
-  | { type: 'chain_node_open'; data: SSEChainNodeEvent }
-  | { type: 'chain_node_patch'; data: SSEChainNodeEvent }
-  | { type: 'chain_node_replace'; data: SSEChainNodeEvent }
-  | { type: 'chain_node_close'; data: SSEChainNodeEvent }
-  | { type: 'chain_collapsed'; data: SSEChainStartedEvent }
-  | { type: 'final_answer_started'; data: SSEFinalAnswerEvent }
-  | { type: 'final_answer_delta'; data: SSEFinalAnswerEvent }
-  | { type: 'final_answer_done'; data: SSEFinalAnswerEvent };
+type ToolChainEvent =
+  | { type: 'tool_call'; data: SSEToolCallEvent }
+  | { type: 'tool_approval'; data: SSEToolApprovalEvent }
+  | { type: 'tool_result'; data: SSEToolResultEvent };
 
-const defaultFinalAnswer = {
-  visible: false,
-  streaming: false,
-  content: '',
-  revealState: 'hidden',
-} as const;
+type RuntimeState = ToolChainState | ThoughtChainRuntimeState;
 
-export function createThoughtChainRuntimeState(): ThoughtChainRuntimeState {
+/**
+ * 创建初始工具链状态
+ */
+export function createToolChainState(): ToolChainState {
   return {
     nodes: [],
-    isCollapsed: false,
-    collapsePhase: 'expanded',
-    finalAnswer: { ...defaultFinalAnswer },
   };
 }
 
-export function reduceThoughtChainRuntimeEvent(
-  current: ThoughtChainRuntimeState | undefined,
-  event: RuntimeEvent,
-): ThoughtChainRuntimeState {
-  const state = current || createThoughtChainRuntimeState();
+/**
+ * 将旧版 ThoughtChainRuntimeState 转换为 ToolChainState
+ */
+function toToolChainState(state: RuntimeState | undefined): ToolChainState {
+  if (!state) {
+    return createToolChainState();
+  }
+  // 如果已经是 ToolChainState 格式（没有 isCollapsed 字段）
+  if (!('isCollapsed' in state)) {
+    return state as ToolChainState;
+  }
+  // 转换旧格式
+  const legacyState = state as ThoughtChainRuntimeState;
+  return {
+    nodes: legacyState.nodes.map((node) => ({
+      id: node.nodeId,
+      kind: (node.kind === 'tool' || node.kind === 'approval') ? node.kind : 'tool',
+      toolName: node.title || 'tool',
+      toolDisplayName: node.title,
+      status: convertStatus(node.status),
+      arguments: node.structured,
+      result: node.raw ? { ok: true, data: node.raw } : undefined,
+      approval: node.approval,
+    })),
+    activeNodeId: legacyState.activeNodeId,
+  };
+}
+
+function convertStatus(status: string): ToolChainNodeStatus {
+  switch (status) {
+    case 'pending':
+      return 'pending';
+    case 'active':
+      return 'running';
+    case 'waiting':
+      return 'waiting_approval';
+    case 'done':
+      return 'success';
+    case 'error':
+      return 'error';
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * 处理工具链事件，返回新状态
+ */
+export function reduceToolChainEvent(
+  current: RuntimeState | undefined,
+  event: ToolChainEvent,
+): ToolChainState {
+  const state = toToolChainState(current);
+
   switch (event.type) {
-    case 'chain_started':
-      return {
-        ...state,
-        turnId: event.data.turn_id || state.turnId,
-        isCollapsed: false,
-        collapsePhase: 'expanded',
-        finalAnswer: { ...defaultFinalAnswer },
-      };
-    case 'chain_node_open':
-      return upsertNode(state, toRuntimeNode(event.data, 'active'), asString(event.data.turn_id));
-    case 'chain_node_patch':
-      return patchNode(state, event.data);
-    case 'chain_node_replace':
-      return replaceNode(state, event.data);
-    case 'chain_node_close':
-      return closeNode(state, event.data);
-    case 'chain_collapsed':
-      return {
-        ...state,
-        turnId: event.data.turn_id || state.turnId,
-        isCollapsed: true,
-        collapsePhase: 'collapsed',
-      };
-    case 'final_answer_started':
-      return {
-        ...state,
-        turnId: event.data.turn_id || state.turnId,
-        finalAnswer: {
-          ...state.finalAnswer,
-          visible: true,
-          streaming: true,
-          revealState: 'revealing',
-        },
-      };
-    case 'final_answer_delta':
-      return {
-        ...state,
-        turnId: event.data.turn_id || state.turnId,
-        finalAnswer: {
-          ...state.finalAnswer,
-          visible: true,
-          streaming: true,
-          revealState: 'revealing',
-          content: `${state.finalAnswer.content}${event.data.chunk || ''}`,
-        },
-      };
-    case 'final_answer_done':
-      return {
-        ...state,
-        turnId: event.data.turn_id || state.turnId,
-        finalAnswer: {
-          ...state.finalAnswer,
-          visible: true,
-          streaming: false,
-          revealState: 'complete',
-        },
-      };
+    case 'tool_call':
+      return handleToolCall(state, event.data);
+    case 'tool_approval':
+      return handleToolApproval(state, event.data);
+    case 'tool_result':
+      return handleToolResult(state, event.data);
     default:
       return state;
   }
 }
 
-function upsertNode(
-  state: ThoughtChainRuntimeState,
-  node: RuntimeThoughtChainNode,
-  turnID?: string,
-): ThoughtChainRuntimeState {
-  const nodes = [...state.nodes];
-  const index = nodes.findIndex((item) => item.nodeId === node.nodeId);
-  if (index >= 0) {
-    nodes[index] = { ...nodes[index], ...node };
-  } else {
-    nodes.push(node);
+function handleToolCall(state: ToolChainState, data: SSEToolCallEvent): ToolChainState {
+  const callId = data.call_id || `call-${Date.now()}`;
+  const existingIndex = state.nodes.findIndex((n) => n.id === callId);
+
+  if (existingIndex >= 0) {
+    // 更新现有节点
+    const nodes = [...state.nodes];
+    nodes[existingIndex] = {
+      ...nodes[existingIndex],
+      status: 'running',
+    };
+    return { ...state, nodes, activeNodeId: callId };
   }
+
+  // 创建新节点
+  const node: ToolChainNode = {
+    id: callId,
+    kind: 'tool',
+    toolName: data.tool_name || 'unknown',
+    toolDisplayName: data.tool_display_name,
+    status: 'running',
+    arguments: parseArguments(data.arguments),
+  };
+
   return {
     ...state,
-    turnId: turnID || state.turnId,
-    nodes,
-    activeNodeId: node.status === 'done' ? state.activeNodeId : node.nodeId,
-    isCollapsed: false,
-    collapsePhase: 'expanded',
+    nodes: [...state.nodes, node],
+    activeNodeId: callId,
   };
 }
 
-function patchNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent): ThoughtChainRuntimeState {
-  const nodeID = asString(payload.node_id);
-  if (!nodeID) {
-    return state;
-  }
-  const nodes = state.nodes.map((node) => (
-    node.nodeId === nodeID
-      ? {
-          ...node,
-          title: asString(payload.title) || node.title,
-          headline: asString(payload.headline) || node.headline,
-          body: asString(payload.body) || node.body,
-          structured: asRecord(payload.structured) || node.structured,
-          raw: payload.raw ?? node.raw,
-          summary: asString(payload.summary) || node.summary,
-          details: Array.isArray(payload.details) ? payload.details : node.details,
-          approval: payload.approval ? approvalFromPayload(payload.approval as Record<string, unknown>) : node.approval,
-          status: normalizeNodeStatus(asString(payload.status)) || node.status,
-        }
-      : node
-  ));
-  return { ...state, nodes };
-}
+function handleToolApproval(state: ToolChainState, data: SSEToolApprovalEvent): ToolChainState {
+  const callId = data.call_id || `approval-${Date.now()}`;
+  const existingIndex = state.nodes.findIndex((n) => n.id === callId);
 
-function closeNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent): ThoughtChainRuntimeState {
-  const nodeID = asString(payload.node_id);
-  if (!nodeID) {
-    return state;
-  }
-  const nodes = state.nodes.map((node) => (
-    node.nodeId === nodeID
-      ? {
-          ...node,
-          status: normalizeNodeStatus(asString(payload.status)) || 'done',
-        }
-      : node
-  ));
-  const activeNode = state.activeNodeId === nodeID ? undefined : state.activeNodeId;
-  return { ...state, nodes, activeNodeId: activeNode };
-}
-
-function replaceNode(state: ThoughtChainRuntimeState, payload: SSEChainNodeEvent): ThoughtChainRuntimeState {
-  return upsertNode(state, {
-    ...toRuntimeNode(payload, 'active'),
-    status: normalizeNodeStatus(asString(payload.status)) || 'active',
-  }, asString(payload.turn_id));
-}
-
-function toRuntimeNode(payload: SSEChainNodeEvent, fallbackStatus: RuntimeThoughtChainNodeStatus): RuntimeThoughtChainNode {
-  return {
-    nodeId: asString(payload.node_id) || `node:${Date.now()}`,
-    kind: normalizeNodeKind(asString(payload.kind)),
-    title: asString(payload.title) || '执行步骤',
-    status: normalizeNodeStatus(asString(payload.status)) || fallbackStatus,
-    headline: asString(payload.headline),
-    body: asString(payload.body),
-    structured: asRecord(payload.structured),
-    raw: payload.raw,
-    summary: asString(payload.summary),
-    details: Array.isArray(payload.details) ? payload.details : undefined,
-    approval: payload.approval ? approvalFromPayload(payload.approval as Record<string, unknown>) : undefined,
-  };
-}
-
-function approvalFromPayload(payload: Record<string, unknown>): Omit<ConfirmationRequest, 'onConfirm' | 'onCancel'> & { requestId?: string } {
-  return {
-    id: asString(payload.request_id || payload.id) || 'approval',
-    requestId: asString(payload.request_id || payload.id) || 'approval',
-    title: asString(payload.title) || 'Approval required',
-    description: asString(payload.summary || payload.description) || '当前步骤需要确认后继续执行',
-    risk: (asString(payload.risk || payload.risk_level) || 'medium') as ConfirmationRequest['risk'],
+  const approval: Omit<ConfirmationRequest, 'onConfirm' | 'onCancel'> = {
+    id: data.approval_id || callId,
+    title: data.tool_display_name || data.tool_name || '待确认操作',
+    description: data.summary || '此操作需要确认',
+    risk: (data.risk || 'medium') as ConfirmationRequest['risk'],
     status: 'waiting_user',
-    details: payload.details as Record<string, unknown> | undefined,
-    // 工具信息
-    toolName: asString(payload.tool_name),
-    toolDisplayName: asString(payload.tool_display_name),
-    // 恢复身份字段
-    planId: asString(payload.plan_id),
-    stepId: asString(payload.step_id),
-    checkpointId: asString(payload.checkpoint_id),
-    target: asString(payload.target),
-    // 参数编辑支持
-    argumentsJson: asString(payload.arguments_json),
+    toolName: data.tool_name,
+    toolDisplayName: data.tool_display_name,
+    planId: data.plan_id,
+    stepId: data.step_id,
+    checkpointId: data.checkpoint_id,
+    argumentsJson: data.arguments_json,
     editable: true,
   };
+
+  if (existingIndex >= 0) {
+    // 更新现有节点
+    const nodes = [...state.nodes];
+    nodes[existingIndex] = {
+      ...nodes[existingIndex],
+      status: 'waiting_approval',
+      approval,
+    };
+    return { ...state, nodes, activeNodeId: callId };
+  }
+
+  // 创建新的审批节点
+  const node: ToolChainNode = {
+    id: callId,
+    kind: 'approval',
+    toolName: data.tool_name || 'unknown',
+    toolDisplayName: data.tool_display_name,
+    status: 'waiting_approval',
+    approval,
+    arguments: parseArguments(data.arguments_json),
+  };
+
+  return {
+    ...state,
+    nodes: [...state.nodes, node],
+    activeNodeId: callId,
+  };
 }
 
-function normalizeNodeKind(kind: string): RuntimeThoughtChainNodeKind {
-  switch (kind) {
-    case 'plan':
-    case 'execute':
-    case 'tool':
-    case 'replan':
-    case 'approval':
-      return kind;
-    default:
-      return 'execute';
+function handleToolResult(state: ToolChainState, data: SSEToolResultEvent): ToolChainState {
+  const callId = data.call_id;
+  if (!callId) {
+    return state;
+  }
+
+  const existingIndex = state.nodes.findIndex((n) => n.id === callId);
+  if (existingIndex < 0) {
+    return state;
+  }
+
+  const nodes = [...state.nodes];
+  const existingNode = nodes[existingIndex];
+  const result = parseResult(data.result);
+
+  nodes[existingIndex] = {
+    ...existingNode,
+    status: result.ok ? 'success' : 'error',
+    result,
+  };
+
+  // 如果有活跃节点且匹配，清除活跃状态
+  const activeNodeId = state.activeNodeId === callId ? undefined : state.activeNodeId;
+
+  return { ...state, nodes, activeNodeId };
+}
+
+function parseArguments(args?: string): Record<string, unknown> | undefined {
+  if (!args) return undefined;
+  try {
+    return JSON.parse(args);
+  } catch {
+    return undefined;
   }
 }
 
-function normalizeNodeStatus(status: string): RuntimeThoughtChainNodeStatus | undefined {
-  switch (status) {
-    case 'loading':
-    case 'running':
-      return 'active';
-    case 'waiting':
-    case 'waiting_approval':
-      return 'waiting';
-    case 'success':
-    case 'done':
-    case 'completed':
-      return 'done';
-    case 'error':
-    case 'failed':
-      return 'error';
-    case 'pending':
-      return 'pending';
-    default:
-      return undefined;
+function parseResult(result?: string): { ok: boolean; data?: unknown; error?: string } {
+  if (!result) {
+    return { ok: true };
+  }
+  try {
+    const parsed = JSON.parse(result);
+    if (typeof parsed === 'object' && parsed !== null) {
+      if ('error' in parsed && parsed.error) {
+        return { ok: false, error: String(parsed.error), data: parsed };
+      }
+      return { ok: true, data: parsed };
+    }
+    return { ok: true, data: parsed };
+  } catch {
+    // 如果不是 JSON，直接作为文本返回
+    if (result.includes('error') || result.includes('failed')) {
+      return { ok: false, error: result };
+    }
+    return { ok: true, data: result };
   }
 }
 
-export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined): ThoughtChainRuntimeState | undefined {
+// === 兼容性函数：从回放数据重建状态 ===
+
+/**
+ * 从回放轮次数据重建工具链状态
+ */
+export function toolChainStateFromReplayTurn(turn: ChatTurn | undefined): ToolChainState | undefined {
   if (!turn || turn.role !== 'assistant') {
     return undefined;
   }
-  const runtime = createThoughtChainRuntimeState();
-  runtime.turnId = turn.id;
+
+  const state = createToolChainState();
 
   for (const block of turn.blocks) {
-    if (block.type === 'plan') {
-      runtime.nodes.push({
-        nodeId: block.id,
-        kind: 'plan',
-        title: block.title || '正在整理执行计划',
-        status: normalizeReplayBlockStatus(block.status, turn.status),
-        headline: block.content,
-        structured: asRecord(block.data),
-        summary: block.content,
-        details: block.data?.steps as unknown[] | undefined,
-      });
-    } else if (block.type === 'tool') {
-      runtime.nodes.push({
-        nodeId: block.id,
+    if (block.type === 'tool') {
+      const callId = block.id || `tool-${Date.now()}`;
+      state.nodes.push({
+        id: callId,
         kind: 'tool',
-        title: block.title || '正在调用工具',
-        status: normalizeReplayBlockStatus(block.status, turn.status),
-        headline: block.content || asString(block.data?.summary),
-        structured: asRecord(block.data),
-        raw: block.data,
-        summary: block.content || asString(block.data?.summary),
-        details: [block.data].filter(Boolean) as unknown[],
+        toolName: block.title || 'tool',
+        toolDisplayName: block.title,
+        status: normalizeBlockStatus(block.status, turn.status),
+        result: block.data?.result as ToolChainNode['result'],
+        arguments: block.data?.params as Record<string, unknown>,
       });
     } else if (block.type === 'approval') {
-      runtime.nodes.push({
-        nodeId: block.id,
+      const callId = block.id || `approval-${Date.now()}`;
+      const data = block.data || {};
+      state.nodes.push({
+        id: callId,
         kind: 'approval',
-        title: block.title || '等待你确认',
-        status: normalizeReplayBlockStatus(block.status, turn.status, true),
-        headline: block.content || asString(block.data?.summary),
-        summary: block.content || asString(block.data?.summary),
-        approval: approvalFromApprovalEvent(block.data as Record<string, unknown>),
-      });
-    } else if (block.type === 'status' && (block.data?.phase === 'replanning' || block.data?.phase === 'replan')) {
-      runtime.nodes.push({
-        nodeId: block.id,
-        kind: 'replan',
-        title: block.title || '发现新信息，正在调整计划',
-        status: normalizeReplayBlockStatus(block.status, turn.status),
-        headline: block.content,
-        summary: block.content,
+        toolName: (data.tool_name as string) || 'unknown',
+        toolDisplayName: data.tool_display_name as string,
+        status: normalizeBlockStatus(block.status, turn.status, true),
+        approval: {
+          id: callId,
+          title: block.title || '待确认操作',
+          description: (data.summary as string) || '此操作需要确认',
+          risk: (data.risk as ConfirmationRequest['risk']) || 'medium',
+          status: 'waiting_user',
+          toolName: data.tool_name as string,
+          toolDisplayName: data.tool_display_name as string,
+          planId: data.plan_id as string,
+          stepId: data.step_id as string,
+          checkpointId: data.checkpoint_id as string,
+          argumentsJson: data.arguments_json as string,
+          editable: true,
+        },
       });
     }
   }
 
-  const finalAnswerBlock = [...turn.blocks]
-    .filter((block) => block.type === 'text' && (block.content || '').trim())
-    .sort((a, b) => b.position - a.position)[0];
-
-  if (finalAnswerBlock) {
-    runtime.finalAnswer = {
-      visible: true,
-      streaming: finalAnswerBlock.streaming === true,
-      content: finalAnswerBlock.content || '',
-      revealState: finalAnswerBlock.streaming ? 'revealing' : 'complete',
-    };
-  }
-
-  if (turn.status === 'completed' || turn.completedAt) {
-    runtime.isCollapsed = runtime.nodes.length > 0;
-    runtime.collapsePhase = runtime.isCollapsed ? 'collapsed' : 'expanded';
-    runtime.nodes = runtime.nodes.map((node) => ({
-      ...node,
-      status: node.status === 'error' ? 'error' : node.status === 'waiting' ? 'waiting' : 'done',
-    }));
-  }
-
-  if (runtime.nodes.length === 0 && !runtime.finalAnswer.content) {
+  if (state.nodes.length === 0) {
     return undefined;
   }
 
-  runtime.activeNodeId = runtime.nodes.find((node) => node.status === 'active' || node.status === 'waiting')?.nodeId;
-  return runtime;
+  state.activeNodeId = state.nodes.find((n) => n.status === 'running' || n.status === 'waiting_approval')?.id;
+  return state;
 }
 
-function normalizeReplayBlockStatus(status?: string, turnStatus?: string, waiting = false): RuntimeThoughtChainNodeStatus {
-  if (waiting || status === 'waiting_approval') {
-    return 'waiting';
+function normalizeBlockStatus(
+  status?: string,
+  turnStatus?: string,
+  isApproval = false,
+): ToolChainNodeStatus {
+  if (isApproval || status === 'waiting_approval') {
+    return 'waiting_approval';
   }
   if (status === 'error' || turnStatus === 'error') {
     return 'error';
   }
   if (status === 'running' || status === 'streaming' || turnStatus === 'streaming') {
-    return 'active';
+    return 'running';
   }
-  return 'done';
+  if (status === 'success' || status === 'completed' || turnStatus === 'completed') {
+    return 'success';
+  }
+  return 'pending';
 }
 
-function approvalFromApprovalEvent(data: Record<string, unknown> | undefined) {
-  if (!data) {
+/**
+ * 将 ToolChainState 转换为 ThoughtChainRuntimeState
+ * 用于向后兼容旧版渲染组件
+ */
+export function toThoughtChainRuntimeState(state: ToolChainState | undefined): ThoughtChainRuntimeState | undefined {
+  if (!state || state.nodes.length === 0) {
     return undefined;
   }
-  return approvalFromPayload(data);
+
+  return {
+    nodes: state.nodes.map((node) => ({
+      nodeId: node.id,
+      kind: node.kind,
+      title: node.toolDisplayName || node.toolName,
+      status: node.status === 'waiting_approval' ? 'waiting' : node.status === 'success' ? 'done' : node.status,
+      summary: node.result?.error || node.result?.data ? String(node.result.data || node.result.error) : undefined,
+      approval: node.approval,
+    })),
+    activeNodeId: state.activeNodeId,
+    isCollapsed: false,
+    collapsePhase: 'expanded' as const,
+    finalAnswer: {
+      visible: false,
+      streaming: false,
+      content: '',
+      revealState: 'hidden' as const,
+    },
+  };
 }
 
+// === 旧版兼容：保留原有函数签名 ===
+
+export function createThoughtChainRuntimeState() {
+  return {
+    nodes: [],
+    isCollapsed: false,
+    collapsePhase: 'expanded' as const,
+    finalAnswer: {
+      visible: false,
+      streaming: false,
+      content: '',
+      revealState: 'hidden' as const,
+    },
+  };
+}
+
+export function runtimeStateFromReplayTurn(turn: ChatTurn | undefined) {
+  const toolChain = toolChainStateFromReplayTurn(turn);
+  if (!toolChain) {
+    return undefined;
+  }
+
+  // 转换为旧格式
+  return {
+    turnId: turn?.id,
+    nodes: toolChain.nodes.map((node) => ({
+      nodeId: node.id,
+      kind: node.kind,
+      title: node.toolDisplayName || node.toolName,
+      status: node.status === 'waiting_approval' ? 'waiting' : node.status === 'success' ? 'done' : node.status,
+      summary: node.result?.error || node.result?.data ? String(node.result.data || node.result.error) : undefined,
+      approval: node.approval,
+    })),
+    activeNodeId: toolChain.activeNodeId,
+    isCollapsed: false,
+    collapsePhase: 'expanded' as const,
+    finalAnswer: {
+      visible: false,
+      streaming: false,
+      content: '',
+      revealState: 'hidden' as const,
+    },
+  };
+}
+
+// 辅助函数
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }

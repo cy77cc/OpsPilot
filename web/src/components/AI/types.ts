@@ -100,6 +100,32 @@ export interface PlanStep {
   summary?: string;
 }
 
+// 工具链节点类型（简化后只有 tool 和 approval）
+export type ToolChainNodeKind = 'tool' | 'approval';
+export type ToolChainNodeStatus = 'pending' | 'running' | 'waiting_approval' | 'success' | 'error';
+
+// 工具链节点
+export interface ToolChainNode {
+  id: string;
+  kind: ToolChainNodeKind;
+  toolName: string;
+  toolDisplayName?: string;
+  status: ToolChainNodeStatus;
+  arguments?: Record<string, unknown>;
+  result?: { ok: boolean; data?: unknown; error?: string };
+  approval?: Omit<ConfirmationRequest, 'onConfirm' | 'onCancel'>;
+}
+
+// 工具链状态
+export interface ToolChainState {
+  nodes: ToolChainNode[];
+  activeNodeId?: string;
+}
+
+// === Legacy compatibility types ===
+// These remain only for persisted history projection and transitional UI fallback.
+
+// 扩展节点类型以兼容旧数据
 export type RuntimeThoughtChainNodeKind = 'plan' | 'execute' | 'tool' | 'replan' | 'approval';
 export type RuntimeThoughtChainNodeStatus = 'pending' | 'active' | 'done' | 'error' | 'waiting';
 export type FinalAnswerRevealState = 'hidden' | 'primed' | 'revealing' | 'complete';
@@ -221,9 +247,8 @@ export type SSEEventType =
   | 'message'
   | 'thinking_delta'
   | 'tool_call'
+  | 'tool_approval'
   | 'tool_result'
-  | 'clarify_required'
-  | 'replan_started'
   | 'done'
   | 'error'
   | 'heartbeat';

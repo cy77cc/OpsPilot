@@ -29,13 +29,13 @@ import { Button, message, Popover, Segmented, Select, Space, Tooltip, theme, Ske
 import dayjs from 'dayjs';
 import { aiApi } from '../../api/modules/ai';
 import type {
-  SSEChainNodeEvent,
-  SSEChainStartedEvent,
+  SSEToolCallEvent,
+  SSEToolApprovalEvent,
+  SSEToolResultEvent,
   SSEDoneEvent,
-  SSEFinalAnswerEvent,
 } from '../../api/modules/ai';
 import { getSceneLabel } from './constants/sceneMapping';
-import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageItem, ThoughtStageStatus } from './types';
+import type { ChatMessage, ChatTurn, ConfirmationRequest, EmbeddedRecommendation, ThoughtChainRuntimeState, ThoughtStageItem, ThoughtStageStatus, ToolChainState } from './types';
 import type { SceneOption } from './hooks/useAutoScene';
 import {
   loadRestoredConversationDetail,
@@ -52,7 +52,7 @@ import RuntimeThoughtChain from './components/RuntimeThoughtChain';
 import { ToolCard } from './components/ToolCard';
 import AssistantMessageBlocks from './components/AssistantMessageBlocks';
 import { mergeAssistantBlocks, normalizeAssistantMessage, normalizeTurnBlocks } from './messageBlocks';
-import { createThoughtChainRuntimeState, reduceThoughtChainRuntimeEvent } from './thoughtChainRuntime';
+import { createThoughtChainRuntimeState, createToolChainState, reduceToolChainEvent, toThoughtChainRuntimeState } from './thoughtChainRuntime';
 import {
   applyBlockReplace,
   applyTurnDone,
@@ -346,14 +346,14 @@ const AssistantMessage: React.FC<{
             />
           ) : null}
           <FinalAnswerStream
-            content={runtime?.finalAnswer.content || content}
-            visible={Boolean(runtime?.finalAnswer.visible)}
-            streaming={runtime?.finalAnswer.streaming}
+            content={runtime?.finalAnswer?.content || content}
+            visible={Boolean(runtime?.finalAnswer?.visible)}
+            streaming={runtime?.finalAnswer?.streaming}
             reducedMotion={reducedMotion}
           />
-          {showActions && !isStreaming && (runtime?.finalAnswer.content || content) ? (
+          {showActions && !isStreaming && (runtime?.finalAnswer?.content || content) ? (
             <MessageActions
-              content={runtime?.finalAnswer.content || content}
+              content={runtime?.finalAnswer?.content || content}
               messageId=""
               isLoading={isLoading}
               onRegenerate={onRegenerate}
@@ -905,93 +905,44 @@ export const Copilot: React.FC<CopilotProps> = ({
           assistantTraceId = String(data.traceId);
         }
       },
-      onChainStarted: (data: SSEChainStartedEvent) => {
+      onToolCall: (data: SSEToolCallEvent) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_started',
+          runtime: toThoughtChainRuntimeState(reduceToolChainEvent(message.runtime || createToolChainState(), {
+            type: 'tool_call',
             data,
-          }),
+          })),
         }));
       },
-      onChainNodeOpen: (data: SSEChainNodeEvent) => {
+      onToolApproval: (data: SSEToolApprovalEvent) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_node_open',
+          runtime: toThoughtChainRuntimeState(reduceToolChainEvent(message.runtime || createToolChainState(), {
+            type: 'tool_approval',
             data,
-          }),
+          })),
+          confirmation: {
+            id: data.approval_id || data.call_id || 'approval',
+            title: data.tool_display_name || data.tool_name || '待确认操作',
+            description: data.summary || '此操作需要确认',
+            risk: (data.risk || 'medium') as ConfirmationRequest['risk'],
+            status: 'waiting_user',
+            toolName: data.tool_name,
+            toolDisplayName: data.tool_display_name,
+            planId: data.plan_id,
+            stepId: data.step_id,
+            checkpointId: data.checkpoint_id,
+            argumentsJson: data.arguments_json,
+            editable: true,
+            onConfirm: () => {},
+            onCancel: () => {},
+          },
         }));
+        setIsLoading(false);
       },
-      onChainNodePatch: (data: SSEChainNodeEvent) => {
+      onToolResult: (data: SSEToolResultEvent) => {
         patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_node_patch',
+          runtime: toThoughtChainRuntimeState(reduceToolChainEvent(message.runtime || createToolChainState(), {
+            type: 'tool_result',
             data,
-          }),
-        }));
-      },
-      onChainNodeReplace: (data: SSEChainNodeEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_node_replace',
-            data,
-          }),
-        }));
-      },
-      onChainNodeClose: (data: SSEChainNodeEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_node_close',
-            data,
-          }),
-        }));
-      },
-      onChainCollapsed: (data: SSEChainStartedEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'chain_collapsed',
-            data,
-          }),
-        }));
-      },
-      onFinalAnswerStarted: (data: SSEFinalAnswerEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'final_answer_started',
-            data,
-          }),
-        }));
-      },
-      onFinalAnswerDelta: (data: SSEFinalAnswerEvent) => {
-        assistantContent = `${assistantContent}${String(data.chunk || '')}`;
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'final_answer_delta',
-            data,
-          }),
-          content: assistantContent,
-        }));
-      },
-      onFinalAnswerDone: (data: SSEFinalAnswerEvent) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          runtime: reduceThoughtChainRuntimeEvent(message.runtime || createThoughtChainRuntimeState(), {
-            type: 'final_answer_done',
-            data,
-          }),
-          content: message.runtime?.finalAnswer.content || assistantContent || message.content,
-        }));
-      },
-      onRewriteResult: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-            key: 'rewrite',
-            title: resolveThoughtStageTitle('rewrite'),
-            status: 'success',
-            description: buildStageDescription('rewrite', 'success'),
-            content: appendStageContent(
-              (message.thoughtChain || []).find((item) => item.key === 'rewrite')?.content,
-              buildStageMilestone('rewrite', 'event', data),
-            ),
           })),
         }));
       },
@@ -1029,22 +980,6 @@ export const Copilot: React.FC<CopilotProps> = ({
           }),
         }));
       },
-      onClarifyRequired: (data: Record<string, unknown>) => {
-        patchAssistantMessage(conversationKey, assistantId, (message) => ({
-          ...message,
-          thoughtChain: legacyThoughtChainOrCurrent(message, upsertThoughtStage(message.thoughtChain || [], {
-            key: 'user_action',
-            title: '等待你补充信息',
-            status: 'loading',
-            description: String(data.message || data.title || '当前目标仍有歧义'),
-          })),
-        }));
-        assistantContent ||= String(data.message || '');
-        patchAssistantMessage(conversationKey, assistantId, (message) => syncMessageFromBuffers(message, {
-          content: assistantContent,
-        }));
-        setIsLoading(false);
-      },
       onDone: (data: SSEDoneEvent) => {
         if (data.turn_recommendations) {
           assistantRecommendations = data.turn_recommendations as EmbeddedRecommendation[];
@@ -1063,7 +998,7 @@ export const Copilot: React.FC<CopilotProps> = ({
         }
         patchAssistantMessage(conversationKey, assistantId, (message) => ({
           ...syncMessageFromBuffers(message, {
-            content: message.runtime?.finalAnswer.content || assistantContent || message.content,
+            content: assistantContent || message.content,
             thinking: assistantThinking || undefined,
             recommendations: assistantRecommendations || message.recommendations,
             traceId: assistantTraceId || message.traceId,

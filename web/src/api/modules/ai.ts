@@ -123,28 +123,36 @@ export interface SSEPlanStep {
   summary?: string;
 }
 
-export interface SSEChainStartedEvent {
+// 工具调用事件
+export interface SSEToolCallEvent {
   turn_id?: string;
+  call_id?: string;
+  tool_name?: string;
+  tool_display_name?: string;
+  arguments?: string;
 }
 
-export interface SSEChainNodeEvent {
+// 工具审批事件
+export interface SSEToolApprovalEvent {
   turn_id?: string;
-  node_id?: string;
-  kind?: 'plan' | 'execute' | 'tool' | 'replan' | 'approval';
-  title?: string;
-  status?: string;
-  headline?: string;
-  body?: string;
-  structured?: Record<string, unknown>;
-  raw?: unknown;
+  call_id?: string;
+  tool_name?: string;
+  tool_display_name?: string;
+  risk?: 'low' | 'medium' | 'high';
   summary?: string;
-  details?: unknown[];
-  approval?: Record<string, unknown>;
+  arguments_json?: string;
+  approval_id?: string;
+  checkpoint_id?: string;
+  plan_id?: string;
+  step_id?: string;
 }
 
-export interface SSEFinalAnswerEvent {
+// 工具结果事件
+export interface SSEToolResultEvent {
   turn_id?: string;
-  chunk?: string;
+  call_id?: string;
+  tool_name?: string;
+  result?: string;
 }
 
 interface SSEDeltaEvent {
@@ -226,15 +234,6 @@ export function normalizeVisibleStreamChunk(rawChunk: string): string {
   return chunk;
 }
 
-function normalizeFinalAnswerEventPayload(payload: unknown): SSEFinalAnswerEvent {
-  const eventPayload = (typeof payload === 'object' && payload ? payload : {}) as SSEFinalAnswerEvent;
-  const normalizedChunk = normalizeVisibleStreamChunk(String(eventPayload.chunk || ''));
-  return {
-    ...eventPayload,
-    ...(normalizedChunk ? { chunk: normalizedChunk } : {}),
-  };
-}
-
 function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
   const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
   if (!errorPayload.code && errorPayload.error_code) {
@@ -276,24 +275,14 @@ interface SSEThinkingEvent {
 }
 
 export interface AIChatStreamHandlers {
-  onChainStarted?: (payload: SSEChainStartedEvent) => void;
-  onChainNodeOpen?: (payload: SSEChainNodeEvent) => void;
-  onChainNodePatch?: (payload: SSEChainNodeEvent) => void;
-  onChainNodeReplace?: (payload: SSEChainNodeEvent) => void;
-  onChainNodeClose?: (payload: SSEChainNodeEvent) => void;
-  onChainCollapsed?: (payload: SSEChainStartedEvent) => void;
-  onFinalAnswerStarted?: (payload: SSEFinalAnswerEvent) => void;
-  onFinalAnswerDelta?: (payload: SSEFinalAnswerEvent) => void;
-  onFinalAnswerDone?: (payload: SSEFinalAnswerEvent) => void;
   onMeta?: (payload: SSEMetaEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
-  onClarifyRequired?: (payload: SSEClarifyRequiredEvent) => void;
-  onReplanStarted?: (payload: SSEReplanStartedEvent) => void;
+  onThinkingDelta?: (payload: SSEThinkingEvent) => void;
+  onToolCall?: (payload: SSEToolCallEvent) => void;
+  onToolApproval?: (payload: SSEToolApprovalEvent) => void;
+  onToolResult?: (payload: SSEToolResultEvent) => void;
   onDone?: (payload: SSEDoneEvent) => void;
   onError?: (payload: SSEErrorEvent) => void;
-  onThinkingDelta?: (payload: SSEThinkingEvent) => void;
-  onToolCall?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; ts?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> }) => void;
-  onToolResult?: (payload: { turn_id?: string; call_id?: string; tool?: string; payload?: Record<string, any>; result?: { ok: boolean; data?: any; error?: string; error_code?: string; source?: string; latency_ms?: number }; ts?: string }) => void;
   onHeartbeat?: (payload: { turn_id?: string; status?: string }) => void;
 }
 
@@ -332,27 +321,6 @@ function dispatchAIStreamEvent(
   const normalizeVisibleDelta = options?.normalizeVisibleDelta ?? false;
   if (eventType === 'meta') {
     handlers.onMeta?.(payload as SSEMetaEvent);
-  } else if (eventType === 'chain_started') {
-    handlers.onChainStarted?.(payload as SSEChainStartedEvent);
-  } else if (eventType === 'chain_node_open') {
-    handlers.onChainNodeOpen?.(payload as SSEChainNodeEvent);
-  } else if (eventType === 'chain_node_patch') {
-    handlers.onChainNodePatch?.(payload as SSEChainNodeEvent);
-  } else if (eventType === 'chain_node_replace') {
-    handlers.onChainNodeReplace?.(payload as SSEChainNodeEvent);
-  } else if (eventType === 'chain_node_close') {
-    handlers.onChainNodeClose?.(payload as SSEChainNodeEvent);
-  } else if (eventType === 'chain_collapsed') {
-    handlers.onChainCollapsed?.(payload as SSEChainStartedEvent);
-  } else if (eventType === 'final_answer_started') {
-    handlers.onFinalAnswerStarted?.(payload as SSEFinalAnswerEvent);
-  } else if (eventType === 'final_answer_delta') {
-    const normalized = normalizeFinalAnswerEventPayload(payload);
-    if (typeof normalized.chunk === 'string' && normalized.chunk.length > 0) {
-      handlers.onFinalAnswerDelta?.(normalized);
-    }
-  } else if (eventType === 'final_answer_done') {
-    handlers.onFinalAnswerDone?.(payload as SSEFinalAnswerEvent);
   } else if (eventType === 'delta' || eventType === 'message') {
     const contentChunk = normalizeVisibleDelta
       ? normalizeVisibleStreamChunk(toContentChunk(payload))
@@ -370,13 +338,11 @@ function dispatchAIStreamEvent(
   } else if (eventType === 'thinking_delta') {
     handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
   } else if (eventType === 'tool_call') {
-    handlers.onToolCall?.(payload as any);
+    handlers.onToolCall?.(payload as SSEToolCallEvent);
+  } else if (eventType === 'tool_approval') {
+    handlers.onToolApproval?.(payload as SSEToolApprovalEvent);
   } else if (eventType === 'tool_result') {
-    handlers.onToolResult?.(payload as any);
-  } else if (eventType === 'clarify_required') {
-    handlers.onClarifyRequired?.(payload as SSEClarifyRequiredEvent);
-  } else if (eventType === 'replan_started') {
-    handlers.onReplanStarted?.(payload as SSEReplanStartedEvent);
+    handlers.onToolResult?.(payload as SSEToolResultEvent);
   } else if (eventType === 'heartbeat') {
     handlers.onHeartbeat?.(payload as { turn_id?: string; status?: string });
   }
@@ -696,13 +662,13 @@ export const aiApi = {
         toolPending = true;
         armToolTimeout();
       },
-      onToolResult: (payload) => {
-        handlers.onToolResult?.(payload);
+      onToolApproval: (payload) => {
+        handlers.onToolApproval?.(payload);
         toolPending = false;
         clearToolTimer();
       },
-      onClarifyRequired: (payload) => {
-        handlers.onClarifyRequired?.(payload);
+      onToolResult: (payload) => {
+        handlers.onToolResult?.(payload);
         toolPending = false;
         clearToolTimer();
       },
