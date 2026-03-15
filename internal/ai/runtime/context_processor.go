@@ -18,6 +18,7 @@ const (
 	SessionKeySessionID      = "ai.session_id"
 	SessionKeyPlanID         = "ai.plan_id"
 	SessionKeyTurnID         = "ai.turn_id"
+	SessionKeyInstruction    = "runtime_instruction"
 )
 
 type runtimeContextKey struct{}

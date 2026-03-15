@@ -51,38 +51,6 @@ const (
 	EventError            EventType = events.Error
 )
 
-type ChainNodeKind string
-
-const (
-	ChainNodePlan     ChainNodeKind = "plan"
-	ChainNodeExecute  ChainNodeKind = "execute"
-	ChainNodeTool     ChainNodeKind = "tool"
-	ChainNodeReplan   ChainNodeKind = "replan"
-	ChainNodeApproval ChainNodeKind = "approval"
-)
-
-type ChainNodeInfo struct {
-	TurnID     string         `json:"turn_id,omitempty"`
-	NodeID     string         `json:"node_id,omitempty"`
-	Kind       ChainNodeKind  `json:"kind,omitempty"`
-	Title      string         `json:"title,omitempty"`
-	Status     string         `json:"status,omitempty"`
-	Headline   string         `json:"headline,omitempty"`
-	Body       string         `json:"body,omitempty"`
-	Structured map[string]any `json:"structured,omitempty"`
-	Raw        any            `json:"raw,omitempty"`
-	Summary    string         `json:"summary,omitempty"`
-	Details    []any          `json:"details,omitempty"`
-	Approval   map[string]any `json:"approval,omitempty"`
-	StartedAt  string         `json:"started_at,omitempty"`
-	FinishedAt string         `json:"finished_at,omitempty"`
-}
-
-type FinalAnswerEvent struct {
-	TurnID string `json:"turn_id,omitempty"`
-	Chunk  string `json:"chunk,omitempty"`
-}
-
 // StreamEvent 是推送给前端的 SSE 事件单元。
 type StreamEvent struct {
 	Type EventType      `json:"type"`
@@ -91,78 +59,6 @@ type StreamEvent struct {
 
 // StreamEmitter 是事件推送回调。返回 false 表示调用方已断开连接，应停止推送。
 type StreamEmitter func(StreamEvent) bool
-
-type PhaseName string
-
-const (
-	PhasePlanning   PhaseName = "planning"
-	PhaseExecuting  PhaseName = "executing"
-	PhaseReplanning PhaseName = "replanning"
-)
-
-type PhaseEvent struct {
-	Phase    PhaseName      `json:"phase"`
-	PlanID   string         `json:"plan_id,omitempty"`
-	TurnID   string         `json:"turn_id,omitempty"`
-	Status   string         `json:"status,omitempty"`
-	Title    string         `json:"title,omitempty"`
-	Summary  string         `json:"summary,omitempty"`
-	Reason   string         `json:"reason,omitempty"`
-	Message  string         `json:"message,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-type ToolDescriptor struct {
-	Name        string         `json:"name,omitempty"`
-	DisplayName string         `json:"display_name,omitempty"`
-	Args        map[string]any `json:"args,omitempty"`
-	Mode        string         `json:"mode,omitempty"`
-	Risk        string         `json:"risk,omitempty"`
-}
-
-type PlanStep struct {
-	ID       string          `json:"id,omitempty"`
-	Title    string          `json:"title,omitempty"`
-	Content  string          `json:"content,omitempty"`
-	Status   string          `json:"status,omitempty"`
-	ToolHint string          `json:"tool_hint,omitempty"`
-	Tool     *ToolDescriptor `json:"tool,omitempty"`
-	Metadata map[string]any  `json:"metadata,omitempty"`
-}
-
-type PlanEvent struct {
-	PlanID   string         `json:"plan_id,omitempty"`
-	TurnID   string         `json:"turn_id,omitempty"`
-	Source   string         `json:"source,omitempty"`
-	Summary  string         `json:"summary,omitempty"`
-	Steps    []PlanStep     `json:"steps,omitempty"`
-	Raw      string         `json:"raw,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-type StepEvent struct {
-	PlanID   string          `json:"plan_id,omitempty"`
-	TurnID   string          `json:"turn_id,omitempty"`
-	StepID   string          `json:"step_id,omitempty"`
-	Title    string          `json:"title,omitempty"`
-	Content  string          `json:"content,omitempty"`
-	Status   string          `json:"status,omitempty"`
-	Expert   string          `json:"expert,omitempty"`
-	Summary  string          `json:"summary,omitempty"`
-	Result   string          `json:"result,omitempty"`
-	Error    string          `json:"error,omitempty"`
-	Tool     *ToolDescriptor `json:"tool,omitempty"`
-	Metadata map[string]any  `json:"metadata,omitempty"`
-}
-
-type ReplanEvent struct {
-	PlanID         string         `json:"plan_id,omitempty"`
-	TurnID         string         `json:"turn_id,omitempty"`
-	PreviousPlanID string         `json:"previous_plan_id,omitempty"`
-	Reason         string         `json:"reason,omitempty"`
-	Summary        string         `json:"summary,omitempty"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
-}
 
 // Runtime 是 AI 运行时的顶层接口，由 Orchestrator 实现。
 type Runtime interface {

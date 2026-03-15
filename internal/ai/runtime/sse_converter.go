@@ -24,28 +24,6 @@ func (c *SSEConverter) OnChainMeta(sessionID, planID, turnID, traceID string) St
 	})}
 }
 
-func (c *SSEConverter) OnChainNodeOpen(payload ChainNodeInfo) StreamEvent {
-	return StreamEvent{Type: EventChainNodeOpen, Data: chainNodeData(payload)}
-}
-
-func (c *SSEConverter) OnChainNodePatch(payload ChainNodeInfo) StreamEvent {
-	return StreamEvent{Type: EventChainNodePatch, Data: chainNodeData(payload)}
-}
-
-func (c *SSEConverter) OnChainNodeReplace(payload ChainNodeInfo) StreamEvent {
-	return StreamEvent{Type: EventChainNodeReplace, Data: chainNodeData(payload)}
-}
-
-func (c *SSEConverter) OnChainNodeClose(payload ChainNodeInfo) StreamEvent {
-	return StreamEvent{Type: EventChainNodeClose, Data: chainNodeData(payload)}
-}
-
-func (c *SSEConverter) OnChainCollapsed(turnID string) StreamEvent {
-	return StreamEvent{Type: EventChainCollapsed, Data: compactMap(map[string]any{
-		"turn_id": turnID,
-	})}
-}
-
 func (c *SSEConverter) OnChainPaused(turnID, reason string) StreamEvent {
 	return StreamEvent{Type: EventChainPaused, Data: compactMap(map[string]any{
 		"turn_id": turnID,
@@ -141,23 +119,4 @@ func compactMap(input map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
-}
-
-func chainNodeData(payload ChainNodeInfo) map[string]any {
-	return compactMap(map[string]any{
-		"turn_id":     payload.TurnID,
-		"node_id":     payload.NodeID,
-		"kind":        string(payload.Kind),
-		"title":       payload.Title,
-		"status":      payload.Status,
-		"headline":    payload.Headline,
-		"body":        payload.Body,
-		"structured":  payload.Structured,
-		"raw":         payload.Raw,
-		"summary":     payload.Summary,
-		"details":     payload.Details,
-		"approval":    payload.Approval,
-		"started_at":  payload.StartedAt,
-		"finished_at": payload.FinishedAt,
-	})
 }

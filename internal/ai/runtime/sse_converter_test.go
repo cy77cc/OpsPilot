@@ -29,53 +29,23 @@ func TestSSEConverter_ChainMetaAndReplaceCarryCanonicalIDs(t *testing.T) {
 	if got := meta.Data["trace_id"]; got != "trace-1" {
 		t.Fatalf("expected trace id, got %#v", got)
 	}
-
-	replace := converter.OnChainNodeReplace(ChainNodeInfo{
-		TurnID:   "turn-1",
-		NodeID:   "plan:chain-1",
-		Kind:     ChainNodePlan,
-		Headline: "已替换计划内容",
-		Structured: map[string]any{
-			"steps": []map[string]any{{"id": "step-1"}},
-		},
-	})
-	if replace.Type != EventChainNodeReplace {
-		t.Fatalf("unexpected replace event type: %s", replace.Type)
-	}
-	if got := replace.Data["node_id"]; got != "plan:chain-1" {
-		t.Fatalf("expected node id, got %#v", got)
-	}
 }
 
-func TestSSEConverter_ChainNodeCarriesStructuredRuntimeLayers(t *testing.T) {
+func TestSSEConverter_PrimaryEventsCarryExpectedPayload(t *testing.T) {
 	converter := NewSSEConverter()
-	event := converter.OnChainNodePatch(ChainNodeInfo{
-		TurnID:   "turn-1",
-		NodeID:   "tool:step-1",
-		Kind:     ChainNodeTool,
-		Headline: "已获取 2 台主机",
-		Body:     "详细结果已就绪",
-		Structured: map[string]any{
-			"resource": "hosts",
-			"rows": []map[string]any{
-				{"id": 1, "name": "test", "status": "online"},
-			},
-		},
-		Raw: map[string]any{
-			"total": 1,
-		},
-	})
+	started := converter.OnChainStarted("turn-1")
+	if started.Type != EventChainStarted {
+		t.Fatalf("unexpected start event type: %s", started.Type)
+	}
+	if got := started.Data["turn_id"]; got != "turn-1" {
+		t.Fatalf("expected turn id, got %#v", got)
+	}
 
-	if got := event.Data["headline"]; got != "已获取 2 台主机" {
-		t.Fatalf("expected headline to be preserved, got %#v", got)
+	done := converter.OnDone("completed")
+	if done.Type != EventDone {
+		t.Fatalf("unexpected done event type: %s", done.Type)
 	}
-	if got := event.Data["body"]; got != "详细结果已就绪" {
-		t.Fatalf("expected body to be preserved, got %#v", got)
-	}
-	if _, ok := event.Data["structured"].(map[string]any); !ok {
-		t.Fatalf("expected structured payload map, got %#v", event.Data["structured"])
-	}
-	if _, ok := event.Data["raw"].(map[string]any); !ok {
-		t.Fatalf("expected raw payload map, got %#v", event.Data["raw"])
+	if got := done.Data["status"]; got != "completed" {
+		t.Fatalf("expected completed status, got %#v", got)
 	}
 }

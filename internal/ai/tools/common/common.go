@@ -5,6 +5,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,9 +23,31 @@ import (
 //
 // 所有工具通过此结构访问数据库、配置和外部客户端。
 type PlatformDeps struct {
-	DB         *gorm.DB            // 数据库连接
-	Prometheus prominfra.Client    // Prometheus HTTP API 客户端
+	DB         *gorm.DB         // 数据库连接
+	Prometheus prominfra.Client // Prometheus HTTP API 客户端
 }
+
+// PlatformDepsFromContext 从 context 中提取 PlatformDeps。
+//
+// 如果不存在则返回 nil。
+func PlatformDepsFromContext(ctx context.Context) *PlatformDeps {
+	if ctx == nil {
+		return nil
+	}
+	if v := ctx.Value(platformDepsKey{}); v != nil {
+		if deps, ok := v.(*PlatformDeps); ok {
+			return deps
+		}
+	}
+	return nil
+}
+
+// ContextWithPlatformDeps 将 PlatformDeps 注入到 context。
+func ContextWithPlatformDeps(ctx context.Context, deps *PlatformDeps) context.Context {
+	return context.WithValue(ctx, platformDepsKey{}, deps)
+}
+
+type platformDepsKey struct{}
 
 // ResolveK8sClient 解析 Kubernetes 客户端，根据参数和依赖项选择合适的客户端。
 //

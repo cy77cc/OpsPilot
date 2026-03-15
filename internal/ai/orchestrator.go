@@ -10,10 +10,8 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"time"
 
@@ -31,14 +29,12 @@ import (
 
 // Orchestrator 封装 ADK Runner，提供流式执行与审批恢复能力。
 type Orchestrator struct {
-	runner           *adk.Runner                      // ADK plan-execute 运行器；nil 表示模型不可用
-	checkpoints      *airuntime.CheckpointStore       // 保存 Agent 断点，支持审批后续跑
-	executions       *airuntime.ExecutionStore        // 保存每次执行的状态快照
-	contextProcessor *airuntime.ContextProcessor      // 构建各阶段 LLM 输入的上下文处理器
-	sceneResolver    *airuntime.SceneConfigResolver   // 根据场景 key 解析工具白名单和审批策略
-	converter        *airuntime.SSEConverter          // 将 Agent 事件转换为标准 SSE StreamEvent
-	approvals        *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
-	summaries        *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
+	runner      *adk.Runner                      // ADK 运行器；nil 表示模型不可用
+	checkpoints *airuntime.CheckpointStore       // 保存 Agent 断点，支持审批后续跑
+	executions  *airuntime.ExecutionStore        // 保存每次执行的状态快照
+	converter   *airuntime.SSEConverter          // 将 Agent 事件转换为标准 SSE StreamEvent
+	approvals   *airuntime.ApprovalDecisionMaker // 判断工具调用是否需要人工审批
+	summaries   *approvaltools.SummaryRenderer   // 生成审批请求的人类可读摘要
 }
 
 // NewOrchestrator 创建并初始化 Orchestrator。
@@ -47,7 +43,6 @@ type Orchestrator struct {
 func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps common.PlatformDeps) *Orchestrator {
 	ctx := context.Background()
 	sceneResolver := airuntime.NewSceneConfigResolver(nil)
-	contextProcessor := airuntime.NewContextProcessor(sceneResolver)
 	checkpointStore := airuntime.NewCheckpointStore(nil, "")
 	registry := aitools.NewRegistry(deps)
 	approvals := airuntime.NewApprovalDecisionMaker(airuntime.ApprovalDecisionMakerOptions{
@@ -73,18 +68,16 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 	}
 
 	agent, err := agents.NewAgent(ctx, agents.Deps{
-		PlatformDeps:     deps,
-		ContextProcessor: contextProcessor,
+		PlatformDeps:  deps,
+		DecisionMaker: approvals,
 	})
 	if err != nil {
 		return &Orchestrator{
-			executions:       executionStore,
-			checkpoints:      checkpointStore,
-			contextProcessor: contextProcessor,
-			sceneResolver:    sceneResolver,
-			converter:        airuntime.NewSSEConverter(),
-			approvals:        approvals,
-			summaries:        summaries,
+			executions:  executionStore,
+			checkpoints: checkpointStore,
+			converter:   airuntime.NewSSEConverter(),
+			approvals:   approvals,
+			summaries:   summaries,
 		}
 	}
 
@@ -94,13 +87,11 @@ func NewOrchestrator(_ any, executionStore *airuntime.ExecutionStore, deps commo
 			CheckPointStore: checkpointStore,
 			EnableStreaming: true,
 		}),
-		checkpoints:      checkpointStore,
-		executions:       executionStore,
-		contextProcessor: contextProcessor,
-		sceneResolver:    sceneResolver,
-		converter:        airuntime.NewSSEConverter(),
-		approvals:        approvals,
-		summaries:        summaries,
+		checkpoints: checkpointStore,
+		executions:  executionStore,
+		converter:   airuntime.NewSSEConverter(),
+		approvals:   approvals,
+		summaries:   summaries,
 	}
 }
 
@@ -120,17 +111,18 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		emit = func(airuntime.StreamEvent) bool { return true }
 	}
 
+	ctx = airuntime.ContextWithRuntimeContext(ctx, req.RuntimeContext)
 	sessionID := firstNonEmpty(req.SessionID, uuid.NewString())
 	planID := uuid.NewString()
 	turnID := uuid.NewString()
 	checkpointID := uuid.NewString()
-	scene := o.sceneResolver.Resolve(req.RuntimeContext.Scene)
+	instruction := airuntime.BuildInstruction(req.RuntimeContext)
 	adkValues := map[string]any{
 		airuntime.SessionKeyRuntimeContext: req.RuntimeContext,
-		airuntime.SessionKeyResolvedScene:  scene,
 		airuntime.SessionKeySessionID:      sessionID,
 		airuntime.SessionKeyPlanID:         planID,
 		airuntime.SessionKeyTurnID:         turnID,
+		airuntime.SessionKeyInstruction:    instruction,
 	}
 
 	state := airuntime.ExecutionState{
@@ -145,10 +137,6 @@ func (o *Orchestrator) Run(ctx context.Context, req airuntime.RunRequest, emit a
 		RuntimeContext: req.RuntimeContext,
 		CheckpointID:   checkpointID,
 		Steps:          map[string]airuntime.StepState{},
-		Metadata: map[string]any{
-			"token_accounting_status": "unavailable",
-			"token_accounting_source": "runtime_api_unavailable",
-		},
 	}
 	_ = o.executions.Save(ctx, state)
 
@@ -226,7 +214,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			NodeID:    fmt.Sprintf("approval:%s", state.PendingApproval.StepID),
 			Scene:     state.Scene,
 			Tool:      state.PendingApproval.ToolName,
-			Kind:      string(airuntime.ChainNodeApproval),
+			Kind:      "approval",
 			Status:    status,
 		})
 	}
@@ -330,6 +318,7 @@ func (o *Orchestrator) resume(ctx context.Context, req airuntime.ResumeRequest, 
 			target: resumeData,
 		}
 	}
+	ctx = airuntime.ContextWithRuntimeContext(ctx, state.RuntimeContext)
 	iter, err := o.runner.ResumeWithParams(ctx, checkpointID, params)
 	if err != nil {
 		aiobs.ObserveAgentExecution(aiobs.ExecutionRecord{
@@ -362,21 +351,8 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}
 
 	var lastText string
-	parser := airuntime.NewPlanParser()
-	detector := airuntime.NewPhaseDetector()
-	planningText := ""
-	planningStarted := false
-	planningCompleted := false
-	executingStarted := false
 	chainStarted := false
-	chainCollapsed := false
-	finalAnswerStarted := false
-	activeNodeID := ""
-	activeNodeKind := airuntime.ChainNodeKind("")
-	activeNodeStartedAt := time.Time{}
 	chainStartedAt := time.Time{}
-	planNodeID := fmt.Sprintf("plan:%s", state.PlanID)
-	executeNodeID := fmt.Sprintf("execute:%s", state.PlanID)
 
 	emitChainStarted := func() {
 		if chainStarted {
@@ -394,115 +370,6 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 		chainStarted = true
 		chainStartedAt = time.Now().UTC()
 	}
-	observeNodeClosed := func(nodeID string, kind airuntime.ChainNodeKind, status string, startedAt time.Time) {
-		if strings.TrimSpace(nodeID) == "" || strings.TrimSpace(string(kind)) == "" {
-			return
-		}
-		duration := time.Duration(0)
-		if !startedAt.IsZero() {
-			duration = time.Since(startedAt)
-		}
-		aiobs.ObserveThoughtChainNode(aiobs.ThoughtChainNodeRecord{
-			Scene:    state.Scene,
-			Kind:     string(kind),
-			Status:   firstNonEmpty(status, "done"),
-			Duration: duration,
-		})
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "node_closed",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			NodeID:    nodeID,
-			Scene:     state.Scene,
-			Kind:      string(kind),
-			Status:    firstNonEmpty(status, "done"),
-		})
-	}
-	openChainNode := func(info airuntime.ChainNodeInfo) {
-		emitChainStarted()
-		if activeNodeID != "" && activeNodeID != info.NodeID {
-			emit(o.converter.OnChainNodeClose(airuntime.ChainNodeInfo{
-				TurnID: state.TurnID,
-				NodeID: activeNodeID,
-				Kind:   activeNodeKind,
-				Status: "done",
-			}))
-			observeNodeClosed(activeNodeID, activeNodeKind, "done", activeNodeStartedAt)
-		}
-		emit(o.converter.OnChainNodeOpen(info))
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "node_opened",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			NodeID:    info.NodeID,
-			Scene:     state.Scene,
-			Tool:      info.Title,
-			Kind:      string(info.Kind),
-			Status:    firstNonEmpty(info.Status, "loading"),
-		})
-		activeNodeID = info.NodeID
-		activeNodeKind = info.Kind
-		activeNodeStartedAt = time.Now().UTC()
-	}
-	patchChainNode := func(info airuntime.ChainNodeInfo) {
-		emitChainStarted()
-		emit(o.converter.OnChainNodePatch(info))
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "node_updated",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			NodeID:    info.NodeID,
-			Scene:     state.Scene,
-			Tool:      info.Title,
-			Kind:      string(info.Kind),
-			Status:    firstNonEmpty(info.Status, "loading"),
-		})
-	}
-	replaceChainNode := func(info airuntime.ChainNodeInfo) {
-		emitChainStarted()
-		emit(o.converter.OnChainNodeReplace(info))
-		aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-			Event:     "node_replaced",
-			TraceID:   state.TraceID,
-			SessionID: state.SessionID,
-			ChainID:   state.PlanID,
-			NodeID:    info.NodeID,
-			Scene:     state.Scene,
-			Tool:      info.Title,
-			Kind:      string(info.Kind),
-			Status:    firstNonEmpty(info.Status, "loading"),
-		})
-	}
-	closeActiveNode := func(status string) {
-		if activeNodeID == "" {
-			return
-		}
-		emit(o.converter.OnChainNodeClose(airuntime.ChainNodeInfo{
-			TurnID: state.TurnID,
-			NodeID: activeNodeID,
-			Kind:   activeNodeKind,
-			Status: firstNonEmpty(status, "done"),
-		}))
-		observeNodeClosed(activeNodeID, activeNodeKind, firstNonEmpty(status, "done"), activeNodeStartedAt)
-		activeNodeID = ""
-		activeNodeKind = ""
-		activeNodeStartedAt = time.Time{}
-	}
-	startFinalAnswer := func() {
-		if !chainCollapsed {
-			closeActiveNode("done")
-			emit(o.converter.OnChainCollapsed(state.TurnID))
-			chainCollapsed = true
-		}
-		if finalAnswerStarted {
-			return
-		}
-		emit(o.converter.OnFinalAnswerStarted(state.TurnID))
-		finalAnswerStarted = true
-	}
 
 	for {
 		event, ok := iter.Next()
@@ -513,6 +380,9 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			continue
 		}
 		if event.Err != nil {
+			state.Status = airuntime.ExecutionStatusFailed
+			state.Phase = "failed"
+			_ = o.executions.Save(ctx, *state)
 			emit(o.converter.OnChainError(state.TurnID, state.Phase, event.Err.Error()))
 			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
 				Event:     "chain_failed",
@@ -525,293 +395,42 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 			emit(o.converter.OnError(state.Phase, event.Err))
 			return nil, event.Err
 		}
-		detectedPhase := detector.Detect(event)
-		if detectedPhase == string(airuntime.PhaseReplanning) && state.Phase != string(airuntime.PhaseReplanning) {
-			reason := strings.TrimSpace(eventMessageTextPreview(event))
-			if reason == "" {
-				reason = "执行结果触发重新规划"
-			}
-			openChainNode(airuntime.ChainNodeInfo{
-				TurnID:   state.TurnID,
-				NodeID:   fmt.Sprintf("replan:%s", state.PlanID),
-				Kind:     airuntime.ChainNodeReplan,
-				Title:    "发现新信息，正在调整计划",
-				Status:   "loading",
-				Headline: reason,
-				Summary:  reason,
-			})
-			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-				Event:     "replan_triggered",
-				TraceID:   state.TraceID,
-				SessionID: state.SessionID,
-				ChainID:   state.PlanID,
-				NodeID:    fmt.Sprintf("replan:%s", state.PlanID),
-				Scene:     state.Scene,
-				Kind:      string(airuntime.ChainNodeReplan),
-				Status:    "loading",
-			})
-			state.Phase = string(airuntime.PhaseReplanning)
-			planningCompleted = false
-			planningStarted = false
-			planningText = ""
-		}
 		contents, err := eventTextContents(event)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse agent message chunks: %w", err)
 		}
 		if isToolOutputEvent(event) {
-			if !executingStarted {
-				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:   state.TurnID,
-					NodeID:   executeNodeID,
-					Kind:     airuntime.ChainNodeExecute,
-					Title:    "正在执行步骤",
-					Status:   "loading",
-					Headline: "开始执行计划步骤",
-					Summary:  "开始执行计划步骤",
-				})
-				planningCompleted = true
-				executingStarted = true
-			}
-
+			emitChainStarted()
 			toolName := strings.TrimSpace(event.Output.MessageOutput.ToolName)
 			toolResult := strings.TrimSpace(strings.Join(contents, ""))
-			stepID, step := claimStepForTool(state, detector, toolName)
-			startingStep := step.Status != airuntime.StepRunning
-			step.Status = airuntime.StepRunning
-			step.ToolName = firstNonEmpty(toolName, step.ToolName)
-			if strings.TrimSpace(step.Title) == "" {
-				step.Title = firstNonEmpty(step.ToolName, step.StepID, "执行步骤")
-			}
-			if strings.TrimSpace(toolResult) != "" {
-				step.UserVisibleSummary = toolResult
-			}
-			state.Steps[stepID] = step
-			if startingStep {
-				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:   state.TurnID,
-					NodeID:   fmt.Sprintf("tool:%s", stepID),
-					Kind:     airuntime.ChainNodeTool,
-					Title:    firstNonEmpty(step.Title, step.ToolName, "正在调用工具"),
-					Status:   "loading",
-					Headline: firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
-					Summary:  firstNonEmpty(step.UserVisibleSummary, "正在执行当前步骤"),
-				})
-			}
-			structuredTool, rawTool := toolResultChainPayload(step.ToolName, toolResult)
-			replaceChainNode(airuntime.ChainNodeInfo{
-				TurnID:     state.TurnID,
-				NodeID:     fmt.Sprintf("tool:%s", stepID),
-				Kind:       airuntime.ChainNodeTool,
-				Headline:   firstNonEmpty(step.UserVisibleSummary, toolResult),
-				Structured: structuredTool,
-				Raw:        rawTool,
-				Summary:    firstNonEmpty(step.UserVisibleSummary, toolResult),
-				Details: []any{compactEventData(map[string]any{
-					"tool_name": step.ToolName,
-					"result": map[string]any{
-						"ok":   true,
-						"data": toolResult,
-					},
-				})},
+			emit(airuntime.StreamEvent{
+				Type: airuntime.EventToolResult,
+				Data: compactEventData(map[string]any{
+					"tool_name": toolName,
+					"result":    toolResult,
+				}),
 			})
-			step.Status = airuntime.StepSucceeded
-			state.Steps[stepID] = step
-			closeActiveNode("done")
-			_ = o.executions.Save(ctx, *state)
 			continue
 		}
 		for _, content := range contents {
 			if strings.TrimSpace(content) == "" {
 				continue
 			}
-			if !planningStarted {
-				title := "整理执行步骤"
-				summary := "正在分析并整理执行计划"
-				if state.Phase == string(airuntime.PhaseReplanning) {
-					title = "动态调整计划"
-					summary = "正在根据最新结果调整执行计划"
-				}
-				openChainNode(airuntime.ChainNodeInfo{
-					TurnID:   state.TurnID,
-					NodeID:   planNodeID,
-					Kind:     airuntime.ChainNodePlan,
-					Title:    title,
-					Status:   "loading",
-					Headline: summary,
-					Summary:  summary,
-				})
-				planningStarted = true
-			}
-			if !planningCompleted {
-				planningText = mergeTextProgress(planningText, content)
-				patchChainNode(airuntime.ChainNodeInfo{
-					TurnID:  state.TurnID,
-					NodeID:  planNodeID,
-					Kind:    airuntime.ChainNodePlan,
-					Body:    strings.TrimSpace(content),
-					Summary: strings.TrimSpace(content),
-				})
-				if plan, ok := parser.Extract(state.PlanID, state.TurnID, planningText); ok {
-					replaceChainNode(airuntime.ChainNodeInfo{
-						TurnID:     state.TurnID,
-						NodeID:     planNodeID,
-						Kind:       airuntime.ChainNodePlan,
-						Headline:   firstNonEmpty(plan.Summary, "已生成执行步骤"),
-						Structured: planStepsToStructured(plan.Steps),
-						Raw:        plan.Raw,
-						Summary:    firstNonEmpty(plan.Summary, "已生成执行步骤"),
-						Details:    stepsToChainDetails(plan.Steps),
-					})
-					for i := range plan.Steps {
-						state.Steps[plan.Steps[i].ID] = airuntime.StepState{
-							StepID: plan.Steps[i].ID,
-							Title:  firstNonEmpty(plan.Steps[i].Title, plan.Steps[i].Content),
-							Status: airuntime.StepPending,
-						}
-					}
-					closeActiveNode("done")
-					openChainNode(airuntime.ChainNodeInfo{
-						TurnID:   state.TurnID,
-						NodeID:   executeNodeID,
-						Kind:     airuntime.ChainNodeExecute,
-						Title:    "正在执行步骤",
-						Status:   "loading",
-						Headline: "开始执行计划步骤",
-						Summary:  "开始执行计划步骤",
-					})
-					state.Phase = string(airuntime.PhaseExecuting)
-					planningCompleted = true
-					executingStarted = true
-				}
-				lastText = mergeTextProgress(lastText, content)
-				continue
-			}
-			startFinalAnswer()
-			emit(o.converter.OnFinalAnswerDelta(state.TurnID, content))
+			emitChainStarted()
+			emit(airuntime.StreamEvent{
+				Type: airuntime.EventDelta,
+				Data: map[string]any{"content": content},
+			})
 			lastText = mergeTextProgress(lastText, content)
 		}
 		if event.Action != nil && event.Action.Interrupted != nil {
-			stepID := interruptStepID(event)
-			pending := o.pendingApprovalFromInterrupt(state, stepID, event)
-			if !executingStarted {
-				planningCompleted = true
-				executingStarted = true
-			}
-			state.Status = airuntime.ExecutionStatusWaitingApproval
-			state.Phase = string(airuntime.PhaseExecuting)
-			state.InterruptTarget = stepID
-			state.PendingApproval = pending
-			state.Steps[stepID] = airuntime.StepState{
-				StepID:             stepID,
-				Title:              pending.Title,
-				Status:             airuntime.StepWaitingApproval,
-				Mode:               pending.Mode,
-				Risk:               pending.Risk,
-				ToolName:           pending.ToolName,
-				ToolArgs:           pending.Params,
-				UserVisibleSummary: pending.Summary,
-			}
-			_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
-			_ = o.executions.Save(ctx, *state)
-			openChainNode(airuntime.ChainNodeInfo{
-				TurnID:   state.TurnID,
-				NodeID:   fmt.Sprintf("approval:%s", stepID),
-				Kind:     airuntime.ChainNodeApproval,
-				Title:    pending.Title,
-				Status:   "waiting",
-				Headline: pending.Summary,
-				Summary:  pending.Summary,
-				Approval: compactEventData(map[string]any{
-					"id":               pending.ID,
-					"request_id":       pending.ID,
-					"plan_id":          pending.PlanID,
-					"step_id":          pending.StepID,
-					"checkpoint_id":    pending.CheckpointID,
-					"target":           pending.Target,
-					"title":            pending.Title,
-					"tool_name":        pending.ToolName,
-					"tool_display_name": pending.ToolDisplayName,
-					"risk":             pending.Risk,
-					"summary":          pending.Summary,
-					"arguments_json":   pending.ArgumentsInJSON,
-					"details": map[string]any{
-						"plan_id":   pending.PlanID,
-						"step_id":   pending.StepID,
-						"tool_name": pending.ToolName,
-					},
-				}),
-			})
-			emit(o.converter.OnDone(string(state.Status)))
-			emit(o.converter.OnChainPaused(state.TurnID, "waiting_approval"))
-			aiobs.ObserveThoughtChainApproval(aiobs.ThoughtChainApprovalRecord{
-				Scene:    state.Scene,
-				Status:   "pending",
-				Duration: 0,
-			})
-			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-				Event:     "chain_paused",
-				TraceID:   state.TraceID,
-				SessionID: state.SessionID,
-				ChainID:   state.PlanID,
-				NodeID:    fmt.Sprintf("approval:%s", stepID),
-				Scene:     state.Scene,
-				Tool:      pending.ToolName,
-				Kind:      string(airuntime.ChainNodeApproval),
-				Status:    "pending",
-			})
-			aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
-				Event:     "approval_pending",
-				TraceID:   state.TraceID,
-				SessionID: state.SessionID,
-				ChainID:   state.PlanID,
-				NodeID:    fmt.Sprintf("approval:%s", stepID),
-				Scene:     state.Scene,
-				Tool:      pending.ToolName,
-				Kind:      string(airuntime.ChainNodeApproval),
-				Status:    "pending",
-			})
-			if !chainStartedAt.IsZero() {
-				aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
-					Scene:    state.Scene,
-					Status:   string(state.Status),
-					Duration: time.Since(chainStartedAt),
-				})
-			}
-			return &airuntime.ResumeResult{
-				Interrupted: true,
-				SessionID:   state.SessionID,
-				PlanID:      state.PlanID,
-				StepID:      stepID,
-				TurnID:      state.TurnID,
-				Status:      string(state.Status),
-				Message:     "执行已中断，等待审批。",
-			}, nil
+			return o.handleInterrupt(ctx, event, state, emit, chainStartedAt)
 		}
 	}
 
-	if !executingStarted {
-		openChainNode(airuntime.ChainNodeInfo{
-			TurnID:   state.TurnID,
-			NodeID:   executeNodeID,
-			Kind:     airuntime.ChainNodeExecute,
-			Title:    "正在执行步骤",
-			Status:   "loading",
-			Headline: "开始执行计划步骤",
-			Summary:  "开始执行计划步骤",
-		})
-	}
 	state.Status = airuntime.ExecutionStatusCompleted
-	state.Phase = string(airuntime.PhaseExecuting)
+	state.Phase = "completed"
 	_ = o.executions.Save(ctx, *state)
-	closeActiveNode("done")
-	if !chainCollapsed {
-		emit(o.converter.OnChainCollapsed(state.TurnID))
-		chainCollapsed = true
-	}
-	if finalAnswerStarted {
-		emit(o.converter.OnFinalAnswerDone(state.TurnID))
-	}
 	emit(o.converter.OnChainCompleted(state.TurnID, string(state.Status)))
 	emit(o.converter.OnDone(string(state.Status)))
 	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
@@ -840,163 +459,93 @@ func (o *Orchestrator) streamExecution(ctx context.Context, iter *adk.AsyncItera
 	}, nil
 }
 
-func stepsToChainDetails(steps []airuntime.PlanStep) []any {
-	if len(steps) == 0 {
-		return nil
-	}
-	out := make([]any, 0, len(steps))
-	for _, step := range steps {
-		out = append(out, compactEventData(map[string]any{
-			"id":        step.ID,
-			"title":     step.Title,
-			"content":   step.Content,
-			"status":    step.Status,
-			"tool_hint": step.ToolHint,
-		}))
-	}
-	return out
-}
+func (o *Orchestrator) handleInterrupt(ctx context.Context, event *adk.AgentEvent, state *airuntime.ExecutionState, emit airuntime.StreamEmitter, chainStartedAt time.Time) (*airuntime.ResumeResult, error) {
+	stepID := interruptStepID(event)
+	pending := o.pendingApprovalFromInterrupt(state, stepID, event)
 
-func planStepsToStructured(steps []airuntime.PlanStep) map[string]any {
-	if len(steps) == 0 {
-		return nil
+	state.Status = airuntime.ExecutionStatusWaitingApproval
+	state.Phase = "waiting_approval"
+	state.InterruptTarget = stepID
+	state.PendingApproval = pending
+	state.Steps[stepID] = airuntime.StepState{
+		StepID:             stepID,
+		Title:              pending.Title,
+		Status:             airuntime.StepWaitingApproval,
+		Mode:               pending.Mode,
+		Risk:               pending.Risk,
+		ToolName:           pending.ToolName,
+		ToolArgs:           pending.Params,
+		UserVisibleSummary: pending.Summary,
 	}
-	rows := make([]map[string]any, 0, len(steps))
-	for _, step := range steps {
-		rows = append(rows, compactEventData(map[string]any{
-			"id":          step.ID,
-			"title":       step.Title,
-			"description": step.Content,
-			"status":      step.Status,
-			"tool_hint":   step.ToolHint,
-		}))
-	}
-	return compactEventData(map[string]any{"steps": rows})
-}
+	_ = o.checkpoints.BindIdentity(ctx, state.SessionID, state.PlanID, stepID, state.CheckpointID, stepID)
+	_ = o.executions.Save(ctx, *state)
 
-func toolResultChainPayload(toolName, raw string) (map[string]any, any) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil, nil
-	}
-	var parsed any
-	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
-		return nil, trimmed
-	}
-	record, ok := parsed.(map[string]any)
-	if !ok {
-		return nil, parsed
-	}
-	rows := rowsFromPayload(record["list"])
-	if len(rows) == 0 {
-		rows = rowsFromPayload(record["items"])
-	}
-	if len(rows) == 0 {
-		return nil, record
-	}
-	structured := compactEventData(map[string]any{
-		"resource": inferStructuredResource(toolName),
-		"rows":     rows,
+	emit(airuntime.StreamEvent{
+		Type: airuntime.EventChainPaused,
+		Data: compactEventData(map[string]any{
+			"turn_id": state.TurnID,
+			"reason":  "waiting_approval",
+			"approval": map[string]any{
+				"id":                pending.ID,
+				"plan_id":           pending.PlanID,
+				"step_id":           pending.StepID,
+				"checkpoint_id":     pending.CheckpointID,
+				"target":            pending.Target,
+				"title":             pending.Title,
+				"tool_name":         pending.ToolName,
+				"tool_display_name": pending.ToolDisplayName,
+				"risk":              pending.Risk,
+				"summary":           pending.Summary,
+				"arguments_json":    pending.ArgumentsInJSON,
+			},
+		}),
 	})
-	if total, ok := record["total"]; ok {
-		structured["total"] = total
-	}
-	return structured, record
-}
+	emit(o.converter.OnDone(string(state.Status)))
 
-func rowsFromPayload(value any) []map[string]any {
-	items, ok := value.([]any)
-	if !ok || len(items) == 0 {
-		return nil
-	}
-	rows := make([]map[string]any, 0, len(items))
-	for _, item := range items {
-		if row, ok := item.(map[string]any); ok && len(row) > 0 {
-			rows = append(rows, row)
-		}
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-	return rows
-}
-
-func inferStructuredResource(toolName string) string {
-	name := strings.ToLower(strings.TrimSpace(toolName))
-	switch {
-	case strings.Contains(name, "host"):
-		return "hosts"
-	case strings.Contains(name, "cluster"):
-		return "clusters"
-	default:
-		return "items"
-	}
-}
-
-func stepEventFromState(state airuntime.ExecutionState, step airuntime.StepState, status, result string) airuntime.StepEvent {
-	event := airuntime.StepEvent{
-		PlanID:  state.PlanID,
-		TurnID:  state.TurnID,
-		StepID:  step.StepID,
-		Title:   step.Title,
-		Status:  firstNonEmpty(status, string(step.Status)),
-		Expert:  step.Expert,
-		Summary: step.UserVisibleSummary,
-		Result:  strings.TrimSpace(result),
-	}
-	if strings.TrimSpace(step.ToolName) != "" || len(step.ToolArgs) > 0 {
-		event.Tool = &airuntime.ToolDescriptor{
-			Name: step.ToolName,
-			Args: step.ToolArgs,
-			Mode: step.Mode,
-			Risk: step.Risk,
-		}
-	}
-	return event
-}
-
-func claimStepForTool(state *airuntime.ExecutionState, detector *airuntime.PhaseDetector, toolName string) (string, airuntime.StepState) {
-	if state == nil {
-		stepID := detector.NextStepID()
-		return stepID, airuntime.StepState{
-			StepID:   stepID,
-			Title:    firstNonEmpty(toolName, stepID, "执行步骤"),
-			Status:   airuntime.StepPending,
-			ToolName: toolName,
-		}
+	aiobs.ObserveThoughtChainApproval(aiobs.ThoughtChainApprovalRecord{
+		Scene:    state.Scene,
+		Status:   "pending",
+		Duration: 0,
+	})
+	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+		Event:     "chain_paused",
+		TraceID:   state.TraceID,
+		SessionID: state.SessionID,
+		ChainID:   state.PlanID,
+		NodeID:    fmt.Sprintf("approval:%s", stepID),
+		Scene:     state.Scene,
+		Tool:      pending.ToolName,
+		Kind:      "approval",
+		Status:    "pending",
+	})
+	aiobs.ObserveThoughtChainLifecycle(aiobs.ThoughtChainLifecycleRecord{
+		Event:     "approval_pending",
+		TraceID:   state.TraceID,
+		SessionID: state.SessionID,
+		ChainID:   state.PlanID,
+		NodeID:    fmt.Sprintf("approval:%s", stepID),
+		Scene:     state.Scene,
+		Tool:      pending.ToolName,
+		Kind:      "approval",
+		Status:    "pending",
+	})
+	if !chainStartedAt.IsZero() {
+		aiobs.ObserveThoughtChain(aiobs.ThoughtChainRecord{
+			Scene:    state.Scene,
+			Status:   string(state.Status),
+			Duration: time.Since(chainStartedAt),
+		})
 	}
 
-	for _, status := range []airuntime.StepStatus{airuntime.StepRunning, airuntime.StepPending, airuntime.StepWaitingApproval} {
-		for _, stepID := range sortedStepIDs(state.Steps) {
-			step := state.Steps[stepID]
-			if step.Status != status {
-				continue
-			}
-			if strings.TrimSpace(toolName) == "" || strings.EqualFold(strings.TrimSpace(step.ToolName), toolName) {
-				return stepID, step
-			}
-		}
-	}
-
-	stepID := detector.NextStepID()
-	return stepID, airuntime.StepState{
-		StepID:   stepID,
-		Title:    firstNonEmpty(toolName, stepID, "执行步骤"),
-		Status:   airuntime.StepPending,
-		ToolName: toolName,
-	}
-}
-
-func sortedStepIDs(steps map[string]airuntime.StepState) []string {
-	if len(steps) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(steps))
-	for stepID := range steps {
-		ids = append(ids, stepID)
-	}
-	sort.Strings(ids)
-	return ids
+	return &airuntime.ResumeResult{
+		Interrupted: true,
+		SessionID:   state.SessionID,
+		PlanID:      state.PlanID,
+		StepID:      stepID,
+		TurnID:      state.TurnID,
+		Status:      string(state.Status),
+		Message:     "执行已中断，等待审批。",
+	}, nil
 }
 
 func isToolOutputEvent(event *adk.AgentEvent) bool {
@@ -1079,13 +628,6 @@ func eventTextContents(event *adk.AgentEvent) ([]string, error) {
 		chunks = append(chunks, frame.Content)
 	}
 	return chunks, nil
-}
-
-func eventMessageTextPreview(event *adk.AgentEvent) string {
-	if event == nil || event.Output == nil || event.Output.MessageOutput == nil || event.Output.MessageOutput.Message == nil {
-		return ""
-	}
-	return event.Output.MessageOutput.Message.Content
 }
 
 func (o *Orchestrator) loadExecution(ctx context.Context, req airuntime.ResumeRequest) (airuntime.ExecutionState, bool, error) {
