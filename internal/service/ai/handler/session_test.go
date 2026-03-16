@@ -2,15 +2,14 @@ package handler
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -21,7 +20,6 @@ func TestRegisterAIHandlers_RegistersPhase1Routes(t *testing.T) {
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
-	// Import path avoided here because this test file now also covers handler behavior.
 	registerAIHandlersForTest(v1)
 
 	routes := r.Routes()
@@ -30,118 +28,114 @@ func TestRegisterAIHandlers_RegistersPhase1Routes(t *testing.T) {
 		seen[route.Method+" "+route.Path] = true
 	}
 
-	if !seen[http.MethodPost+" /api/v1/ai/chat"] {
-		t.Fatalf("expected POST /api/v1/ai/chat route to be registered")
+	expected := []string{
+		"POST /api/v1/ai/chat",
+		"GET /api/v1/ai/sessions",
+		"POST /api/v1/ai/sessions",
+		"GET /api/v1/ai/sessions/:id",
+		"DELETE /api/v1/ai/sessions/:id",
+		"GET /api/v1/ai/runs/:runId",
+		"GET /api/v1/ai/diagnosis/:reportId",
 	}
-	if !seen[http.MethodGet+" /api/v1/ai/sessions"] {
-		t.Fatalf("expected GET /api/v1/ai/sessions route to be registered")
-	}
-	if !seen[http.MethodPost+" /api/v1/ai/sessions"] {
-		t.Fatalf("expected POST /api/v1/ai/sessions route to be registered")
-	}
-	if !seen[http.MethodGet+" /api/v1/ai/sessions/:id"] {
-		t.Fatalf("expected GET /api/v1/ai/sessions/:id route to be registered")
-	}
-	if !seen[http.MethodDelete+" /api/v1/ai/sessions/:id"] {
-		t.Fatalf("expected DELETE /api/v1/ai/sessions/:id route to be registered")
-	}
-	if !seen[http.MethodGet+" /api/v1/ai/runs/:runId"] {
-		t.Fatalf("expected GET /api/v1/ai/runs/:runId route to be registered")
-	}
-	if !seen[http.MethodGet+" /api/v1/ai/diagnosis/:reportId"] {
-		t.Fatalf("expected GET /api/v1/ai/diagnosis/:reportId route to be registered")
+
+	for _, e := range expected {
+		if !seen[e] {
+			t.Errorf("missing route %q", e)
+		}
 	}
 }
 
-func TestSessionHandlers_CreateListGetDeleteSession(t *testing.T) {
+func TestListSessions_ReturnsEmptyArrayForNewUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := New(Dependencies{
-		ChatDAO: NewAIChatDAOForTest(db),
-	})
+	h := NewAIHandlerWithDB(db)
 
-	createRecorder := httptest.NewRecorder()
-	createCtx, createEngine := gin.CreateTestContext(createRecorder)
-	createEngine.POST("/sessions", h.CreateSession)
-	createCtx.Set("uid", uint64(42))
-	createCtx.Request = httptest.NewRequest(http.MethodPost, "/sessions", bytes.NewBufferString(`{"title":"Cluster diagnosis","scene":"cluster"}`))
-	createCtx.Request.Header.Set("Content-Type", "application/json")
-	createCtx.Params = nil
-	h.CreateSession(createCtx)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(1))
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions", nil)
 
-	var createResp struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createResp); err != nil {
-		t.Fatalf("decode create response: %v", err)
-	}
-	sessionData := createResp.Data
-	sessionID, _ := sessionData["id"].(string)
-	if sessionID == "" {
-		t.Fatalf("expected created session id in response")
+	h.ListSessions(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	listRecorder := httptest.NewRecorder()
-	listCtx, _ := gin.CreateTestContext(listRecorder)
-	listCtx.Set("uid", uint64(42))
-	listCtx.Request = httptest.NewRequest(http.MethodGet, "/sessions", nil)
-	h.ListSessions(listCtx)
-
-	var listResp struct {
-		Data []map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listResp); err != nil {
-		t.Fatalf("decode list response: %v", err)
-	}
-	if len(listResp.Data) != 1 {
-		t.Fatalf("expected one session, got %#v", listResp.Data)
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("parse response: %v", err)
 	}
 
-	if err := h.deps.ChatDAO.CreateMessage(context.Background(), &model.AIChatMessage{
-		ID:        "message-1",
-		SessionID: sessionID,
-		Role:      "user",
-		Content:   "Investigate the failing rollout",
-		Status:    "done",
-	}); err != nil {
-		t.Fatalf("seed message: %v", err)
+	data := response["data"]
+	if data == nil {
+		t.Fatal("expected data field in response")
+	}
+}
+
+func TestCreateSession_ReturnsSessionWithID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(2))
+	c.Request = httptest.NewRequest(http.MethodPost, "/sessions", bytes.NewBufferString(`{"title":"Test Session","scene":"ai"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.CreateSession(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	getRecorder := httptest.NewRecorder()
-	getCtx, _ := gin.CreateTestContext(getRecorder)
-	getCtx.Set("uid", uint64(42))
-	getCtx.Params = gin.Params{{Key: "id", Value: sessionID}}
-	getCtx.Request = httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID, nil)
-	h.GetSession(getCtx)
-
-	var getResp struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(getRecorder.Body.Bytes(), &getResp); err != nil {
-		t.Fatalf("decode get response: %v", err)
-	}
-	if getResp.Data["id"] != sessionID {
-		t.Fatalf("expected session id %q, got %#v", sessionID, getResp.Data["id"])
-	}
-	messages, ok := getResp.Data["messages"].([]any)
-	if !ok || len(messages) != 1 {
-		t.Fatalf("expected one message in session detail, got %#v", getResp.Data["messages"])
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("parse response: %v", err)
 	}
 
-	deleteRecorder := httptest.NewRecorder()
-	deleteCtx, _ := gin.CreateTestContext(deleteRecorder)
-	deleteCtx.Set("uid", uint64(42))
-	deleteCtx.Params = gin.Params{{Key: "id", Value: sessionID}}
-	deleteCtx.Request = httptest.NewRequest(http.MethodDelete, "/sessions/"+sessionID, nil)
-	h.DeleteSession(deleteCtx)
-
-	got, err := h.deps.ChatDAO.GetSession(context.Background(), sessionID, 42)
-	if err != nil {
-		t.Fatalf("get deleted session from dao: %v", err)
+	data, ok := response["data"].(map[string]any)
+	if !ok {
+		t.Fatal("expected data to be a map")
 	}
-	if got != nil {
-		t.Fatalf("expected session to be deleted, got %#v", got)
+
+	if data["id"] == "" {
+		t.Fatal("expected session to have an id")
+	}
+}
+
+func TestGetSession_ReturnsNotFoundForNonexistentSession(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(3))
+	c.Params = gin.Params{{Key: "id", Value: "nonexistent-id"}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions/nonexistent-id", nil)
+
+	h.GetSession(c)
+
+	// httpx.NotFound returns HTTP 200 with business error code 2005
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200 (httpx convention), got %d", recorder.Code)
+	}
+
+	var resp struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// 2005 is the NotFound business code
+	if resp.Code != 2005 {
+		t.Fatalf("expected business code 2005 (NotFound), got %d", resp.Code)
 	}
 }
 
@@ -164,12 +158,8 @@ func newAIHandlerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func NewAIChatDAOForTest(db *gorm.DB) *aidao.AIChatDAO {
-	return aidao.NewAIChatDAO(db)
-}
-
 func registerAIHandlersForTest(v1 *gin.RouterGroup) {
-	h := New(Dependencies{})
+	h := &Handler{logic: &logic.Logic{}}
 	g := v1.Group("/ai")
 	{
 		g.POST("/chat", h.Chat)

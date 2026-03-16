@@ -16,6 +16,8 @@ type AIRunStatusUpdate struct {
 	AssistantMessageID string
 	ProgressSummary    string
 	ErrorMessage       string
+	IntentType         string
+	AssistantType      string
 }
 
 func NewAIRunDAO(db *gorm.DB) *AIRunDAO {
@@ -28,10 +30,16 @@ func (d *AIRunDAO) CreateRun(ctx context.Context, run *model.AIRun) error {
 
 func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIRunStatusUpdate) error {
 	updates := map[string]any{
-		"status":              update.Status,
+		"status":               update.Status,
 		"assistant_message_id": update.AssistantMessageID,
-		"progress_summary":    update.ProgressSummary,
-		"error_message":       update.ErrorMessage,
+		"progress_summary":     update.ProgressSummary,
+		"error_message":        update.ErrorMessage,
+	}
+	if update.IntentType != "" {
+		updates["intent_type"] = update.IntentType
+	}
+	if update.AssistantType != "" {
+		updates["assistant_type"] = update.AssistantType
 	}
 	return d.db.WithContext(ctx).
 		Model(&model.AIRun{}).

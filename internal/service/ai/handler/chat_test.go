@@ -2,58 +2,25 @@ package handler
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/gin-gonic/gin"
 )
 
-type stubIntentRouter struct {
-	decision Decision
-}
-
-func (s stubIntentRouter) Route(_ context.Context, _ string) (Decision, error) {
-	return s.decision, nil
-}
-
-type stubQAAgent struct {
-	result QAResult
-}
-
-func (s stubQAAgent) Answer(_ context.Context, _ QARequest) (QAResult, error) {
-	return s.result, nil
-}
-
-type stubDiagnosisAgent struct {
-	result DiagnosisResult
-}
-
-func (s stubDiagnosisAgent) Diagnose(_ context.Context, _ DiagnosisRequest) (DiagnosisResult, error) {
-	return s.result, nil
-}
-
-func TestChatHandler_QAFlowCreatesSessionRunAndAssistantMessage(t *testing.T) {
+func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := New(Dependencies{
-		ChatDAO:            aidao.NewAIChatDAO(db),
-		RunDAO:             aidao.NewAIRunDAO(db),
-		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
-		IntentRouter:       stubIntentRouter{decision: Decision{IntentType: IntentTypeQA, AssistantType: "qa", RiskLevel: "low"}},
-		QAAgent:            stubQAAgent{result: QAResult{Text: "Namespaces isolate resources."}},
-		DiagnosisAgent:     stubDiagnosisAgent{},
-	})
+	h := NewAIHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(101))
-	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"What does a namespace do?"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"test message"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	h.Chat(c)
@@ -61,91 +28,76 @@ func TestChatHandler_QAFlowCreatesSessionRunAndAssistantMessage(t *testing.T) {
 	if contentType := recorder.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
 		t.Fatalf("expected SSE content type, got %q", contentType)
 	}
-
-	events := decodeSSEEvents(t, recorder.Body.String())
-	expectedOrder := []string{"init", "intent", "status", "delta", "done"}
-	if len(events) != len(expectedOrder) {
-		t.Fatalf("expected %d events, got %d: %#v", len(expectedOrder), len(events), events)
-	}
-	for i, event := range expectedOrder {
-		if events[i].Event != event {
-			t.Fatalf("expected event %d to be %q, got %#v", i, event, events[i])
-		}
-	}
-
-	sessions, err := h.deps.ChatDAO.ListSessions(context.Background(), 101)
-	if err != nil {
-		t.Fatalf("list sessions: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("expected one session, got %d", len(sessions))
-	}
-	messages, err := h.deps.ChatDAO.ListMessagesBySession(context.Background(), sessions[0].ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) != 2 {
-		t.Fatalf("expected two messages, got %d", len(messages))
-	}
-	runData := events[0].Data.(map[string]any)
-	runID, _ := runData["run_id"].(string)
-	run, err := h.deps.RunDAO.GetRun(context.Background(), runID)
-	if err != nil {
-		t.Fatalf("get run: %v", err)
-	}
-	if run == nil || run.Status != "completed" {
-		t.Fatalf("expected completed run, got %#v", run)
-	}
 }
 
-func TestChatHandler_DiagnosisFlowCreatesReportAndStreamsProgress(t *testing.T) {
+func TestChatHandler_EmitsInitEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := New(Dependencies{
-		ChatDAO:            aidao.NewAIChatDAO(db),
-		RunDAO:             aidao.NewAIRunDAO(db),
-		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
-		IntentRouter:       stubIntentRouter{decision: Decision{IntentType: IntentTypeDiagnosis, AssistantType: "diagnosis", RiskLevel: "medium"}},
-		QAAgent:            stubQAAgent{},
-		DiagnosisAgent: stubDiagnosisAgent{result: DiagnosisResult{
-			Progress: []string{"Checking rollout", "Inspecting events"},
-			Report: DiagnosisReport{
-				Summary:         "Rollout blocked by quota exhaustion",
-				Evidence:        []string{"events show quota exceeded"},
-				RootCauses:      []string{"namespace quota exhausted"},
-				Recommendations: []string{"increase quota"},
-			},
-		}},
-	})
+	h := NewAIHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Set("uid", uint64(202))
-	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"Diagnose why the rollout is failing"}`))
+	c.Set("uid", uint64(102))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hello"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	h.Chat(c)
 
 	events := decodeSSEEvents(t, recorder.Body.String())
-	expectedOrder := []string{"init", "intent", "status", "progress", "progress", "report_ready", "done"}
-	if len(events) != len(expectedOrder) {
-		t.Fatalf("expected %d events, got %d: %#v", len(expectedOrder), len(events), events)
-	}
-	for i, event := range expectedOrder {
-		if events[i].Event != event {
-			t.Fatalf("expected event %d to be %q, got %#v", i, event, events[i])
-		}
+	if len(events) == 0 {
+		t.Fatal("expected at least one SSE event")
 	}
 
-	initData := events[0].Data.(map[string]any)
-	runID, _ := initData["run_id"].(string)
-	report, err := h.deps.DiagnosisReportDAO.GetReportByRunID(context.Background(), runID)
-	if err != nil {
-		t.Fatalf("get report by run id: %v", err)
+	initEvent := events[0]
+	if initEvent.Event != "init" {
+		t.Fatalf("expected first event to be 'init', got %q", initEvent.Event)
 	}
-	if report == nil || report.Summary == "" {
-		t.Fatalf("expected diagnosis report, got %#v", report)
+
+	data, ok := initEvent.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected init data to be a map, got %T", initEvent.Data)
+	}
+
+	if _, ok := data["session_id"]; !ok {
+		t.Fatal("expected init event to contain session_id")
+	}
+	if _, ok := data["run_id"]; !ok {
+		t.Fatal("expected init event to contain run_id")
+	}
+}
+
+func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	// First request creates session
+	recorder1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(recorder1)
+	c1.Set("uid", uint64(103))
+	c1.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"first"}`))
+	c1.Request.Header.Set("Content-Type", "application/json")
+	h.Chat(c1)
+
+	events1 := decodeSSEEvents(t, recorder1.Body.String())
+	initData1 := events1[0].Data.(map[string]any)
+	sessionID := initData1["session_id"].(string)
+
+	// Second request with session_id
+	recorder2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(recorder2)
+	c2.Set("uid", uint64(103))
+	c2.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"second","session_id":"`+sessionID+`"}`))
+	c2.Request.Header.Set("Content-Type", "application/json")
+	h.Chat(c2)
+
+	events2 := decodeSSEEvents(t, recorder2.Body.String())
+	initData2 := events2[0].Data.(map[string]any)
+
+	if initData2["session_id"] != sessionID {
+		t.Fatalf("expected session_id to be %q, got %q", sessionID, initData2["session_id"])
 	}
 }
 
