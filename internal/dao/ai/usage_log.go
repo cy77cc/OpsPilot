@@ -1,5 +1,5 @@
-// Package dao 提供数据访问对象。
-package dao
+// Package ai 提供数据访问对象。
+package ai
 
 import (
 	"context"

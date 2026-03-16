@@ -14,6 +14,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/toolctx"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -76,6 +77,7 @@ type K8sLogsInput struct {
 
 // NewKubernetesTools 创建所有 Kubernetes 工具。
 func NewKubernetesTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
+	ctx = toolctx.EnsureServiceContext(ctx)
 	return []tool.InvokableTool{
 		K8sQuery(ctx, fallbackDeps...),
 		K8sListResources(ctx, fallbackDeps...),

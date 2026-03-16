@@ -14,7 +14,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
@@ -78,28 +78,21 @@ type ServiceInventoryInput struct {
 }
 
 // NewDeploymentTools 创建所有部署工具。
-func NewDeploymentTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
+func NewDeploymentTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		DeploymentTargetList(ctx, fallbackDeps...),
-		DeploymentTargetDetail(ctx, fallbackDeps...),
-		DeploymentBootstrapStatus(ctx, fallbackDeps...),
-		ConfigAppList(ctx, fallbackDeps...),
-		ConfigItemGet(ctx, fallbackDeps...),
-		ConfigDiff(ctx, fallbackDeps...),
-		ClusterListInventory(ctx, fallbackDeps...),
-		ServiceListInventory(ctx, fallbackDeps...),
+		DeploymentTargetList(ctx),
+		DeploymentTargetDetail(ctx),
+		DeploymentBootstrapStatus(ctx),
+		ConfigAppList(ctx),
+		ConfigItemGet(ctx),
+		ConfigDiff(ctx),
+		ClusterListInventory(ctx),
+		ServiceListInventory(ctx),
 	}
 }
 
-func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
-	deps := common.PlatformDepsFromContext(ctx)
-	if deps != nil {
-		return deps
-	}
-	if len(fallbackDeps) > 0 {
-		return &fallbackDeps[0]
-	}
-	return nil
+func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
+	return svc.GetServiceContext(ctx)
 }
 
 type DeploymentTargetListOutput struct {
@@ -107,14 +100,14 @@ type DeploymentTargetListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func DeploymentTargetList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetList(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_list",
 		"Query deployment target list. Optional parameters: env/status/keyword/limit. Example: {\"env\":\"prod\",\"limit\":20}.",
 		func(ctx context.Context, input *DeploymentTargetListInput, opts ...tool.Option) (*DeploymentTargetListOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -123,7 +116,7 @@ func DeploymentTargetList(ctx context.Context, fallbackDeps ...common.PlatformDe
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.DeploymentTarget{})
+			query := svcCtx.DB.Model(&model.DeploymentTarget{})
 			if env := strings.TrimSpace(input.Env); env != "" {
 				query = query.Where("env = ?", env)
 			}
@@ -169,24 +162,24 @@ type DeploymentTargetDetailOutput struct {
 	Nodes  []model.DeploymentTargetNode `json:"nodes"`
 }
 
-func DeploymentTargetDetail(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetDetail(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_detail",
 		"Query deployment target detail. target_id is required. Example: {\"target_id\":12}.",
 		func(ctx context.Context, input *DeploymentTargetDetailInput, opts ...tool.Option) (*DeploymentTargetDetailOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.TargetID <= 0 {
 				return nil, fmt.Errorf("target_id is required")
 			}
 			var target model.DeploymentTarget
-			if err := deps.DB.First(&target, input.TargetID).Error; err != nil {
+			if err := svcCtx.DB.First(&target, input.TargetID).Error; err != nil {
 				return nil, err
 			}
 			var nodes []model.DeploymentTargetNode
-			_ = deps.DB.Where("target_id = ?", target.ID).Order("id asc").Find(&nodes).Error
+			_ = svcCtx.DB.Where("target_id = ?", target.ID).Order("id asc").Find(&nodes).Error
 			return &DeploymentTargetDetailOutput{
 				Target: target,
 				Nodes:  nodes,
@@ -209,20 +202,20 @@ type DeploymentBootstrapStatusOutput struct {
 	Steps           []model.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
 
-func DeploymentBootstrapStatus(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func DeploymentBootstrapStatus(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_bootstrap_status",
 		"Query deployment target bootstrap status. target_id is required. Example: {\"target_id\":12}.",
 		func(ctx context.Context, input *DeploymentBootstrapStatusInput, opts ...tool.Option) (*DeploymentBootstrapStatusOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.TargetID <= 0 {
 				return nil, fmt.Errorf("target_id is required")
 			}
 			var target model.DeploymentTarget
-			if err := deps.DB.First(&target, input.TargetID).Error; err != nil {
+			if err := svcCtx.DB.First(&target, input.TargetID).Error; err != nil {
 				return nil, err
 			}
 			result := &DeploymentBootstrapStatusOutput{
@@ -236,10 +229,10 @@ func DeploymentBootstrapStatus(ctx context.Context, fallbackDeps ...common.Platf
 				return result, nil
 			}
 			var job model.EnvironmentInstallJob
-			if err := deps.DB.Where("id = ?", target.BootstrapJobID).First(&job).Error; err == nil {
+			if err := svcCtx.DB.Where("id = ?", target.BootstrapJobID).First(&job).Error; err == nil {
 				result.BootstrapJob = &job
 				var steps []model.EnvironmentInstallJobStep
-				_ = deps.DB.Where("job_id = ?", job.ID).Order("id asc").Find(&steps).Error
+				_ = svcCtx.DB.Where("job_id = ?", job.ID).Order("id asc").Find(&steps).Error
 				result.Steps = steps
 			}
 			return result, nil
@@ -256,14 +249,14 @@ type ConfigAppListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func ConfigAppList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ConfigAppList(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_app_list",
 		"Query config app list. Optional parameters: keyword/env/limit. Example: {\"env\":\"prod\"}.",
 		func(ctx context.Context, input *ConfigAppListInput, opts ...tool.Option) (*ConfigAppListOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -272,7 +265,7 @@ func ConfigAppList(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.Service{})
+			query := svcCtx.DB.Model(&model.Service{})
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
@@ -308,14 +301,14 @@ type ConfigItemGetOutput struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func ConfigItemGet(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ConfigItemGet(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_item_get",
 		"Query config item value. app_id and key are required, optional env. Example: {\"app_id\":12,\"key\":\"DATABASE_URL\"}.",
 		func(ctx context.Context, input *ConfigItemGetInput, opts ...tool.Option) (*ConfigItemGetOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.AppID <= 0 {
 				return nil, fmt.Errorf("app_id is required")
@@ -329,7 +322,7 @@ func ConfigItemGet(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 				env = "staging"
 			}
 			var set model.ServiceVariableSet
-			if err := deps.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
+			if err := svcCtx.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
 				return nil, err
 			}
 			values := map[string]any{}
@@ -357,14 +350,14 @@ type ConfigDiffOutput struct {
 	Diff      []map[string]any `json:"diff"`
 }
 
-func ConfigDiff(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ConfigDiff(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_diff",
 		"Compare config difference. app_id, env_a, env_b are required. Example: {\"app_id\":12,\"env_a\":\"staging\",\"env_b\":\"prod\"}.",
 		func(ctx context.Context, input *ConfigDiffInput, opts ...tool.Option) (*ConfigDiffOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.AppID <= 0 {
 				return nil, fmt.Errorf("app_id is required")
@@ -379,7 +372,7 @@ func ConfigDiff(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.I
 			}
 			readEnv := func(env string) (map[string]any, error) {
 				var set model.ServiceVariableSet
-				if err := deps.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
+				if err := svcCtx.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
 					return nil, err
 				}
 				out := map[string]any{}
@@ -430,14 +423,14 @@ type ClusterListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ClusterListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ClusterListInventory(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"cluster_list_inventory",
 		"Query cluster inventory list. Optional parameters: status/keyword/limit. Example: {\"status\":\"active\"}.",
 		func(ctx context.Context, input *ClusterInventoryInput, opts ...tool.Option) (*ClusterListInventoryOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -446,7 +439,7 @@ func ClusterListInventory(ctx context.Context, fallbackDeps ...common.PlatformDe
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.Cluster{})
+			query := svcCtx.DB.Model(&model.Cluster{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -493,14 +486,14 @@ type ServiceListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ServiceListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceListInventory(ctx context.Context, ) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"service_list_inventory",
 		"Query service inventory list. Optional parameters: status/runtime_type/env/keyword/limit. Example: {\"env\":\"prod\"}.",
 		func(ctx context.Context, input *ServiceInventoryInput, opts ...tool.Option) (*ServiceListInventoryOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -509,7 +502,7 @@ func ServiceListInventory(ctx context.Context, fallbackDeps ...common.PlatformDe
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.Service{})
+			query := svcCtx.DB.Model(&model.Service{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}

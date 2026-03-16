@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/dao"
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -76,10 +76,7 @@ func TestSessionHandlers_CreateListGetDeleteSession(t *testing.T) {
 	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createResp); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	sessionData, ok := createResp.Data["session"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected session object, got %#v", createResp.Data)
-	}
+	sessionData := createResp.Data
 	sessionID, _ := sessionData["id"].(string)
 	if sessionID == "" {
 		t.Fatalf("expected created session id in response")
@@ -92,12 +89,12 @@ func TestSessionHandlers_CreateListGetDeleteSession(t *testing.T) {
 	h.ListSessions(listCtx)
 
 	var listResp struct {
-		Data map[string][]map[string]any `json:"data"`
+		Data []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listResp); err != nil {
 		t.Fatalf("decode list response: %v", err)
 	}
-	if len(listResp.Data["sessions"]) != 1 {
+	if len(listResp.Data) != 1 {
 		t.Fatalf("expected one session, got %#v", listResp.Data)
 	}
 
@@ -119,17 +116,17 @@ func TestSessionHandlers_CreateListGetDeleteSession(t *testing.T) {
 	h.GetSession(getCtx)
 
 	var getResp struct {
-		Data map[string]map[string]any `json:"data"`
+		Data map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(getRecorder.Body.Bytes(), &getResp); err != nil {
 		t.Fatalf("decode get response: %v", err)
 	}
-	if getResp.Data["session"]["id"] != sessionID {
-		t.Fatalf("expected session id %q, got %#v", sessionID, getResp.Data["session"]["id"])
+	if getResp.Data["id"] != sessionID {
+		t.Fatalf("expected session id %q, got %#v", sessionID, getResp.Data["id"])
 	}
-	messages, ok := getResp.Data["session"]["messages"].([]any)
+	messages, ok := getResp.Data["messages"].([]any)
 	if !ok || len(messages) != 1 {
-		t.Fatalf("expected one message in session detail, got %#v", getResp.Data["session"]["messages"])
+		t.Fatalf("expected one message in session detail, got %#v", getResp.Data["messages"])
 	}
 
 	deleteRecorder := httptest.NewRecorder()
@@ -167,8 +164,8 @@ func newAIHandlerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func NewAIChatDAOForTest(db *gorm.DB) *dao.AIChatDAO {
-	return dao.NewAIChatDAO(db)
+func NewAIChatDAOForTest(db *gorm.DB) *aidao.AIChatDAO {
+	return aidao.NewAIChatDAO(db)
 }
 
 func registerAIHandlersForTest(v1 *gin.RouterGroup) {

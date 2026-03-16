@@ -1,72 +1,68 @@
 package handler
 
 import (
+	"strings"
 	"time"
 
+	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func (h *Handler) CreateSession(c *gin.Context) {
-	var req struct {
-		Title string `json:"title"`
-		Scene string `json:"scene"`
-	}
+	var req aiv1.CreateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
-	session := &model.AIChatSession{
-		ID:     uuid.NewString(),
-		UserID: httpx.UIDFromCtx(c),
-		Title:  req.Title,
-		Scene:  req.Scene,
+	session, err := h.logic.CreateSession(c.Request.Context(), httpx.UIDFromCtx(c), req.Title, req.Scene)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
 	}
-	if h.deps.ChatDAO != nil {
-		if err := h.deps.ChatDAO.CreateSession(c.Request.Context(), session); err != nil {
-			httpx.ServerErr(c, err)
-			return
-		}
+	if session == nil {
+		httpx.OK(c, gin.H{})
+		return
 	}
-	httpx.OK(c, gin.H{"session": sessionSummaryFromModel(*session)})
+	httpx.OK(c, sessionSummaryFromModel(*session))
 }
 
 func (h *Handler) ListSessions(c *gin.Context) {
-	sessions := []model.AIChatSession{}
-	if h.deps.ChatDAO != nil {
-		rows, err := h.deps.ChatDAO.ListSessions(c.Request.Context(), httpx.UIDFromCtx(c))
-		if err != nil {
-			httpx.ServerErr(c, err)
-			return
-		}
-		sessions = rows
+	sessions, messagesBySession, err := h.logic.ListSessions(c.Request.Context(), httpx.UIDFromCtx(c), strings.TrimSpace(c.Query("scene")))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
 	}
 	items := make([]gin.H, 0, len(sessions))
 	for _, session := range sessions {
-		items = append(items, sessionSummaryFromModel(session))
+		summary := sessionSummaryFromModel(session)
+		if messages, ok := messagesBySession[session.ID]; ok {
+			messageItems := make([]gin.H, 0, len(messages))
+			for _, message := range messages {
+				messageItems = append(messageItems, gin.H{
+					"id":         message.ID,
+					"role":       message.Role,
+					"content":    message.Content,
+					"status":     message.Status,
+					"created_at": formatTime(message.CreatedAt),
+				})
+			}
+			summary["messages"] = messageItems
+		}
+		items = append(items, summary)
 	}
-	httpx.OK(c, gin.H{"sessions": items})
+	httpx.OK(c, items)
 }
 
 func (h *Handler) GetSession(c *gin.Context) {
-	if h.deps.ChatDAO == nil {
-		httpx.OK(c, gin.H{"session": gin.H{}})
-		return
-	}
-	session, err := h.deps.ChatDAO.GetSession(c.Request.Context(), c.Param("id"), httpx.UIDFromCtx(c))
+	session, messages, err := h.logic.GetSession(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"))
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
 	}
 	if session == nil {
 		httpx.NotFound(c, "session not found")
-		return
-	}
-	messages, err := h.deps.ChatDAO.ListMessagesBySession(c.Request.Context(), session.ID)
-	if err != nil {
-		httpx.ServerErr(c, err)
 		return
 	}
 	messageItems := make([]gin.H, 0, len(messages))
@@ -79,24 +75,27 @@ func (h *Handler) GetSession(c *gin.Context) {
 			"created_at": formatTime(message.CreatedAt),
 		})
 	}
-	httpx.OK(c, gin.H{"session": gin.H{
+	httpx.OK(c, gin.H{
 		"id":         session.ID,
 		"title":      session.Title,
 		"scene":      session.Scene,
 		"messages":   messageItems,
 		"created_at": formatTime(session.CreatedAt),
 		"updated_at": formatTime(session.UpdatedAt),
-	}})
+	})
 }
 
 func (h *Handler) DeleteSession(c *gin.Context) {
-	if h.deps.ChatDAO != nil {
-		if err := h.deps.ChatDAO.DeleteSession(c.Request.Context(), c.Param("id"), httpx.UIDFromCtx(c)); err != nil {
-			httpx.ServerErr(c, err)
-			return
-		}
+	ok, err := h.logic.DeleteSession(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
 	}
-	httpx.OK(c, gin.H{"deleted": true})
+	if !ok {
+		httpx.NotFound(c, "session not found")
+		return
+	}
+	httpx.OK(c, nil)
 }
 
 func sessionSummaryFromModel(session model.AIChatSession) gin.H {

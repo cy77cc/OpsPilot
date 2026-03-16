@@ -22,6 +22,8 @@ import (
 	"gorm.io/gorm"
 )
 
+type ServiceContextKey struct{}
+
 // ServiceContext 封装应用程序运行时依赖。
 type ServiceContext struct {
 	DB             *gorm.DB                    // GORM 数据库实例
@@ -161,4 +163,19 @@ func initMetricsPusher() *prominfra.MetricsPusher {
 	}
 	logger.L().Info("MetricsPusher initialized", logger.String("pushgateway_url", pushgatewayURL))
 	return pusher
+}
+
+// GetContext 返回服务上下文。
+func (svc *ServiceContext) GetContext() context.Context {
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, ServiceContextKey{}, svc)
+	return ctx
+}
+
+func GetServiceContext(ctx context.Context) *ServiceContext {
+	svc := ctx.Value(ServiceContextKey{})
+	if svc == nil {
+		return nil
+	}
+	return svc.(*ServiceContext)
 }

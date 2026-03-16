@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/dao"
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -44,12 +44,12 @@ func TestDiagnosisHandler_GetDiagnosisReport(t *testing.T) {
 	h.GetDiagnosisReport(c)
 
 	var resp struct {
-		Data map[string]map[string]any `json:"data"`
+		Data map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode diagnosis response: %v", err)
 	}
-	got := resp.Data["report"]
+	got := resp.Data
 	if got["report_id"] != report.ID {
 		t.Fatalf("expected report id %q, got %#v", report.ID, got["report_id"])
 	}
@@ -58,6 +58,6 @@ func TestDiagnosisHandler_GetDiagnosisReport(t *testing.T) {
 	}
 }
 
-func NewAIDiagnosisReportDAOForTest(db *gorm.DB) *dao.AIDiagnosisReportDAO {
-	return dao.NewAIDiagnosisReportDAO(db)
+func NewAIDiagnosisReportDAOForTest(db *gorm.DB) *aidao.AIDiagnosisReportDAO {
+	return aidao.NewAIDiagnosisReportDAO(db)
 }

@@ -16,8 +16,8 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 // =============================================================================
@@ -72,50 +72,39 @@ type ServiceVisibilityCheckInput struct {
 }
 
 // NewServiceTools 创建所有服务工具。
-func NewServiceTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
+func NewServiceTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		ServiceGetDetail(ctx, fallbackDeps...),
-		ServiceStatus(ctx, fallbackDeps...),
-		ServiceStatusByTarget(ctx, fallbackDeps...),
-		ServiceDeployPreview(ctx, fallbackDeps...),
-		ServiceDeployApply(ctx, fallbackDeps...),
-		ServiceDeploy(ctx, fallbackDeps...),
-		ServiceCatalogList(ctx, fallbackDeps...),
-		ServiceCategoryTree(ctx, fallbackDeps...),
-		ServiceVisibilityCheck(ctx, fallbackDeps...),
+		ServiceGetDetail(ctx),
+		ServiceStatus(ctx),
+		ServiceStatusByTarget(ctx),
+		ServiceDeployPreview(ctx),
+		ServiceDeployApply(ctx),
+		ServiceDeploy(ctx),
+		ServiceCatalogList(ctx),
+		ServiceCategoryTree(ctx),
+		ServiceVisibilityCheck(ctx),
 	}
-}
-
-func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
-	deps := common.PlatformDepsFromContext(ctx)
-	if deps != nil {
-		return deps
-	}
-	if len(fallbackDeps) > 0 {
-		return &fallbackDeps[0]
-	}
-	return nil
 }
 
 type ServiceGetDetailOutput struct {
 	Service model.Service `json:"service"`
 }
 
-func ServiceGetDetail(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceGetDetail(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_get_detail",
 		"Get detailed information about a specific service including configuration, deployment settings, runtime type, and metadata. service_id is required. Returns complete service object with all fields. Use this when you need comprehensive service information. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceDetailInput, opts ...tool.Option) (*ServiceGetDetailOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			sid := input.ServiceID
 			if sid <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
 			var s model.Service
-			if err := deps.DB.First(&s, sid).Error; err != nil {
+			if err := svcCtx.DB.First(&s, sid).Error; err != nil {
 				return nil, err
 			}
 			return &ServiceGetDetailOutput{Service: s}, nil
@@ -138,20 +127,20 @@ type ServiceStatusOutput struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
-func ServiceStatus(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceStatus(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_status",
 		"Get current status and basic runtime information of a service. service_id is required. Returns service name, status, environment, runtime type (k8s/compose/helm), container image, replica count, and last update time. Use this for quick status checks. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceStatusInput, opts ...tool.Option) (*ServiceStatusOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
 			var svc model.Service
-			if err := deps.DB.First(&svc, input.ServiceID).Error; err != nil {
+			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			return &ServiceStatusOutput{
@@ -172,16 +161,16 @@ func ServiceStatus(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 	return t
 }
 
-func ServiceStatusByTarget(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceStatusByTarget(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_status_by_target",
 		"Resolve a service by target string and get current status. target may be a service id or exact service name. Returns the same runtime status fields as service_status. Example: {\"target\":\"payment-service\"}.",
 		func(ctx context.Context, input *ServiceStatusByTargetInput, opts ...tool.Option) (*ServiceStatusOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
-			svc, err := resolveServiceByTarget(*deps, input.Target)
+			svc, err := resolveServiceByTarget(svcCtx, input.Target)
 			if err != nil {
 				return nil, err
 			}
@@ -212,14 +201,14 @@ type ServiceDeployPreviewOutput struct {
 	Replicas  int32  `json:"replicas"`
 }
 
-func ServiceDeployPreview(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceDeployPreview(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_deploy_preview",
 		"Preview a service deployment without actually applying changes. service_id and cluster_id are required. Returns the deployment plan including service name, container image, and replica count. Use this to verify deployment configuration before executing with service_deploy_apply. Example: {\"service_id\":123,\"cluster_id\":456}.",
 		func(ctx context.Context, input *ServiceDeployPreviewInput, opts ...tool.Option) (*ServiceDeployPreviewOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
@@ -228,7 +217,7 @@ func ServiceDeployPreview(ctx context.Context, fallbackDeps ...common.PlatformDe
 				return nil, fmt.Errorf("cluster_id is required")
 			}
 			var s model.Service
-			if err := deps.DB.First(&s, input.ServiceID).Error; err != nil {
+			if err := svcCtx.DB.First(&s, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			return &ServiceDeployPreviewOutput{
@@ -255,14 +244,14 @@ type ServiceDeployApplyOutput struct {
 	Image     string `json:"image"`
 }
 
-func ServiceDeployApply(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceDeployApply(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_deploy_apply",
 		"Execute a service deployment to a target cluster. service_id and cluster_id are required. This is a mutating operation that will create/update the deployment. Ensure you have previewed the deployment with service_deploy_preview first. Returns deployment status and applied configuration. Example: {\"service_id\":123,\"cluster_id\":456}.",
 		func(ctx context.Context, input *ServiceDeployApplyInput, opts ...tool.Option) (*ServiceDeployApplyOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
@@ -271,11 +260,11 @@ func ServiceDeployApply(ctx context.Context, fallbackDeps ...common.PlatformDeps
 				return nil, fmt.Errorf("cluster_id is required")
 			}
 			var svc model.Service
-			if err := deps.DB.First(&svc, input.ServiceID).Error; err != nil {
+			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			var cluster model.Cluster
-			if err := deps.DB.First(&cluster, input.ClusterID).Error; err != nil {
+			if err := svcCtx.DB.First(&cluster, input.ClusterID).Error; err != nil {
 				return nil, err
 			}
 			return &ServiceDeployApplyOutput{
@@ -301,14 +290,14 @@ type ServiceDeployOutput struct {
 	Data      interface{} `json:"data,omitempty"`
 }
 
-func ServiceDeploy(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceDeploy(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_deploy",
 		"Unified service deployment tool supporting both preview and apply modes. service_id and cluster_id are required. Set preview=true (default) to see the deployment plan without applying. Set apply=true to execute the deployment. This operation deploys the service container image to the specified cluster. Example: {\"service_id\":123,\"cluster_id\":456,\"preview\":true}.",
 		func(ctx context.Context, input *ServiceDeployInput, opts ...tool.Option) (*ServiceDeployOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
@@ -317,12 +306,12 @@ func ServiceDeploy(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 				return nil, fmt.Errorf("cluster_id is required")
 			}
 			var svc model.Service
-			if err := deps.DB.First(&svc, input.ServiceID).Error; err != nil {
+			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			if input.Apply {
 				var cluster model.Cluster
-				if err := deps.DB.First(&cluster, input.ClusterID).Error; err != nil {
+				if err := svcCtx.DB.First(&cluster, input.ClusterID).Error; err != nil {
 					return nil, err
 				}
 				return &ServiceDeployOutput{
@@ -361,14 +350,14 @@ type ServiceCatalogListOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ServiceCatalogList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_catalog_list",
 		"Query the service catalog with filtering options. Optional parameters: keyword searches by service name or owner, category_id filters by service kind (1=middleware, 2=business), limit controls max results (default 50, max 200). Returns services with id, name, owner, environment, service_kind, visibility, and deployment count. Example: {\"keyword\":\"payment\",\"category_id\":2,\"limit\":20}.",
 		func(ctx context.Context, input *ServiceCatalogListInput, opts ...tool.Option) (*ServiceCatalogListOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -377,7 +366,7 @@ func ServiceCatalogList(ctx context.Context, fallbackDeps ...common.PlatformDeps
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.Service{})
+			query := svcCtx.DB.Model(&model.Service{})
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
@@ -426,21 +415,21 @@ type ServiceCategoryTreeOutput struct {
 	Tree []map[string]any `json:"tree"`
 }
 
-func ServiceCategoryTree(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceCategoryTree(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_category_tree",
 		"Get the service category tree structure showing middleware and business service categories with counts. Returns an array of categories, each with id, key (middleware/business), label, and count of services. Use this to understand the service distribution across categories. Example: {}.",
 		func(ctx context.Context, _ struct{}, opts ...tool.Option) (*ServiceCategoryTreeOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			type countRow struct {
 				ServiceKind string
 				Count       int64
 			}
 			var rows []countRow
-			if err := deps.DB.Model(&model.Service{}).
+			if err := svcCtx.DB.Model(&model.Service{}).
 				Select("service_kind, COUNT(1) AS count").
 				Group("service_kind").
 				Scan(&rows).Error; err != nil {
@@ -478,20 +467,20 @@ type ServiceVisibilityCheckOutput struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
-func ServiceVisibilityCheck(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func ServiceVisibilityCheck(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"service_visibility_check",
 		"Check the visibility configuration of a service including access control settings. service_id is required. Returns visibility level (public/private/team), granted team IDs that can access the service, owner user ID, and owner team ID. Use this to understand who can access a service. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceVisibilityCheckInput, opts ...tool.Option) (*ServiceVisibilityCheckOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
 			var svc model.Service
-			if err := deps.DB.First(&svc, input.ServiceID).Error; err != nil {
+			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			granted := []uint{}
@@ -516,21 +505,21 @@ func ServiceVisibilityCheck(ctx context.Context, fallbackDeps ...common.Platform
 	return t
 }
 
-func resolveServiceByTarget(deps common.PlatformDeps, target string) (*model.Service, error) {
+func resolveServiceByTarget(svcCtx *svc.ServiceContext, target string) (*model.Service, error) {
 	trimmed := strings.TrimSpace(target)
 	if trimmed == "" {
 		return nil, fmt.Errorf("target is required")
 	}
-	if deps.DB == nil {
-		return nil, fmt.Errorf("db unavailable")
+	if svcCtx == nil || svcCtx.DB == nil {
+		return nil, fmt.Errorf("service context is nil")
 	}
 	var svc model.Service
 	if id, err := strconv.ParseUint(trimmed, 10, 64); err == nil {
-		if err := deps.DB.First(&svc, id).Error; err == nil {
+		if err := svcCtx.DB.First(&svc, id).Error; err == nil {
 			return &svc, nil
 		}
 	}
-	if err := deps.DB.Where("name = ?", trimmed).First(&svc).Error; err == nil {
+	if err := svcCtx.DB.Where("name = ?", trimmed).First(&svc).Error; err == nil {
 		return &svc, nil
 	}
 	return nil, fmt.Errorf("service target not found")

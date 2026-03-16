@@ -3,13 +3,12 @@
 // 架构说明：
 //
 //	统一入口（HTTP Handler）
-//	  └── IntentRouter（三层策略：规则层 → 模型层 → 策略层）
-//	        ├── qa         → QAAgent      （ChatModelAgent + RAG 检索工具）
-//	        ├── diagnosis  → DiagnosisAgent（PlanExecute + 只读 K8s 工具）
-//	        ├── change     → ChangeAgent   （PlanExecute + 写工具 + HITL 审批）
-//	        └── unknown    → 降级 → QAAgent
+//	  └── RouterAgent（LLM 路由）
+//	        ├── QAAgent        （ChatModelAgent + RAG 检索工具）
+//	        ├── DiagnosisAgent （PlanExecute + 只读 K8s 工具）
+//	        └── ChangeAgent    （PlanExecute + 写工具 + HITL 审批）
 //
-//	定时调度（非 IntentRouter 触发）
+//	定时调度（非用户聊天路由）
 //	  └── InspectionAgent（ChatModelAgent + 巡检工具集）
 package agents
 
@@ -22,12 +21,11 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/diagnosis"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/inspection"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/qa"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 )
 
 // NewRouterAgent 创建根路由 Agent（基于 ROUTERPROMPT，仅做意图 Transfer）。
-//
-// 该 Agent 保留用于 PRE 子 Agent 委托场景，生产主链路请使用 NewPhase1IntentRouter。
 func NewRouterAgent(ctx context.Context) (*adk.ChatModelAgent, error) {
 	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
 		Timeout:  60 * time.Second,
@@ -46,12 +44,20 @@ func NewRouterAgent(ctx context.Context) (*adk.ChatModelAgent, error) {
 	})
 }
 
-// NewRouter 创建包含 PlanExecute 子 Agent 的根路由（旧版，保留兼容）。
+// NewRouter 创建用户聊天主路由。
+//
+// 注意：InspectionAgent 为调度专用，不参与用户聊天路由，避免巡检任务误被普通问答触发。
 func NewRouter(ctx context.Context) (adk.ResumableAgent, error) {
 	routerAgent, err := NewRouterAgent(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	qaAgent, err := qa.NewQAAgent(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	changeAgent, err := change.NewChangeAgent(ctx)
 	if err != nil {
 		return nil, err
@@ -62,10 +68,11 @@ func NewRouter(ctx context.Context) (adk.ResumableAgent, error) {
 		return nil, err
 	}
 
-	inspectionAgent, err := inspection.NewInspectionAgent(ctx)
-	if err != nil {
-		return nil, err
-	}
-	subagents := []adk.Agent{changeAgent, diagnosisAgent, inspectionAgent}
+	subagents := []adk.Agent{qaAgent, diagnosisAgent, changeAgent}
 	return adk.SetSubAgents(ctx, routerAgent, subagents)
+}
+
+// NewInspectionAgent 创建定时巡检 Agent（供调度任务调用）。
+func NewInspectionAgent(ctx context.Context) (adk.Agent, error) {
+	return inspection.NewInspectionAgent(ctx)
 }

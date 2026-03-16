@@ -8,11 +8,7 @@ import (
 )
 
 func (h *Handler) GetDiagnosisReport(c *gin.Context) {
-	if h.deps.DiagnosisReportDAO == nil {
-		httpx.OK(c, gin.H{"report": gin.H{}})
-		return
-	}
-	report, err := h.deps.DiagnosisReportDAO.GetReport(c.Request.Context(), c.Param("reportId"))
+	report, err := h.logic.GetDiagnosisReport(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("reportId"))
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -21,7 +17,7 @@ func (h *Handler) GetDiagnosisReport(c *gin.Context) {
 		httpx.NotFound(c, "diagnosis report not found")
 		return
 	}
-	httpx.OK(c, gin.H{"report": gin.H{
+	httpx.OK(c, gin.H{
 		"report_id":       report.ID,
 		"run_id":          report.RunID,
 		"session_id":      report.SessionID,
@@ -30,7 +26,7 @@ func (h *Handler) GetDiagnosisReport(c *gin.Context) {
 		"root_causes":     decodeStringArray(report.RootCausesJSON),
 		"recommendations": decodeStringArray(report.RecommendationsJSON),
 		"generated_at":    formatTime(report.GeneratedAt),
-	}})
+	})
 }
 
 func decodeStringArray(raw string) []string {

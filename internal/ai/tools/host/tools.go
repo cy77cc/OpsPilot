@@ -19,6 +19,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/toolctx"
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
@@ -130,6 +131,7 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 //   - 系统诊断：CPU/内存、磁盘、网络、进程
 //   - 日志查询、容器运行时
 func NewHostTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
+	ctx = toolctx.EnsureServiceContext(ctx)
 	return []tool.InvokableTool{
 		HostSSHReadonly(ctx, fallbackDeps...),
 		HostExec(ctx, fallbackDeps...),

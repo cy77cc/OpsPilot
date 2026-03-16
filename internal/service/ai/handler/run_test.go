@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/dao"
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -19,8 +19,8 @@ func TestRunHandler_GetRun(t *testing.T) {
 
 	db := newAIHandlerTestDB(t)
 	h := New(Dependencies{
-		RunDAO:             dao.NewAIRunDAO(db),
-		DiagnosisReportDAO: dao.NewAIDiagnosisReportDAO(db),
+		RunDAO:             aidao.NewAIRunDAO(db),
+		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
 	})
 
 	run := &model.AIRun{
@@ -58,12 +58,12 @@ func TestRunHandler_GetRun(t *testing.T) {
 	h.GetRun(c)
 
 	var resp struct {
-		Data map[string]map[string]any `json:"data"`
+		Data map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode run response: %v", err)
 	}
-	got := resp.Data["run"]
+	got := resp.Data
 	if got["run_id"] != run.ID {
 		t.Fatalf("expected run id %q, got %#v", run.ID, got["run_id"])
 	}
@@ -74,11 +74,11 @@ func TestRunHandler_GetRun(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected report summary, got %#v", got["report"])
 	}
-	if reportData["report_id"] != report.ID {
-		t.Fatalf("expected report id %q, got %#v", report.ID, reportData["report_id"])
+	if reportData["id"] != report.ID {
+		t.Fatalf("expected report id %q, got %#v", report.ID, reportData["id"])
 	}
 }
 
-func NewAIRunDAOForTest(db *gorm.DB) *dao.AIRunDAO {
-	return dao.NewAIRunDAO(db)
+func NewAIRunDAOForTest(db *gorm.DB) *aidao.AIRunDAO {
+	return aidao.NewAIRunDAO(db)
 }

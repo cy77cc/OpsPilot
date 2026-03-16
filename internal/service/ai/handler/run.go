@@ -6,11 +6,7 @@ import (
 )
 
 func (h *Handler) GetRun(c *gin.Context) {
-	if h.deps.RunDAO == nil {
-		httpx.OK(c, gin.H{"run": gin.H{}})
-		return
-	}
-	run, err := h.deps.RunDAO.GetRun(c.Request.Context(), c.Param("runId"))
+	run, report, err := h.logic.GetRun(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("runId"))
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -19,25 +15,29 @@ func (h *Handler) GetRun(c *gin.Context) {
 		httpx.NotFound(c, "run not found")
 		return
 	}
+	progressSummary := run.ProgressSummary
 	payload := gin.H{
-		"run_id":           run.ID,
-		"status":           run.Status,
-		"assistant_type":   run.AssistantType,
-		"intent_type":      run.IntentType,
-		"progress_summary": run.ProgressSummary,
+		"id":                   run.ID,
+		"run_id":               run.ID,
+		"session_id":           run.SessionID,
+		"user_message_id":      run.UserMessageID,
+		"assistant_message_id": run.AssistantMessageID,
+		"status":               run.Status,
+		"assistant_type":       run.AssistantType,
+		"intent_type":          run.IntentType,
+		"progress_summary":     progressSummary,
+		"risk_level":           run.RiskLevel,
+		"trace_id":             run.TraceID,
+		"error_message":        run.ErrorMessage,
 	}
-	if h.deps.DiagnosisReportDAO != nil {
-		report, err := h.deps.DiagnosisReportDAO.GetReportByRunID(c.Request.Context(), run.ID)
-		if err != nil {
-			httpx.ServerErr(c, err)
-			return
+	if report != nil {
+		if report.Summary != "" {
+			payload["progress_summary"] = report.Summary
 		}
-		if report != nil {
-			payload["report"] = gin.H{
-				"report_id": report.ID,
-				"summary":   report.Summary,
-			}
+		payload["report"] = gin.H{
+			"id":      report.ID,
+			"summary": report.Summary,
 		}
 	}
-	httpx.OK(c, gin.H{"run": payload})
+	httpx.OK(c, payload)
 }

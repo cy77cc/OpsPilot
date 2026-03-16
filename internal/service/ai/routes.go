@@ -2,21 +2,13 @@ package ai
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
-	"github.com/cy77cc/OpsPilot/internal/service/ai/handler"
+	aiHandler "github.com/cy77cc/OpsPilot/internal/service/ai/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	deps := NewDependencies(svcCtx)
-	h := handler.New(handler.Dependencies{
-		ChatDAO:            deps.ChatDAO,
-		RunDAO:             deps.RunDAO,
-		DiagnosisReportDAO: deps.DiagnosisReportDAO,
-		IntentRouter:       deps.IntentRouter,
-		QAAgent:            deps.QAAgent,
-		DiagnosisAgent:     deps.DiagnosisAgent,
-	})
+	h := aiHandler.NewAIHandler(svcCtx) 
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{

@@ -9,34 +9,31 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/diagnosis"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/intent"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/qa"
-	"github.com/cy77cc/OpsPilot/internal/dao"
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/gin-gonic/gin"
 )
 
 type stubIntentRouter struct {
-	decision intent.Decision
+	decision Decision
 }
 
-func (s stubIntentRouter) Route(_ context.Context, _ string) (intent.Decision, error) {
+func (s stubIntentRouter) Route(_ context.Context, _ string) (Decision, error) {
 	return s.decision, nil
 }
 
 type stubQAAgent struct {
-	result qa.Result
+	result QAResult
 }
 
-func (s stubQAAgent) Answer(_ context.Context, _ qa.Request) (qa.Result, error) {
+func (s stubQAAgent) Answer(_ context.Context, _ QARequest) (QAResult, error) {
 	return s.result, nil
 }
 
 type stubDiagnosisAgent struct {
-	result diagnosis.Result
+	result DiagnosisResult
 }
 
-func (s stubDiagnosisAgent) Diagnose(_ context.Context, _ diagnosis.Request) (diagnosis.Result, error) {
+func (s stubDiagnosisAgent) Diagnose(_ context.Context, _ DiagnosisRequest) (DiagnosisResult, error) {
 	return s.result, nil
 }
 
@@ -45,12 +42,12 @@ func TestChatHandler_QAFlowCreatesSessionRunAndAssistantMessage(t *testing.T) {
 
 	db := newAIHandlerTestDB(t)
 	h := New(Dependencies{
-		ChatDAO:        dao.NewAIChatDAO(db),
-		RunDAO:         dao.NewAIRunDAO(db),
-		DiagnosisReportDAO: dao.NewAIDiagnosisReportDAO(db),
-		IntentRouter:   stubIntentRouter{decision: intent.Decision{IntentType: intent.IntentTypeQA, AssistantType: intent.AssistantTypeQA, RiskLevel: intent.RiskLevelLow}},
-		QAAgent:        stubQAAgent{result: qa.Result{Text: "Namespaces isolate resources."}},
-		DiagnosisAgent: stubDiagnosisAgent{},
+		ChatDAO:            aidao.NewAIChatDAO(db),
+		RunDAO:             aidao.NewAIRunDAO(db),
+		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
+		IntentRouter:       stubIntentRouter{decision: Decision{IntentType: IntentTypeQA, AssistantType: "qa", RiskLevel: "low"}},
+		QAAgent:            stubQAAgent{result: QAResult{Text: "Namespaces isolate resources."}},
+		DiagnosisAgent:     stubDiagnosisAgent{},
 	})
 
 	recorder := httptest.NewRecorder()
@@ -106,14 +103,14 @@ func TestChatHandler_DiagnosisFlowCreatesReportAndStreamsProgress(t *testing.T) 
 
 	db := newAIHandlerTestDB(t)
 	h := New(Dependencies{
-		ChatDAO:            dao.NewAIChatDAO(db),
-		RunDAO:             dao.NewAIRunDAO(db),
-		DiagnosisReportDAO: dao.NewAIDiagnosisReportDAO(db),
-		IntentRouter:       stubIntentRouter{decision: intent.Decision{IntentType: intent.IntentTypeDiagnosis, AssistantType: intent.AssistantTypeDiagnosis, RiskLevel: intent.RiskLevelMedium}},
+		ChatDAO:            aidao.NewAIChatDAO(db),
+		RunDAO:             aidao.NewAIRunDAO(db),
+		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
+		IntentRouter:       stubIntentRouter{decision: Decision{IntentType: IntentTypeDiagnosis, AssistantType: "diagnosis", RiskLevel: "medium"}},
 		QAAgent:            stubQAAgent{},
-		DiagnosisAgent: stubDiagnosisAgent{result: diagnosis.Result{
+		DiagnosisAgent: stubDiagnosisAgent{result: DiagnosisResult{
 			Progress: []string{"Checking rollout", "Inspecting events"},
-			Report: diagnosis.Report{
+			Report: DiagnosisReport{
 				Summary:         "Rollout blocked by quota exhaustion",
 				Evidence:        []string{"events show quota exceeded"},
 				RootCauses:      []string{"namespace quota exhausted"},

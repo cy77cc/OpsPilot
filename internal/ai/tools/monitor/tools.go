@@ -17,7 +17,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
@@ -61,25 +61,18 @@ type MonitorMetricInput struct {
 }
 
 // NewMonitorTools 创建所有监控工具。
-func NewMonitorTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
+func NewMonitorTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		MonitorAlertRuleList(ctx, fallbackDeps...),
-		MonitorAlert(ctx, fallbackDeps...),
-		MonitorAlertActive(ctx, fallbackDeps...),
-		MonitorMetric(ctx, fallbackDeps...),
-		MonitorMetricQuery(ctx, fallbackDeps...),
+		MonitorAlertRuleList(ctx),
+		MonitorAlert(ctx),
+		MonitorAlertActive(ctx),
+		MonitorMetric(ctx),
+		MonitorMetricQuery(ctx),
 	}
 }
 
-func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
-	deps := common.PlatformDepsFromContext(ctx)
-	if deps != nil {
-		return deps
-	}
-	if len(fallbackDeps) > 0 {
-		return &fallbackDeps[0]
-	}
-	return nil
+func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
+	return svc.GetServiceContext(ctx)
 }
 
 type MonitorAlertRuleListOutput struct {
@@ -87,14 +80,14 @@ type MonitorAlertRuleListOutput struct {
 	List  []model.AlertRule `json:"list"`
 }
 
-func MonitorAlertRuleList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func MonitorAlertRuleList(ctx context.Context, ) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert_rule_list",
 		"Query the list of alert rules configured in the monitoring system. Optional parameters: status filters by rule state (enabled/disabled), keyword searches by rule name or metric name, limit controls max results (default 50, max 200). Returns alert rules with threshold conditions, severity levels, and notification settings. Example: {\"status\":\"enabled\",\"keyword\":\"cpu\"}.",
 		func(ctx context.Context, input *MonitorAlertRuleListInput, opts ...tool.Option) (*MonitorAlertRuleListOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -103,7 +96,7 @@ func MonitorAlertRuleList(ctx context.Context, fallbackDeps ...common.PlatformDe
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.AlertRule{})
+			query := svcCtx.DB.Model(&model.AlertRule{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("state = ? OR status = ?", status, status)
 			}
@@ -132,14 +125,14 @@ type MonitorAlertOutput struct {
 	List  []model.AlertEvent `json:"list"`
 }
 
-func MonitorAlert(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func MonitorAlert(ctx context.Context, ) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert",
 		"Query active/firing alert events from the monitoring system. Optional parameters: severity filters by alert severity (critical/warning/info), service_id filters alerts related to a specific service, limit controls max results (default 50, max 200). Returns alerts currently in firing status with timestamps, labels, and annotations. Example: {\"severity\":\"critical\",\"limit\":20}.",
 		func(ctx context.Context, input *MonitorAlertInput, opts ...tool.Option) (*MonitorAlertOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -148,7 +141,7 @@ func MonitorAlert(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
+			query := svcCtx.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
 			if severity := strings.TrimSpace(input.Severity); severity != "" {
 				query = query.Where("severity = ?", severity)
 			}
@@ -176,14 +169,14 @@ type MonitorAlertActiveOutput struct {
 	List  []model.AlertEvent `json:"list"`
 }
 
-func MonitorAlertActive(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func MonitorAlertActive(ctx context.Context, ) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_alert_active",
 		"Query all active/firing alerts currently affecting the system. Optional parameters: severity filters by alert level (critical/warning/info), service_id filters by specific service, limit controls max results (default 50, max 200). Use this to get a quick overview of all ongoing issues. Example: {\"severity\":\"critical\"}.",
 		func(ctx context.Context, input *MonitorAlertActiveInput, opts ...tool.Option) (*MonitorAlertActiveOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.DB == nil {
-				return nil, fmt.Errorf("db unavailable")
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.DB == nil {
+				return nil, fmt.Errorf("service context is nil")
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -192,7 +185,7 @@ func MonitorAlertActive(ctx context.Context, fallbackDeps ...common.PlatformDeps
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
+			query := svcCtx.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
 			if severity := strings.TrimSpace(input.Severity); severity != "" {
 				query = query.Where("severity = ?", severity)
 			}
@@ -230,13 +223,13 @@ type MonitorMetricOutput struct {
 	Count     int           `json:"count"`
 }
 
-func MonitorMetric(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func MonitorMetric(ctx context.Context, ) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric",
 		"Query time-series metric data from the monitoring system. query is required and specifies the metric name or PromQL expression. Optional parameters: time_range sets the query duration (default 1h, accepts values like 5m, 1h, 24h), step sets the data point interval in seconds (default 60). Returns metric points with timestamps and values. Example: {\"query\":\"host_cpu_load\",\"time_range\":\"1h\",\"step\":60}.",
 		func(ctx context.Context, input *MonitorMetricInput, opts ...tool.Option) (*MonitorMetricOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.Prometheus == nil {
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.Prometheus == nil {
 				return nil, fmt.Errorf("prometheus client unavailable")
 			}
 			queryName := strings.TrimSpace(input.Query)
@@ -251,7 +244,7 @@ func MonitorMetric(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 			start := time.Now().Add(-rangeDuration)
 			end := time.Now()
 
-			result, err := deps.Prometheus.QueryRange(ctx, queryName, start, end, time.Duration(step)*time.Second)
+			result, err := svcCtx.Prometheus.QueryRange(ctx, queryName, start, end, time.Duration(step)*time.Second)
 			if err != nil {
 				return nil, err
 			}
@@ -297,13 +290,13 @@ type MonitorMetricQueryOutput struct {
 	Count     int           `json:"count"`
 }
 
-func MonitorMetricQuery(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func MonitorMetricQuery(ctx context.Context, ) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric_query",
 		"Query metric data points over a time range for analysis and visualization. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (default 60). Returns an array of metric points with timestamps. Example: {\"query\":\"host_memory_usage_percent\",\"time_range\":\"30m\"}.",
 		func(ctx context.Context, input *MonitorMetricQueryInput, opts ...tool.Option) (*MonitorMetricQueryOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil || deps.Prometheus == nil {
+			svcCtx := depsFromContextOrFallback(ctx)
+			if svcCtx == nil || svcCtx.Prometheus == nil {
 				return nil, fmt.Errorf("prometheus client unavailable")
 			}
 			queryName := strings.TrimSpace(input.Query)
@@ -318,7 +311,7 @@ func MonitorMetricQuery(ctx context.Context, fallbackDeps ...common.PlatformDeps
 			start := time.Now().Add(-rangeDuration)
 			end := time.Now()
 
-			result, err := deps.Prometheus.QueryRange(ctx, queryName, start, end, time.Duration(step)*time.Second)
+			result, err := svcCtx.Prometheus.QueryRange(ctx, queryName, start, end, time.Duration(step)*time.Second)
 			if err != nil {
 				return nil, err
 			}
