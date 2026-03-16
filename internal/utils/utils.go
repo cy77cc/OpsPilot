@@ -5,7 +5,9 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,4 +66,29 @@ func ExtendTTL(ctx context.Context, rdb redis.UniversalClient, key string) error
 		ttl = 0
 	}
 	return rdb.Expire(ctx, key, ttl+constants.RdbAddTTL).Err()
+}
+
+// toInt 将任意类型转换为整数。
+//
+// 支持的类型：int, int64, float64, uint64, json.Number, string
+// 转换失败时返回 0。
+func ToInt(v any) int {
+	switch x := v.(type) {
+	case int:
+		return x
+	case int64:
+		return int(x)
+	case float64:
+		return int(x)
+	case uint64:
+		return int(x)
+	case json.Number:
+		n, _ := strconv.Atoi(x.String())
+		return n
+	case string:
+		n, _ := strconv.Atoi(strings.TrimSpace(x))
+		return n
+	default:
+		return 0
+	}
 }

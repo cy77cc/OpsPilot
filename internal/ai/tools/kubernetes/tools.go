@@ -13,10 +13,12 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/toolctx"
+	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // =============================================================================
@@ -76,46 +78,34 @@ type K8sLogsInput struct {
 }
 
 // NewKubernetesTools 创建所有 Kubernetes 工具。
-func NewKubernetesTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
-	ctx = toolctx.EnsureServiceContext(ctx)
+func NewKubernetesTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		K8sQuery(ctx, fallbackDeps...),
-		K8sListResources(ctx, fallbackDeps...),
-		K8sEvents(ctx, fallbackDeps...),
-		K8sGetEvents(ctx, fallbackDeps...),
-		K8sLogs(ctx, fallbackDeps...),
-		K8sGetPodLogs(ctx, fallbackDeps...),
+		K8sQuery(ctx),
+		K8sListResources(ctx),
+		K8sEvents(ctx),
+		K8sGetEvents(ctx),
+		K8sLogs(ctx),
+		K8sGetPodLogs(ctx),
 	}
-}
-
-func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
-	deps := common.PlatformDepsFromContext(ctx)
-	if deps != nil {
-		return deps
-	}
-	if len(fallbackDeps) > 0 {
-		return &fallbackDeps[0]
-	}
-	return nil
 }
 
 type K8sQueryOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sQuery(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_query",
 		"Query Kubernetes resources with filtering options. resource is required and specifies the resource type (pods/services/deployments/nodes). Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), name filters by exact name, label uses label selector, limit caps results (default 50). Returns resource details with status and metadata. Example: {\"resource\":\"pods\",\"namespace\":\"default\",\"label\":\"app=nginx\"}.",
 		func(ctx context.Context, input *K8sQueryInput, opts ...tool.Option) (*K8sQueryOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is unavailable")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -237,19 +227,19 @@ type K8sListResourcesOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sListResources(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sListResources(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_list_resources",
 		"List Kubernetes resources of a specific type. resource is required and must be one of: pods, services, deployments, nodes. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns a simplified list of resources with basic information. Example: {\"resource\":\"pods\",\"namespace\":\"kube-system\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sListInput, opts ...tool.Option) (*K8sListResourcesOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is unavailable")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -330,16 +320,16 @@ type K8sEventsOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sEvents(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sEvents(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_events",
 		"Query Kubernetes events with optional filtering. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), kind filters by involved object kind (Pod/Deployment/Service/Node), name filters by object name, limit caps results (default 50). Returns events with type, reason, message, and involved object info. Example: {\"namespace\":\"default\",\"kind\":\"Pod\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sEventsQueryInput, opts ...tool.Option) (*K8sEventsOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is unavailable")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -390,16 +380,16 @@ type K8sGetEventsOutput struct {
 	Items []map[string]any `json:"items"`
 }
 
-func K8sGetEvents(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sGetEvents(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_events",
 		"Get Kubernetes events from a namespace. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns events with type, reason, and message. Use this for a quick event overview. Example: {\"namespace\":\"default\",\"limit\":30}.",
 		func(ctx context.Context, input *K8sEventsInput, opts ...tool.Option) (*K8sGetEventsOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context unavailable")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -438,16 +428,16 @@ type K8sLogsOutput struct {
 	Logs      string `json:"logs"`
 }
 
-func K8sLogs(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sLogs(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_logs",
 		"Get logs from a Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container specifies which container in a multi-container pod, tail_lines limits log lines (default 200). Returns pod logs as a string. Example: {\"namespace\":\"default\",\"pod\":\"nginx-abc123\",\"tail_lines\":100}.",
 		func(ctx context.Context, input *K8sLogsInput, opts ...tool.Option) (*K8sLogsOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is unavailable")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -488,16 +478,16 @@ type K8sGetPodLogsOutput struct {
 	Logs      string `json:"logs"`
 }
 
-func K8sGetPodLogs(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_pod_logs",
 		"Get logs from a specific Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container for multi-container pods, tail_lines limits output (default 200). Returns pod logs for debugging and troubleshooting. Example: {\"namespace\":\"production\",\"pod\":\"api-server-xyz789\",\"tail_lines\":500}.",
 		func(ctx context.Context, input *K8sPodLogsInput, opts ...tool.Option) (*K8sGetPodLogsOutput, error) {
-			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
-			if deps == nil {
-				return nil, fmt.Errorf("deps unavailable")
+			svcCtx := svc.GetServiceContext(ctx)
+			if svcCtx == nil {
+				return nil, fmt.Errorf("service context is unavailable")
 			}
-			cli, _, err := common.ResolveK8sClient(*deps, common.StructToMap(input))
+			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
 				return nil, err
 			}
@@ -529,4 +519,46 @@ func K8sGetPodLogs(ctx context.Context, fallbackDeps ...common.PlatformDeps) too
 		panic(err)
 	}
 	return t
+}
+
+// resolveK8sClient 解析 Kubernetes 客户端，根据参数和依赖项选择合适的客户端。
+//
+// 参数:
+//   - deps: 平台依赖项，包含数据库连接和默认客户端等
+//   - params: 参数字典，可能包含 cluster_id 等信息
+//
+// 返回值:
+//   - *kubernetes.Clientset: Kubernetes 客户端实例
+//   - string: 客户端来源标识
+//   - error: 解析过程中的错误
+func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Clientset, string, error) {
+
+	if clusterID <= 0 {
+		return nil, "missing_cluster_id", fmt.Errorf("k8s client unavailable: cluster_id is required")
+	}
+
+	// 首先尝试从数据库中获取指定集群的客户端
+	if svcCtx.DB != nil {
+		var cluster model.Cluster
+		// 从数据库中查询集群信息
+		if err := svcCtx.DB.First(&cluster, clusterID).Error; err == nil && strings.TrimSpace(cluster.KubeConfig) != "" {
+			// 使用集群的 KubeConfig 创建 REST 配置
+			cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+			if err != nil {
+				return nil, "cluster_kubeconfig", err
+			}
+
+			// 使用 REST 配置创建 Kubernetes 客户端
+			cli, err := kubernetes.NewForConfig(cfg)
+			if err != nil {
+				return nil, "cluster_kubeconfig", err
+			}
+
+			// 返回从集群配置创建的客户端
+			return cli, "cluster_kubeconfig", nil
+		}
+	}
+
+	// 如果所有尝试都失败，返回错误
+	return nil, "fallback", fmt.Errorf("k8s client unavailable: cluster %d has no usable kubeconfig or db access", clusterID)
 }

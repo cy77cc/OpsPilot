@@ -18,11 +18,10 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/toolctx"
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 )
 
@@ -130,34 +129,23 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 //   - 主机清单查询、批量执行
 //   - 系统诊断：CPU/内存、磁盘、网络、进程
 //   - 日志查询、容器运行时
-func NewHostTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
-	ctx = toolctx.EnsureServiceContext(ctx)
+func NewHostTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		HostSSHReadonly(ctx, fallbackDeps...),
-		HostExec(ctx, fallbackDeps...),
-		HostExecByTarget(ctx, fallbackDeps...),
-		HostListInventory(ctx, fallbackDeps...),
-		HostBatch(ctx, fallbackDeps...),
-		HostBatchExecPreview(ctx, fallbackDeps...),
-		HostBatchExecApply(ctx, fallbackDeps...),
-		HostBatchStatusUpdate(ctx, fallbackDeps...),
-		OSGetCPUMem(ctx, fallbackDeps...),
-		OSGetDiskFS(ctx, fallbackDeps...),
-		OSGetNetStat(ctx, fallbackDeps...),
-		OSGetProcessTop(ctx, fallbackDeps...),
-		OSGetJournalTail(ctx, fallbackDeps...),
-		OSGetContainerRuntime(ctx, fallbackDeps...),
+		HostSSHReadonly(ctx),
+		HostExec(ctx),
+		HostExecByTarget(ctx),
+		HostListInventory(ctx),
+		HostBatch(ctx),
+		HostBatchExecPreview(ctx),
+		HostBatchExecApply(ctx),
+		HostBatchStatusUpdate(ctx),
+		OSGetCPUMem(ctx),
+		OSGetDiskFS(ctx),
+		OSGetNetStat(ctx),
+		OSGetProcessTop(ctx),
+		OSGetJournalTail(ctx),
+		OSGetContainerRuntime(ctx),
 	}
-}
-
-func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) common.PlatformDeps {
-	if deps := common.PlatformDepsFromContext(ctx); deps != nil {
-		return *deps
-	}
-	if len(fallbackDeps) > 0 {
-		return fallbackDeps[0]
-	}
-	return common.PlatformDeps{}
 }
 
 type HostSSHReadonlyOutput struct {
@@ -166,8 +154,8 @@ type HostSSHReadonlyOutput struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func HostSSHReadonly(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_ssh_exec_readonly",
 		"Execute a readonly SSH command on a host. host_id and command are required. Only predefined safe readonly commands are allowed such as: hostname, uptime, df -h, free -m, ps aux --sort=-%cpu. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
@@ -184,10 +172,10 @@ func HostSSHReadonly(ctx context.Context, fallbackDeps ...common.PlatformDeps) t
 				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
 			}
 			var node model.Node
-			if err := deps.DB.First(&node, hostID).Error; err != nil {
+			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
 				return nil, err
 			}
-			out, err := executeHostCommand(deps, &node, cmd)
+			out, err := executeHostCommand(svcCtx, &node, cmd)
 			if err != nil {
 				return &HostSSHReadonlyOutput{Stdout: out, Stderr: err.Error(), ExitCode: 1}, nil
 			}
@@ -208,8 +196,8 @@ type HostExecOutput struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func HostExec(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostExec(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
 		"Execute a readonly command on a single host via SSH. host_id and command are required. Only safe readonly commands are allowed. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"df -h\"}.",
@@ -226,10 +214,10 @@ func HostExec(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.Inv
 				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
 			}
 			var node model.Node
-			if err := deps.DB.First(&node, hostID).Error; err != nil {
+			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
 				return nil, err
 			}
-			out, err := executeHostCommand(deps, &node, cmd)
+			out, err := executeHostCommand(svcCtx, &node, cmd)
 			if err != nil {
 				return &HostExecOutput{
 					HostID:   hostID,
@@ -254,8 +242,8 @@ func HostExec(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.Inv
 	return t
 }
 
-func HostExecByTarget(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostExecByTarget(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec_by_target",
 		"Resolve a host by target string and execute a readonly command. Target may be a host id, IP, hostname, name, or localhost. command is required. Only safe readonly commands are allowed. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"df -h\"}.",
@@ -267,7 +255,7 @@ func HostExecByTarget(ctx context.Context, fallbackDeps ...common.PlatformDeps) 
 			if !isReadonlyHostCommand(cmd) {
 				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
 			}
-			node, err := resolveNodeByTarget(deps, input.Target)
+			node, err := resolveNodeByTarget(svcCtx, input.Target)
 			if err != nil {
 				return nil, err
 			}
@@ -290,7 +278,7 @@ func HostExecByTarget(ctx context.Context, fallbackDeps ...common.PlatformDeps) 
 					ExitCode: 0,
 				}, nil
 			}
-			out, err := executeHostCommand(deps, node, cmd)
+			out, err := executeHostCommand(svcCtx, node, cmd)
 			if err != nil {
 				return &HostExecOutput{
 					HostID:   int(node.ID),
@@ -320,13 +308,13 @@ type HostListInventoryOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func HostListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostListInventory(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_list_inventory",
 		"Query host inventory list with detailed information including CPU, memory, disk, SSH configuration, and status. Optional parameters: status filters by host status (online/offline/maintenance), keyword searches by name/IP/hostname, limit controls max results (default 50, max 200). Example: {\"status\":\"online\",\"keyword\":\"web\",\"limit\":20}.",
 		func(ctx context.Context, input *HostInventoryInput, opts ...tool.Option) (*HostListInventoryOutput, error) {
-			if deps.DB == nil {
+			if svcCtx.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -336,7 +324,7 @@ func HostListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps)
 			if limit > 200 {
 				limit = 200
 			}
-			query := deps.DB.Model(&model.Node{})
+			query := svcCtx.DB.Model(&model.Node{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -390,8 +378,8 @@ type HostBatchOutput struct {
 	Results        map[string]any `json:"results"`
 }
 
-func HostBatch(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostBatch(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch",
 		"Execute a command on multiple hosts in batch. host_ids (array of integers) and command are required. Dangerous commands like 'rm -rf /', 'mkfs', 'shutdown' are blocked. Returns execution results for each host including stdout, stderr, and exit code. Example: {\"host_ids\":[1,2,3],\"command\":\"uptime\",\"reason\":\"health check\"}.",
@@ -408,7 +396,7 @@ func HostBatch(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.In
 			if blocked {
 				return nil, fmt.Errorf("dangerous command is blocked")
 			}
-			nodesByID, missing, err := loadHostNodesMap(deps, hostIDs)
+			nodesByID, missing, err := loadHostNodesMap(svcCtx, hostIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -423,7 +411,7 @@ func HostBatch(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.In
 					failed++
 					continue
 				}
-				out, execErr := executeHostCommand(deps, node, cmd)
+				out, execErr := executeHostCommand(svcCtx, node, cmd)
 				if execErr != nil {
 					results[key] = map[string]any{"stdout": out, "stderr": execErr.Error(), "exit_code": 1}
 					failed++
@@ -463,8 +451,8 @@ type HostBatchExecPreviewOutput struct {
 	Targets        []map[string]any `json:"targets"`
 }
 
-func HostBatchExecPreview(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostBatchExecPreview(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_preview",
 		"Preview batch command execution before actually running it. host_ids (array) and command are required. Returns resolved target hosts, command classification (readonly/mutating/dangerous), risk level, and whether the command is blocked. Use this to verify the impact before executing with host_batch_exec_apply. Example: {\"host_ids\":[1,2],\"command\":\"systemctl status nginx\"}.",
@@ -478,7 +466,7 @@ func HostBatchExecPreview(ctx context.Context, fallbackDeps ...common.PlatformDe
 				return nil, fmt.Errorf("command is required")
 			}
 			class, risk, blocked := classifyHostCommand(cmd)
-			targets, missing, err := loadHostBatchTargets(deps, hostIDs)
+			targets, missing, err := loadHostBatchTargets(svcCtx, hostIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -517,8 +505,8 @@ type HostBatchExecApplyOutput struct {
 	Results        map[string]any `json:"results"`
 }
 
-func HostBatchExecApply(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostBatchExecApply(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_apply",
 		"Execute a command on multiple hosts after preview confirmation. host_ids (array) and command are required. Dangerous commands are blocked. Returns execution results for each host. This is a mutating operation - ensure you have previewed with host_batch_exec_preview first. Example: {\"host_ids\":[1,2],\"command\":\"systemctl restart nginx\",\"reason\":\"restart nginx service\"}.",
@@ -535,7 +523,7 @@ func HostBatchExecApply(ctx context.Context, fallbackDeps ...common.PlatformDeps
 			if blocked {
 				return nil, fmt.Errorf("dangerous command is blocked")
 			}
-			nodesByID, missing, err := loadHostNodesMap(deps, hostIDs)
+			nodesByID, missing, err := loadHostNodesMap(svcCtx, hostIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -550,7 +538,7 @@ func HostBatchExecApply(ctx context.Context, fallbackDeps ...common.PlatformDeps
 					failed++
 					continue
 				}
-				out, execErr := executeHostCommand(deps, node, cmd)
+				out, execErr := executeHostCommand(svcCtx, node, cmd)
 				if execErr != nil {
 					results[key] = map[string]any{"stdout": out, "stderr": execErr.Error(), "exit_code": 1}
 					failed++
@@ -585,8 +573,8 @@ type HostBatchStatusUpdateOutput struct {
 	UpdatedCount int64  `json:"updated_count"`
 }
 
-func HostBatchStatusUpdate(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func HostBatchStatusUpdate(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_status_update",
 		"Batch update host status to online, offline, or maintenance. host_ids (array) and action are required. Action must be one of: online, offline, maintenance. Use this to change the operational status of multiple hosts at once. Example: {\"host_ids\":[1,2,3],\"action\":\"maintenance\",\"reason\":\"scheduled maintenance\"}.",
@@ -602,10 +590,10 @@ func HostBatchStatusUpdate(ctx context.Context, fallbackDeps ...common.PlatformD
 			if action != "online" && action != "offline" && action != "maintenance" {
 				return nil, fmt.Errorf("action must be online/offline/maintenance")
 			}
-			if deps.DB == nil {
+			if svcCtx.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
-			res := deps.DB.Model(&model.Node{}).Where("id IN ?", hostIDs).Update("status", action)
+			res := svcCtx.DB.Model(&model.Node{}).Where("id IN ?", hostIDs).Update("status", action)
 			if res.Error != nil {
 				return nil, res.Error
 			}
@@ -629,19 +617,19 @@ type OSGetCPUMemOutput struct {
 	Uptime  string `json:"uptime"`
 }
 
-func OSGetCPUMem(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetCPUMem(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_cpu_mem",
 		"Get CPU, memory and load average information from a target host. Returns loadavg from /proc/loadavg, meminfo from /proc/meminfo, and uptime output. Target can be host ID, IP address, hostname, or 'localhost' (default) for local execution. Example: {\"target\":\"10.0.0.5\"}.",
 		func(ctx context.Context, input *OSCPUMemInput, opts ...tool.Option) (*OSGetCPUMemOutput, error) {
 			target := strings.TrimSpace(input.Target)
-			loadavg, _, _ := runOnTarget(ctx, deps, target, "cat", []string{"/proc/loadavg"}, "cat /proc/loadavg")
-			mem, _, err := runOnTarget(ctx, deps, target, "cat", []string{"/proc/meminfo"}, "cat /proc/meminfo")
+			loadavg, _, _ := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/loadavg"}, "cat /proc/loadavg")
+			mem, _, err := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/meminfo"}, "cat /proc/meminfo")
 			if err != nil {
 				return nil, err
 			}
-			uptime, _, _ := runOnTarget(ctx, deps, target, "uptime", nil, "uptime")
+			uptime, _, _ := runOnTarget(ctx, svcCtx, target, "uptime", nil, "uptime")
 			return &OSGetCPUMemOutput{
 				Loadavg: loadavg,
 				Meminfo: mem,
@@ -659,14 +647,14 @@ type OSGetDiskFSOutput struct {
 	Filesystem string `json:"filesystem"`
 }
 
-func OSGetDiskFS(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetDiskFS(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_disk_fs",
 		"Get disk and filesystem usage information using 'df -h' command. Shows mounted filesystems, total size, used space, available space, and mount points. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"web-server-01\"}.",
 		func(ctx context.Context, input *OSDiskInput, opts ...tool.Option) (*OSGetDiskFSOutput, error) {
 			target := strings.TrimSpace(input.Target)
-			out, _, err := runOnTarget(ctx, deps, target, "df", []string{"-h"}, "df -h")
+			out, _, err := runOnTarget(ctx, svcCtx, target, "df", []string{"-h"}, "df -h")
 			if err != nil {
 				return nil, err
 			}
@@ -684,18 +672,18 @@ type OSGetNetStatOutput struct {
 	ListeningPorts string `json:"listening_ports"`
 }
 
-func OSGetNetStat(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetNetStat(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_net_stat",
 		"Get network statistics including network device traffic from /proc/net/dev and listening TCP ports using 'ss -ltn'. Shows bytes sent/received per interface and all listening ports. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"192.168.1.10\"}.",
 		func(ctx context.Context, input *OSNetInput, opts ...tool.Option) (*OSGetNetStatOutput, error) {
 			target := strings.TrimSpace(input.Target)
-			dev, _, err := runOnTarget(ctx, deps, target, "cat", []string{"/proc/net/dev"}, "cat /proc/net/dev")
+			dev, _, err := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/net/dev"}, "cat /proc/net/dev")
 			if err != nil {
 				return nil, err
 			}
-			listen, _, _ := runOnTarget(ctx, deps, target, "ss", []string{"-ltn"}, "ss -ltn")
+			listen, _, _ := runOnTarget(ctx, svcCtx, target, "ss", []string{"-ltn"}, "ss -ltn")
 			return &OSGetNetStatOutput{
 				NetDev:         dev,
 				ListeningPorts: listen,
@@ -713,8 +701,8 @@ type OSGetProcessTopOutput struct {
 	Limit        int    `json:"limit"`
 }
 
-func OSGetProcessTop(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetProcessTop(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_process_top",
 		"Get top processes sorted by CPU usage using 'ps aux --sort=-%cpu'. Returns the most CPU-intensive processes. Limit parameter controls how many processes to show (default 10, max 50). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"localhost\",\"limit\":20}.",
@@ -728,7 +716,7 @@ func OSGetProcessTop(ctx context.Context, fallbackDeps ...common.PlatformDeps) t
 				limit = 50
 			}
 			cmd := fmt.Sprintf("ps aux --sort=-%%cpu | head -n %d", limit+1)
-			out, _, err := runOnTarget(ctx, deps, target, "ps", []string{"aux", "--sort=-%cpu"}, cmd)
+			out, _, err := runOnTarget(ctx, svcCtx, target, "ps", []string{"aux", "--sort=-%cpu"}, cmd)
 			if err != nil {
 				return nil, err
 			}
@@ -750,8 +738,8 @@ type OSGetJournalTailOutput struct {
 	Logs    string `json:"logs"`
 }
 
-func OSGetJournalTail(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetJournalTail(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_journal_tail",
 		"Get systemd journal logs for a specific service using 'journalctl -u <service> -n <lines>'. Service name is required. Lines parameter controls how many log lines to retrieve (default 200, max 500). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"10.0.0.1\",\"service\":\"nginx\",\"lines\":100}.",
@@ -773,7 +761,7 @@ func OSGetJournalTail(ctx context.Context, fallbackDeps ...common.PlatformDeps) 
 			}
 			localArgs := []string{"-u", service, "-n", strconv.Itoa(lines), "--no-pager"}
 			remoteCmd := fmt.Sprintf("journalctl -u %s -n %d --no-pager", service, lines)
-			out, _, err := runOnTarget(ctx, deps, target, "journalctl", localArgs, remoteCmd)
+			out, _, err := runOnTarget(ctx, svcCtx, target, "journalctl", localArgs, remoteCmd)
 			if err != nil {
 				return nil, err
 			}
@@ -795,21 +783,21 @@ type OSGetContainerRuntimeOutput struct {
 	Containers string `json:"containers"`
 }
 
-func OSGetContainerRuntime(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
-	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+func OSGetContainerRuntime(ctx context.Context) tool.InvokableTool {
+	svcCtx := svc.GetServiceContext(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_container_runtime",
 		"Get container runtime information and running containers. Detects Docker or containerd. For Docker, runs 'docker ps' to show container ID, image, and status. For containerd, runs 'ctr -n k8s.io containers list'. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"node-01\"}.",
 		func(ctx context.Context, input *OSContainerRuntimeInput, opts ...tool.Option) (*OSGetContainerRuntimeOutput, error) {
 			target := strings.TrimSpace(input.Target)
-			out, _, err := runOnTarget(ctx, deps, target, "docker", []string{"ps", "--format", "{{.ID}} {{.Image}} {{.Status}}"}, "docker ps --format '{{.ID}} {{.Image}} {{.Status}}'")
+			out, _, err := runOnTarget(ctx, svcCtx, target, "docker", []string{"ps", "--format", "{{.ID}} {{.Image}} {{.Status}}"}, "docker ps --format '{{.ID}} {{.Image}} {{.Status}}'")
 			if err == nil {
 				return &OSGetContainerRuntimeOutput{
 					Runtime:    "docker",
 					Containers: out,
 				}, nil
 			}
-			out2, _, err2 := runOnTarget(ctx, deps, target, "ctr", []string{"-n", "k8s.io", "containers", "list"}, "ctr -n k8s.io containers list")
+			out2, _, err2 := runOnTarget(ctx, svcCtx, target, "ctr", []string{"-n", "k8s.io", "containers", "list"}, "ctr -n k8s.io containers list")
 			if err2 == nil {
 				return &OSGetContainerRuntimeOutput{
 					Runtime:    "containerd",
@@ -832,8 +820,8 @@ func OSGetContainerRuntime(ctx context.Context, fallbackDeps ...common.PlatformD
 // executeHostCommand 在指定主机上执行命令。
 //
 // 通过 SSH 连接到目标主机并执行命令，支持密钥和密码认证。
-func executeHostCommand(deps common.PlatformDeps, node *model.Node, command string) (string, error) {
-	privateKey, passphrase, err := loadNodePrivateKey(deps, node)
+func executeHostCommand(svcCtx *svc.ServiceContext, node *model.Node, command string) (string, error) {
+	privateKey, passphrase, err := loadNodePrivateKey(svcCtx, node)
 	if err != nil {
 		return "", err
 	}
@@ -852,12 +840,12 @@ func executeHostCommand(deps common.PlatformDeps, node *model.Node, command stri
 // loadNodePrivateKey 加载节点的 SSH 私钥。
 //
 // 从数据库加载私钥，如果加密则先解密。
-func loadNodePrivateKey(deps common.PlatformDeps, node *model.Node) (string, string, error) {
-	if deps.DB == nil || node == nil || node.SSHKeyID == nil {
+func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *model.Node) (string, string, error) {
+	if svcCtx.DB == nil || node == nil || node.SSHKeyID == nil {
 		return "", "", nil
 	}
 	var key model.SSHKey
-	if err := deps.DB.Select("id", "private_key", "passphrase", "encrypted").Where("id = ?", uint64(*node.SSHKeyID)).First(&key).Error; err != nil {
+	if err := svcCtx.DB.Select("id", "private_key", "passphrase", "encrypted").Where("id = ?", uint64(*node.SSHKeyID)).First(&key).Error; err != nil {
 		return "", "", err
 	}
 	pk := strings.TrimSpace(key.PrivateKey)
@@ -899,12 +887,12 @@ func normalizeHostIDs(raw []int) ([]uint64, error) {
 // loadHostNodesMap 批量加载主机节点并构建映射。
 //
 // 返回节点映射和缺失的 ID 列表。
-func loadHostNodesMap(deps common.PlatformDeps, hostIDs []uint64) (map[uint64]*model.Node, []uint64, error) {
-	if deps.DB == nil {
+func loadHostNodesMap(svcCtx *svc.ServiceContext, hostIDs []uint64) (map[uint64]*model.Node, []uint64, error) {
+	if svcCtx.DB == nil {
 		return nil, nil, fmt.Errorf("db unavailable")
 	}
 	var nodes []model.Node
-	if err := deps.DB.Where("id IN ?", hostIDs).Find(&nodes).Error; err != nil {
+	if err := svcCtx.DB.Where("id IN ?", hostIDs).Find(&nodes).Error; err != nil {
 		return nil, nil, err
 	}
 	byID := make(map[uint64]*model.Node, len(nodes))
@@ -921,8 +909,8 @@ func loadHostNodesMap(deps common.PlatformDeps, hostIDs []uint64) (map[uint64]*m
 }
 
 // loadHostBatchTargets 加载批量执行目标信息。
-func loadHostBatchTargets(deps common.PlatformDeps, hostIDs []uint64) ([]map[string]any, []int, error) {
-	byID, _, err := loadHostNodesMap(deps, hostIDs)
+func loadHostBatchTargets(svcCtx *svc.ServiceContext, hostIDs []uint64) ([]map[string]any, []int, error) {
+	byID, _, err := loadHostNodesMap(svcCtx, hostIDs)
 	if err != nil {
 		return nil, nil, err
 	}

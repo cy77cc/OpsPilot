@@ -8,16 +8,15 @@ package host
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 // runLocalCommand 在本地执行命令。
@@ -30,7 +29,7 @@ import (
 //
 // 返回:
 //   - 命令输出和错误
-func runLocalCommand(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
+func 	runLocalCommand(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, name, args...)
@@ -48,7 +47,7 @@ func runLocalCommand(ctx context.Context, timeout time.Duration, name string, ar
 //
 // 参数:
 //   - ctx: 上下文
-//   - deps: 平台依赖
+//   - svcCtx: 平台依赖
 //   - target: 目标主机（ID、IP 或主机名）
 //   - localName: 本地命令名称
 //   - localArgs: 本地命令参数
@@ -58,8 +57,8 @@ func runLocalCommand(ctx context.Context, timeout time.Duration, name string, ar
 //   - 输出内容
 //   - 执行来源（"local" 或 "remote_ssh"）
 //   - 错误
-func runOnTarget(ctx context.Context, deps common.PlatformDeps, target, localName string, localArgs []string, remoteCmd string) (string, string, error) {
-	node, err := resolveNodeByTarget(deps, target)
+func runOnTarget(ctx context.Context, svcCtx *svc.ServiceContext, target, localName string, localArgs []string, remoteCmd string) (string, string, error) {
+	node, err := resolveNodeByTarget(svcCtx, target)
 	if err != nil {
 		return "", "target_check", err
 	}
@@ -69,7 +68,7 @@ func runOnTarget(ctx context.Context, deps common.PlatformDeps, target, localNam
 		return out, "local", err
 	}
 	// 远程 SSH 执行
-	privateKey, passphrase, err := loadNodePrivateKey(deps, node)
+	privateKey, passphrase, err := loadNodePrivateKey(svcCtx, node)
 	if err != nil {
 		return "", "remote_ssh_credential", err
 	}
@@ -94,48 +93,24 @@ func runOnTarget(ctx context.Context, deps common.PlatformDeps, target, localNam
 //   - IP 地址或主机名：按 IP/name/hostname 查询
 //
 // 如果目标不在白名单中，返回错误。
-func resolveNodeByTarget(deps common.PlatformDeps, target string) (*model.Node, error) {
+func resolveNodeByTarget(svcCtx *svc.ServiceContext, target string) (*model.Node, error) {
 	trimmed := strings.TrimSpace(target)
 	if trimmed == "" || trimmed == "localhost" {
 		return nil, nil
 	}
-	if deps.DB == nil {
+	if svcCtx.DB == nil {
 		return nil, errors.New("db unavailable")
 	}
 	var node model.Node
 	// 尝试按 ID 解析
 	if id, err := strconv.ParseUint(trimmed, 10, 64); err == nil {
-		if err := deps.DB.First(&node, id).Error; err == nil {
+		if err := svcCtx.DB.First(&node, id).Error; err == nil {
 			return &node, nil
 		}
 	}
 	// 按 IP/name/hostname 查询
-	if err := deps.DB.Where("ip = ? OR name = ? OR hostname = ?", trimmed, trimmed, trimmed).First(&node).Error; err != nil {
+	if err := svcCtx.DB.Where("ip = ? OR name = ? OR hostname = ?", trimmed, trimmed, trimmed).First(&node).Error; err != nil {
 		return nil, errors.New("target not in host whitelist")
 	}
 	return &node, nil
-}
-
-// toInt 将任意类型转换为整数。
-//
-// 支持的类型：int, int64, float64, uint64, json.Number, string
-func toInt(v any) int {
-	switch x := v.(type) {
-	case int:
-		return x
-	case int64:
-		return int(x)
-	case float64:
-		return int(x)
-	case uint64:
-		return int(x)
-	case json.Number:
-		n, _ := strconv.Atoi(x.String())
-		return n
-	case string:
-		n, _ := strconv.Atoi(strings.TrimSpace(x))
-		return n
-	default:
-		return 0
-	}
 }
