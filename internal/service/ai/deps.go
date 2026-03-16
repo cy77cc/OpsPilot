@@ -1,24 +1,32 @@
 package ai
 
 import (
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/diagnosis"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/intent"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/qa"
 	"github.com/cy77cc/OpsPilot/internal/dao"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
-// Deps centralizes the AI service dependencies that handlers can consume.
-type Deps struct {
-	SvcCtx       *svc.ServiceContext
-	ChatDAO      *dao.AIChatDAO
-	RunDAO       *dao.AIRunDAO
-	DiagnosisDAO *dao.AIDiagnosisReportDAO
+type Dependencies struct {
+	ChatDAO            *dao.AIChatDAO
+	RunDAO             *dao.AIRunDAO
+	DiagnosisReportDAO *dao.AIDiagnosisReportDAO
+	IntentRouter       *intent.Router
+	QAAgent            *qa.Agent
+	DiagnosisAgent     *diagnosis.Agent
 }
 
-// NewDeps builds a dependency bag using the provided service context.
-func NewDeps(svcCtx *svc.ServiceContext) *Deps {
-	return &Deps{
-		SvcCtx:       svcCtx,
-		ChatDAO:      dao.NewAIChatDAO(svcCtx.DB),
-		RunDAO:       dao.NewAIRunDAO(svcCtx.DB),
-		DiagnosisDAO: dao.NewAIDiagnosisReportDAO(svcCtx.DB),
+func NewDependencies(svcCtx *svc.ServiceContext) Dependencies {
+	if svcCtx == nil || svcCtx.DB == nil {
+		return Dependencies{}
+	}
+	return Dependencies{
+		ChatDAO:            dao.NewAIChatDAO(svcCtx.DB),
+		RunDAO:             dao.NewAIRunDAO(svcCtx.DB),
+		DiagnosisReportDAO: dao.NewAIDiagnosisReportDAO(svcCtx.DB),
+		IntentRouter:       intent.NewRouter(),
+		QAAgent:            qa.NewAgent(),
+		DiagnosisAgent:     diagnosis.NewAgent(),
 	}
 }

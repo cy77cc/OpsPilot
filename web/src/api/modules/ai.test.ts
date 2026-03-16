@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiApi, normalizeVisibleStreamChunk } from './ai';
+import { aiApi } from './ai';
 import apiService from '../api';
 
 function buildStream(chunks: string[]) {
@@ -18,142 +18,110 @@ describe('aiApi.chatStream', () => {
     localStorage.clear();
   });
 
-  it('maps message events to onDelta content', async () => {
+  it('consumes phase 1 public stream events', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: meta\ndata: {"sessionId":"sess-1"}\n\n',
-        'event: message\ndata: {"content":"hello from backend"}\n\n',
-        'event: done\ndata: {"stream_state":"ok"}\n\n',
+        'event: init\ndata: {"session_id":"sess-1","run_id":"run-1"}\n\n',
+        'event: intent\ndata: {"intent_type":"diagnosis","assistant_type":"diagnosis","risk_level":"medium"}\n\n',
+        'event: status\ndata: {"status":"running"}\n\n',
+        'event: progress\ndata: {"summary":"Collecting evidence"}\n\n',
+        'event: report_ready\ndata: {"report_id":"report-1","summary":"Quota exhausted"}\n\n',
+        'event: done\ndata: {"run_id":"run-1","status":"completed"}\n\n',
       ]),
     } as Response);
 
-    const onMeta = vi.fn();
-    const onDelta = vi.fn();
+    const onInit = vi.fn();
+    const onIntent = vi.fn();
+    const onStatus = vi.fn();
+    const onProgress = vi.fn();
+    const onReportReady = vi.fn();
     const onDone = vi.fn();
 
     await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onMeta, onDelta, onDone }
+      { message: 'Diagnose rollout', session_id: 'sess-1' },
+      { onInit, onIntent, onStatus, onProgress, onReportReady, onDone },
     );
 
     expect(fetchMock).toHaveBeenCalled();
-    expect(onMeta).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sess-1' }));
-    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: 'hello from backend' }));
-    expect(onDone).toHaveBeenCalled();
+    expect(onInit).toHaveBeenCalledWith(expect.objectContaining({ session_id: 'sess-1', run_id: 'run-1' }));
+    expect(onIntent).toHaveBeenCalledWith(expect.objectContaining({ intent_type: 'diagnosis' }));
+    expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'running' }));
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Collecting evidence' }));
+    expect(onReportReady).toHaveBeenCalledWith(expect.objectContaining({ report_id: 'report-1' }));
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ run_id: 'run-1', status: 'completed' }));
   });
 
-  it('dispatches tool_call, tool_approval, and tool_result events', async () => {
+  it('maps delta events to visible answer content', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: tool_call\ndata: {"call_id":"call-1","tool_name":"get_pods","arguments":"{\\"namespace\\":\\"default\\"}"}\n\n',
-        'event: tool_approval\ndata: {"call_id":"call-1","tool_name":"delete_pod","risk":"high","summary":"即将删除 pod"}\n\n',
-        'event: tool_result\ndata: {"call_id":"call-1","result":"{\\"ok\\":true}"}\n\n',
+        'event: init\ndata: {"session_id":"sess-1","run_id":"run-1"}\n\n',
+        'event: delta\ndata: {"content":"hello from backend"}\n\n',
+        'event: done\ndata: {"run_id":"run-1","status":"completed"}\n\n',
       ]),
     } as Response);
 
-    const onToolCall = vi.fn();
-    const onToolApproval = vi.fn();
-    const onToolResult = vi.fn();
+    const onDelta = vi.fn();
 
     await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onToolCall, onToolApproval, onToolResult },
+      { message: 'hi' },
+      { onDelta },
     );
 
-    expect(onToolCall).toHaveBeenCalledWith(expect.objectContaining({
-      call_id: 'call-1',
-      tool_name: 'get_pods',
-    }));
-    expect(onToolApproval).toHaveBeenCalledWith(expect.objectContaining({
-      call_id: 'call-1',
-      tool_name: 'delete_pod',
-      risk: 'high',
-    }));
-    expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({
-      call_id: 'call-1',
-    }));
+    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: 'hello from backend' }));
   });
 
-  it('preserves stage-aware error payloads', async () => {
+  it('preserves error payloads', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       body: buildStream([
-        'event: error\ndata: {"message":"AI 规划模块当前不可用，请稍后重试或手动在页面中执行操作。","error_code":"planner_runner_unavailable","stage":"plan","recoverable":true}\n\n',
+        'event: error\ndata: {"message":"stream failed","code":"stream_failed"}\n\n',
       ]),
     } as Response);
 
     const onError = vi.fn();
 
     await aiApi.chatStream(
-      { message: 'hi', context: { scene: 'global' } },
-      { onError }
+      { message: 'hi' },
+      { onError },
     );
 
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'AI 规划模块当前不可用，请稍后重试或手动在页面中执行操作。',
-      code: 'planner_runner_unavailable',
-      stage: 'plan',
-      recoverable: true,
+      message: 'stream failed',
+      code: 'stream_failed',
     }));
   });
+});
 
-  it('posts unified chain approval decisions to the canonical endpoint', async () => {
-    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
-      success: true,
-      data: { approval: { id: 'approval-1', status: 'approved' } },
-    });
-
-    await aiApi.decideChainApproval('plan-1', 'approval:step-1', true, 'looks safe');
-
-    expect(postMock).toHaveBeenCalledWith(
-      '/ai/chains/plan-1/approvals/approval:step-1/decision',
-      { approved: true, reason: 'looks safe' },
-    );
+describe('aiApi phase 1 endpoints', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it('streams unified chain approval decisions from the canonical endpoint', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      body: buildStream([
-        'event: tool_call\ndata: {"call_id":"call-after-approval","tool_name":"execute_step"}\n\n',
-        'event: tool_result\ndata: {"call_id":"call-after-approval","result":"{\\"ok\\":true}"}\n\n',
-        'event: delta\ndata: {"contentChunk":"已继续执行"}\n\n',
-      ]),
-    } as Response);
+  it('provides session CRUD methods', async () => {
+    const getMock = vi.spyOn(apiService, 'get').mockResolvedValue({ success: true, data: [] });
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({ success: true, data: { id: 'sess-1' } });
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({ success: true, data: undefined });
 
-    const onToolCall = vi.fn();
-    const onToolResult = vi.fn();
-    const onDelta = vi.fn();
+    await aiApi.getSessions();
+    await aiApi.createSession({ title: 'New Session', scene: 'ai' });
+    await aiApi.getSession('sess-1');
+    await aiApi.deleteSession('sess-1');
 
-    await aiApi.decideChainApprovalStream(
-      'plan-1',
-      'approval:step-1',
-      true,
-      { onToolCall, onToolResult, onDelta },
-      'looks safe',
-    );
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/ai/chains/plan-1/approvals/approval:step-1/decision'),
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        }),
-        body: JSON.stringify({ approved: true, reason: 'looks safe' }),
-      }),
-    );
-    expect(onToolCall).toHaveBeenCalledWith(expect.objectContaining({ call_id: 'call-after-approval' }));
-    expect(onToolResult).toHaveBeenCalledWith(expect.objectContaining({ call_id: 'call-after-approval' }));
-    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ contentChunk: '已继续执行' }));
+    expect(getMock).toHaveBeenNthCalledWith(1, '/ai/sessions', undefined);
+    expect(postMock).toHaveBeenCalledWith('/ai/sessions', { title: 'New Session', scene: 'ai' });
+    expect(getMock).toHaveBeenNthCalledWith(2, '/ai/sessions/sess-1');
+    expect(deleteMock).toHaveBeenCalledWith('/ai/sessions/sess-1');
   });
 
-  it('unwraps only complete response envelopes', () => {
-    expect(normalizeVisibleStreamChunk('{"response":" ok\\n\\n| a | b |\\n"}')).toBe(' ok\n\n| a | b |\n');
-    expect(normalizeVisibleStreamChunk('{"response":')).toBe('{"response":');
-    expect(normalizeVisibleStreamChunk('\n\n| a | b |\n')).toBe('\n\n| a | b |\n');
+  it('fetches run status and diagnosis report', async () => {
+    const getMock = vi.spyOn(apiService, 'get').mockResolvedValue({ success: true, data: {} });
+
+    await aiApi.getRunStatus('run-1');
+    await aiApi.getDiagnosisReport('report-1');
+
+    expect(getMock).toHaveBeenNthCalledWith(1, '/ai/runs/run-1');
+    expect(getMock).toHaveBeenNthCalledWith(2, '/ai/diagnosis/report-1');
   });
 });

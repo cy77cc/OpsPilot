@@ -7,62 +7,64 @@ import (
 	"gorm.io/gorm"
 )
 
-// AIChatDAO handles AI chat session and message persistence.
+// AIChatDAO provides focused persistence for phase 1 sessions and messages.
 type AIChatDAO struct {
 	db *gorm.DB
 }
 
-// NewAIChatDAO creates an AIChatDAO.
 func NewAIChatDAO(db *gorm.DB) *AIChatDAO {
 	return &AIChatDAO{db: db}
 }
 
-// CreateSession persists a chat session.
 func (d *AIChatDAO) CreateSession(ctx context.Context, session *model.AIChatSession) error {
 	return d.db.WithContext(ctx).Create(session).Error
 }
 
-// ListSessions returns sessions for a user, optionally scoped to a scene.
-func (d *AIChatDAO) ListSessions(ctx context.Context, userID uint64, scene string) ([]model.AIChatSession, error) {
+func (d *AIChatDAO) ListSessions(ctx context.Context, userID uint64) ([]model.AIChatSession, error) {
 	var sessions []model.AIChatSession
-	query := d.db.WithContext(ctx).Model(&model.AIChatSession{}).
-		Where("user_id = ?", userID)
-	if scene != "" {
-		query = query.Where("scene = ?", scene)
-	}
-
-	err := query.Order("updated_at DESC").Find(&sessions).Error
+	err := d.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("updated_at DESC, created_at DESC").
+		Find(&sessions).Error
 	return sessions, err
 }
 
-// GetSession retrieves a session by ID.
-func (d *AIChatDAO) GetSession(ctx context.Context, sessionID string) (*model.AIChatSession, error) {
+func (d *AIChatDAO) GetSession(ctx context.Context, sessionID string, userID uint64) (*model.AIChatSession, error) {
 	var session model.AIChatSession
-	if err := d.db.WithContext(ctx).First(&session, "id = ?", sessionID).Error; err != nil {
+	err := d.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", sessionID, userID).
+		First(&session).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &session, nil
 }
 
-// DeleteSession removes a session by ID.
-func (d *AIChatDAO) DeleteSession(ctx context.Context, sessionID string) error {
+func (d *AIChatDAO) DeleteSession(ctx context.Context, sessionID string, userID uint64) error {
 	return d.db.WithContext(ctx).
-		Where("id = ?", sessionID).
-		Delete(&model.AIChatSession{}).
-		Error
+		Where("id = ? AND user_id = ?", sessionID, userID).
+		Delete(&model.AIChatSession{}).Error
 }
 
-// CreateMessage persists a chat message.
 func (d *AIChatDAO) CreateMessage(ctx context.Context, message *model.AIChatMessage) error {
 	return d.db.WithContext(ctx).Create(message).Error
 }
 
-// ListMessagesBySession returns all messages for a session.
+func (d *AIChatDAO) UpdateMessage(ctx context.Context, messageID string, updates map[string]any) error {
+	return d.db.WithContext(ctx).
+		Model(&model.AIChatMessage{}).
+		Where("id = ?", messageID).
+		Updates(updates).Error
+}
+
 func (d *AIChatDAO) ListMessagesBySession(ctx context.Context, sessionID string) ([]model.AIChatMessage, error) {
 	var messages []model.AIChatMessage
 	err := d.db.WithContext(ctx).
 		Where("session_id = ?", sessionID).
-		Order("created_at ASC").
+		Order("created_at ASC, id ASC").
 		Find(&messages).Error
 	return messages, err
 }

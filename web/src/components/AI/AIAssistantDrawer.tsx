@@ -2,13 +2,11 @@
  * AI Copilot 抽屉组件
  * 支持场景自动感知与手动切换
  */
-import React, { lazy, Suspense } from 'react';
-import { Drawer, Skeleton } from 'antd';
+import React from 'react';
+import { Button, Drawer, Space, Typography } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import { AISurfaceBoundary } from './AISurfaceBoundary';
-import { useResizableDrawer } from './hooks/useResizableDrawer';
 import type { SceneOption } from './hooks/useAutoScene';
-
-const CopilotSurface = lazy(() => import('./CopilotSurface'));
 
 interface AIAssistantDrawerProps {
   open: boolean;
@@ -27,54 +25,40 @@ export function AIAssistantDrawer({
   open,
   onClose,
   scene,
-  selectValue,
-  onSceneChange,
-  availableScenes = [{ key: 'global', label: '全局助手' }],
-  isAuto = true,
 }: AIAssistantDrawerProps) {
-  const { width, isResizing, handleMouseDown } = useResizableDrawer();
+  const navigate = useNavigate();
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
       placement="right"
-      size={width}
-      closable={false}
+      width={420}
+      closable
       maskClosable
-      styles={{
-        body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%' },
-        wrapper: { transition: isResizing ? 'none' : undefined },
-      }}
-      title={null}
+      styles={{ body: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 } }}
+      title="AI Assistant"
     >
-      {/* 拖拽手柄 */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 4,
-          cursor: 'ew-resize',
-          background: isResizing ? '#1890ff' : 'transparent',
-          transition: 'background 0.2s',
-        }}
-        onMouseDown={handleMouseDown}
-      />
-      <Suspense fallback={<div style={{ padding: 16 }}><Skeleton active paragraph={{ rows: 4 }} /></div>}>
-        <AISurfaceBoundary>
-          <CopilotSurface
-            open={open}
-            onClose={onClose}
-            scene={scene}
-            selectValue={selectValue}
-            onSceneChange={onSceneChange}
-            availableScenes={availableScenes}
-            isAuto={isAuto}
-          />
-        </AISurfaceBoundary>
-      </Suspense>
+      <AISurfaceBoundary>
+        <Space direction="vertical" size={16} style={{ width: '100%', textAlign: 'center' }}>
+          <Typography.Title level={4} style={{ marginBottom: 0 }}>
+            AI 工作台已迁移到独立页面
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            Phase 1 的问答与诊断体验统一在 `/ai`。当前场景为 {scene}，点击下方按钮继续。
+          </Typography.Paragraph>
+          <Button
+            type="primary"
+            size="large"
+            onClick={() => {
+              onClose();
+              navigate('/ai');
+            }}
+          >
+            打开 AI Assistant
+          </Button>
+        </Space>
+      </AISurfaceBoundary>
     </Drawer>
   );
 }

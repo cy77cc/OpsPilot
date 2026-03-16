@@ -83,8 +83,32 @@ export interface AIKnowledgeFeedbackPayload {
 // AI对话请求参数
 export interface AIChatParams {
   sessionId?: string;
+  session_id?: string;
   message: string;
   context?: any;
+}
+
+export interface AIRun {
+  run_id: string;
+  status: string;
+  assistant_type?: string;
+  intent_type?: string;
+  progress_summary?: string;
+  report?: {
+    report_id: string;
+    summary?: string;
+  };
+}
+
+export interface AIDiagnosisReport {
+  report_id: string;
+  run_id?: string;
+  session_id?: string;
+  summary?: string;
+  evidence?: string[];
+  root_causes?: string[];
+  recommendations?: string[];
+  generated_at?: string;
 }
 
 export interface AISceneToolsPayload {
@@ -111,6 +135,30 @@ interface SSEMetaEvent {
   sessionId: string;
   createdAt: string;
   turn_id?: string;
+}
+
+export interface AIInitEvent {
+  session_id: string;
+  run_id: string;
+}
+
+export interface AIIntentEvent {
+  intent_type: string;
+  assistant_type: string;
+  risk_level?: string;
+}
+
+export interface AIStatusEvent {
+  status: string;
+}
+
+export interface AIProgressEvent {
+  summary?: string;
+}
+
+export interface AIReportReadyEvent {
+  report_id: string;
+  summary?: string;
 }
 
 export interface SSEPlanStep {
@@ -275,6 +323,11 @@ interface SSEThinkingEvent {
 }
 
 export interface AIChatStreamHandlers {
+  onInit?: (payload: AIInitEvent) => void;
+  onIntent?: (payload: AIIntentEvent) => void;
+  onStatus?: (payload: AIStatusEvent) => void;
+  onProgress?: (payload: AIProgressEvent) => void;
+  onReportReady?: (payload: AIReportReadyEvent) => void;
   onMeta?: (payload: SSEMetaEvent) => void;
   onDelta?: (payload: SSEDeltaEvent) => void;
   onThinkingDelta?: (payload: SSEThinkingEvent) => void;
@@ -319,7 +372,17 @@ function dispatchAIStreamEvent(
   }
 
   const normalizeVisibleDelta = options?.normalizeVisibleDelta ?? false;
-  if (eventType === 'meta') {
+  if (eventType === 'init') {
+    handlers.onInit?.(payload as AIInitEvent);
+  } else if (eventType === 'intent') {
+    handlers.onIntent?.(payload as AIIntentEvent);
+  } else if (eventType === 'status') {
+    handlers.onStatus?.(payload as AIStatusEvent);
+  } else if (eventType === 'progress') {
+    handlers.onProgress?.(payload as AIProgressEvent);
+  } else if (eventType === 'report_ready') {
+    handlers.onReportReady?.(payload as AIReportReadyEvent);
+  } else if (eventType === 'meta') {
     handlers.onMeta?.(payload as SSEMetaEvent);
   } else if (eventType === 'delta' || eventType === 'message') {
     const contentChunk = normalizeVisibleDelta
@@ -636,7 +699,10 @@ export const aiApi = {
         ...(projectId ? { 'X-Project-ID': projectId } : {}),
       },
       signal: controller.signal,
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        ...(params.sessionId && !params.session_id ? { session_id: params.sessionId } : {}),
+      }),
     });
 
     const wrappedHandlers: AIChatStreamHandlers = {
@@ -693,6 +759,22 @@ export const aiApi = {
   // 获取对话会话列表
   async getSessions(scene?: string): Promise<ApiResponse<AISession[]>> {
     return apiService.get('/ai/sessions', scene ? { params: { scene } } : undefined);
+  },
+
+  async createSession(params: { title: string; scene: string }): Promise<ApiResponse<AISession>> {
+    return apiService.post('/ai/sessions', params);
+  },
+
+  async getSession(id: string): Promise<ApiResponse<AISession>> {
+    return apiService.get(`/ai/sessions/${id}`);
+  },
+
+  async getRunStatus(runId: string): Promise<ApiResponse<AIRun>> {
+    return apiService.get(`/ai/runs/${runId}`);
+  },
+
+  async getDiagnosisReport(reportId: string): Promise<ApiResponse<AIDiagnosisReport>> {
+    return apiService.get(`/ai/diagnosis/${reportId}`);
   },
 
   async getCurrentSession(scene?: string): Promise<ApiResponse<AISession | null>> {
