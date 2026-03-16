@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/intent"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/planexecute"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
@@ -39,4 +40,8 @@ func NewRouter(ctx context.Context) (adk.ResumableAgent, error) {
 	}
 	subagents := []adk.Agent{planexecutorAgent}
 	return adk.SetSubAgents(ctx, routerAgent, subagents)
+}
+
+func NewPhase1IntentRouter() *intent.Router {
+	return intent.NewRouter()
 }
