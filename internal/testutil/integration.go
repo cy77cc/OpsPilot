@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
@@ -23,7 +24,8 @@ type IntegrationSuite struct {
 func NewIntegrationSuite(t *testing.T) *IntegrationSuite {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file:test?mode=memory&cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_loc=auto", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
@@ -120,6 +122,8 @@ func autoMigrateAll(db *gorm.DB) error {
 		&model.AISceneConfig{},
 		&model.AIScenePrompt{},
 		&model.AIExecution{},
+		&model.AIRun{},
+		&model.AIDiagnosisReport{},
 
 		// Jobs
 		&model.Job{},
