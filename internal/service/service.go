@@ -7,6 +7,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/service/ai"
 	"github.com/cy77cc/OpsPilot/internal/service/automation"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd"
 	"github.com/cy77cc/OpsPilot/internal/service/cluster"
@@ -37,6 +38,7 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 
 	v1 := r.Group("/api/v1")
 	user.RegisterUserHandlers(v1, serverCtx)
+	ai.RegisterAIHandlers(v1, serverCtx)
 	node.RegisterNodeHandlers(v1, serverCtx)
 	project.RegisterProjectHandlers(v1, serverCtx)
 	servicemgr.RegisterServiceHandlers(v1, serverCtx)
