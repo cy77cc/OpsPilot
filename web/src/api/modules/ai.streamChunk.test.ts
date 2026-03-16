@@ -12,12 +12,12 @@ function buildStream(chunks: string[]) {
 }
 
 describe('normalizeVisibleStreamChunk', () => {
-  it('preserves markdown whitespace and blank lines from SSE data lines', async () => {
+  it('preserves markdown whitespace from phase 1 delta payloads', async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = async () => ({
       ok: true,
       body: buildStream([
-        'event: delta\ndata: {"contentChunk":"  ## Title\\n\\n| A | B |\\n| - | - |\\n"}\n\n',
+        'event: delta\ndata: {"content":"  ## Title\\n\\n| A | B |\\n| - | - |\\n"}\n\n',
       ]),
     }) as Response;
     globalThis.fetch = fetchMock;
@@ -26,7 +26,7 @@ describe('normalizeVisibleStreamChunk', () => {
 
     try {
       await aiApi.chatStream(
-        { message: 'hi', context: { scene: 'global' } },
+        { message: 'hi' },
         { onDelta },
       );
     } finally {
@@ -41,15 +41,15 @@ describe('normalizeVisibleStreamChunk', () => {
   });
 
   it('passes through plain text', () => {
-    expect(normalizeVisibleStreamChunk('你好，平台助手')).toBe('你好，平台助手');
+    expect(normalizeVisibleStreamChunk('hello')).toBe('hello');
+  });
+
+  it('unwraps response envelope', () => {
+    expect(normalizeVisibleStreamChunk('{"response":"hello"}')).toBe('hello');
   });
 
   it('hides internal steps envelope', () => {
     expect(normalizeVisibleStreamChunk('{"steps":["a","b"]}')).toBe('');
-  });
-
-  it('unwraps response envelope', () => {
-    expect(normalizeVisibleStreamChunk('{"response":"你好！我是平台助手。"}')).toBe('你好！我是平台助手。');
   });
 
   it('keeps ordinary json content', () => {

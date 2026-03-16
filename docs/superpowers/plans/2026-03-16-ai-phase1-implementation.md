@@ -6,6 +6,11 @@
 
 **Architecture:** The implementation replaces the current public AI chat contract with a cleaner `session + message + run + diagnosis_report` model. Backend work lands first on persistence and HTTP/SSE contracts, then wires routing and read-only agent execution, and finally switches the frontend from drawer-centric copilot behavior to a full AI page with run recovery and report navigation.
 
+**Implementation Notes (2026-03-16):**
+- `/ai` and `/ai/diagnosis/:reportId` are implemented as protected routes for the dedicated Phase 1 flow.
+- The legacy header launcher now acts as a lightweight shortcut to `/ai`.
+- Legacy drawer/copilot components remain only as compatibility redirects and no longer expose a separate public chat runtime.
+
 **Tech Stack:** Go, Gin, GORM, MySQL migrations, React 19, Vite, Ant Design, Vitest
 
 ---

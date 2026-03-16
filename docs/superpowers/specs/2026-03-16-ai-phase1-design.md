@@ -248,6 +248,9 @@ Internal orchestration events should not become part of the public frontend cont
 
 The user enters through a single AI Assistant page.
 
+Any legacy AI launcher button or drawer may remain only as a thin shortcut to `/ai`.
+It must not host a second primary chat runtime for Phase 1.
+
 Main regions:
 
 - session list
@@ -269,6 +272,8 @@ The chat page should not render the full structured diagnosis report body inline
 ### 9.3 Diagnosis Report Page
 
 The diagnosis report page is the main result surface for diagnosis requests.
+
+The report route should be reachable directly at `/ai/diagnosis/:reportId` in the protected app flow.
 
 Recommended sections:
 
