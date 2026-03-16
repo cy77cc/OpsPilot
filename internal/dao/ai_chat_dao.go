@@ -53,6 +53,13 @@ func (d *AIChatDAO) CreateMessage(ctx context.Context, message *model.AIChatMess
 	return d.db.WithContext(ctx).Create(message).Error
 }
 
+func (d *AIChatDAO) UpdateMessage(ctx context.Context, messageID string, updates map[string]any) error {
+	return d.db.WithContext(ctx).
+		Model(&model.AIChatMessage{}).
+		Where("id = ?", messageID).
+		Updates(updates).Error
+}
+
 func (d *AIChatDAO) ListMessagesBySession(ctx context.Context, sessionID string) ([]model.AIChatMessage, error) {
 	var messages []model.AIChatMessage
 	err := d.db.WithContext(ctx).

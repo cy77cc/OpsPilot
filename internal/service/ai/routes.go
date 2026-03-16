@@ -13,6 +13,9 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		ChatDAO:            deps.ChatDAO,
 		RunDAO:             deps.RunDAO,
 		DiagnosisReportDAO: deps.DiagnosisReportDAO,
+		IntentRouter:       deps.IntentRouter,
+		QAAgent:            deps.QAAgent,
+		DiagnosisAgent:     deps.DiagnosisAgent,
 	})
 
 	g := v1.Group("/ai", middleware.JWTAuth())
