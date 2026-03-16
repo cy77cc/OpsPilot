@@ -252,6 +252,53 @@ func TestAIHandlers_SessionLifecycleAndReport(t *testing.T) {
 		testutil.AssertEqual(t, report.Status, payload.Status)
 	})
 
+	t.Run("get run status with linked report", func(t *testing.T) {
+		assistantMessageID := uuid.NewString()
+		run := &model.AIRun{
+			ID:                 uuid.NewString(),
+			SessionID:          session.ID,
+			UserMessageID:      uuid.NewString(),
+			AssistantMessageID: &assistantMessageID,
+			IntentType:         "diagnosis",
+			AssistantType:      "diagnosis",
+			RiskLevel:          "low",
+			Status:             "completed",
+			TraceID:            uuid.NewString(),
+		}
+		testutil.RequireNoError(t, suite.DB.Create(run).Error)
+
+		linkedReport := &model.AIDiagnosisReport{
+			ID:                  uuid.NewString(),
+			RunID:               run.ID,
+			SessionID:           session.ID,
+			Summary:             "pod crash loop caused by config mismatch",
+			ImpactScope:         "service",
+			SuspectedRootCauses: "config mismatch",
+			Evidence:            "events and logs",
+			Recommendations:     "roll forward config",
+			RawToolRefs:         "tool refs",
+			Status:              "ready",
+		}
+		testutil.RequireNoError(t, suite.DB.Create(linkedReport).Error)
+
+		req := makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/runs/"+run.ID, "", userID)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		testutil.AssertEqual(t, http.StatusOK, rec.Code)
+		resp := decodeEnvelope(t, rec)
+		testutil.AssertEqual(t, 1000, resp.Code)
+
+		var payload RunResponse
+		testutil.RequireNoError(t, json.Unmarshal(resp.Data, &payload))
+		testutil.AssertEqual(t, run.ID, payload.ID)
+		testutil.AssertEqual(t, run.SessionID, payload.SessionID)
+		testutil.AssertEqual(t, run.Status, payload.Status)
+		testutil.AssertEqual(t, linkedReport.Summary, payload.ProgressSummary)
+		testutil.AssertNotNil(t, payload.Report)
+		testutil.AssertEqual(t, linkedReport.ID, payload.Report.ID)
+	})
+
 	t.Run("get session not found for another user", func(t *testing.T) {
 		req := makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/sessions/"+session.ID, "", 7)
 		rec := httptest.NewRecorder()
@@ -289,6 +336,27 @@ func TestAIHandlers_SessionLifecycleAndReport(t *testing.T) {
 		testutil.AssertEqual(t, 2005, resp.Code)
 	})
 
+	t.Run("get run not found for another user", func(t *testing.T) {
+		protectedRun := &model.AIRun{
+			ID:            uuid.NewString(),
+			SessionID:     session.ID,
+			UserMessageID: uuid.NewString(),
+			IntentType:    "qa",
+			AssistantType: "qa",
+			RiskLevel:     "low",
+			Status:        "queued",
+			TraceID:       uuid.NewString(),
+		}
+		testutil.RequireNoError(t, suite.DB.Create(protectedRun).Error)
+
+		req := makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/runs/"+protectedRun.ID, "", 7)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		resp := decodeEnvelope(t, rec)
+		testutil.AssertEqual(t, 2005, resp.Code)
+	})
+
 	t.Run("missing session and report return not found", func(t *testing.T) {
 		req := makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/sessions/"+uuid.NewString(), "", userID)
 		rec := httptest.NewRecorder()
@@ -301,6 +369,11 @@ func TestAIHandlers_SessionLifecycleAndReport(t *testing.T) {
 		testutil.AssertEqual(t, 2005, decodeEnvelope(t, rec).Code)
 
 		req = makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/diagnosis/"+uuid.NewString(), "", userID)
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		testutil.AssertEqual(t, 2005, decodeEnvelope(t, rec).Code)
+
+		req = makeAuthedRequest(t, http.MethodGet, "/api/v1/ai/runs/"+uuid.NewString(), "", userID)
 		rec = httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 		testutil.AssertEqual(t, 2005, decodeEnvelope(t, rec).Code)

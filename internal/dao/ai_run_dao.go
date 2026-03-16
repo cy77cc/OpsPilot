@@ -88,8 +88,8 @@ WHERE id = ?
 		Status             string
 		TraceID            string
 		ErrorMessage       string
-		StartedAt          sql.NullString
-		FinishedAt         sql.NullString
+		StartedAt          any
+		FinishedAt         any
 		CreatedAt          time.Time
 		UpdatedAt          time.Time
 	}
@@ -109,6 +109,9 @@ WHERE id = ?
 		&record.CreatedAt,
 		&record.UpdatedAt,
 	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, gorm.ErrRecordNotFound
+		}
 		return nil, err
 	}
 
@@ -128,15 +131,15 @@ WHERE id = ?
 	if record.AssistantMessageID.Valid {
 		run.AssistantMessageID = &record.AssistantMessageID.String
 	}
-	if record.StartedAt.Valid {
-		parsed, err := parseDBTime(record.StartedAt.String)
+	if record.StartedAt != nil {
+		parsed, err := parseDBTime(record.StartedAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse started_at: %w", err)
 		}
 		run.StartedAt = &parsed
 	}
-	if record.FinishedAt.Valid {
-		parsed, err := parseDBTime(record.FinishedAt.String)
+	if record.FinishedAt != nil {
+		parsed, err := parseDBTime(record.FinishedAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse finished_at: %w", err)
 		}
@@ -145,7 +148,25 @@ WHERE id = ?
 	return run, nil
 }
 
-func parseDBTime(raw string) (time.Time, error) {
+func parseDBTime(raw any) (time.Time, error) {
+	switch value := raw.(type) {
+	case time.Time:
+		return value, nil
+	case *time.Time:
+		if value == nil {
+			return time.Time{}, fmt.Errorf("nil *time.Time")
+		}
+		return *value, nil
+	case string:
+		return parseDBTimeString(value)
+	case []byte:
+		return parseDBTimeString(string(value))
+	default:
+		return time.Time{}, fmt.Errorf("unsupported time type %T", raw)
+	}
+}
+
+func parseDBTimeString(raw string) (time.Time, error) {
 	layouts := []string{
 		"2006-01-02 15:04:05.999999999Z07:00",
 		"2006-01-02 15:04:05.999999999",

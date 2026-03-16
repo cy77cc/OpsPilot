@@ -55,20 +55,31 @@ type SessionResponse struct {
 
 // RunResponse mirrors the AI run data returned by GET /api/v1/ai/runs/:runId.
 type RunResponse struct {
-	ID                 string     `json:"id"`
-	SessionID          string     `json:"session_id"`
-	UserMessageID      string     `json:"user_message_id"`
-	AssistantMessageID string     `json:"assistant_message_id,omitempty"`
-	Status             string     `json:"status"`
-	IntentType         string     `json:"intent_type"`
-	AssistantType      string     `json:"assistant_type"`
-	RiskLevel          string     `json:"risk_level"`
-	TraceID            string     `json:"trace_id"`
-	ErrorMessage       string     `json:"error_message"`
-	StartedAt          *time.Time `json:"started_at,omitempty"`
-	FinishedAt         *time.Time `json:"finished_at,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                 string         `json:"run_id"`
+	SessionID          string         `json:"session_id"`
+	UserMessageID      string         `json:"user_message_id"`
+	AssistantMessageID *string        `json:"assistant_message_id,omitempty"`
+	Status             string         `json:"status"`
+	IntentType         string         `json:"intent_type"`
+	AssistantType      string         `json:"assistant_type"`
+	RiskLevel          string         `json:"risk_level"`
+	TraceID            string         `json:"trace_id"`
+	ErrorMessage       string         `json:"error_message"`
+	ProgressSummary    string         `json:"progress_summary"`
+	StartedAt          *time.Time     `json:"started_at,omitempty"`
+	FinishedAt         *time.Time     `json:"finished_at,omitempty"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	Report             *RunReportMeta `json:"report,omitempty"`
+}
+
+// RunReportMeta exposes lightweight metadata about a linked diagnosis report.
+type RunReportMeta struct {
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	Summary   string    `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // DiagnosisReportResponse represents the structured diagnosis data for GET /api/v1/ai/diagnosis/:reportId.

@@ -172,27 +172,6 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	httpx.OK(c, nil)
 }
 
-// GetRun is a placeholder for GET /api/v1/ai/runs/:runId.
-func (h *Handler) GetRun(c *gin.Context) {
-	runID := c.Param("runId")
-	now := time.Now().UTC()
-	resp := RunResponse{
-		ID:                 runID,
-		SessionID:          uuid.NewString(),
-		UserMessageID:      uuid.NewString(),
-		AssistantMessageID: uuid.NewString(),
-		Status:             "pending",
-		IntentType:         "diagnosis",
-		AssistantType:      "assistant",
-		RiskLevel:          "low",
-		TraceID:            uuid.NewString(),
-		ErrorMessage:       "",
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
-	httpx.OK(c, resp)
-}
-
 func (h *Handler) GetDiagnosisReport(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID := httpx.UIDFromCtx(c)
@@ -233,6 +212,77 @@ func (h *Handler) GetDiagnosisReport(c *gin.Context) {
 		Status:              report.Status,
 		CreatedAt:           report.CreatedAt,
 		UpdatedAt:           report.UpdatedAt,
+	})
+}
+
+func (h *Handler) GetRun(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID := httpx.UIDFromCtx(c)
+	runID := c.Param("runId")
+
+	run, err := h.deps.RunDAO.GetRun(ctx, runID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.NotFound(c, "run not found")
+			return
+		}
+		httpx.ServerErr(c, err)
+		return
+	}
+
+	session, err := h.deps.ChatDAO.GetSession(ctx, run.SessionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.NotFound(c, "run not found")
+			return
+		}
+		httpx.ServerErr(c, err)
+		return
+	}
+	if session.UserID != userID {
+		httpx.NotFound(c, "run not found")
+		return
+	}
+
+	var reportMeta *RunReportMeta
+	progressSummary := run.Status
+	report, err := h.deps.DiagnosisDAO.GetReportByRunID(ctx, run.ID)
+	switch {
+	case err == nil:
+		reportMeta = &RunReportMeta{
+			ID:        report.ID,
+			Status:    report.Status,
+			Summary:   report.Summary,
+			CreatedAt: report.CreatedAt,
+			UpdatedAt: report.UpdatedAt,
+		}
+		if report.Summary != "" {
+			progressSummary = report.Summary
+		}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// No linked report yet; this is expected for non-diagnosis runs or in-progress runs.
+	default:
+		httpx.ServerErr(c, err)
+		return
+	}
+
+	httpx.OK(c, RunResponse{
+		ID:                 run.ID,
+		SessionID:          run.SessionID,
+		UserMessageID:      run.UserMessageID,
+		AssistantMessageID: run.AssistantMessageID,
+		Status:             run.Status,
+		IntentType:         run.IntentType,
+		AssistantType:      run.AssistantType,
+		RiskLevel:          run.RiskLevel,
+		TraceID:            run.TraceID,
+		ErrorMessage:       run.ErrorMessage,
+		ProgressSummary:    progressSummary,
+		StartedAt:          run.StartedAt,
+		FinishedAt:         run.FinishedAt,
+		CreatedAt:          run.CreatedAt,
+		UpdatedAt:          run.UpdatedAt,
+		Report:             reportMeta,
 	})
 }
 
