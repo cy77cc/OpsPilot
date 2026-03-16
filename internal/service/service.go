@@ -8,6 +8,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/middleware"
 	"github.com/cy77cc/OpsPilot/internal/service/automation"
+	"github.com/cy77cc/OpsPilot/internal/service/ai"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd"
 	"github.com/cy77cc/OpsPilot/internal/service/cluster"
 	"github.com/cy77cc/OpsPilot/internal/service/cmdb"
@@ -41,6 +42,7 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 	project.RegisterProjectHandlers(v1, serverCtx)
 	servicemgr.RegisterServiceHandlers(v1, serverCtx)
 	cicd.RegisterCICDHandlers(v1, serverCtx)
+	ai.RegisterAIHandlers(v1, serverCtx)
 	automation.RegisterAutomationHandlers(v1, serverCtx)
 	host.RegisterHostHandlers(v1, serverCtx)
 	cluster.RegisterClusterHandlers(v1, serverCtx)
