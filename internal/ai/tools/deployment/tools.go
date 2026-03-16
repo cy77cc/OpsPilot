@@ -78,17 +78,28 @@ type ServiceInventoryInput struct {
 }
 
 // NewDeploymentTools 创建所有部署工具。
-func NewDeploymentTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
+func NewDeploymentTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		DeploymentTargetList(ctx, deps),
-		DeploymentTargetDetail(ctx, deps),
-		DeploymentBootstrapStatus(ctx, deps),
-		ConfigAppList(ctx, deps),
-		ConfigItemGet(ctx, deps),
-		ConfigDiff(ctx, deps),
-		ClusterListInventory(ctx, deps),
-		ServiceListInventory(ctx, deps),
+		DeploymentTargetList(ctx, fallbackDeps...),
+		DeploymentTargetDetail(ctx, fallbackDeps...),
+		DeploymentBootstrapStatus(ctx, fallbackDeps...),
+		ConfigAppList(ctx, fallbackDeps...),
+		ConfigItemGet(ctx, fallbackDeps...),
+		ConfigDiff(ctx, fallbackDeps...),
+		ClusterListInventory(ctx, fallbackDeps...),
+		ServiceListInventory(ctx, fallbackDeps...),
 	}
+}
+
+func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
+	deps := common.PlatformDepsFromContext(ctx)
+	if deps != nil {
+		return deps
+	}
+	if len(fallbackDeps) > 0 {
+		return &fallbackDeps[0]
+	}
+	return nil
 }
 
 type DeploymentTargetListOutput struct {
@@ -96,12 +107,13 @@ type DeploymentTargetListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func DeploymentTargetList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_list",
 		"Query deployment target list. Optional parameters: env/status/keyword/limit. Example: {\"env\":\"prod\",\"limit\":20}.",
 		func(ctx context.Context, input *DeploymentTargetListInput, opts ...tool.Option) (*DeploymentTargetListOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -157,12 +169,13 @@ type DeploymentTargetDetailOutput struct {
 	Nodes  []model.DeploymentTargetNode `json:"nodes"`
 }
 
-func DeploymentTargetDetail(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func DeploymentTargetDetail(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_detail",
 		"Query deployment target detail. target_id is required. Example: {\"target_id\":12}.",
 		func(ctx context.Context, input *DeploymentTargetDetailInput, opts ...tool.Option) (*DeploymentTargetDetailOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.TargetID <= 0 {
@@ -196,12 +209,13 @@ type DeploymentBootstrapStatusOutput struct {
 	Steps           []model.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
 
-func DeploymentBootstrapStatus(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func DeploymentBootstrapStatus(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_bootstrap_status",
 		"Query deployment target bootstrap status. target_id is required. Example: {\"target_id\":12}.",
 		func(ctx context.Context, input *DeploymentBootstrapStatusInput, opts ...tool.Option) (*DeploymentBootstrapStatusOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.TargetID <= 0 {
@@ -242,12 +256,13 @@ type ConfigAppListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func ConfigAppList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func ConfigAppList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_app_list",
 		"Query config app list. Optional parameters: keyword/env/limit. Example: {\"env\":\"prod\"}.",
 		func(ctx context.Context, input *ConfigAppListInput, opts ...tool.Option) (*ConfigAppListOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -293,12 +308,13 @@ type ConfigItemGetOutput struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func ConfigItemGet(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func ConfigItemGet(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_item_get",
 		"Query config item value. app_id and key are required, optional env. Example: {\"app_id\":12,\"key\":\"DATABASE_URL\"}.",
 		func(ctx context.Context, input *ConfigItemGetInput, opts ...tool.Option) (*ConfigItemGetOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.AppID <= 0 {
@@ -341,12 +357,13 @@ type ConfigDiffOutput struct {
 	Diff      []map[string]any `json:"diff"`
 }
 
-func ConfigDiff(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func ConfigDiff(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_diff",
 		"Compare config difference. app_id, env_a, env_b are required. Example: {\"app_id\":12,\"env_a\":\"staging\",\"env_b\":\"prod\"}.",
 		func(ctx context.Context, input *ConfigDiffInput, opts ...tool.Option) (*ConfigDiffOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.AppID <= 0 {
@@ -413,12 +430,13 @@ type ClusterListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ClusterListInventory(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func ClusterListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"cluster_list_inventory",
 		"Query cluster inventory list. Optional parameters: status/keyword/limit. Example: {\"status\":\"active\"}.",
 		func(ctx context.Context, input *ClusterInventoryInput, opts ...tool.Option) (*ClusterListInventoryOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -475,12 +493,13 @@ type ServiceListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ServiceListInventory(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func ServiceListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"service_list_inventory",
 		"Query service inventory list. Optional parameters: status/runtime_type/env/keyword/limit. Example: {\"env\":\"prod\"}.",
 		func(ctx context.Context, input *ServiceInventoryInput, opts ...tool.Option) (*ServiceListInventoryOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit

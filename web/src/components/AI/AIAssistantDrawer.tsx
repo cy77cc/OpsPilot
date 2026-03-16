@@ -7,7 +7,6 @@ import { Drawer, Skeleton } from 'antd';
 import { AISurfaceBoundary } from './AISurfaceBoundary';
 import { useResizableDrawer } from './hooks/useResizableDrawer';
 import type { SceneOption } from './hooks/useAutoScene';
-import './AIAssistantDrawer.css';
 
 const CopilotSurface = lazy(() => import('./CopilotSurface'));
 
@@ -23,7 +22,6 @@ interface AIAssistantDrawerProps {
 
 /**
  * AI Copilot 抽屉组件
- * 使用 @ant-design/x 和 @ant-design/x-sdk 实现
  */
 export function AIAssistantDrawer({
   open,
@@ -36,14 +34,6 @@ export function AIAssistantDrawer({
 }: AIAssistantDrawerProps) {
   const { width, isResizing, handleMouseDown } = useResizableDrawer();
 
-  // 拖拽手柄
-  const ResizeHandle = (
-    <div
-      className={`ai-drawer-resize-handle ${isResizing ? 'resizing' : ''}`}
-      onMouseDown={handleMouseDown}
-    />
-  );
-
   return (
     <Drawer
       open={open}
@@ -52,14 +42,26 @@ export function AIAssistantDrawer({
       size={width}
       closable={false}
       maskClosable
-      rootClassName="ai-assistant-drawer"
       styles={{
         body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%' },
         wrapper: { transition: isResizing ? 'none' : undefined },
       }}
       title={null}
     >
-      {ResizeHandle}
+      {/* 拖拽手柄 */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          cursor: 'ew-resize',
+          background: isResizing ? '#1890ff' : 'transparent',
+          transition: 'background 0.2s',
+        }}
+        onMouseDown={handleMouseDown}
+      />
       <Suspense fallback={<div style={{ padding: 16 }}><Skeleton active paragraph={{ rows: 4 }} /></div>}>
         <AISurfaceBoundary>
           <CopilotSurface

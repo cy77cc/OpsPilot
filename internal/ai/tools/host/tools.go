@@ -129,23 +129,33 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 //   - 主机清单查询、批量执行
 //   - 系统诊断：CPU/内存、磁盘、网络、进程
 //   - 日志查询、容器运行时
-func NewHostTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
+func NewHostTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		HostSSHReadonly(ctx, deps),
-		HostExec(ctx, deps),
-		HostExecByTarget(ctx, deps),
-		HostListInventory(ctx, deps),
-		HostBatch(ctx, deps),
-		HostBatchExecPreview(ctx, deps),
-		HostBatchExecApply(ctx, deps),
-		HostBatchStatusUpdate(ctx, deps),
-		OSGetCPUMem(ctx, deps),
-		OSGetDiskFS(ctx, deps),
-		OSGetNetStat(ctx, deps),
-		OSGetProcessTop(ctx, deps),
-		OSGetJournalTail(ctx, deps),
-		OSGetContainerRuntime(ctx, deps),
+		HostSSHReadonly(ctx, fallbackDeps...),
+		HostExec(ctx, fallbackDeps...),
+		HostExecByTarget(ctx, fallbackDeps...),
+		HostListInventory(ctx, fallbackDeps...),
+		HostBatch(ctx, fallbackDeps...),
+		HostBatchExecPreview(ctx, fallbackDeps...),
+		HostBatchExecApply(ctx, fallbackDeps...),
+		HostBatchStatusUpdate(ctx, fallbackDeps...),
+		OSGetCPUMem(ctx, fallbackDeps...),
+		OSGetDiskFS(ctx, fallbackDeps...),
+		OSGetNetStat(ctx, fallbackDeps...),
+		OSGetProcessTop(ctx, fallbackDeps...),
+		OSGetJournalTail(ctx, fallbackDeps...),
+		OSGetContainerRuntime(ctx, fallbackDeps...),
 	}
+}
+
+func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) common.PlatformDeps {
+	if deps := common.PlatformDepsFromContext(ctx); deps != nil {
+		return *deps
+	}
+	if len(fallbackDeps) > 0 {
+		return fallbackDeps[0]
+	}
+	return common.PlatformDeps{}
 }
 
 type HostSSHReadonlyOutput struct {
@@ -154,7 +164,8 @@ type HostSSHReadonlyOutput struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func HostSSHReadonly(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostSSHReadonly(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_ssh_exec_readonly",
 		"Execute a readonly SSH command on a host. host_id and command are required. Only predefined safe readonly commands are allowed such as: hostname, uptime, df -h, free -m, ps aux --sort=-%cpu. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
@@ -195,7 +206,8 @@ type HostExecOutput struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func HostExec(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostExec(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
 		"Execute a readonly command on a single host via SSH. host_id and command are required. Only safe readonly commands are allowed. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"df -h\"}.",
@@ -240,7 +252,8 @@ func HostExec(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool 
 	return t
 }
 
-func HostExecByTarget(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostExecByTarget(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec_by_target",
 		"Resolve a host by target string and execute a readonly command. Target may be a host id, IP, hostname, name, or localhost. command is required. Only safe readonly commands are allowed. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"df -h\"}.",
@@ -305,7 +318,8 @@ type HostListInventoryOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func HostListInventory(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostListInventory(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_list_inventory",
 		"Query host inventory list with detailed information including CPU, memory, disk, SSH configuration, and status. Optional parameters: status filters by host status (online/offline/maintenance), keyword searches by name/IP/hostname, limit controls max results (default 50, max 200). Example: {\"status\":\"online\",\"keyword\":\"web\",\"limit\":20}.",
@@ -374,7 +388,8 @@ type HostBatchOutput struct {
 	Results        map[string]any `json:"results"`
 }
 
-func HostBatch(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostBatch(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch",
 		"Execute a command on multiple hosts in batch. host_ids (array of integers) and command are required. Dangerous commands like 'rm -rf /', 'mkfs', 'shutdown' are blocked. Returns execution results for each host including stdout, stderr, and exit code. Example: {\"host_ids\":[1,2,3],\"command\":\"uptime\",\"reason\":\"health check\"}.",
@@ -446,7 +461,8 @@ type HostBatchExecPreviewOutput struct {
 	Targets        []map[string]any `json:"targets"`
 }
 
-func HostBatchExecPreview(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostBatchExecPreview(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_preview",
 		"Preview batch command execution before actually running it. host_ids (array) and command are required. Returns resolved target hosts, command classification (readonly/mutating/dangerous), risk level, and whether the command is blocked. Use this to verify the impact before executing with host_batch_exec_apply. Example: {\"host_ids\":[1,2],\"command\":\"systemctl status nginx\"}.",
@@ -499,7 +515,8 @@ type HostBatchExecApplyOutput struct {
 	Results        map[string]any `json:"results"`
 }
 
-func HostBatchExecApply(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostBatchExecApply(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_apply",
 		"Execute a command on multiple hosts after preview confirmation. host_ids (array) and command are required. Dangerous commands are blocked. Returns execution results for each host. This is a mutating operation - ensure you have previewed with host_batch_exec_preview first. Example: {\"host_ids\":[1,2],\"command\":\"systemctl restart nginx\",\"reason\":\"restart nginx service\"}.",
@@ -566,7 +583,8 @@ type HostBatchStatusUpdateOutput struct {
 	UpdatedCount int64  `json:"updated_count"`
 }
 
-func HostBatchStatusUpdate(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func HostBatchStatusUpdate(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_status_update",
 		"Batch update host status to online, offline, or maintenance. host_ids (array) and action are required. Action must be one of: online, offline, maintenance. Use this to change the operational status of multiple hosts at once. Example: {\"host_ids\":[1,2,3],\"action\":\"maintenance\",\"reason\":\"scheduled maintenance\"}.",
@@ -609,7 +627,8 @@ type OSGetCPUMemOutput struct {
 	Uptime  string `json:"uptime"`
 }
 
-func OSGetCPUMem(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetCPUMem(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_cpu_mem",
 		"Get CPU, memory and load average information from a target host. Returns loadavg from /proc/loadavg, meminfo from /proc/meminfo, and uptime output. Target can be host ID, IP address, hostname, or 'localhost' (default) for local execution. Example: {\"target\":\"10.0.0.5\"}.",
@@ -638,7 +657,8 @@ type OSGetDiskFSOutput struct {
 	Filesystem string `json:"filesystem"`
 }
 
-func OSGetDiskFS(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetDiskFS(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_disk_fs",
 		"Get disk and filesystem usage information using 'df -h' command. Shows mounted filesystems, total size, used space, available space, and mount points. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"web-server-01\"}.",
@@ -662,7 +682,8 @@ type OSGetNetStatOutput struct {
 	ListeningPorts string `json:"listening_ports"`
 }
 
-func OSGetNetStat(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetNetStat(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_net_stat",
 		"Get network statistics including network device traffic from /proc/net/dev and listening TCP ports using 'ss -ltn'. Shows bytes sent/received per interface and all listening ports. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"192.168.1.10\"}.",
@@ -690,7 +711,8 @@ type OSGetProcessTopOutput struct {
 	Limit        int    `json:"limit"`
 }
 
-func OSGetProcessTop(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetProcessTop(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_process_top",
 		"Get top processes sorted by CPU usage using 'ps aux --sort=-%cpu'. Returns the most CPU-intensive processes. Limit parameter controls how many processes to show (default 10, max 50). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"localhost\",\"limit\":20}.",
@@ -726,7 +748,8 @@ type OSGetJournalTailOutput struct {
 	Logs    string `json:"logs"`
 }
 
-func OSGetJournalTail(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetJournalTail(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_journal_tail",
 		"Get systemd journal logs for a specific service using 'journalctl -u <service> -n <lines>'. Service name is required. Lines parameter controls how many log lines to retrieve (default 200, max 500). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"10.0.0.1\",\"service\":\"nginx\",\"lines\":100}.",
@@ -770,7 +793,8 @@ type OSGetContainerRuntimeOutput struct {
 	Containers string `json:"containers"`
 }
 
-func OSGetContainerRuntime(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func OSGetContainerRuntime(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
+	deps := depsFromContextOrFallback(ctx, fallbackDeps...)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_container_runtime",
 		"Get container runtime information and running containers. Detects Docker or containerd. For Docker, runs 'docker ps' to show container ID, image, and status. For containerd, runs 'ctr -n k8s.io containers list'. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"node-01\"}.",

@@ -33,11 +33,22 @@ type CredentialTestInput struct {
 }
 
 // NewInfrastructureTools 创建所有基础设施工具。
-func NewInfrastructureTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
+func NewInfrastructureTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		CredentialList(ctx, deps),
-		CredentialTest(ctx, deps),
+		CredentialList(ctx, fallbackDeps...),
+		CredentialTest(ctx, fallbackDeps...),
 	}
+}
+
+func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
+	deps := common.PlatformDepsFromContext(ctx)
+	if deps != nil {
+		return deps
+	}
+	if len(fallbackDeps) > 0 {
+		return &fallbackDeps[0]
+	}
+	return nil
 }
 
 type CredentialListOutput struct {
@@ -45,12 +56,13 @@ type CredentialListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func CredentialList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func CredentialList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"credential_list",
 		"Query cluster credential list for accessing Kubernetes clusters or other infrastructure. Optional parameters: type filters by runtime type or source (k8s/helm/compose), keyword searches by name or endpoint, limit controls max results (default 50, max 200). Returns credentials with id, name, runtime type, endpoint, status, and last test result. Use credential IDs for deployment target configuration. Example: {\"type\":\"k8s\",\"limit\":20}.",
 		func(ctx context.Context, input *CredentialListInput, opts ...tool.Option) (*CredentialListOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -107,12 +119,13 @@ type CredentialTestOutput struct {
 	LastTestMessage string `json:"last_test_message"`
 }
 
-func CredentialTest(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func CredentialTest(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"credential_test",
 		"Get credential connectivity test result. credential_id is required. Returns the last test result including test timestamp, status (success/failed), and any error message. Use this to verify if a credential is valid before using it for deployment. Example: {\"credential_id\":5}.",
 		func(ctx context.Context, input *CredentialTestInput, opts ...tool.Option) (*CredentialTestOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.CredentialID <= 0 {

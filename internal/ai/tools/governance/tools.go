@@ -59,14 +59,25 @@ type AuditLogSearchInput struct {
 }
 
 // NewGovernanceTools 创建所有治理工具。
-func NewGovernanceTools(ctx context.Context, deps common.PlatformDeps) []tool.InvokableTool {
+func NewGovernanceTools(ctx context.Context, fallbackDeps ...common.PlatformDeps) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		UserList(ctx, deps),
-		RoleList(ctx, deps),
-		PermissionCheck(ctx, deps),
-		TopologyGet(ctx, deps),
-		AuditLogSearch(ctx, deps),
+		UserList(ctx, fallbackDeps...),
+		RoleList(ctx, fallbackDeps...),
+		PermissionCheck(ctx, fallbackDeps...),
+		TopologyGet(ctx, fallbackDeps...),
+		AuditLogSearch(ctx, fallbackDeps...),
 	}
+}
+
+func depsFromContextOrFallback(ctx context.Context, fallbackDeps ...common.PlatformDeps) *common.PlatformDeps {
+	deps := common.PlatformDepsFromContext(ctx)
+	if deps != nil {
+		return deps
+	}
+	if len(fallbackDeps) > 0 {
+		return &fallbackDeps[0]
+	}
+	return nil
 }
 
 type UserListOutput struct {
@@ -74,12 +85,13 @@ type UserListOutput struct {
 	List  []model.User `json:"list"`
 }
 
-func UserList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func UserList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"user_list",
 		"Query the list of users in the platform. Optional parameters: keyword searches by username or email, status filters by user status (0=disabled, 1=enabled), limit controls max results (default 50, max 200). Returns users with id, username, email, role information, and status. Use this to find user IDs for permission checks. Example: {\"keyword\":\"admin\",\"status\":1}.",
 		func(ctx context.Context, input *UserListInput, opts ...tool.Option) (*UserListOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -118,12 +130,13 @@ type RoleListOutput struct {
 	List  []model.Role `json:"list"`
 }
 
-func RoleList(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func RoleList(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"role_list",
 		"Query the list of roles in the platform. Optional parameters: keyword searches by role name or code, limit controls max results (default 50, max 200). Returns roles with id, name, code, description, and permission count. Use this to understand available roles for user assignment. Example: {\"keyword\":\"admin\"}.",
 		func(ctx context.Context, input *RoleListInput, opts ...tool.Option) (*RoleListOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit
@@ -161,12 +174,13 @@ type PermissionCheckOutput struct {
 	Checked            map[string]any     `json:"checked"`
 }
 
-func PermissionCheck(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func PermissionCheck(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"permission_check",
 		"Check if a user has a specific permission. user_id, resource, and action are required. Returns whether the permission is granted, matched permissions if any, and the checked parameters. Use this to verify user access before performing sensitive operations. Example: {\"user_id\":1,\"resource\":\"service\",\"action\":\"delete\"}.",
 		func(ctx context.Context, input *PermissionCheckInput, opts ...tool.Option) (*PermissionCheckOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			if input.UserID <= 0 {
@@ -232,12 +246,13 @@ type TopologyGetOutput struct {
 	Depth int              `json:"depth"`
 }
 
-func TopologyGet(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func TopologyGet(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"topology_get",
 		"Query service topology showing relationships between services and deployment targets. Optional parameters: service_id focuses topology on a specific service, depth controls how many levels of relationships to explore (default 2, max 5). Returns nodes (services/targets) and edges (deployment relationships). Use this to understand service dependencies. Example: {\"service_id\":12,\"depth\":3}.",
 		func(ctx context.Context, input *TopologyGetInput, opts ...tool.Option) (*TopologyGetOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			depth := input.Depth
@@ -281,12 +296,13 @@ type AuditLogSearchOutput struct {
 	List  []model.AuditLog `json:"list"`
 }
 
-func AuditLogSearch(ctx context.Context, deps common.PlatformDeps) tool.InvokableTool {
+func AuditLogSearch(ctx context.Context, fallbackDeps ...common.PlatformDeps) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"audit_log_search",
 		"Search audit logs for platform activities. Optional parameters: time_range filters logs within a duration (default 24h, accepts values like 1h, 6h, 24h, 7d), resource_type filters by resource kind (service/cluster/host), action filters by action type (create/update/delete), user_id filters by actor, limit controls max results (default 50, max 200). Returns audit entries with timestamps and details. Example: {\"time_range\":\"24h\",\"resource_type\":\"service\"}.",
 		func(ctx context.Context, input *AuditLogSearchInput, opts ...tool.Option) (*AuditLogSearchOutput, error) {
-			if deps.DB == nil {
+			deps := depsFromContextOrFallback(ctx, fallbackDeps...)
+			if deps == nil || deps.DB == nil {
 				return nil, fmt.Errorf("db unavailable")
 			}
 			limit := input.Limit

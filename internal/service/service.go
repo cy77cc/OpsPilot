@@ -7,7 +7,6 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/middleware"
-	"github.com/cy77cc/OpsPilot/internal/service/ai"
 	"github.com/cy77cc/OpsPilot/internal/service/automation"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd"
 	"github.com/cy77cc/OpsPilot/internal/service/cluster"
@@ -51,7 +50,6 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 	cmdb.RegisterCMDBHandlers(v1, serverCtx)
 	topology.RegisterTopologyHandlers(v1, serverCtx)
 	rbac.RegisterRBACHandlers(v1, serverCtx)
-	ai.RegisterAIHandlers(v1, serverCtx)
 	notification.RegisterNotificationHandlers(v1, serverCtx)
 	jobs.RegisterJobsHandlers(v1, serverCtx)
 
