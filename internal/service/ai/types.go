@@ -20,21 +20,6 @@ type ChatResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// SessionSummary describes a summarized AI chat session.
-type SessionSummary struct {
-	ID        string    `json:"id"`
-	Scene     string    `json:"scene"`
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// ListSessionsResponse wraps the session list response.
-type ListSessionsResponse struct {
-	Sessions []SessionSummary `json:"sessions"`
-	Total    int              `json:"total"`
-}
-
 // CreateSessionRequest is the payload for creating a new chat session.
 type CreateSessionRequest struct {
 	Scene string `json:"scene,omitempty"`
@@ -46,33 +31,26 @@ type CreateSessionResponse struct {
 	ID        string    `json:"id"`
 	Scene     string    `json:"scene"`
 	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// ChatMessage describes a message inside a session detail response.
-type ChatMessage struct {
+// ChatMessageResponse matches the chat message shape expected by the frontend AI client.
+type ChatMessageResponse struct {
 	ID        string    `json:"id"`
 	Role      string    `json:"role"`
 	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	Status    string    `json:"status,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
-// SessionDetail is the payload returned by GET /api/v1/ai/sessions/:id.
-type SessionDetail struct {
-	ID            string        `json:"id"`
-	Scene         string        `json:"scene"`
-	Title         string        `json:"title"`
-	Messages      []ChatMessage `json:"messages"`
-	TotalMessages int           `json:"total_messages"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
-}
-
-// DeleteSessionResponse describes the result of deleting a session.
-type DeleteSessionResponse struct {
-	ID      string `json:"id"`
-	Deleted bool   `json:"deleted"`
+// SessionResponse matches the session shape currently consumed by the frontend AI client.
+type SessionResponse struct {
+	ID        string                `json:"id"`
+	Title     string                `json:"title"`
+	Messages  []ChatMessageResponse `json:"messages"`
+	CreatedAt time.Time             `json:"createdAt"`
+	UpdatedAt time.Time             `json:"updatedAt"`
 }
 
 // RunResponse mirrors the AI run data returned by GET /api/v1/ai/runs/:runId.
