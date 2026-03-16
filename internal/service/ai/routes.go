@@ -8,8 +8,12 @@ import (
 )
 
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	_ = NewDependencies(svcCtx)
-	h := handler.New()
+	deps := NewDependencies(svcCtx)
+	h := handler.New(handler.Dependencies{
+		ChatDAO:            deps.ChatDAO,
+		RunDAO:             deps.RunDAO,
+		DiagnosisReportDAO: deps.DiagnosisReportDAO,
+	})
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
