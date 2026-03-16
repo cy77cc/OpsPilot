@@ -9,7 +9,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
 	"github.com/cy77cc/OpsPilot/internal/service/ai"
 	"github.com/cy77cc/OpsPilot/internal/service/automation"
-	"github.com/cy77cc/OpsPilot/internal/service/ai"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd"
 	"github.com/cy77cc/OpsPilot/internal/service/cluster"
 	"github.com/cy77cc/OpsPilot/internal/service/cmdb"

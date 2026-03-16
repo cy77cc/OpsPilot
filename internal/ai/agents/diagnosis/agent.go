@@ -1,51 +1,115 @@
+// Package diagnosis 实现基于 Plan-Execute-Replan 架构的 K8s 只读诊断助手。
+//
+// 架构：
+//
+//	PlanExecute
+//	  ├── Planner   — 将诊断请求分解为只读调查步骤
+//	  ├── Executor  — 仅使用 K8s 只读工具 + 监控工具执行步骤
+//	  └── Replanner — 根据执行结果动态调整剩余步骤
+//
+// 该 Agent 严禁执行任何写操作，所有工具调用均为只读。
 package diagnosis
 
 import (
 	"context"
-	"strings"
+	"fmt"
+	"time"
+
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
+	"github.com/cloudwego/eino/compose"
+	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools"
 )
 
-type Request struct {
-	Message string
-}
-
-type Result struct {
-	Progress []string `json:"progress"`
-	Report   Report   `json:"report"`
-}
-
-type Agent struct{}
-
-func NewAgent() *Agent {
-	return &Agent{}
-}
-
-func (a *Agent) Diagnose(_ context.Context, req Request) (Result, error) {
-	message := strings.TrimSpace(req.Message)
-	if message == "" {
-		message = "the reported issue"
+// NewDiagnosisAgent 创建只读诊断 Agent 实例（PlanExecute 架构）。
+//
+// 工具集限定为只读 K8s 工具和监控工具，不包含任何写操作工具。
+// 最大迭代轮次为 20，防止无限循环。
+//
+// 参数:
+//   - ctx: 上下文（可携带 common.PlatformDeps 供工具使用）
+//
+// 返回: ResumableAgent 和初始化错误
+func NewDiagnosisAgent(ctx context.Context) (adk.ResumableAgent, error) {
+	planner, err := newDiagnosisPlanner(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("diagnosis agent: init planner: %w", err)
 	}
-	return Result{
-		Progress: []string{
-			"Collecting read-only Kubernetes evidence",
-			"Summarizing likely root cause",
-		},
-		Report: Report{
-			Summary:         "Phase 1 diagnosis summary for: " + message,
-			Evidence:        []string{"Read-only Kubernetes signals reviewed"},
-			RootCauses:      []string{"Likely workload or cluster configuration issue"},
-			Recommendations: []string{"Inspect workload events, logs, and rollout status"},
-		},
-	}, nil
+
+	executor, err := newDiagnosisExecutor(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("diagnosis agent: init executor: %w", err)
+	}
+
+	replanner, err := newDiagnosisReplanner(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("diagnosis agent: init replanner: %w", err)
+	}
+
+	return planexecute.New(ctx, &planexecute.Config{
+		Planner:       planner,
+		Executor:      executor,
+		Replanner:     replanner,
+		MaxIterations: 20,
+	})
 }
 
-func (a *Agent) ToolNames() []string {
-	return []string{
-		"k8s_query",
-		"k8s_list_resources",
-		"k8s_events",
-		"k8s_get_events",
-		"k8s_logs",
-		"k8s_get_pod_logs",
+// newDiagnosisPlanner 创建诊断专用规划子 Agent。
+//
+// 使用低温度（0.1）确保规划步骤的确定性。
+func newDiagnosisPlanner(ctx context.Context) (adk.Agent, error) {
+	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
+		Timeout:  60 * time.Second,
+		Thinking: false,
+		Temp:     0.1,
+	})
+	if err != nil {
+		return nil, err
 	}
+	return planexecute.NewPlanner(ctx, &planexecute.PlannerConfig{
+		ToolCallingChatModel: model,
+	})
+}
+
+// newDiagnosisExecutor 创建诊断专用执行子 Agent。
+//
+// 工具集仅限只读 K8s 工具 + 监控工具，不包含任何写操作。
+func newDiagnosisExecutor(ctx context.Context) (adk.Agent, error) {
+	toolset := tools.NewDiagnosisTools(ctx)
+
+	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
+		Timeout:  60 * time.Second,
+		Thinking: false,
+		Temp:     0.0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return planexecute.NewExecutor(ctx, &planexecute.ExecutorConfig{
+		Model: model,
+		ToolsConfig: adk.ToolsConfig{
+			ToolsNodeConfig: compose.ToolsNodeConfig{
+				Tools: toolset,
+			},
+		},
+	})
+}
+
+// newDiagnosisReplanner 创建诊断专用重规划子 Agent。
+//
+// 使用中等温度（0.3）允许在保守范围内灵活调整诊断步骤。
+func newDiagnosisReplanner(ctx context.Context) (adk.Agent, error) {
+	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
+		Timeout:  60 * time.Second,
+		Thinking: false,
+		Temp:     0.3,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return planexecute.NewReplanner(ctx, &planexecute.ReplannerConfig{
+		ChatModel: model,
+	})
 }
