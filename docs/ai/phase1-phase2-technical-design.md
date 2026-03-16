@@ -1,9 +1,10 @@
 # OpsPilot AI 助手 Phase 1 & Phase 2 技术设计文档
 
-> **文档版本**：v1.0  
-> **状态**：草稿  
+> **文档版本**：v1.1  
+> **状态**：修订稿  
 > **适用范围**：`internal/service/ai/`、`internal/ai/`、`web/src/pages/AI/`  
-> **模块路径**：`github.com/cy77cc/OpsPilot`
+> **模块路径**：`github.com/cy77cc/OpsPilot`  
+> **修订说明**：本版已根据 `docs/ai/review-issues.md` 对齐现有模型、迁移目录、审批表设计、权限中间件与 Checkpoint 持久化方案
 
 ---
 
@@ -64,7 +65,7 @@ internal/service/ai/
 └── handler/
     ├── chat.go                # POST /api/v1/ai/chat（SSE 流式聊天）
     ├── session.go             # 会话 CRUD（创建/列表/详情/删除）
-    ├── run.go                 # GET /api/v1/ai/runs/:runId（查询运行状态）
+    ├── run.go                 # GET /api/v1/ai/runs/:runId（查询运行状态，runId 对应 AIChatTurn.ID）
     └── diagnosis.go           # GET /api/v1/ai/diagnosis/:runId/report（诊断报告）
 ```
 
@@ -113,11 +114,15 @@ func RegisterRoutes(rg *gin.RouterGroup, deps *Deps) {
 
 **位置**：`internal/ai/agents/intent/`
 
+> 说明：本模块是对现有 `internal/ai/agents/router.go` 的**重构式扩展**，不是平行新增第二套路由。
+> 现有 `NewRouterAgent` 与 `prompt.ROUTERPROMPT` 继续保留，作为模型层（`model_layer.go`）的底层能力；
+> 新的 `IntentRouter` 负责在其外层补齐规则层、策略层与结构化结果封装，统一作为 Phase 1/2 的路由入口。
+
 ```
 internal/ai/agents/intent/
 ├── intent.go          # IntentRouter 主体（三层策略）
 ├── rule_layer.go      # 规则层（关键词匹配）
-├── model_layer.go     # 模型层（LLM 分类）
+├── model_layer.go     # 模型层（复用现有 router.go / ROUTERPROMPT）
 ├── policy_layer.go    # 策略层（权限裁决）
 └── types.go           # IntentRequest / IntentResult 类型定义
 ```
@@ -174,9 +179,9 @@ const (
 // IntentRequest 意图识别请求。
 type IntentRequest struct {
 	// UserID 发起请求的用户 ID，用于策略层权限裁决。
-	UserID int64 `json:"user_id"`
-	// SessionID 当前会话 ID。
-	SessionID int64 `json:"session_id"`
+	UserID uint64 `json:"user_id"`
+	// SessionID 当前会话 ID（UUID 字符串，对应 ai_chat_sessions.id）。
+	SessionID string `json:"session_id"`
 	// Message 用户输入的原始消息。
 	Message string `json:"message"`
 	// History 最近 N 条历史消息（用于上下文理解）。
@@ -211,7 +216,12 @@ type IntentResult struct {
 
 // IntentTargets 意图操作目标信息。
 type IntentTargets struct {
-	// ClusterName 目标集群名称（从消息中提取或使用会话上下文）。
+	// ClusterName 目标集群名称（从消息中提取，或从消息 metadata 中读取）。
+	//
+	// 说明：
+	//   - `ai_chat_sessions` 当前无独立 `cluster_name` 列
+	//   - Phase 1/2 不新增 session 级 cluster_name 字段
+	//   - 会话级上下文通过 `AIChatSession.Scene` + `AIChatMessage.MetadataJSON` 承载
 	ClusterName string `json:"cluster_name,omitempty"`
 	// Namespace 目标命名空间。
 	Namespace string `json:"namespace,omitempty"`
@@ -481,9 +491,12 @@ import "time"
 // DiagnosisReport 诊断报告，包含完整的诊断分析结果。
 type DiagnosisReport struct {
 	// RunID 对应的 Agent 运行 ID。
+	//
+	// 说明：Phase 1/2 中的 run_id 统一定义为 `AIChatTurn.ID`，
+	// 用于标识一次会话中的单轮 Agent 运行，而不是 `AIExecution.ID`。
 	RunID string `json:"run_id"`
-	// SessionID 所属会话 ID。
-	SessionID int64 `json:"session_id"`
+	// SessionID 所属会话 ID（UUID 字符串）。
+	SessionID string `json:"session_id"`
 	// CreatedAt 报告生成时间。
 	CreatedAt time.Time `json:"created_at"`
 	// Target 诊断目标描述。
@@ -569,9 +582,13 @@ type DiagnosisSuggestion struct {
 ```json
 {
   "title": "诊断 prod 集群 nginx 问题",
-  "cluster_name": "prod-cluster"
+  "scene": "k8s"
 }
 ```
+
+> 说明：
+> - `ai_chat_sessions` 当前仅持久化 `scene`，不持久化独立 `cluster_name`
+> - 若前端希望保留默认集群上下文，应在首条用户消息或消息扩展字段 `metadata_json` 中传递 `cluster_name`
 
 **Response Body**
 
@@ -580,9 +597,9 @@ type DiagnosisSuggestion struct {
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "id": 123,
+    "id": "sess_abc123",
     "title": "诊断 prod 集群 nginx 问题",
-    "cluster_name": "prod-cluster",
+    "scene": "k8s",
     "created_at": "2025-01-01T10:00:00Z",
     "updated_at": "2025-01-01T10:00:00Z"
   }
@@ -616,9 +633,9 @@ type DiagnosisSuggestion struct {
     "total": 50,
     "items": [
       {
-        "id": 123,
+        "id": "sess_abc123",
         "title": "诊断 prod 集群 nginx 问题",
-        "cluster_name": "prod-cluster",
+        "scene": "k8s",
         "last_message": "Pod 出现 OOMKilled 问题已诊断完成",
         "message_count": 6,
         "created_at": "2025-01-01T10:00:00Z",
@@ -647,19 +664,19 @@ type DiagnosisSuggestion struct {
   "msg": "请求成功",
   "data": {
     "session": {
-      "id": 123,
+      "id": "sess_abc123",
       "title": "诊断 prod 集群 nginx 问题",
-      "cluster_name": "prod-cluster"
+      "scene": "k8s"
     },
     "messages": [
       {
-        "id": 1,
+        "id": "msg_001",
         "role": "user",
         "content": "帮我诊断一下 prod 集群 nginx deployment 的问题",
         "created_at": "2025-01-01T10:00:00Z"
       },
       {
-        "id": 2,
+        "id": "msg_002",
         "role": "assistant",
         "content": "",
         "blocks": [
@@ -717,11 +734,13 @@ type DiagnosisSuggestion struct {
 
 ```json
 {
-  "session_id": 123,
+  "session_id": "sess_abc123",
   "message": "帮我诊断一下 prod 集群 default namespace 下 nginx deployment 的问题",
   "cluster_name": "prod-cluster"
 }
 ```
+
+> 说明：`cluster_name` 作为消息级上下文传入，并写入用户消息的 `metadata_json`，不作为 `ai_chat_sessions` 表字段持久化。
 
 **Response**：SSE 流，见 1.2.6 小节。
 
@@ -744,8 +763,8 @@ type DiagnosisSuggestion struct {
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "run_id": "run_abc123",
-    "session_id": 123,
+    "run_id": "turn_abc123",
+    "session_id": "sess_abc123",
     "status": "running",
     "intent_type": "diagnosis",
     "iteration": 3,
@@ -756,6 +775,9 @@ type DiagnosisSuggestion struct {
 ```
 
 `status` 枚举值：`pending` / `running` / `completed` / `failed` / `interrupted`（Phase 2 审批中断）
+
+> 统一约定：`GET /api/v1/ai/runs/:runId` 中的 `runId` 对应 `AIChatTurn.ID`；
+> `AIExecution` 仅表示单次工具调用执行记录，不直接作为 run_id 对外暴露。
 
 ---
 
@@ -832,7 +854,7 @@ data: <JSON 字符串>
 
 | Event 类型 | 触发时机 | data 结构 |
 |-----------|---------|----------|
-| `init` | 连接建立后首条消息 | `{"run_id": "...", "intent_type": "diagnosis"}` |
+| `init` | 连接建立后首条消息 | `{"run_id": "...", "intent_type": "diagnosis", "session_id": "..."}` |
 | `message` | LLM 输出文本 token | `{"content": "正在分析...", "index": 0}` |
 | `thinking` | LLM 思考过程（CoT） | `{"content": "需要先检查 Pod 状态..."}` |
 | `tool_call` | 工具调用开始 | `{"tool_name": "K8sQuery", "input": {...}, "call_id": "c1"}` |
@@ -840,14 +862,15 @@ data: <JSON 字符串>
 | `plan` | PRE 规划阶段输出计划 | `{"steps": ["检查 Pod 状态", "查看事件", "分析日志"]}` |
 | `replan` | 重新规划 | `{"reason": "发现新的线索", "steps": [...]}` |
 | `diagnosis_report` | 诊断完成，输出结构化报告 | `DiagnosisReport` 完整 JSON |
+| `approval_required` | Phase 2 写操作触发审批中断 | `{"approval_id": "...", "run_id": "...", ...}` |
 | `done` | 运行完成 | `{"run_id": "...", "total_tokens": 1580, "duration_ms": 8200}` |
 | `error` | 运行失败 | `{"code": 3000, "message": "LLM 调用超时"}` |
 
 #### SSE 流示例（诊断场景）
 
-```
+``` 
 event: init
-data: {"run_id":"run_abc123","intent_type":"diagnosis","session_id":123}
+data: {"run_id":"turn_abc123","intent_type":"diagnosis","session_id":"sess_abc123"}
 
 event: plan
 data: {"steps":["查询 nginx Deployment 状态","获取相关 Pod 事件","分析最近日志"]}
@@ -874,10 +897,10 @@ event: message
 data: {"content":"以下是完整的诊断报告：","index":1}
 
 event: diagnosis_report
-data: {"run_id":"run_abc123","severity":"critical","summary":"...","evidence":[...],"root_cause":{...},"suggestions":[...]}
+data: {"run_id":"turn_abc123","session_id":"sess_abc123","severity":"critical","summary":"...","evidence":[...],"root_cause":{...},"suggestions":[...]}
 
 event: done
-data: {"run_id":"run_abc123","total_tokens":1580,"duration_ms":8200}
+data: {"run_id":"turn_abc123","total_tokens":1580,"duration_ms":8200}
 ```
 
 #### SSE Handler 实现要点
@@ -925,46 +948,46 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 |------|------|------|
 | `AIChatSession` | `ai_chat_sessions` | 会话 |
 | `AIChatMessage` | `ai_chat_messages` | 消息 |
-| `AIChatTurn` | `ai_chat_turns` | 单轮对话 |
+| `AIChatTurn` | `ai_chat_turns` | 单轮对话（Phase 1/2 对外 run_id 的承载体） |
 | `AIChatBlock` | `ai_chat_blocks` | 消息块（text/tool_call/report） |
-| `AIExecution` | `ai_executions` | 运行记录（含 token 统计） |
+| `AIExecution` | `ai_executions` | 工具调用级执行记录（非 run 主表） |
 | `AICheckPoint` | `ai_checkpoints` | Eino ADK Checkpoint |
 | `AITraceSpan` | `ai_trace_spans` | 链路追踪 |
 
 #### Phase 1 新增 Migration
 
-**Migration 文件**：`storage/migration/20250101_add_ai_indexes.sql`
+**Migration 文件**：`storage/migrations/20260316_000039_add_ai_indexes.sql`
 
 ```sql
--- 为 ai_chat_sessions 增加用户 ID 查询索引
+-- 为 ai_chat_sessions 增加用户 ID + 更新时间索引
 ALTER TABLE ai_chat_sessions ADD INDEX idx_user_id_updated (user_id, updated_at DESC);
 
 -- 为 ai_chat_messages 增加会话 ID + 创建时间索引（消息分页查询）
 ALTER TABLE ai_chat_messages ADD INDEX idx_session_id_created (session_id, created_at ASC);
 
--- 为 ai_executions 增加 run_id 唯一索引（运行状态查询）
-ALTER TABLE ai_executions ADD UNIQUE INDEX uniq_run_id (run_id);
-
--- 为 ai_chat_blocks 增加消息 ID 索引（消息详情查询）
-ALTER TABLE ai_chat_blocks ADD INDEX idx_message_id (message_id);
+-- 说明：
+-- 1. 不为 ai_executions 增加 run_id 索引，因为当前表无 run_id 列
+-- 2. 不为 ai_chat_blocks 增加 message_id 索引，因为当前表无 message_id 列
+-- 3. ai_chat_blocks 已有 (turn_id, position) 联合索引，满足块顺序查询
 ```
 
-**Migration 文件**：`storage/migration/20250101_add_diagnosis_report.sql`
+**Migration 文件**：`storage/migrations/20260316_000040_add_diagnosis_report.sql`
 
 ```sql
 -- 新增诊断报告表（独立于 ai_chat_blocks，便于直接按 run_id 查询）
+-- 其中 run_id 对应 ai_chat_turns.id
 CREATE TABLE ai_diagnosis_reports (
-    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    run_id      VARCHAR(64)     NOT NULL COMMENT 'Agent 运行 ID',
-    session_id  BIGINT UNSIGNED NOT NULL,
-    user_id     BIGINT UNSIGNED NOT NULL,
-    cluster_name VARCHAR(128)   NOT NULL DEFAULT '',
-    namespace    VARCHAR(128)   NOT NULL DEFAULT '',
-    resource_kind VARCHAR(64)   NOT NULL DEFAULT '',
-    resource_name VARCHAR(128)  NOT NULL DEFAULT '',
-    severity     VARCHAR(32)    NOT NULL DEFAULT 'info',
-    report_json  MEDIUMTEXT     NOT NULL COMMENT '完整诊断报告 JSON',
-    created_at   DATETIME(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    id            VARCHAR(64)     NOT NULL COMMENT '诊断报告主键 UUID',
+    run_id        VARCHAR(64)     NOT NULL COMMENT 'Agent 运行 ID（对应 ai_chat_turns.id）',
+    session_id    VARCHAR(64)     NOT NULL COMMENT 'AI 会话 ID',
+    user_id       BIGINT UNSIGNED NOT NULL,
+    cluster_name  VARCHAR(128)    NOT NULL DEFAULT '',
+    namespace     VARCHAR(128)    NOT NULL DEFAULT '',
+    resource_kind VARCHAR(64)     NOT NULL DEFAULT '',
+    resource_name VARCHAR(128)    NOT NULL DEFAULT '',
+    severity      VARCHAR(32)     NOT NULL DEFAULT 'info',
+    report_json   MEDIUMTEXT      NOT NULL COMMENT '完整诊断报告 JSON',
+    created_at    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     PRIMARY KEY (id),
     UNIQUE KEY uniq_run_id (run_id),
     KEY idx_session_id (session_id),
@@ -1012,9 +1035,12 @@ web/src/
 
 import { useRef, useState, useCallback } from 'react';
 import type { DiagnosisReport, SSEEvent, RunStatus } from '@/api/modules/ai';
+// getToken 从认证模块获取当前用户的 JWT token
+// 实际项目中通常通过 axios 拦截器统一注入，此处为示例代码
+import { getToken } from '@/utils/auth';
 
 interface UseSSEChatOptions {
-  sessionId: number;
+  sessionId: string;
   onToken: (token: string, index: number) => void;
   onToolCall: (event: SSEEvent<'tool_call'>) => void;
   onToolResult: (event: SSEEvent<'tool_result'>) => void;
@@ -1162,9 +1188,9 @@ export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interr
 export type DiagnosisSeverity = 'info' | 'warning' | 'critical';
 
 export interface AISession {
-  id: number;
+  id: string;
   title: string;
-  cluster_name: string;
+  scene: string;
   last_message?: string;
   message_count: number;
   created_at: string;
@@ -1182,7 +1208,7 @@ export interface AIMessageBlock {
 }
 
 export interface AIMessage {
-  id: number;
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   blocks?: AIMessageBlock[];
@@ -1228,7 +1254,7 @@ export interface DiagnosisReport {
 
 export interface AIRunInfo {
   run_id: string;
-  session_id: number;
+  session_id: string;
   status: RunStatus;
   intent_type: IntentType;
   iteration: number;
@@ -1238,7 +1264,7 @@ export interface AIRunInfo {
 
 // SSE 事件类型映射
 export interface SSEEventMap {
-  init: { run_id: string; intent_type: IntentType; session_id: number };
+  init: { run_id: string; intent_type: IntentType; session_id: string };
   message: { content: string; index: number };
   thinking: { content: string };
   tool_call: { call_id: string; tool_name: string; input: Record<string, unknown> };
@@ -1246,6 +1272,7 @@ export interface SSEEventMap {
   plan: { steps: string[] };
   replan: { reason: string; steps: string[] };
   diagnosis_report: DiagnosisReport;
+  approval_required: ApprovalRequiredEvent;
   done: { run_id: string; total_tokens: number; duration_ms: number };
   error: { code: number; message: string };
 }
@@ -1256,7 +1283,7 @@ export type SSEEvent<K extends keyof SSEEventMap> = SSEEventMap[K];
 
 export interface CreateSessionParams {
   title: string;
-  cluster_name?: string;
+  scene?: string;
 }
 
 export interface ListSessionsParams {
@@ -1283,11 +1310,10 @@ export const listSessions = (params?: ListSessionsParams) =>
   request.get<ListSessionsResponse>('/ai/sessions', { params });
 
 /** 获取会话详情（含消息） */
-export const getSession = (id: number) =>
+export const getSession = (id: string) =>
   request.get<SessionDetailResponse>(`/ai/sessions/${id}`);
 
-/** 删除会话 */
-export const deleteSession = (id: number) =>
+export const deleteSession = (id: string) =>
   request.delete(`/ai/sessions/${id}`);
 
 // ===================== 运行状态 API =====================
@@ -1594,12 +1620,11 @@ package state
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // DBCheckpointStore 基于 MySQL 的 Checkpoint 持久化实现。
@@ -1626,15 +1651,20 @@ func NewDBCheckpointStore(db *gorm.DB) *DBCheckpointStore {
 //   - value: 序列化后的 Agent 状态（二进制）
 //
 // 返回: 保存失败时返回 error
+//
+// 说明：Checkpoint 需要在同一 key 上反复覆盖最新状态，因此必须使用 Upsert，
+// 不能使用 FirstOrCreate，否则已有记录不会更新 value。
 func (s *DBCheckpointStore) Save(ctx context.Context, key string, value []byte) error {
 	cp := &model.AICheckPoint{
 		Key:   key,
 		Value: value,
 	}
 	return s.db.WithContext(ctx).
-		Where(model.AICheckPoint{Key: key}).
-		Assign(cp).
-		FirstOrCreate(cp).Error
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+		}).
+		Create(cp).Error
 }
 
 // Load 加载 Checkpoint。
@@ -1699,9 +1729,14 @@ checkpoint:{runId}:{stepIndex}
 
 #### 状态机
 
+> 统一说明：
+> - Phase 2 主审批流以 `ai_approvals` 表为准，而不是旧的 `ai_approval_tickets`
+> - Phase 2 不引入 `secondary_pending`
+> - `secondary_pending` 仅在 Phase 3 多级审批中启用，并应在后续文档与表结构中统一补齐
+
 ```
                     ┌─────────┐
-                    │ created │  ApprovalTask 记录落库
+                    │ created │  Approval 记录落库
                     └────┬────┘
                          │ SSE 推送 approval_required
                          ▼
@@ -1735,7 +1770,7 @@ checkpoint:{runId}:{stepIndex}
 
 | 当前状态 | 目标状态 | 触发条件 |
 |---------|---------|---------|
-| `created` | `pending` | ApprovalTask 写入 DB 成功，SSE 推送完成 |
+| `created` | `pending` | Approval 写入 `ai_approvals` 成功，SSE 推送完成 |
 | `pending` | `approved` | `POST /approvals/:id/approve` 成功 |
 | `pending` | `rejected` | `POST /approvals/:id/reject` 成功 |
 | `pending` | `expired` | 定时任务检测到超时（Redis TTL 触发或 cron 扫描） |
@@ -1760,40 +1795,47 @@ Value:      {operator_user_id}:{timestamp}
 3. 获取锁成功 → 执行数据库乐观锁更新
 4. 操作完成（成功或失败）→ `DEL` 锁键
 
-#### 数据库乐观锁
+#### 数据库并发控制
 
-`ai_approval_tasks` 表使用 `version` 字段实现乐观锁：
+Phase 2 不依赖 `version` 字段，因为当前审批表结构中并无该列。
+并发安全统一采用**基于状态字段的条件更新**：
 
 ```go
-// updateApprovalStatus 用乐观锁更新审批状态，防止并发重复审批。
+// ErrOptimisticLock 乐观锁冲突错误，表示记录状态已被其他请求修改。
+//
+// 说明：当条件更新（WHERE status = fromStatus）影响行数为 0 时返回此错误，
+// 表示并发条件不满足，需要调用方重试或提示用户刷新状态。
+var ErrOptimisticLock = errors.New("optimistic lock: record status already changed")
+
+// updateApprovalStatus 用条件更新实现并发安全，防止重复审批。
 //
 // 参数:
 //   - ctx: 上下文
-//   - id: 审批任务 ID
-//   - fromStatus: 期望的当前状态（乐观锁条件）
+//   - id: 审批任务 ID（UUID 字符串）
+//   - fromStatus: 期望的当前状态（并发条件）
 //   - toStatus: 目标状态
 //   - operatorID: 操作人 ID
 //
 // 返回: 更新行数为 0 时返回 ErrOptimisticLock
 func (d *ApprovalDAO) updateApprovalStatus(
 	ctx context.Context,
-	id int64,
-	fromStatus, toStatus model.ApprovalStatus,
-	operatorID int64,
+	id string,
+	fromStatus, toStatus string,
+	operatorID uint64,
 ) error {
 	result := d.db.WithContext(ctx).
-		Model(&model.AIApprovalTask{}).
+		Model(&model.AIApproval{}).
 		Where("id = ? AND status = ?", id, fromStatus).
 		Updates(map[string]interface{}{
-			"status":      toStatus,
-			"operator_id": operatorID,
-			"operated_at": time.Now(),
+			"status":           toStatus,
+			"reviewer_user_id": operatorID,
+			"updated_at":       time.Now(),
 		})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		// 说明状态已被其他请求修改，乐观锁冲突
+		// 说明状态已被其他请求修改，并发条件不满足
 		return ErrOptimisticLock
 	}
 	return nil
@@ -1810,7 +1852,9 @@ func (d *ApprovalDAO) updateApprovalStatus(
 
 ```go
 // 审批管理（需要 cluster:write 权限）
-approvals := ai.Group("/approvals", middleware.RequirePermission("cluster:write"))
+//
+// 说明：项目现有中间件为 CasbinAuth，不使用未验证的 RequirePermission 名称。
+approvals := ai.Group("/approvals", middleware.CasbinAuth(deps.Enforcer, "cluster:write"))
 {
     approvals.GET("", h.Approval.List)
     approvals.GET("/:id", h.Approval.Get)
@@ -1852,9 +1896,9 @@ ai.POST("/chat/resume", h.Chat.Resume)
     "pending_count": 3,
     "items": [
       {
-        "id": 1,
-        "run_id": "run_abc123",
-        "session_id": 123,
+        "id": "appr_001",
+        "run_id": "turn_abc123",
+        "session_id": "sess_abc123",
         "tool_name": "ScaleDeployment",
         "operation_desc": "将 default/nginx 副本数调整为 5",
         "risk_level": "medium",
@@ -1890,7 +1934,7 @@ ai.POST("/chat/resume", h.Chat.Resume)
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "id": 1,
+    "id": "appr_001",
     "...": "（含列表所有字段）",
     "current_state": {
       "replicas": 2,
@@ -1935,7 +1979,7 @@ ai.POST("/chat/resume", h.Chat.Resume)
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "approval_id": 1,
+    "approval_id": "appr_001",
     "status": "executing",
     "final_params": {"replicas": 4}
   }
@@ -1969,7 +2013,7 @@ ai.POST("/chat/resume", h.Chat.Resume)
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "approval_id": 1,
+    "approval_id": "appr_001",
     "status": "rejected"
   }
 }
@@ -1990,8 +2034,8 @@ ai.POST("/chat/resume", h.Chat.Resume)
 
 ```json
 {
-  "approval_id": 1,
-  "run_id": "run_abc123",
+  "approval_id": "appr_001",
+  "run_id": "turn_abc123",
   "action": "approve",
   "final_params": {"replicas": 4}
 }
@@ -2147,8 +2191,8 @@ web/src/pages/AI/Approvals/
 
 ```json
 {
-  "approval_id": 1,
-  "run_id": "run_abc123",
+  "approval_id": "appr_001",
+  "run_id": "turn_abc123",
   "tool_name": "ScaleDeployment",
   "operation_desc": "将 default/nginx 副本数从 2 调整为 5",
   "risk_level": "medium",
@@ -2176,8 +2220,8 @@ import type { ApprovalRequiredEvent } from '@/api/modules/ai';
 interface InlineApprovalCardProps {
   event: ApprovalRequiredEvent;
   // 审批完成后回调（用于更新卡片状态）
-  onApproved: (approvalId: number) => void;
-  onRejected: (approvalId: number) => void;
+  onApproved: (approvalId: string) => void;
+  onRejected: (approvalId: string) => void;
 }
 
 export function InlineApprovalCard({ event, onApproved, onRejected }: InlineApprovalCardProps) {
@@ -2290,9 +2334,9 @@ export type ApprovalStatus =
   | 'ended';
 
 export interface ApprovalItem {
-  id: number;
+  id: string;
   run_id: string;
-  session_id: number;
+  session_id: string;
   tool_name: string;
   operation_desc: string;
   risk_level: RiskLevel;
@@ -2317,7 +2361,7 @@ export interface ApprovalDetail extends ApprovalItem {
 }
 
 export interface ApprovalRequiredEvent {
-  approval_id: number;
+  approval_id: string;
   run_id: string;
   tool_name: string;
   operation_desc: string;
@@ -2363,15 +2407,15 @@ export const listApprovals = (params?: ListApprovalsParams) =>
   request.get<ListApprovalsResponse>('/ai/approvals', { params });
 
 /** 获取审批详情 */
-export const getApproval = (id: number) =>
+export const getApproval = (id: string) =>
   request.get<ApprovalDetail>(`/ai/approvals/${id}`);
 
 /** 批准审批 */
-export const approveApproval = (id: number, params: ApproveParams) =>
+export const approveApproval = (id: string, params: ApproveParams) =>
   request.post(`/ai/approvals/${id}/approve`, params);
 
 /** 拒绝审批 */
-export const rejectApproval = (id: number, params: RejectParams) =>
+export const rejectApproval = (id: string, params: RejectParams) =>
   request.post(`/ai/approvals/${id}/reject`, params);
 ```
 
@@ -2381,38 +2425,38 @@ export const rejectApproval = (id: number, params: RejectParams) =>
 
 ### ApprovalToken 验证
 
-`AIApprovalTask` 模型中的 `ApprovalToken` 字段为一次性随机令牌（UUID v4），用于以下场景：
+Phase 2 主审批流以 `ai_approvals` 表为准，该表当前字段中**不包含** `approval_token` / `token_used`。
+因此本阶段不将一次性 Token 作为主流程前提，而采用 **JWT 登录态 + Casbin 权限校验 + 审批状态条件更新 + Redis 幂等锁** 的组合方案。
 
-- **邮件/站内信通知**中携带审批链接时，URL 中附加 `?token=xxx`，验证操作人无需重新登录
-- Token 在审批任务**创建时**生成，**一次使用后立即失效**（无论批准还是拒绝）
-- Token 不可复用，防止截获后重复操作
+如后续需要支持邮件审批链接，可在后续版本为 `ai_approvals` 补充独立 token 字段与失效机制，但不在本阶段强依赖。
 
 ```go
-// validateApprovalToken 校验审批 Token 有效性（一次性令牌）。
+// approvePermissionGuard 校验审批操作的登录态、权限与当前状态。
 //
 // 参数:
-//   - ctx: 上下文
-//   - approvalID: 审批任务 ID
-//   - token: 客户端提供的 Token
+//   - ctx: 上下文（含 JWT 用户身份）
+//   - approvalID: 审批记录 ID（UUID 字符串）
+//   - requiredPermission: 需要的权限码，如 cluster:write
 //
-// 返回: Token 合法且未使用返回 nil，否则返回错误
-func (s *ApprovalService) validateApprovalToken(
+// 返回: 校验通过返回当前审批记录，否则返回错误
+func (s *ApprovalService) approvePermissionGuard(
 	ctx context.Context,
-	approvalID int64,
-	token string,
-) error {
-	task, err := s.approvalDAO.GetByID(ctx, approvalID)
+	approvalID string,
+	requiredPermission string,
+) (*model.AIApproval, error) {
+	approval, err := s.approvalDAO.GetByID(ctx, approvalID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if task.ApprovalToken != token {
-		return xcode.ErrInvalidApprovalToken
+
+	userID := middleware.GetUserIDFromCtx(ctx)
+	if err := s.permissionService.Check(ctx, userID, approval.Scene, requiredPermission); err != nil {
+		return nil, xcode.ErrPermissionDenied
 	}
-	if task.TokenUsed {
-		return xcode.ErrApprovalTokenAlreadyUsed
+	if approval.Status != "pending" {
+		return nil, xcode.ErrApprovalAlreadyProcessed
 	}
-	// 立即标记 Token 已使用（防止并发重放）
-	return s.approvalDAO.MarkTokenUsed(ctx, approvalID)
+	return approval, nil
 }
 ```
 
@@ -2513,8 +2557,6 @@ func checkWritePermission(ctx context.Context, clusterName, namespace string) er
 | 4100 | `ErrApprovalNotFound` | 审批任务不存在 |
 | 4101 | `ErrApprovalAlreadyProcessed` | 审批任务已处理（幂等） |
 | 4102 | `ErrApprovalExpired` | 审批任务已过期 |
-| 4103 | `ErrInvalidApprovalToken` | 无效的审批 Token |
-| 4104 | `ErrApprovalTokenAlreadyUsed` | 审批 Token 已使用 |
 | 4105 | `ErrApprovalRejectReasonEmpty` | 拒绝原因不能为空 |
 | 4110 | `ErrAgentRunNotFound` | Agent 运行记录不存在 |
 | 4111 | `ErrAgentRunNotInterrupted` | Agent 当前非中断状态，无法 Resume |

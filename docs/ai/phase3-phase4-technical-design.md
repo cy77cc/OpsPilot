@@ -1,10 +1,11 @@
 # OpsPilot AI 助手 Phase 3 & Phase 4 技术设计文档
 
-> **文档版本**：v1.0
+> **文档版本**：v1.1
 > **维护团队**：OpsPilot 架构团队
 > **适用阶段**：Phase 3（高级变更与策略）/ Phase 4（智能化与优化）
 > **前置依赖**：Phase 1（只读诊断）已完成；Phase 2（审批式变更）已完成
 > **模块路径**：`github.com/cy77cc/OpsPilot`
+> **修订说明**：本版已根据 `docs/ai/review-issues.md` 对齐现有审批主表、运行标识定义、状态机说明与前端 ID 类型
 
 ---
 
@@ -279,8 +280,16 @@ func (t *PatchResourceTool) Invoke(ctx context.Context, input PatchResourceInput
 	}
 
 	// Step 9: 审批通过后执行实际 patch（Resume 后重新进入此处）
+	// 从恢复上下文获取最终参数（可能被审批人修改）
+	resumeCtx := t.interrupter.GetResumeContext(ctx)
+	finalPatchContent := input.PatchContent
+	if resumeCtx != nil && resumeCtx.ModifiedParams != nil {
+		if pc, ok := resumeCtx.ModifiedParams["patch_content"].(string); ok && pc != "" {
+			finalPatchContent = pc
+		}
+	}
 	realResult, err := dynClient.Resource(gvr).Namespace(input.Namespace).
-		Patch(ctx, input.Name, pt, []byte(input.PatchContent), metav1.PatchOptions{})
+		Patch(ctx, input.Name, pt, []byte(finalPatchContent), metav1.PatchOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("apply patch: %w", err)
 	}
@@ -480,6 +489,19 @@ func (t *ApplyManifestTool) Invoke(ctx context.Context, input ApplyManifestInput
 	}
 
 	// 审批通过后批量执行 SSA（逐个资源，单个失败不中断整体）
+	// 从恢复上下文获取最终参数（可能被审批人修改）
+	resumeCtx := t.interrupter.GetResumeContext(ctx)
+	finalManifestYAML := input.ManifestYAML
+	if resumeCtx != nil && resumeCtx.ModifiedParams != nil {
+		if my, ok := resumeCtx.ModifiedParams["manifest_yaml"].(string); ok && my != "" {
+			finalManifestYAML = my
+			// 重新解析修改后的 YAML
+			docs, err = splitYAMLDocuments(finalManifestYAML)
+			if err != nil {
+				return nil, fmt.Errorf("parse modified manifest yaml: %w", err)
+			}
+		}
+	}
 	for _, doc := range docs {
 		if err := serverSideApply(ctx, dynClient, doc, input.Namespace, input.FieldManager, input.Force); err != nil {
 			out.Errors = append(out.Errors, fmt.Sprintf("apply %s/%s: %v", doc.GetKind(), doc.GetName(), err))
@@ -491,6 +513,61 @@ func (t *ApplyManifestTool) Invoke(ctx context.Context, input ApplyManifestInput
 		len(out.ResourcesChanged), len(out.Errors))
 	return out, nil
 }
+```
+
+#### 辅助函数接口签名
+
+以下辅助函数用于支持 `patch_resource` 和 `apply_manifest` 工具的实现：
+
+```go
+// splitYAMLDocuments 解析多文档 YAML，返回 Unstructured 对象列表。
+//
+// 参数:
+//   - yamlContent: YAML 内容字符串，支持 --- 分隔符的多文档格式
+//
+// 返回: 解析后的 Unstructured 对象列表，跳过空文档
+func splitYAMLDocuments(yamlContent string) ([]unstructured.Unstructured, error)
+
+// serverSideApplyDryRun 执行 Server-Side Apply 的 dry-run，返回 diff 结果。
+//
+// 参数:
+//   - ctx: 上下文
+//   - dynClient: Dynamic Client
+//   - obj: 待应用的对象
+//   - namespace: 目标命名空间
+//   - fieldManager: 字段管理器标识
+//   - force: 是否强制覆盖冲突
+//
+// 返回: ApplyResult 包含 diff 信息和变更状态
+func serverSideApplyDryRun(ctx context.Context, dynClient dynamic.Interface, obj unstructured.Unstructured, namespace, fieldManager string, force bool) (*ApplyResult, error)
+
+// serverSideApply 执行实际的 Server-Side Apply。
+//
+// 参数: 同 serverSideApplyDryRun
+//
+// 返回: 错误信息，成功返回 nil
+func serverSideApply(ctx context.Context, dynClient dynamic.Interface, obj unstructured.Unstructured, namespace, fieldManager string, force bool) error
+
+// resolveDynamicClient 根据集群 ID 获取 Dynamic Client。
+//
+// 参数:
+//   - deps: 平台依赖注入容器（包含 DB、KubeConfig 管理器等）
+//   - clusterID: 集群 ID
+//
+// 返回: Dynamic Interface 和错误信息
+// 实现: 从 deps.DB 查询集群凭据，构建 rest.Config，创建 dynamic.Client
+func resolveDynamicClient(deps *common.PlatformDeps, clusterID int) (dynamic.Interface, error)
+
+// resolveGVR 根据资源类型字符串解析 GroupVersionResource。
+//
+// 参数:
+//   - ctx: 上下文
+//   - dynClient: Dynamic Client（用于发现 API 资源）
+//   - resourceType: 资源类型字符串，如 "deployments"、"pods"、"configmaps" 或完整 GVR 格式 "apps/v1/deployments"
+//
+// 返回: GroupVersionResource 和错误信息
+// 实现: 使用 discovery client 查找匹配的资源类型，支持短名称和完整 GVR
+func resolveGVR(ctx context.Context, dynClient dynamic.Interface, resourceType string) (schema.GroupVersionResource, error)
 ```
 
 ---
@@ -767,13 +844,6 @@ func scoreToLevel(total int) (level string, approvalLevel int) {
 	}
 }
 
-// min 返回两个整数中的较小值（Go 1.21+ 标准库已内置，此为兼容旧版本）。
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 ```
 
 ### 3.3.3 风险评分单元测试骨架
@@ -867,23 +937,24 @@ func TestRiskEngine_Evaluate(t *testing.T) {
 
 ### 3.4.2 数据库扩展
 
-**Migration 文件**：`storage/migrations/20240810_extend_approval_tickets.sql`
+**Migration 文件**：`storage/migrations/20260316_000041_extend_ai_approvals_for_multilevel.sql`
 
 ```sql
--- 扩展 ai_approval_tickets 表，支持多级审批字段
-ALTER TABLE `ai_approval_tickets`
-    ADD COLUMN `approval_level`              INT            NOT NULL DEFAULT 1 COMMENT '审批等级 0-3' AFTER `risk_level`,
-    ADD COLUMN `risk_score`                  INT            NOT NULL DEFAULT 0 COMMENT '风险总分 0-100' AFTER `approval_level`,
-    ADD COLUMN `risk_score_detail`           JSON           NULL COMMENT '风险评分各维度详情 JSON' AFTER `risk_score`,
-    ADD COLUMN `diff_content`                MEDIUMTEXT     NULL COMMENT 'dry-run 产生的 unified diff 内容' AFTER `risk_score_detail`,
-    ADD COLUMN `secondary_approver_user_id`  BIGINT         NULL COMMENT 'Level 3 第二审批人 user_id' AFTER `approver_user_id`,
-    ADD COLUMN `secondary_approved_at`       DATETIME       NULL COMMENT '第二审批人审批时间' AFTER `approved_at`,
-    ADD COLUMN `secondary_reject_reason`     VARCHAR(500)   NULL COMMENT '第二审批人拒绝原因' AFTER `reject_reason`,
-    ADD COLUMN `secondary_status`            VARCHAR(20)    NULL COMMENT '第二审批状态: pending/approved/rejected' AFTER `secondary_reject_reason`;
+-- 扩展 ai_approvals 表，支持多级审批字段
+ALTER TABLE `ai_approvals`
+    ADD COLUMN `approval_level`             INT             NOT NULL DEFAULT 1 COMMENT '审批等级 0-3' AFTER `risk_level`,
+    ADD COLUMN `risk_score`                 INT             NOT NULL DEFAULT 0 COMMENT '风险总分 0-100' AFTER `approval_level`,
+    ADD COLUMN `risk_score_detail_json`     JSON            NULL COMMENT '风险评分各维度详情 JSON' AFTER `risk_score`,
+    ADD COLUMN `diff_content`               MEDIUMTEXT      NULL COMMENT 'dry-run 产生的 unified diff 内容' AFTER `risk_score_detail_json`,
+    ADD COLUMN `secondary_reviewer_user_id` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Level 3 第二审批人 user_id' AFTER `reviewer_user_id`,
+    ADD COLUMN `secondary_status`           VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '第二审批状态: pending/approved/rejected' AFTER `secondary_reviewer_user_id`,
+    ADD COLUMN `secondary_approved_at`      TIMESTAMP       NULL COMMENT '第二审批人审批时间' AFTER `approved_at`,
+    ADD COLUMN `secondary_reject_reason`    VARCHAR(500)    NOT NULL DEFAULT '' COMMENT '第二审批人拒绝原因' AFTER `secondary_status`;
 
--- 为第二审批人查询添加索引
-ALTER TABLE `ai_approval_tickets`
-    ADD INDEX `idx_secondary_approver` (`secondary_approver_user_id`, `secondary_status`);
+-- 为多级审批查询添加索引
+ALTER TABLE `ai_approvals`
+    ADD INDEX `idx_ai_approvals_secondary_reviewer_status` (`secondary_reviewer_user_id`, `secondary_status`),
+    ADD INDEX `idx_ai_approvals_level_status` (`approval_level`, `status`);
 ```
 
 ### 3.4.3 多级审批决策表
@@ -930,7 +1001,7 @@ Content-Type: application/json
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "approval_id": 123,
+    "approval_id": "appr_123",
     "status": "executed",
     "secondary_status": "approved",
     "final_executed_at": "2024-08-10T10:30:00Z"
@@ -966,6 +1037,12 @@ stateDiagram-v2
     failed --> [*]
 ```
 
+> 状态定义补充：
+> - `secondary_pending` 是 Phase 3 新增的 `status` 合法值
+> - 该状态仅用于 `approval_level=3` 的双人审批场景
+> - 一审通过后主状态进入 `secondary_pending`，二审通过后再进入 `executing`
+> - 模型注释、数据库枚举说明、前端状态映射必须同步包含该状态
+
 ---
 
 ## 3.5 监控集成设计
@@ -993,20 +1070,20 @@ sequenceDiagram
 
 ### 3.5.2 快照数据模型
 
-**Migration 文件**：`storage/migrations/20240811_ai_change_snapshots.sql`
+**Migration 文件**：`storage/migrations/20260316_000042_ai_change_snapshots.sql`
 
 ```sql
 CREATE TABLE `ai_change_snapshots` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
-    `run_id`        VARCHAR(64)     NOT NULL                COMMENT 'Agent 运行 ID',
-    `approval_id`   BIGINT UNSIGNED NOT NULL                COMMENT '关联审批票据 ID',
+    `run_id`        VARCHAR(64)     NOT NULL                COMMENT 'Agent 运行 ID（对应 ai_chat_turns.id）',
+    `approval_id`   VARCHAR(64)     NOT NULL                COMMENT '关联审批记录 ID（对应 ai_approvals.id）',
     `snapshot_type` VARCHAR(10)     NOT NULL                COMMENT '快照类型: before / after',
     `cluster_id`    INT             NOT NULL                COMMENT '集群 ID',
     `namespace`     VARCHAR(63)     NOT NULL DEFAULT ''     COMMENT '命名空间',
     `resource_name` VARCHAR(253)    NOT NULL DEFAULT ''     COMMENT '资源名称',
     `metrics_json`  JSON            NOT NULL                COMMENT '指标快照 JSON',
-    `collected_at`  DATETIME        NOT NULL                COMMENT '实际采集时间',
-    `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `collected_at`  DATETIME(3)     NOT NULL                COMMENT '实际采集时间（毫秒精度）',
+    `created_at`    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     PRIMARY KEY (`id`),
     INDEX `idx_run_id`       (`run_id`),
     INDEX `idx_approval_id`  (`approval_id`),
@@ -1033,7 +1110,7 @@ CREATE TABLE `ai_change_snapshots` (
 // ChangeMetricSnapshot 单次指标快照。
 type ChangeMetricSnapshot struct {
     RunID         string    `json:"run_id"`
-    ApprovalID    uint64    `json:"approval_id"`
+    ApprovalID    string    `json:"approval_id"`
     SnapshotType  string    `json:"snapshot_type"` // before / after
     ClusterID     int       `json:"cluster_id"`
     Namespace     string    `json:"namespace"`
@@ -1060,7 +1137,7 @@ type ChangeMetricSnapshot struct {
 //   - AnomalyReasons: 异常原因列表（用于 SSE 推送和前端展示）
 type ChangeMetricDiff struct {
     RunID          string               `json:"run_id"`
-    ApprovalID     uint64               `json:"approval_id"`
+    ApprovalID     string               `json:"approval_id"`
     BeforeSnapshot ChangeMetricSnapshot `json:"before"`
     AfterSnapshot  ChangeMetricSnapshot `json:"after"`
     CPUDelta       float64              `json:"cpu_delta_percent"`
@@ -1085,8 +1162,8 @@ Authorization: Bearer <token>
   "code": 1000,
   "msg": "请求成功",
   "data": {
-    "run_id": "run_abc123",
-    "approval_id": 456,
+    "run_id": "turn_abc123",
+    "approval_id": "appr_456",
     "before": {
       "snapshot_type": "before",
       "cpu_usage_percent": 45.2,
@@ -1316,60 +1393,60 @@ var (
 
 | 文件名 | 说明 |
 |--------|------|
-| `storage/migrations/20240810_extend_approval_tickets.sql` | 扩展 `ai_approval_tickets` 表，添加多级审批字段 |
-| `storage/migrations/20240811_ai_change_snapshots.sql` | 新建 `ai_change_snapshots` 监控快照表 |
+| `storage/migrations/20260316_000041_extend_ai_approvals_for_multilevel.sql` | 扩展 `ai_approvals` 表，添加多级审批字段 |
+| `storage/migrations/20260316_000042_ai_change_snapshots.sql` | 新建 `ai_change_snapshots` 监控快照表 |
 
 ### 3.7.2 完整 DDL
 
-**`storage/migrations/20240810_extend_approval_tickets.sql`**
+**`storage/migrations/20260316_000041_extend_ai_approvals_for_multilevel.sql`**
 
 ```sql
--- Phase 3: 扩展审批票据表，支持多级审批和风险评分存储
+-- Phase 3: 扩展审批主表，支持多级审批和风险评分存储
 -- 作者: OpsPilot 架构团队
--- 日期: 2024-08-10
+-- 日期: 2026-03-16
 
-ALTER TABLE `ai_approval_tickets`
-    ADD COLUMN `approval_level`              INT            NOT NULL DEFAULT 1
+ALTER TABLE `ai_approvals`
+    ADD COLUMN `approval_level`             INT             NOT NULL DEFAULT 1
         COMMENT '审批等级 0=免审批/1=普通/2=管理员/3=双人' AFTER `risk_level`,
-    ADD COLUMN `risk_score`                  INT            NOT NULL DEFAULT 0
+    ADD COLUMN `risk_score`                 INT             NOT NULL DEFAULT 0
         COMMENT '风险总分 0-100' AFTER `approval_level`,
-    ADD COLUMN `risk_score_detail`           JSON           NULL
+    ADD COLUMN `risk_score_detail_json`     JSON            NULL
         COMMENT '风险评分各维度详情: {impact,reversible,env,health,reasons}' AFTER `risk_score`,
-    ADD COLUMN `diff_content`                MEDIUMTEXT     NULL
-        COMMENT 'dry-run 产生的 unified diff 内容（存储审批时的变更预览）' AFTER `risk_score_detail`,
-    ADD COLUMN `secondary_approver_user_id`  BIGINT UNSIGNED NULL
-        COMMENT 'Level 3 第二审批人 user_id（必须与一审不同账号）' AFTER `approver_user_id`,
-    ADD COLUMN `secondary_status`            VARCHAR(20)    NULL
-        COMMENT '第二审批状态: pending/approved/rejected' AFTER `secondary_approver_user_id`,
-    ADD COLUMN `secondary_approved_at`       DATETIME       NULL
-        COMMENT '第二审批人审批时间' AFTER `secondary_status`,
-    ADD COLUMN `secondary_reject_reason`     VARCHAR(500)   NULL
-        COMMENT '第二审批人拒绝原因' AFTER `secondary_approved_at`;
+    ADD COLUMN `diff_content`               MEDIUMTEXT      NULL
+        COMMENT 'dry-run 产生的 unified diff 内容（存储审批时的变更预览）' AFTER `risk_score_detail_json`,
+    ADD COLUMN `secondary_reviewer_user_id` BIGINT UNSIGNED NOT NULL DEFAULT 0
+        COMMENT 'Level 3 第二审批人 user_id（必须与一审不同账号）' AFTER `reviewer_user_id`,
+    ADD COLUMN `secondary_status`           VARCHAR(20)     NOT NULL DEFAULT ''
+        COMMENT '第二审批状态: pending/approved/rejected' AFTER `secondary_reviewer_user_id`,
+    ADD COLUMN `secondary_approved_at`      TIMESTAMP       NULL
+        COMMENT '第二审批人审批时间' AFTER `approved_at`,
+    ADD COLUMN `secondary_reject_reason`    VARCHAR(500)    NOT NULL DEFAULT ''
+        COMMENT '第二审批人拒绝原因' AFTER `secondary_status`;
 
 -- 为第二审批人查询添加索引（审批中心页面过滤用）
-ALTER TABLE `ai_approval_tickets`
-    ADD INDEX `idx_secondary_approver_status` (`secondary_approver_user_id`, `secondary_status`),
-    ADD INDEX `idx_approval_level`            (`approval_level`);
+ALTER TABLE `ai_approvals`
+    ADD INDEX `idx_ai_approvals_secondary_reviewer_status` (`secondary_reviewer_user_id`, `secondary_status`),
+    ADD INDEX `idx_ai_approvals_level_status` (`approval_level`, `status`);
 ```
 
-**`storage/migrations/20240811_ai_change_snapshots.sql`**
+**`storage/migrations/20260316_000042_ai_change_snapshots.sql`**
 
 ```sql
 -- Phase 3: 新建变更前后监控指标快照表
 -- 作者: OpsPilot 架构团队
--- 日期: 2024-08-11
+-- 日期: 2026-03-16
 
 CREATE TABLE `ai_change_snapshots` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键 ID',
-    `run_id`        VARCHAR(64)     NOT NULL                COMMENT 'Agent 运行 ID（关联 ai_executions.run_id）',
-    `approval_id`   BIGINT UNSIGNED NOT NULL                COMMENT '关联审批票据 ID',
+    `run_id`        VARCHAR(64)     NOT NULL                COMMENT 'Agent 运行 ID（对应 ai_chat_turns.id）',
+    `approval_id`   VARCHAR(64)     NOT NULL                COMMENT '关联审批记录 ID（对应 ai_approvals.id）',
     `snapshot_type` VARCHAR(10)     NOT NULL                COMMENT '快照类型: before（变更前）/ after（变更后）',
     `cluster_id`    INT             NOT NULL                COMMENT '集群 ID',
     `namespace`     VARCHAR(63)     NOT NULL DEFAULT ''     COMMENT '命名空间',
     `resource_name` VARCHAR(253)    NOT NULL DEFAULT ''     COMMENT '资源名称',
     `metrics_json`  JSON            NOT NULL                COMMENT '指标快照 JSON: {cpu_usage_percent,memory_usage_percent,error_rate_per_min,qps,pod_ready_count,pod_total_count}',
-    `collected_at`  DATETIME        NOT NULL                COMMENT '实际采集时间',
-    `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+    `collected_at`  DATETIME(3)     NOT NULL                COMMENT '实际采集时间（毫秒精度）',
+    `created_at`    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '记录创建时间',
     PRIMARY KEY (`id`),
     INDEX `idx_run_id`      (`run_id`),
     INDEX `idx_approval_id` (`approval_id`),
@@ -1725,7 +1802,7 @@ export interface ChangeMetricSnapshot {
 /** 变更前后指标对比 */
 export interface ChangeMetricDiff {
   run_id:                string;
-  approval_id:           number;
+  approval_id:           string;
   before:                ChangeMetricSnapshot;
   after:                 ChangeMetricSnapshot;
   cpu_delta_percent:     number;
@@ -2090,12 +2167,12 @@ type ClusterInspectionDetail struct {
 
 ### 4.3.2 巡检报告数据模型
 
-**Migration 文件**：`storage/migrations/20240820_ai_inspection_reports.sql`
+**Migration 文件**：`storage/migrations/20260316_000043_ai_inspection_reports.sql`
 
 ```sql
 -- Phase 4: 新建 AI 自动巡检报告表
 -- 作者: OpsPilot 架构团队
--- 日期: 2024-08-20
+-- 日期: 2026-03-16
 
 CREATE TABLE `ai_inspection_reports` (
     `id`               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键 ID',
@@ -2371,12 +2448,12 @@ func sanitize(text string) string {
 
 ### 4.5.1 数据库设计
 
-**Migration 文件**：`storage/migrations/20240821_ai_feedbacks.sql`
+**Migration 文件**：`storage/migrations/20260316_000044_ai_feedbacks.sql`
 
 ```sql
 -- Phase 4: 新建用户反馈表
 -- 作者: OpsPilot 架构团队
--- 日期: 2024-08-21
+-- 日期: 2026-03-16
 
 CREATE TABLE `ai_feedbacks` (
     `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

@@ -9,11 +9,9 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/planexecute/executor"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/planexecute/planner"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/planexecute/replan"
-	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 )
 
-func NewPlanExecute(ctx context.Context, deps common.PlatformDeps) (adk.ResumableAgent, error) {
-	ctx = common.ContextWithPlatformDeps(ctx, &deps)
+func NewPlanExecute(ctx context.Context) (adk.ResumableAgent, error) {
 
 	planner, err := planner.NewPlanner(ctx)
 	if err != nil {
