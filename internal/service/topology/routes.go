@@ -9,13 +9,14 @@ package topology
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	topologyhandler "github.com/cy77cc/OpsPilot/internal/service/topology/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterTopologyHandlers 注册拓扑服务路由到 v1 组。
 func RegisterTopologyHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := topologyhandler.NewHandler(svcCtx)
 	g := v1.Group("/topology", middleware.JWTAuth())
 	{
 		g.GET("/services/:id", h.ServiceTopology)

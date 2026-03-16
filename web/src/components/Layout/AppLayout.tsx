@@ -407,7 +407,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <NotificationBell onViewAll={() => navigate('/monitor')} />
 
             {/* AI 助手 */}
-            {!location.pathname.startsWith('/ai') && <AICopilotButton />}
+            <AICopilotButton />
 
             {/* 用户菜单 */}
             <Dropdown

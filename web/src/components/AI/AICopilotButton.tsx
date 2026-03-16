@@ -1,12 +1,11 @@
+/**
+ * AI Copilot 统一入口按钮
+ */
 import React, { useEffect } from 'react';
 import { Button, Tooltip } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
-/**
- * AI Copilot 统一入口按钮
- * Phase 1 统一跳转到独立 AI 页面
- */
 export function AICopilotButton() {
   const navigate = useNavigate();
 

@@ -6,8 +6,6 @@ import { PermissionProvider } from './components/RBAC/PermissionContext';
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/Auth/RegisterPage'));
 const ProtectedApp = lazy(() => import('./ProtectedApp'));
-const AIAssistantPage = lazy(() => import('./pages/AI/Assistant'));
-const AIDiagnosisReportPage = lazy(() => import('./pages/AI/DiagnosisReport'));
 
 const RouteFallback: React.FC = () => (
   <div className="min-h-screen flex items-center justify-center">加载中...</div>
@@ -36,26 +34,6 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route
-              path="/ai"
-              element={
-                <ProtectedRoute>
-                  <PermissionProvider>
-                    <AIAssistantPage />
-                  </PermissionProvider>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/ai/diagnosis/:reportId"
-              element={
-                <ProtectedRoute>
-                  <PermissionProvider>
-                    <AIDiagnosisReportPage />
-                  </PermissionProvider>
-                </ProtectedRoute>
-              }
-            />
             <Route
               path="/*"
               element={

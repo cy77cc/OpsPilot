@@ -11,13 +11,14 @@ package cicd
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	cicdhandler "github.com/cy77cc/OpsPilot/internal/service/cicd/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterCICDHandlers 注册 CI/CD 服务路由到 v1 组。
 func RegisterCICDHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := cicdhandler.NewHandler(svcCtx)
 	g := v1.Group("/cicd", middleware.JWTAuth())
 	{
 		g.GET("/services/:service_id/ci-config", h.GetServiceCIConfig)

@@ -10,13 +10,14 @@ package monitoring
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	monitoringhandler "github.com/cy77cc/OpsPilot/internal/service/monitoring/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterMonitoringHandlers 注册监控服务路由到 v1 组。
 func RegisterMonitoringHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := monitoringhandler.NewHandler(svcCtx)
 	h.StartRuleSync()
 
 	// Alertmanager webhook endpoint (internal call, no JWT).

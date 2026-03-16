@@ -9,13 +9,14 @@ package automation
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	automationhandler "github.com/cy77cc/OpsPilot/internal/service/automation/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterAutomationHandlers 注册自动化服务路由到 v1 组。
 func RegisterAutomationHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := automationhandler.NewHandler(svcCtx)
 	g := v1.Group("/automation", middleware.JWTAuth())
 	{
 		g.GET("/inventories", h.ListInventories)

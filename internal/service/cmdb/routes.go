@@ -10,13 +10,14 @@ package cmdb
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	cmdbhandler "github.com/cy77cc/OpsPilot/internal/service/cmdb/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterCMDBHandlers 注册 CMDB 服务路由到 v1 组。
 func RegisterCMDBHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := cmdbhandler.NewHandler(svcCtx)
 	g := v1.Group("/cmdb", middleware.JWTAuth())
 	{
 		g.GET("/assets", h.ListAssets)

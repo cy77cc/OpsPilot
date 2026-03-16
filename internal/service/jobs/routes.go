@@ -9,13 +9,14 @@ package jobs
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	jobshandler "github.com/cy77cc/OpsPilot/internal/service/jobs/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterJobsHandlers 注册任务服务路由到 v1 组。
 func RegisterJobsHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := jobshandler.NewHandler(svcCtx)
 	g := v1.Group("/jobs", middleware.JWTAuth())
 	{
 		g.GET("", h.ListJobs)
