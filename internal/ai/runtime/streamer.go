@@ -45,6 +45,7 @@ var publicEventNames = map[string]struct{}{
 	"tool_call":     {},
 	"tool_result":   {},
 	"tool_approval": {},
+	"run_state":     {},
 	"done":          {},
 	"error":         {},
 }
@@ -58,6 +59,14 @@ func NewMetaEvent(sessionID, runID string, turn int) StreamEvent {
 			"turn":       turn,
 		},
 	}
+}
+
+func NewDoneEvent(runID string, iterations int) StreamEvent {
+	return doneEvent(runID, iterations)
+}
+
+func NewErrorEvent(runID string, err error) StreamEvent {
+	return errorEvent(runID, err)
 }
 
 func projectAgentHandoff(event *adk.AgentEvent) *StreamEvent {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
@@ -54,5 +55,48 @@ func TestBuildAugmentedMessage_IncludesSceneContextPromptsAndConstraints(t *test
 		if !strings.Contains(message, fragment) {
 			t.Fatalf("expected augmented message to contain %q, got: %s", fragment, message)
 		}
+	}
+}
+
+func TestConsumeProjectedEvents_AccumulatesAssistantContentAndHandoff(t *testing.T) {
+	t.Parallel()
+
+	var (
+		builder strings.Builder
+		emitted []string
+	)
+
+	update := consumeProjectedEvents([]airuntime.PublicStreamEvent{
+		{
+			Event: "agent_handoff",
+			Data: map[string]any{
+				"to":     "DiagnosisAgent",
+				"intent": "diagnosis",
+			},
+		},
+		{
+			Event: "delta",
+			Data: map[string]any{
+				"content": "first ",
+			},
+		},
+		{
+			Event: "delta",
+			Data: map[string]any{
+				"content": "second",
+			},
+		},
+	}, func(event string, data any) {
+		emitted = append(emitted, event)
+	}, &builder)
+
+	if got := builder.String(); got != "first second" {
+		t.Fatalf("unexpected assistant content: %q", got)
+	}
+	if update.AssistantType != "DiagnosisAgent" || update.IntentType != "diagnosis" {
+		t.Fatalf("unexpected handoff update: %#v", update)
+	}
+	if len(emitted) != 3 {
+		t.Fatalf("expected all projected events to be emitted, got %#v", emitted)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/ai/checkpoint"
+	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -34,6 +35,11 @@ type ChatInput struct {
 	Scene     string
 	Context   map[string]any
 	UserID    uint64
+}
+
+type projectedRunUpdate struct {
+	AssistantType string
+	IntentType    string
 }
 
 // Logic 封装 AI 模块的核心业务逻辑。
@@ -78,7 +84,7 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 //  6. 持久化结果
 func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) error {
 	if l.ChatDAO == nil || l.RunDAO == nil || l.AIRouter == nil {
-		projected := errorEvent("", fmt.Errorf("AI service not initialized"))
+		projected := airuntime.NewErrorEvent("", fmt.Errorf("AI service not initialized"))
 		emit(projected.Event, projected.Data)
 		return nil
 	}
@@ -136,7 +142,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	})
 
 	// Step 4: 发送 A2UI meta 事件
-	meta := newMetaEvent(sessionID, run.ID, 1)
+	meta := airuntime.NewMetaEvent(sessionID, run.ID, 1)
 	emit(meta.Event, meta.Data)
 
 	// Step 5: 调用 AIRouter
@@ -156,7 +162,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	var (
 		assistantMessage *model.AIChatMessage
 		assistantContent strings.Builder
-		streamState      = &a2uiProjectionState{}
+		projector        = airuntime.NewStreamProjector()
 	)
 
 	// 创建 assistant message 占位
@@ -177,24 +183,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 
 		if event.Err != nil {
-			projected := errorEvent(run.ID, event.Err)
+			projected := projector.Fail(run.ID, event.Err)
 			emit(projected.Event, projected.Data)
 			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 				Status:       "failed",
 				ErrorMessage: event.Err.Error(),
 			})
 			return nil
-		}
-
-		if handoff := projectAgentHandoff(event); handoff != nil {
-			emit(handoff.Event, handoff.Data)
-			handoffData, _ := handoff.Data.(map[string]any)
-			assistantType, _ := handoffData["to"].(string)
-			intentType, _ := handoffData["intent"].(string)
-			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
-				IntentType:    intentType,
-				AssistantType: assistantType,
-			})
 		}
 
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
@@ -204,37 +199,33 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
-					projected := errorEvent(run.ID, err)
+					projected := projector.Fail(run.ID, err)
 					emit(projected.Event, projected.Data)
 					break
 				}
 				if msg == nil {
 					continue
 				}
-				projected := projectAssistantMessage(event.AgentName, msg, streamState)
-				for _, item := range projected {
-					if item.Event == "delta" {
-						if data, ok := item.Data.(map[string]any); ok {
-							if content, ok := data["content"].(string); ok {
-								assistantContent.WriteString(content)
-							}
-						}
-					}
-					emit(item.Event, item.Data)
+
+				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
+				chunkEvent.AgentName = event.AgentName
+				update := consumeProjectedEvents(projector.Consume(chunkEvent), emit, &assistantContent)
+				if update.AssistantType != "" || update.IntentType != "" {
+					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+						IntentType:    update.IntentType,
+						AssistantType: update.AssistantType,
+					})
 				}
 			}
 			continue
 		}
 
-		for _, projected := range projectAgentEvent(event, streamState) {
-			if projected.Event == "delta" {
-				if data, ok := projected.Data.(map[string]any); ok {
-					if content, ok := data["content"].(string); ok {
-						assistantContent.WriteString(content)
-					}
-				}
-			}
-			emit(projected.Event, projected.Data)
+		update := consumeProjectedEvents(projector.Consume(event), emit, &assistantContent)
+		if update.AssistantType != "" || update.IntentType != "" {
+			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+				IntentType:    update.IntentType,
+				AssistantType: update.AssistantType,
+			})
 		}
 	}
 
@@ -258,10 +249,35 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	// Step 8: 发送 done 事件
-	done := doneEvent(run.ID, streamState.lastIterations)
+	done := projector.Finish(run.ID)
 	emit(done.Event, done.Data)
 
 	return nil
+}
+
+func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) projectedRunUpdate {
+	update := projectedRunUpdate{}
+	for _, projected := range events {
+		if projected.Event == "delta" {
+			if data, ok := projected.Data.(map[string]any); ok {
+				if content, ok := data["content"].(string); ok {
+					assistantContent.WriteString(content)
+				}
+			}
+		}
+		if projected.Event == "agent_handoff" {
+			if data, ok := projected.Data.(map[string]any); ok {
+				if assistantType, ok := data["to"].(string); ok {
+					update.AssistantType = assistantType
+				}
+				if intentType, ok := data["intent"].(string); ok {
+					update.IntentType = intentType
+				}
+			}
+		}
+		emit(projected.Event, projected.Data)
+	}
+	return update
 }
 
 // CreateSession 创建新的 AI 会话。
