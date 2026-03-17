@@ -31,7 +31,7 @@ func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 	}
 }
 
-func TestChatHandler_EmitsInitEvent(t *testing.T) {
+func TestChatHandler_EmitsMetaEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
@@ -50,21 +50,24 @@ func TestChatHandler_EmitsInitEvent(t *testing.T) {
 		t.Fatal("expected at least one SSE event")
 	}
 
-	initEvent := events[0]
-	if initEvent.Event != "init" {
-		t.Fatalf("expected first event to be 'init', got %q", initEvent.Event)
+	metaEvent := events[0]
+	if metaEvent.Event != "meta" {
+		t.Fatalf("expected first event to be 'meta', got %q", metaEvent.Event)
 	}
 
-	data, ok := initEvent.Data.(map[string]any)
+	data, ok := metaEvent.Data.(map[string]any)
 	if !ok {
-		t.Fatalf("expected init data to be a map, got %T", initEvent.Data)
+		t.Fatalf("expected meta data to be a map, got %T", metaEvent.Data)
 	}
 
 	if _, ok := data["session_id"]; !ok {
-		t.Fatal("expected init event to contain session_id")
+		t.Fatal("expected meta event to contain session_id")
 	}
 	if _, ok := data["run_id"]; !ok {
-		t.Fatal("expected init event to contain run_id")
+		t.Fatal("expected meta event to contain run_id")
+	}
+	if _, ok := data["turn"]; !ok {
+		t.Fatal("expected meta event to contain turn")
 	}
 }
 
@@ -83,8 +86,8 @@ func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
 	h.Chat(c1)
 
 	events1 := decodeSSEEvents(t, recorder1.Body.String())
-	initData1 := events1[0].Data.(map[string]any)
-	sessionID := initData1["session_id"].(string)
+	metaData1 := events1[0].Data.(map[string]any)
+	sessionID := metaData1["session_id"].(string)
 
 	// Second request with session_id
 	recorder2 := httptest.NewRecorder()
@@ -95,10 +98,10 @@ func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
 	h.Chat(c2)
 
 	events2 := decodeSSEEvents(t, recorder2.Body.String())
-	initData2 := events2[0].Data.(map[string]any)
+	metaData2 := events2[0].Data.(map[string]any)
 
-	if initData2["session_id"] != sessionID {
-		t.Fatalf("expected session_id to be %q, got %q", sessionID, initData2["session_id"])
+	if metaData2["session_id"] != sessionID {
+		t.Fatalf("expected session_id to be %q, got %q", sessionID, metaData2["session_id"])
 	}
 }
 
@@ -117,8 +120,8 @@ func TestChatHandler_PersistsSceneFromRequest(t *testing.T) {
 	h.Chat(c)
 
 	events := decodeSSEEvents(t, recorder.Body.String())
-	initData := events[0].Data.(map[string]any)
-	sessionID := initData["session_id"].(string)
+	metaData := events[0].Data.(map[string]any)
+	sessionID := metaData["session_id"].(string)
 
 	var session model.AIChatSession
 	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
