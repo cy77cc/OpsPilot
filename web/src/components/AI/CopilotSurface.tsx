@@ -42,30 +42,68 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: linear-gradient(180deg, ${token.colorBgLayout} 0%, ${token.colorBgContainer} 24%);
+    background: #f3f4f6;
   `,
   header: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 16px 12px;
-    border-bottom: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgContainer};
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
   `,
   titleWrap: css`
     display: flex;
     flex-direction: column;
     gap: 4px;
   `,
+  titleText: css`
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 600;
+    color: #111827;
+  `,
+  subtitleText: css`
+    font-size: 13px;
+    line-height: 20px;
+    color: #6b7280;
+  `,
   content: css`
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 16px;
+    background: #f3f4f6;
+  `,
+  contentToolbar: css`
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+  `,
+  newSessionButton: css`
+    border: none;
+    box-shadow: none;
+    height: 40px;
+    border-radius: 14px;
+    background: #e5e7eb;
+    color: #111827;
+    font-weight: 500;
+
+    &:hover,
+    &:focus {
+      background: #d1d5db !important;
+      color: #111827 !important;
+    }
+  `,
+  chatCard: css`
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 12px;
   `,
   senderWrap: css`
-    border-top: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgContainer};
+    border-top: 1px solid #e5e7eb;
+    background: #f8fafc;
     padding: 12px 16px 16px;
   `,
   emptyState: css`
@@ -74,7 +112,10 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     gap: 16px;
   `,
   markdown: css`
+    width: 100%;
+    max-width: 100%;
     line-height: 1.65;
+    word-break: break-word;
 
     pre {
       overflow-x: auto;
@@ -271,6 +312,23 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     () => ({
       assistant: {
         placement: 'start',
+        variant: 'borderless',
+        styles: {
+          root: {
+            paddingInline: 0,
+            maxWidth: '100%',
+          },
+          content: {
+            padding: 0,
+            border: 'none',
+            borderRadius: 0,
+            background: 'transparent',
+            boxShadow: 'none',
+          },
+          body: {
+            padding: 0,
+          },
+        },
         contentRender: (content: string, info) => (
           <div className={styles.markdown}>
             <XMarkdown
@@ -301,6 +359,15 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       },
       user: {
         placement: 'end',
+        styles: {
+          content: {
+            borderRadius: 14,
+            background: '#e5e7eb',
+            color: '#111827',
+            border: '1px solid #d1d5db',
+            boxShadow: 'none',
+          },
+        },
       },
     }),
     [styles.markdown],
@@ -445,17 +512,18 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           <div className={styles.titleWrap}>
             <Space size={8}>
               <RobotOutlined />
-              <Text strong>AI Copilot</Text>
+              <Text strong className={styles.titleText}>AI 助手</Text>
               <Tag color="blue">{scene}</Tag>
             </Space>
-            <Text type="secondary">
-              Uses the current page context to improve suggestions and tool routing.
+            <Text className={styles.subtitleText}>
+              基于当前页面上下文，提供更准确的分析与操作建议。
             </Text>
           </div>
           <Space size={8}>
             <Button
               type="text"
               icon={<PlusOutlined />}
+              aria-label="新建会话"
               onClick={() => setActiveConversationKey(NEW_SESSION_KEY)}
             />
             <Popover
@@ -471,37 +539,47 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                 </div>
               )}
             >
-              <Button type="text" icon={<CommentOutlined />} />
+              <Button type="text" icon={<CommentOutlined />} aria-label="查看历史会话" />
             </Popover>
           </Space>
         </div>
 
         <div className={styles.content}>
+          <div className={styles.contentToolbar}>
+            <Button
+              className={styles.newSessionButton}
+              onClick={() => setActiveConversationKey(NEW_SESSION_KEY)}
+            >
+              新会话
+            </Button>
+          </div>
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
               <Welcome
                 variant="borderless"
-                title="Your in-context operations copilot"
-                description="Ask about the current page, resource, or issue. Scene context stays hidden from the visible transcript."
+                title="你好，我是 Ant Design X!"
+                description="我会结合你所在页面的上下文，给出更贴近业务的分析与建议。"
               />
               <Prompts
-                title="Scene-aware starters"
+                title="快捷提问"
                 items={promptItems}
                 onItemClick={(info) => submitMessage(String(info?.data?.description || info?.data?.label || ''))}
               />
             </div>
           ) : (
-            <Bubble.List
-              autoScroll
-              items={messages.map((item) => ({
-                key: item.id,
-                role: item.message.role,
-                content: item.message.content,
-                loading: item.status === 'loading' && !item.message.content,
-                status: item.status,
-              }))}
-              role={bubbleRole}
-            />
+            <div className={styles.chatCard}>
+              <Bubble.List
+                autoScroll
+                items={messages.map((item) => ({
+                  key: item.id,
+                  role: item.message.role,
+                  content: item.message.content,
+                  loading: item.status === 'loading' && !item.message.content,
+                  status: item.status,
+                }))}
+                role={bubbleRole}
+              />
+            </div>
           )}
         </div>
 
