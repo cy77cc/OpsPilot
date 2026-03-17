@@ -53,7 +53,7 @@ func writeChatEvent(c *gin.Context, event string, data any) {
 	// 写入 data 行
 	payload, err := json.Marshal(data)
 	if err != nil {
-		payload = []byte(fmt.Sprintf(`{"message":%q}`, err.Error()))
+		payload = fmt.Appendf(payload, `{"message":%q}`, err.Error())
 	}
 	_, _ = c.Writer.Write([]byte("data: "))
 	_, _ = c.Writer.Write(payload)

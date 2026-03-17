@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS ai_runs (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_ai_runs_session_id (session_id),
   INDEX idx_ai_runs_status (status)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 运行状态表';
 
 CREATE TABLE IF NOT EXISTS ai_diagnosis_reports (
   id VARCHAR(64) PRIMARY KEY,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS ai_diagnosis_reports (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_ai_diagnosis_reports_run_id (run_id),
   INDEX idx_ai_diagnosis_reports_session_id (session_id)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 诊断报告表';
 
 -- +migrate Down
 DROP TABLE IF EXISTS ai_diagnosis_reports;
