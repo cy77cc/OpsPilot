@@ -1,5 +1,5 @@
 import React from 'react';
-import { RobotOutlined, CommentOutlined, PlusOutlined } from '@ant-design/icons';
+import { RobotOutlined, CommentOutlined, PlusOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons';
 import { Bubble, Conversations, Prompts, Sender, Think, Welcome } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
@@ -42,15 +42,10 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #f3f4f6;
   `,
   header: css`
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f8fafc;
   `,
   titleWrap: css`
     display: flex;
@@ -58,8 +53,8 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     gap: 4px;
   `,
   titleText: css`
-    font-size: 24px;
-    line-height: 32px;
+    font-size: 18px;
+    line-height: 26px;
     font-weight: 600;
     color: #111827;
   `,
@@ -73,43 +68,93 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     min-height: 0;
     overflow: auto;
     padding: 16px;
-    background: #f3f4f6;
+    background: transparent;
   `,
   contentToolbar: css`
     display: flex;
     justify-content: flex-end;
     margin-bottom: 12px;
   `,
-  newSessionButton: css`
-    border: none;
-    box-shadow: none;
-    height: 40px;
-    border-radius: 14px;
-    background: #e5e7eb;
-    color: #111827;
-    font-weight: 500;
-
-    &:hover,
-    &:focus {
-      background: #d1d5db !important;
-      color: #111827 !important;
-    }
+  headerActionBtn: css`
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   `,
   chatCard: css`
-    background: #f8fafc;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 12px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
   `,
   senderWrap: css`
-    border-top: 1px solid #e5e7eb;
-    background: #f8fafc;
     padding: 12px 16px 16px;
+  `,
+  senderRow: css`
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+  `,
+  attachBtn: css`
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  `,
+  senderFlex: css`
+    flex: 1;
+    min-width: 0;
+  `,
+  fileList: css`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  `,
+  fileItem: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px 3px 8px;
+    border-radius: 6px;
+    background: ${token.colorFillSecondary};
+    border: 1px solid ${token.colorBorderSecondary};
+    font-size: 12px;
+    color: ${token.colorText};
+    max-width: 220px;
+  `,
+  fileName: css`
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
   `,
   emptyState: css`
     display: flex;
     flex-direction: column;
     gap: 16px;
+  `,
+  resizeHandle: css`
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 100;
+    background: transparent;
+    border-left: 2px solid transparent;
+    transition: border-color 0.15s;
+
+    &:hover {
+      border-left-color: ${token.colorPrimary};
+    }
   `,
   markdown: css`
     width: 100%;
@@ -239,9 +284,39 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     () => resolveScene(location.pathname),
     [location.pathname],
   );
+  const [drawerWidth, setDrawerWidth] = React.useState(736);
+  const resizeStateRef = React.useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleResizeMouseDown = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeStateRef.current = { startX: e.clientX, startWidth: drawerWidth };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const delta = resizeStateRef.current.startX - ev.clientX;
+      const newWidth = Math.max(320, Math.min(window.innerWidth * 0.9, resizeStateRef.current.startWidth + delta));
+      setDrawerWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      resizeStateRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [drawerWidth]);
+
   const [inputValue, setInputValue] = React.useState('');
   const [promptItems, setPromptItems] = React.useState<PromptsItemType[]>(toPromptItems(scene));
   const [isBootstrapping, setIsBootstrapping] = React.useState(false);
+  const [attachedFiles, setAttachedFiles] = React.useState<File[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const {
     conversations,
@@ -362,9 +437,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         styles: {
           content: {
             borderRadius: 14,
-            background: '#e5e7eb',
-            color: '#111827',
-            border: '1px solid #d1d5db',
+            border: 'none',
             boxShadow: 'none',
           },
         },
@@ -451,6 +524,16 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     [activeConversationKey, addConversation, scene, setActiveConversationKey],
   );
 
+  const handleFileChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => [...prev, ...files]);
+    e.target.value = '';
+  }, []);
+
+  const removeFile = React.useCallback((index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   const submitMessage = React.useCallback(
     async (rawMessage?: string) => {
       const message = (rawMessage ?? inputValue).trim();
@@ -483,6 +566,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         });
       }
       setInputValue('');
+      setAttachedFiles([]);
     },
     [
       activeConversationKey,
@@ -499,15 +583,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
   return (
     <Drawer
-      title={null}
-      placement="right"
-      size="large"
-      open={open}
-      onClose={onClose}
-      styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%' } }}
-      destroyOnClose={false}
-    >
-      <div className={styles.surface}>
+      title={(
         <div className={styles.header}>
           <div className={styles.titleWrap}>
             <Space size={8}>
@@ -515,49 +591,55 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
               <Text strong className={styles.titleText}>AI 助手</Text>
               <Tag color="blue">{scene}</Tag>
             </Space>
-            <Text className={styles.subtitleText}>
-              基于当前页面上下文，提供更准确的分析与操作建议。
-            </Text>
           </div>
-          <Space size={8}>
-            <Button
-              type="text"
-              icon={<PlusOutlined />}
-              aria-label="新建会话"
-              onClick={() => setActiveConversationKey(NEW_SESSION_KEY)}
-            />
-            <Popover
-              trigger="click"
-              placement="bottomRight"
-              content={(
-                <div style={{ width: 280, maxHeight: 360, overflow: 'auto' }}>
-                  <Conversations
-                    items={conversations}
-                    activeKey={activeConversationKey}
-                    onActiveChange={setActiveConversationKey}
-                  />
-                </div>
-              )}
-            >
-              <Button type="text" icon={<CommentOutlined />} aria-label="查看历史会话" />
-            </Popover>
-          </Space>
         </div>
-
-        <div className={styles.content}>
-          <div className={styles.contentToolbar}>
+      )}
+      extra={(
+        <Space size={10}>
+          <Button
+            className={styles.headerActionBtn}
+            type="text"
+            icon={<PlusOutlined />}
+            aria-label="新建会话"
+            onClick={() => setActiveConversationKey(NEW_SESSION_KEY)}
+          />
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            content={(
+              <div style={{ width: 280, maxHeight: 360, overflow: 'auto' }}>
+                <Conversations
+                  items={conversations}
+                  activeKey={activeConversationKey}
+                  onActiveChange={setActiveConversationKey}
+                />
+              </div>
+            )}
+          >
             <Button
-              className={styles.newSessionButton}
-              onClick={() => setActiveConversationKey(NEW_SESSION_KEY)}
-            >
-              新会话
-            </Button>
-          </div>
+              className={styles.headerActionBtn}
+              type="text"
+              icon={<CommentOutlined />}
+              aria-label="查看历史会话"
+            />
+          </Popover>
+        </Space>
+      )}
+      placement="right"
+      size={drawerWidth}
+      open={open}
+      onClose={onClose}
+      styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' } }}
+      destroyOnHidden={false}
+    >
+      <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
+      <div className={styles.surface}>
+        <div className={styles.content}>
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
               <Welcome
                 variant="borderless"
-                title="你好，我是 Ant Design X!"
+                title="你好，我是您的智能运维助手!"
                 description="我会结合你所在页面的上下文，给出更贴近业务的分析与建议。"
               />
               <Prompts
@@ -584,13 +666,50 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         </div>
 
         <div className={styles.senderWrap}>
-          <Sender
-            value={inputValue}
-            onChange={setInputValue}
-            onSubmit={(value) => submitMessage(value)}
-            loading={isRequesting || isBootstrapping}
-            placeholder="Ask about the current host, cluster, service, or task..."
+          {attachedFiles.length > 0 && (
+            <div className={styles.fileList}>
+              {attachedFiles.map((file, index) => (
+                <div key={index} className={styles.fileItem}>
+                  <PaperClipOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+                  <span className={styles.fileName}>{file.name}</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloseOutlined style={{ fontSize: 10 }} />}
+                    onClick={() => removeFile(index)}
+                    style={{ width: 18, height: 18, minWidth: 18, padding: 0, flexShrink: 0 }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
           />
+          <div className={styles.senderRow}>
+
+            <div className={styles.senderFlex}>
+              <Sender
+                value={inputValue}
+                onChange={setInputValue}
+                prefix={<Button
+                  className={styles.attachBtn}
+                  type="text"
+                  icon={<PaperClipOutlined style={{ fontSize: 18 }} />}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="添加附件"
+                />}
+                onSubmit={(value) => submitMessage(value)}
+                loading={isRequesting || isBootstrapping}
+                placeholder="提问或输入 / 使用技能"
+                allowSpeech
+              />
+            </div>
+          </div>
         </div>
       </div>
     </Drawer>
