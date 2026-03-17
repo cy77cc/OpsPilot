@@ -8,6 +8,60 @@ import type { ChatRequest, PlatformStreamChunk, SceneContext, XChatMessage } fro
 
 type InitHandler = (payload: { session_id: string; run_id: string }) => void;
 
+type StreamStage = 'idle' | 'preparing' | 'identifying' | 'planning' | 'agent';
+
+const STAGE_PRIORITY: Record<StreamStage, number> = {
+  idle: 0,
+  preparing: 1,
+  identifying: 2,
+  planning: 3,
+  agent: 4,
+};
+
+const AGENT_LABELS: Record<string, string> = {
+  diagnosisagent: '诊断助手',
+  changeagent: '变更助手',
+  diagnosis: '诊断助手',
+  change: '变更助手',
+  planner: '规划助手',
+};
+
+function normalizeAgentName(name?: string): string {
+  return (name || '').trim().toLowerCase();
+}
+
+function resolveAgentLabel(name?: string): string {
+  const normalized = normalizeAgentName(name);
+  return AGENT_LABELS[normalized] || (name || '助手');
+}
+
+function detectTransferredAgent(content: string): string | undefined {
+  const match = content.match(/transferred to agent \[([^\]]+)\]/i);
+  return match?.[1];
+}
+
+function resolveIntentStatus(assistantType?: string): { stage: StreamStage; content: string } {
+  const normalized = normalizeAgentName(assistantType);
+  if (normalized === 'planner') {
+    return { stage: 'planning', content: '[正在规划处理方式]' };
+  }
+  if (normalized) {
+    return { stage: 'agent', content: `[${resolveAgentLabel(assistantType)}开始处理]` };
+  }
+  return { stage: 'identifying', content: '[识别任务]' };
+}
+
+function applyChunkContent(current: string, chunk: PlatformStreamChunk): string {
+  if ((chunk.mode || 'append') === 'replace') {
+    return chunk.content;
+  }
+  return `${current}${chunk.content}`;
+}
+
+function buildFinalContent(chunks: PlatformStreamChunk[]): string {
+  return chunks.reduce((content, chunk) => applyChunkContent(content, chunk), '');
+}
+
 interface PlatformChatRequestConfig {
   onInit?: InitHandler;
 }
@@ -60,18 +114,67 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     this.abort();
     this.abortController = new AbortController();
     this._isRequesting = true;
-    const chunks: PlatformStreamChunk[] = [];
+    const visibleChunks: PlatformStreamChunk[] = [];
     let terminalError: { error: Error; info?: unknown } | null = null;
+    let hasIntent = false;
+    let hasVisibleContent = false;
+    let stage: StreamStage = 'idle';
+    let lastStatusContent = '';
     const headers = new Headers({ 'content-type': 'text/event-stream' });
+
+    const emitStatus = (nextStage: StreamStage, content: string) => {
+      if (!content || hasVisibleContent) {
+        return;
+      }
+      if (STAGE_PRIORITY[nextStage] < STAGE_PRIORITY[stage]) {
+        return;
+      }
+      if (STAGE_PRIORITY[nextStage] === STAGE_PRIORITY[stage] && content === lastStatusContent) {
+        return;
+      }
+      stage = nextStage;
+      lastStatusContent = content;
+      this.options.callbacks?.onUpdate?.({ content, mode: 'replace' }, headers);
+    };
+
+    const emitVisibleChunk = (content: string) => {
+      if (!content) {
+        return;
+      }
+      const chunk: PlatformStreamChunk = {
+        content,
+        mode: hasVisibleContent ? 'append' : 'replace',
+      };
+      hasVisibleContent = true;
+      visibleChunks.push(chunk);
+      this.options.callbacks?.onUpdate?.(chunk, headers);
+    };
 
     const handlers: AIChatStreamHandlers = {
       onInit: (payload) => {
         this.onInit?.(payload);
+        emitStatus('preparing', '[准备中]');
+      },
+      onIntent: (payload) => {
+        hasIntent = true;
+        const status = resolveIntentStatus(payload.assistant_type);
+        emitStatus(status.stage, status.content);
+      },
+      onStatus: (payload) => {
+        if (payload.status === 'running') {
+          emitStatus('identifying', '[识别任务]');
+        }
       },
       onDelta: (payload) => {
-        const chunk = { content: payload.contentChunk };
-        chunks.push(chunk);
-        this.options.callbacks?.onUpdate?.(chunk, headers);
+        const transferredAgent = detectTransferredAgent(payload.contentChunk);
+        if (transferredAgent) {
+          emitStatus('agent', `[${resolveAgentLabel(transferredAgent)}开始处理]`);
+          return;
+        }
+        if (!hasIntent) {
+          return;
+        }
+        emitVisibleChunk(payload.contentChunk);
       },
       onError: (payload) => {
         if (payload.code === 'tool_timeout_soft') {
@@ -99,7 +202,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
           this.options.callbacks?.onError?.(terminalError.error, terminalError.info, headers);
           return;
         }
-        this.options.callbacks?.onSuccess?.(chunks, headers);
+        this.options.callbacks?.onSuccess?.(visibleChunks, headers);
       })
       .catch((error: unknown) => {
         const normalized = error instanceof Error ? error : new Error('AI chat request failed');
@@ -170,10 +273,16 @@ export class PlatformChatProvider extends AbstractChatProvider<
     const current = info.originMessage?.content || '';
     const chunkContent = info.chunk?.content || '';
     if (info.status === 'success') {
-      const finalContent = info.chunks.map((chunk) => chunk.content).join('');
+      const finalContent = buildFinalContent(info.chunks);
       return {
         role: 'assistant',
         content: finalContent || current,
+      };
+    }
+    if (info.chunk) {
+      return {
+        role: 'assistant',
+        content: applyChunkContent(current, info.chunk),
       };
     }
     return {

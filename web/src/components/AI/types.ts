@@ -27,4 +27,5 @@ export interface ConversationSummary {
 
 export interface PlatformStreamChunk {
   content: string;
+  mode?: 'replace' | 'append';
 }

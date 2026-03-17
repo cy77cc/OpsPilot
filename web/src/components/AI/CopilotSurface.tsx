@@ -256,7 +256,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     defaultMessages,
     requestPlaceholder: {
       role: 'assistant',
-      content: 'Thinking...',
+      content: '[准备中]',
     },
     requestFallback: (_, { error, messageInfo }) => ({
       role: 'assistant',
