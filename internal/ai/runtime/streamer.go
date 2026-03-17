@@ -45,6 +45,7 @@ var publicEventNames = map[string]struct{}{
 	"tool_call":     {},
 	"tool_result":   {},
 	"tool_approval": {},
+	"run_state":     {},
 	"done":          {},
 	"error":         {},
 }
@@ -58,6 +59,14 @@ func NewMetaEvent(sessionID, runID string, turn int) StreamEvent {
 			"turn":       turn,
 		},
 	}
+}
+
+func NewDoneEvent(runID string, iterations int) StreamEvent {
+	return doneEvent(runID, iterations)
+}
+
+func NewErrorEvent(runID string, err error) StreamEvent {
+	return errorEvent(runID, err)
 }
 
 func projectAgentHandoff(event *adk.AgentEvent) *StreamEvent {
@@ -268,28 +277,6 @@ func errorEvent(runID string, err error) StreamEvent {
 		payload["message"] = err.Error()
 	}
 	return StreamEvent{Event: "error", Data: payload}
-}
-
-// 解析planner，replanner的规划步骤
-func decodeStepsEnvelope(raw string) ([]string, bool) {
-	var payload struct {
-		Steps []string `json:"steps"`
-	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil || len(payload.Steps) == 0 {
-		return nil, false
-	}
-	return payload.Steps, true
-}
-
-// 解析replanner的最终输出
-func decodeResponseEnvelope(raw string) (string, bool) {
-	var payload struct {
-		Response string `json:"response"`
-	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil || strings.TrimSpace(payload.Response) == "" {
-		return "", false
-	}
-	return payload.Response, true
 }
 
 func decodeToolArguments(raw string) map[string]any {
