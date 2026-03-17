@@ -177,6 +177,20 @@ interface CopilotSurfaceProps {
   onClose: () => void;
 }
 
+export function buildAssistantErrorContent(
+  previousContent: string | undefined,
+  errorMessage: string,
+) {
+  const content = (previousContent || '').trim();
+  const error = (errorMessage || 'Request failed').trim();
+
+  if (!content) {
+    return error;
+  }
+
+  return `${content}\n\n---\n\nError: ${error}`;
+}
+
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
   const location = useLocation();
@@ -244,9 +258,12 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       role: 'assistant',
       content: 'Thinking...',
     },
-    requestFallback: (_, { error }) => ({
+    requestFallback: (_, { error, messageInfo }) => ({
       role: 'assistant',
-      content: error.message || 'Request failed',
+      content: buildAssistantErrorContent(
+        messageInfo?.message?.content,
+        error.message || 'Request failed',
+      ),
     }),
   });
 

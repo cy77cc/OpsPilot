@@ -4,9 +4,9 @@
 // 工具按领域划分，包括 CI/CD、部署、治理、主机、基础设施、K8s、监控和服务等。
 //
 // 工具子集说明（按 Agent 用途划分）：
-//   - NewDiagnosisTools：只读 K8s 工具 + 监控工具，供 Diagnosis Agent 使用
+//   - NewDiagnosisTools：只读 K8s + 监控 + 主机诊断工具，供 Diagnosis Agent 使用
 //   - NewChangeTools：只读工具 + 写操作工具（Phase 2 接入），供 Change Agent 使用
-//   - NewInspectionTools：只读 K8s + 监控 + 服务目录，供 Inspection Agent 使用
+//   - NewInspectionTools：只读 K8s + 监控 + 主机诊断 + 服务目录，供 Inspection Agent 使用
 package tools
 
 import (
@@ -84,23 +84,40 @@ func GetAllTools(ctx context.Context) []tool.BaseTool {
 
 // NewDiagnosisTools 创建 Diagnosis Agent 专用只读工具集。
 //
-// 仅包含：
+// 包含：
 //   - Kubernetes 只读工具（query/list/events/logs）
 //   - 监控工具（告警查询、指标查询）
+//   - 主机诊断工具（CPU/内存、磁盘、网络、进程、日志、容器运行时）
+//   - 部署清单工具（集群清单、服务清单）
 //
-// 不包含任何写操作工具，确保诊断过程不会意外修改集群状态。
+// 不包含任何写操作工具，确保诊断过程不会意外修改集群或主机状态。
 //
 // 参数:
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
+	// K8s 只读工具
 	k8sTools := kubernetes.NewKubernetesTools(ctx)
+	// 监控工具（全部只读）
 	monitorTools := monitor.NewMonitorTools(ctx)
+	// 主机只读诊断工具
+	hostReadonly := host.NewHostReadonlyTools(ctx)
+	// 部署清单工具（只读）
+	deploymentTools := []tool.InvokableTool{
+		deployment.ClusterListInventory(ctx),
+		deployment.ServiceListInventory(ctx),
+	}
 
-	result := make([]tool.BaseTool, 0, len(k8sTools)+len(monitorTools))
+	result := make([]tool.BaseTool, 0, len(k8sTools)+len(monitorTools)+len(hostReadonly)+len(deploymentTools))
 	for _, t := range k8sTools {
 		result = append(result, t)
 	}
 	for _, t := range monitorTools {
+		result = append(result, t)
+	}
+	for _, t := range hostReadonly {
+		result = append(result, t)
+	}
+	for _, t := range deploymentTools {
 		result = append(result, t)
 	}
 	return result
@@ -108,33 +125,35 @@ func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
 
 // NewChangeTools 创建 Change Agent 工具集（只读工具 + 写操作工具）。
 //
+// Phase 1：与 NewDiagnosisTools 等同，仅包含只读工具。
+// Phase 2：追加写操作工具（每个写工具内置 approvalGate）。
+//
 // 包含：
 //   - Kubernetes 只读工具（预检和验证步骤使用）
 //   - 监控工具（变更前后对比）
-//   - Kubernetes 写操作工具（Phase 2 实现后在此接入，每个写工具内置 approvalGate）
-//
-// Phase 1：与 NewDiagnosisTools 等同，写操作工具待 Phase 2 接入。
-// Phase 2：在此函数中追加 kubernetes.NewKubernetesWriteTools(ctx) 即可，无需修改 Change Agent。
+//   - 主机诊断工具
+//   - 写操作工具（Phase 2 接入）
 //
 // 参数:
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewChangeTools(ctx context.Context) []tool.BaseTool {
-	k8sTools := kubernetes.NewKubernetesTools(ctx)
-	monitorTools := monitor.NewMonitorTools(ctx)
+	// Phase 1: 与诊断工具集相同，仅包含只读工具
+	return NewDiagnosisTools(ctx)
 
-	result := make([]tool.BaseTool, 0, len(k8sTools)+len(monitorTools))
-	for _, t := range k8sTools {
-		result = append(result, t)
-	}
-	for _, t := range monitorTools {
-		result = append(result, t)
-	}
 	// Phase 2: 追加写操作工具（含 approvalGate 包装）
-	// writeTools := kubernetes.NewKubernetesWriteTools(ctx)
-	// for _, t := range writeTools {
-	// 	result = append(result, t)
+	// result := NewDiagnosisTools(ctx)
+	// writeTools := [][]tool.InvokableTool{
+	// 	host.NewHostWriteTools(ctx),
+	// 	service.NewServiceWriteTools(ctx),
+	// 	cicd.NewCICDWriteTools(ctx),
+	// 	// kubernetes.NewKubernetesWriteTools(ctx),
 	// }
-	return result
+	// for _, group := range writeTools {
+	// 	for _, t := range group {
+	// 		result = append(result, t)
+	// 	}
+	// }
+	// return result
 }
 
 // NewInspectionTools 创建 Inspection Agent 工具集。
@@ -142,18 +161,34 @@ func NewChangeTools(ctx context.Context) []tool.BaseTool {
 // 包含：
 //   - Kubernetes 只读工具（节点/工作负载/资源配额检查）
 //   - 监控工具（告警规则查询、Prometheus 指标）
+//   - 主机诊断工具（CPU/内存、磁盘、进程、主机清单）
 //   - 服务目录工具（服务健康状态概览）
 //
 // 参数:
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewInspectionTools(ctx context.Context) []tool.InvokableTool {
+	// K8s 只读工具
 	k8sTools := kubernetes.NewKubernetesTools(ctx)
+	// 监控工具
 	monitorTools := monitor.NewMonitorTools(ctx)
-	serviceTools := service.NewServiceTools(ctx)
+	// 主机诊断工具（筛选适合巡检的工具）
+	hostTools := []tool.InvokableTool{
+		host.OSGetCPUMem(ctx),
+		host.OSGetDiskFS(ctx),
+		host.OSGetProcessTop(ctx),
+		host.HostListInventory(ctx),
+	}
+	// 服务目录工具
+	serviceTools := []tool.InvokableTool{
+		service.ServiceCatalogList(ctx),
+		service.ServiceCategoryTree(ctx),
+		service.ServiceStatus(ctx),
+	}
 
-	result := make([]tool.InvokableTool, 0, len(k8sTools)+len(monitorTools)+len(serviceTools))
+	result := make([]tool.InvokableTool, 0, len(k8sTools)+len(monitorTools)+len(hostTools)+len(serviceTools))
 	result = append(result, k8sTools...)
 	result = append(result, monitorTools...)
+	result = append(result, hostTools...)
 	result = append(result, serviceTools...)
 	return result
 }

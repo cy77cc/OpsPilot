@@ -73,16 +73,46 @@ type ServiceVisibilityCheckInput struct {
 
 // NewServiceTools 创建所有服务工具。
 func NewServiceTools(ctx context.Context) []tool.InvokableTool {
+	readonly := NewServiceReadonlyTools(ctx)
+	write := NewServiceWriteTools(ctx)
+	result := make([]tool.InvokableTool, 0, len(readonly)+len(write))
+	result = append(result, readonly...)
+	result = append(result, write...)
+	return result
+}
+
+// NewServiceReadonlyTools 创建服务只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 服务详情和状态查询（service_get_detail, service_status, service_status_by_target）
+//   - 部署预览（service_deploy_preview）
+//   - 服务目录和分类查询（service_catalog_list, service_category_tree）
+//   - 服务可见性检查（service_visibility_check）
+//
+// 这些工具不修改任何状态，可安全用于诊断和巡检场景。
+func NewServiceReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		ServiceGetDetail(ctx),
 		ServiceStatus(ctx),
 		ServiceStatusByTarget(ctx),
 		ServiceDeployPreview(ctx),
-		ServiceDeployApply(ctx),
-		ServiceDeploy(ctx),
 		ServiceCatalogList(ctx),
 		ServiceCategoryTree(ctx),
 		ServiceVisibilityCheck(ctx),
+	}
+}
+
+// NewServiceWriteTools 创建服务写操作工具子集。
+//
+// 返回写操作工具列表，包括：
+//   - 部署应用（service_deploy_apply）
+//   - 统一部署（service_deploy，支持预览和应用）
+//
+// 这些工具会触发服务部署，需要审批机制（Phase 2 实现）。
+func NewServiceWriteTools(ctx context.Context) []tool.InvokableTool {
+	return []tool.InvokableTool{
+		ServiceDeployApply(ctx),
+		ServiceDeploy(ctx),
 	}
 }
 

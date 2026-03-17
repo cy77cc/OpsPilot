@@ -78,7 +78,21 @@ type K8sLogsInput struct {
 }
 
 // NewKubernetesTools 创建所有 Kubernetes 工具。
+//
+// Kubernetes 工具当前全部为只读工具，写操作工具将在 Phase 2 接入。
 func NewKubernetesTools(ctx context.Context) []tool.InvokableTool {
+	return NewKubernetesReadonlyTools(ctx)
+}
+
+// NewKubernetesReadonlyTools 创建 Kubernetes 只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 资源查询（k8s_query, k8s_list_resources）
+//   - 事件查询（k8s_events, k8s_get_events）
+//   - 日志获取（k8s_logs, k8s_get_pod_logs）
+//
+// 这些工具不修改任何集群状态，可安全用于诊断场景。
+func NewKubernetesReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		K8sQuery(ctx),
 		K8sListResources(ctx),
@@ -87,6 +101,26 @@ func NewKubernetesTools(ctx context.Context) []tool.InvokableTool {
 		K8sLogs(ctx),
 		K8sGetPodLogs(ctx),
 	}
+}
+
+// NewKubernetesWriteTools 创建 Kubernetes 写操作工具子集。
+//
+// Phase 2 实现：返回写操作工具列表，包括：
+//   - 资源创建/更新/删除
+//   - Pod 重启/扩缩容
+//   - 配置更新
+//
+// 每个写工具将内置 approvalGate 审批机制。
+func NewKubernetesWriteTools(ctx context.Context) []tool.InvokableTool {
+	// Phase 2: 实现写操作工具
+	// return []tool.InvokableTool{
+	// 	K8sCreateResource(ctx),
+	// 	K8sUpdateResource(ctx),
+	// 	K8sDeleteResource(ctx),
+	// 	K8sRestartPod(ctx),
+	// 	K8sScaleDeployment(ctx),
+	// }
+	return nil
 }
 
 type K8sQueryOutput struct {

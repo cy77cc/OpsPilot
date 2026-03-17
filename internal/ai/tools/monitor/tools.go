@@ -61,7 +61,21 @@ type MonitorMetricInput struct {
 }
 
 // NewMonitorTools 创建所有监控工具。
+//
+// 监控工具全部为只读工具，不修改任何状态。
 func NewMonitorTools(ctx context.Context) []tool.InvokableTool {
+	return NewMonitorReadonlyTools(ctx)
+}
+
+// NewMonitorReadonlyTools 创建监控只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 告警规则列表查询（monitor_alert_rule_list）
+//   - 活跃告警查询（monitor_alert, monitor_alert_active）
+//   - 指标时间序列查询（monitor_metric, monitor_metric_query）
+//
+// 这些工具不修改任何状态，可安全用于诊断和巡检场景。
+func NewMonitorReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		MonitorAlertRuleList(ctx),
 		MonitorAlert(ctx),

@@ -14,8 +14,8 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 // =============================================================================
@@ -78,7 +78,22 @@ type ServiceInventoryInput struct {
 }
 
 // NewDeploymentTools 创建所有部署工具。
+//
+// 部署工具全部为只读工具，不修改任何状态。
 func NewDeploymentTools(ctx context.Context) []tool.InvokableTool {
+	return NewDeploymentReadonlyTools(ctx)
+}
+
+// NewDeploymentReadonlyTools 创建部署只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 部署目标查询（deployment_target_list, deployment_target_detail）
+//   - 引导状态查询（deployment_bootstrap_status）
+//   - 配置查询（config_app_list, config_item_get, config_diff）
+//   - 清单查询（cluster_list_inventory, service_list_inventory）
+//
+// 这些工具不修改任何状态，可安全用于诊断和巡检场景。
+func NewDeploymentReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		DeploymentTargetList(ctx),
 		DeploymentTargetDetail(ctx),
@@ -91,6 +106,11 @@ func NewDeploymentTools(ctx context.Context) []tool.InvokableTool {
 	}
 }
 
+// NewDeploymentWriteTools 创建部署可写工具子集
+func NewDeploymentWriteTools(ctx context.Context) []tool.InvokableTool {
+	return []tool.InvokableTool{}
+}
+
 func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
 	return svc.GetServiceContext(ctx)
 }
@@ -100,7 +120,7 @@ type DeploymentTargetListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func DeploymentTargetList(ctx context.Context, ) tool.InvokableTool {
+func DeploymentTargetList(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_list",
 		"Query deployment target list. Optional parameters: env/status/keyword/limit. Example: {\"env\":\"prod\",\"limit\":20}.",
@@ -162,7 +182,7 @@ type DeploymentTargetDetailOutput struct {
 	Nodes  []model.DeploymentTargetNode `json:"nodes"`
 }
 
-func DeploymentTargetDetail(ctx context.Context, ) tool.InvokableTool {
+func DeploymentTargetDetail(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_target_detail",
 		"Query deployment target detail. target_id is required. Example: {\"target_id\":12}.",
@@ -202,7 +222,7 @@ type DeploymentBootstrapStatusOutput struct {
 	Steps           []model.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
 
-func DeploymentBootstrapStatus(ctx context.Context, ) tool.InvokableTool {
+func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"deployment_bootstrap_status",
 		"Query deployment target bootstrap status. target_id is required. Example: {\"target_id\":12}.",
@@ -249,7 +269,7 @@ type ConfigAppListOutput struct {
 	List  []map[string]any `json:"list"`
 }
 
-func ConfigAppList(ctx context.Context, ) tool.InvokableTool {
+func ConfigAppList(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_app_list",
 		"Query config app list. Optional parameters: keyword/env/limit. Example: {\"env\":\"prod\"}.",
@@ -301,7 +321,7 @@ type ConfigItemGetOutput struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func ConfigItemGet(ctx context.Context, ) tool.InvokableTool {
+func ConfigItemGet(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_item_get",
 		"Query config item value. app_id and key are required, optional env. Example: {\"app_id\":12,\"key\":\"DATABASE_URL\"}.",
@@ -350,7 +370,7 @@ type ConfigDiffOutput struct {
 	Diff      []map[string]any `json:"diff"`
 }
 
-func ConfigDiff(ctx context.Context, ) tool.InvokableTool {
+func ConfigDiff(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"config_diff",
 		"Compare config difference. app_id, env_a, env_b are required. Example: {\"app_id\":12,\"env_a\":\"staging\",\"env_b\":\"prod\"}.",
@@ -423,7 +443,7 @@ type ClusterListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ClusterListInventory(ctx context.Context, ) tool.InvokableTool {
+func ClusterListInventory(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"cluster_list_inventory",
 		"Query cluster inventory list. Optional parameters: status/keyword/limit. Example: {\"status\":\"active\"}.",
@@ -486,7 +506,7 @@ type ServiceListInventoryOutput struct {
 	FiltersApplied map[string]any   `json:"filters_applied"`
 }
 
-func ServiceListInventory(ctx context.Context, ) tool.InvokableTool {
+func ServiceListInventory(ctx context.Context) tool.InvokableTool {
 	t, err := utils.InferOptionableTool(
 		"service_list_inventory",
 		"Query service inventory list. Optional parameters: status/runtime_type/env/keyword/limit. Example: {\"env\":\"prod\"}.",

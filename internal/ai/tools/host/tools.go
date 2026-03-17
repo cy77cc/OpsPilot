@@ -130,21 +130,52 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 //   - 系统诊断：CPU/内存、磁盘、网络、进程
 //   - 日志查询、容器运行时
 func NewHostTools(ctx context.Context) []tool.InvokableTool {
+	readonly := NewHostReadonlyTools(ctx)
+	write := NewHostWriteTools(ctx)
+	result := make([]tool.InvokableTool, 0, len(readonly)+len(write))
+	result = append(result, readonly...)
+	result = append(result, write...)
+	return result
+}
+
+// NewHostReadonlyTools 创建主机只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - SSH 只读执行（host_ssh_exec_readonly, host_exec, host_exec_by_target）
+//   - 主机清单查询（host_list_inventory）
+//   - 批量执行预览（host_batch_exec_preview）
+//   - 系统诊断：CPU/内存、磁盘、网络、进程、日志、容器运行时
+//
+// 这些工具不修改任何状态，可安全用于诊断场景。
+func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		HostSSHReadonly(ctx),
 		HostExec(ctx),
 		HostExecByTarget(ctx),
 		HostListInventory(ctx),
-		HostBatch(ctx),
 		HostBatchExecPreview(ctx),
-		HostBatchExecApply(ctx),
-		HostBatchStatusUpdate(ctx),
 		OSGetCPUMem(ctx),
 		OSGetDiskFS(ctx),
 		OSGetNetStat(ctx),
 		OSGetProcessTop(ctx),
 		OSGetJournalTail(ctx),
 		OSGetContainerRuntime(ctx),
+	}
+}
+
+// NewHostWriteTools 创建主机写操作工具子集。
+//
+// 返回写操作工具列表，包括：
+//   - 批量执行（host_batch）
+//   - 批量执行应用（host_batch_exec_apply）
+//   - 批量状态更新（host_batch_status_update）
+//
+// 这些工具会修改主机状态或执行命令，需要审批机制（Phase 2 实现）。
+func NewHostWriteTools(ctx context.Context) []tool.InvokableTool {
+	return []tool.InvokableTool{
+		HostBatch(ctx),
+		HostBatchExecApply(ctx),
+		HostBatchStatusUpdate(ctx),
 	}
 }
 

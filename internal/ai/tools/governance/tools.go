@@ -59,7 +59,22 @@ type AuditLogSearchInput struct {
 }
 
 // NewGovernanceTools 创建所有治理工具。
+//
+// 治理工具全部为只读工具，不修改任何状态。
 func NewGovernanceTools(ctx context.Context) []tool.InvokableTool {
+	return NewGovernanceReadonlyTools(ctx)
+}
+
+// NewGovernanceReadonlyTools 创建治理只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 用户和角色查询（user_list, role_list）
+//   - 权限检查（permission_check）
+//   - 服务拓扑查询（topology_get）
+//   - 审计日志搜索（audit_log_search）
+//
+// 这些工具不修改任何状态，可安全用于诊断和审计场景。
+func NewGovernanceReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		UserList(ctx),
 		RoleList(ctx),

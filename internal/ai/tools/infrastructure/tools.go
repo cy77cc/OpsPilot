@@ -33,7 +33,20 @@ type CredentialTestInput struct {
 }
 
 // NewInfrastructureTools 创建所有基础设施工具。
+//
+// 基础设施工具全部为只读工具，不修改任何状态。
 func NewInfrastructureTools(ctx context.Context) []tool.InvokableTool {
+	return NewInfrastructureReadonlyTools(ctx)
+}
+
+// NewInfrastructureReadonlyTools 创建基础设施只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 凭证列表查询（credential_list）
+//   - 凭证连通性测试（credential_test）
+//
+// 这些工具不修改任何状态，可安全用于诊断场景。
+func NewInfrastructureReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		CredentialList(ctx),
 		CredentialTest(ctx),

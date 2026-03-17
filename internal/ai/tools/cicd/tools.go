@@ -63,12 +63,40 @@ type JobRunInput struct {
 
 // NewCICDTools 创建所有 CI/CD 工具。
 func NewCICDTools(ctx context.Context) []tool.InvokableTool {
+	readonly := NewCICDReadonlyTools(ctx)
+	write := NewCICDWriteTools(ctx)
+	result := make([]tool.InvokableTool, 0, len(readonly)+len(write))
+	result = append(result, readonly...)
+	result = append(result, write...)
+	return result
+}
+
+// NewCICDReadonlyTools 创建 CI/CD 只读工具子集。
+//
+// 返回只读工具列表，包括：
+//   - 流水线列表和状态查询（cicd_pipeline_list, cicd_pipeline_status）
+//   - 作业列表和执行状态查询（job_list, job_execution_status）
+//
+// 这些工具不触发任何构建或作业，可安全用于诊断场景。
+func NewCICDReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		CICDPipelineList(ctx),
 		CICDPipelineStatus(ctx),
-		CICDPipelineTrigger(ctx),
 		JobList(ctx),
 		JobExecutionStatus(ctx),
+	}
+}
+
+// NewCICDWriteTools 创建 CI/CD 写操作工具子集。
+//
+// 返回写操作工具列表，包括：
+//   - 流水线触发（cicd_pipeline_trigger）
+//   - 作业手动触发（job_run）
+//
+// 这些工具会触发构建或作业执行，需要审批机制（Phase 2 实现）。
+func NewCICDWriteTools(ctx context.Context) []tool.InvokableTool {
+	return []tool.InvokableTool{
+		CICDPipelineTrigger(ctx),
 		JobRun(ctx),
 	}
 }
