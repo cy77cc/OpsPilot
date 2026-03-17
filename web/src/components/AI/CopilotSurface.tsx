@@ -254,10 +254,18 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     () => ({
       assistant: {
         placement: 'start',
-        contentRender: (content: string) => (
+        contentRender: (content: string, info) => (
           <div className={styles.markdown}>
             <XMarkdown
               content={content}
+              streaming={{
+                hasNextChunk: info.status === 'loading' || info.status === 'updating',
+                enableAnimation: true,
+                animationConfig: {
+                  fadeDuration: 180,
+                  easing: 'ease-out',
+                },
+              }}
               components={{
                 think: ({ children }: any) => (
                   <Think title="Thinking" loading={false}>
@@ -472,7 +480,8 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                 key: item.id,
                 role: item.message.role,
                 content: item.message.content,
-                loading: item.status === 'loading' || item.status === 'updating',
+                loading: item.status === 'loading' && !item.message.content,
+                status: item.status,
               }))}
               role={bubbleRole}
             />
