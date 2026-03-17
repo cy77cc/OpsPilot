@@ -80,13 +80,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return nil
 	}
 
-	// Step 1: 创建或复用 Session
+	// Step 1: 创建或复用 Session，新对话就创建，旧对话前端带上了
 	sessionID := input.SessionID
 	if sessionID == "" {
 		sessionID = uuid.NewString()
 	}
 
-	session, err := l.ChatDAO.GetSession(ctx, sessionID, input.UserID, "")
+	session, err := l.ChatDAO.GetSession(ctx, sessionID, input.UserID, input.Scene)
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
 	}
@@ -130,14 +130,17 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	emit(meta.Event, meta.Data)
 
 	// Step 5: 调用 AIRouter
-	agentInput := &adk.AgentInput{
-		Messages: []adk.Message{
-			schema.UserMessage(l.buildAugmentedMessage(ctx, scene, input.Context, input.Message)),
-		},
+	//
+	runner := adk.NewRunner(ctx, adk.RunnerConfig{
+		Agent:           l.AIRouter,
 		EnableStreaming: true,
+		CheckPointStore: nil,
+	})
+	agentInput := []*schema.Message{
+		schema.UserMessage(l.buildAugmentedMessage(ctx, scene, input.Context, input.Message)),
 	}
 
-	iterator := l.AIRouter.Run(ctx, agentInput)
+	iterator := runner.Run(ctx, agentInput)
 
 	// Step 6: 消费事件
 	var (
