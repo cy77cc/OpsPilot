@@ -85,6 +85,7 @@ export interface AIChatParams {
   sessionId?: string;
   session_id?: string;
   message: string;
+  scene?: string;
   context?: any;
 }
 

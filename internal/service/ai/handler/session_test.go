@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
@@ -139,6 +140,73 @@ func TestGetSession_ReturnsNotFoundForNonexistentSession(t *testing.T) {
 	}
 }
 
+func TestListSessions_FiltersByScene(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	now := time.Now()
+	seedSession(t, db, model.AIChatSession{ID: "sess-host", UserID: 9, Title: "Host", Scene: "host", CreatedAt: now, UpdatedAt: now})
+	seedSession(t, db, model.AIChatSession{ID: "sess-cluster", UserID: 9, Title: "Cluster", Scene: "cluster", CreatedAt: now, UpdatedAt: now})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(9))
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions?scene=cluster", nil)
+
+	h.ListSessions(c)
+
+	var response struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(response.Data) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(response.Data))
+	}
+	if response.Data[0]["scene"] != "cluster" {
+		t.Fatalf("expected cluster scene, got %v", response.Data[0]["scene"])
+	}
+}
+
+func TestGetSession_RespectsSceneFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	now := time.Now()
+	seedSession(t, db, model.AIChatSession{ID: "sess-cluster", UserID: 10, Title: "Cluster", Scene: "cluster", CreatedAt: now, UpdatedAt: now})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(10))
+	c.Params = gin.Params{{Key: "id", Value: "sess-cluster"}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions/sess-cluster?scene=host", nil)
+
+	h.GetSession(c)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != 2005 {
+		t.Fatalf("expected not found code 2005, got %d", resp.Code)
+	}
+}
+
+func seedSession(t *testing.T, db *gorm.DB, session model.AIChatSession) {
+	t.Helper()
+	if err := db.Create(&session).Error; err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+}
+
 func newAIHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -152,6 +220,8 @@ func newAIHandlerTestDB(t *testing.T) *gorm.DB {
 		&model.AIChatMessage{},
 		&model.AIRun{},
 		&model.AIDiagnosisReport{},
+		&model.AIScenePrompt{},
+		&model.AISceneConfig{},
 	); err != nil {
 		t.Fatalf("auto migrate ai handler tables: %v", err)
 	}

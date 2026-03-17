@@ -52,11 +52,20 @@ func NewChangeAgent(ctx context.Context) (adk.ResumableAgent, error) {
 		return nil, fmt.Errorf("change agent: init replanner: %w", err)
 	}
 
-	return planexecute.New(ctx, &planexecute.Config{
-		Planner:       planner,
-		Executor:      executor,
-		Replanner:     replanner,
+	loop, err := adk.NewLoopAgent(ctx, &adk.LoopAgentConfig{
+		Name:          "execute_replan",
+		Description:   "OpsPilot change execution loop for Kubernetes operations: execute planned steps with available tools and iteratively replan verification or fallback actions based on runtime outcomes until completion or max iterations.",
+		SubAgents:     []adk.Agent{executor, replanner},
 		MaxIterations: 20,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return adk.NewSequentialAgent(ctx, &adk.SequentialAgentConfig{
+		Name:        "ChangeAgent",
+		Description: "OpsPilot Kubernetes change orchestrator: first produce a safe, approval-aware execution plan, then drive the plan through an execute-and-replan loop in a resumable human-in-the-loop workflow.",
+		SubAgents:   []adk.Agent{planner, loop},
 	})
 }
 

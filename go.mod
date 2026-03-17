@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/casbin/casbin/v2 v2.135.0
-	github.com/cloudwego/eino v0.8.0
+	github.com/cloudwego/eino v0.8.3
 	github.com/cloudwego/eino-ext/components/embedding/ollama v0.0.0-20260305011506-a75910204c1f
 	github.com/cloudwego/eino-ext/components/model/ollama v0.1.8
 	github.com/cloudwego/eino-ext/components/model/qwen v0.1.5

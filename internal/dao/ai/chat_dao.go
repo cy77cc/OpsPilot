@@ -1,7 +1,8 @@
-package ai 
+package ai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
@@ -20,20 +21,23 @@ func (d *AIChatDAO) CreateSession(ctx context.Context, session *model.AIChatSess
 	return d.db.WithContext(ctx).Create(session).Error
 }
 
-func (d *AIChatDAO) ListSessions(ctx context.Context, userID uint64) ([]model.AIChatSession, error) {
+func (d *AIChatDAO) ListSessions(ctx context.Context, userID uint64, scene string) ([]model.AIChatSession, error) {
 	var sessions []model.AIChatSession
-	err := d.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("updated_at DESC, created_at DESC").
-		Find(&sessions).Error
+	q := d.db.WithContext(ctx).Where("user_id = ?", userID)
+	if strings.TrimSpace(scene) != "" {
+		q = q.Where("scene = ?", strings.TrimSpace(scene))
+	}
+	err := q.Order("updated_at DESC, created_at DESC").Find(&sessions).Error
 	return sessions, err
 }
 
-func (d *AIChatDAO) GetSession(ctx context.Context, sessionID string, userID uint64) (*model.AIChatSession, error) {
+func (d *AIChatDAO) GetSession(ctx context.Context, sessionID string, userID uint64, scene string) (*model.AIChatSession, error) {
 	var session model.AIChatSession
-	err := d.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", sessionID, userID).
-		First(&session).Error
+	q := d.db.WithContext(ctx).Where("id = ? AND user_id = ?", sessionID, userID)
+	if strings.TrimSpace(scene) != "" {
+		q = q.Where("scene = ?", strings.TrimSpace(scene))
+	}
+	err := q.First(&session).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
 	}

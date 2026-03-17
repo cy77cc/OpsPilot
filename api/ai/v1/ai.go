@@ -4,6 +4,8 @@ package v1
 type ChatRequest struct {
 	SessionID string `json:"session_id,omitempty"`
 	Message   string `json:"message"`
+	Scene     string `json:"scene,omitempty"`
+	Context   any    `json:"context,omitempty"`
 }
 
 // ChatResponse defines the response body for AI chat acceptance.

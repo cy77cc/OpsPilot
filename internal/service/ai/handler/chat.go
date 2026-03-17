@@ -25,6 +25,8 @@ func (h *Handler) Chat(c *gin.Context) {
 	if err := h.logic.Chat(c.Request.Context(), logic.ChatInput{
 		SessionID: req.SessionID,
 		Message:   req.Message,
+		Scene:     req.Scene,
+		Context:   mapFromAny(req.Context),
 		UserID:    httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
 		writeChatEvent(c, event, data)
@@ -58,4 +60,14 @@ func writeChatEvent(c *gin.Context, event string, data any) {
 	_, _ = c.Writer.Write([]byte("\n\n"))
 
 	c.Writer.Flush()
+}
+
+func mapFromAny(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	if result, ok := value.(map[string]any); ok {
+		return result
+	}
+	return nil
 }

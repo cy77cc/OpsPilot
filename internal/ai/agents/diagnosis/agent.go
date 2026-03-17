@@ -46,12 +46,20 @@ func NewDiagnosisAgent(ctx context.Context) (adk.ResumableAgent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("diagnosis agent: init replanner: %w", err)
 	}
-
-	return planexecute.New(ctx, &planexecute.Config{
-		Planner:       planner,
-		Executor:      executor,
-		Replanner:     replanner,
+	loop, err := adk.NewLoopAgent(ctx, &adk.LoopAgentConfig{
+		Name:          "execute_replan",
+		Description:   "OpsPilot diagnosis execution loop for Kubernetes troubleshooting: run read-only investigation steps with cluster and monitoring tools, then iteratively replan remaining checks based on observed evidence until completion or max iterations.",
+		SubAgents:     []adk.Agent{executor, replanner},
 		MaxIterations: 20,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return adk.NewSequentialAgent(ctx, &adk.SequentialAgentConfig{
+		Name:        "DiagnosisAgent",
+		Description: "OpsPilot Kubernetes diagnosis orchestrator: first build a structured, read-only investigation plan, then drive it through an execute-and-replan loop to identify likely root causes without performing any write operations.",
+		SubAgents:   []adk.Agent{planner, loop},
 	})
 }
 

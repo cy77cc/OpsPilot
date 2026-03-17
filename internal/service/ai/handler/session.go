@@ -56,7 +56,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 }
 
 func (h *Handler) GetSession(c *gin.Context) {
-	session, messages, err := h.logic.GetSession(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"))
+	session, messages, err := h.logic.GetSession(c.Request.Context(), httpx.UIDFromCtx(c), strings.TrimSpace(c.Query("scene")), c.Param("id"))
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return

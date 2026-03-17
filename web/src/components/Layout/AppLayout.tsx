@@ -23,7 +23,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Auth/AuthContext';
 import ProjectSwitcher from '../Project/ProjectSwitcher';
 import { NotificationBell } from '../Notification';
-import { AICopilotButton } from '../AI';
+import { AICopilotButton, AISurfaceBoundary, CopilotSurface } from '../AI';
 import '../Notification/notification.css';
 import { useI18n } from '../../i18n';
 import { usePermission } from '../RBAC';
@@ -47,6 +47,7 @@ interface AppLayoutProps {
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -407,7 +408,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <NotificationBell onViewAll={() => navigate('/monitor')} />
 
             {/* AI 助手 */}
-            <AICopilotButton />
+            <AICopilotButton onOpen={() => setCopilotOpen(true)} />
 
             {/* 用户菜单 */}
             <Dropdown
@@ -473,6 +474,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <PageTransition>{children}</PageTransition>
         </Content>
       </Layout>
+
+      <AISurfaceBoundary>
+        <CopilotSurface open={copilotOpen} onClose={() => setCopilotOpen(false)} />
+      </AISurfaceBoundary>
     </Layout>
   );
 };

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -101,22 +102,65 @@ func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
 	}
 }
 
+func TestChatHandler_PersistsSceneFromRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(104))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"inspect cluster","scene":"cluster","context":{"route":"/deployment/infrastructure/clusters/42","resource_id":"42"}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	initData := events[0].Data.(map[string]any)
+	sessionID := initData["session_id"].(string)
+
+	var session model.AIChatSession
+	if err := db.First(&session, "id = ?", sessionID).Error; err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+
+	if session.Scene != "cluster" {
+		t.Fatalf("expected scene cluster, got %q", session.Scene)
+	}
+}
+
 func decodeSSEEvents(t *testing.T, body string) []chatEvent {
 	t.Helper()
 
 	lines := strings.Split(body, "\n")
 	events := make([]chatEvent, 0)
+	current := chatEvent{}
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			if current.Event != "" || current.Data != nil {
+				events = append(events, current)
+			}
+			current = chatEvent{}
 			continue
 		}
-		raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		var event chatEvent
-		if err := json.Unmarshal([]byte(raw), &event); err != nil {
+		if strings.HasPrefix(trimmed, "event:") {
+			current.Event = strings.TrimSpace(strings.TrimPrefix(trimmed, "event:"))
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "data:") {
+			continue
+		}
+		raw := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+		var data any
+		if err := json.Unmarshal([]byte(raw), &data); err != nil {
 			t.Fatalf("decode SSE event %q: %v", raw, err)
 		}
-		events = append(events, event)
+		current.Data = data
+	}
+	if current.Event != "" || current.Data != nil {
+		events = append(events, current)
 	}
 	return events
 }
