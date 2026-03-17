@@ -1,8 +1,19 @@
 import React from 'react';
-import { RobotOutlined, CommentOutlined, PlusOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons';
-import { Bubble, Conversations, Prompts, Sender, Think, Welcome } from '@ant-design/x';
+import {
+  RobotOutlined,
+  CommentOutlined,
+  PlusOutlined,
+  PaperClipOutlined,
+  CloseOutlined,
+  VerticalAlignBottomOutlined,
+  ReloadOutlined,
+  CopyOutlined,
+  LikeOutlined,
+  DislikeOutlined,
+} from '@ant-design/icons';
+import { Bubble, Conversations, Prompts, Sender, Think, Welcome, CodeHighlighter } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
-import XMarkdown from '@ant-design/x-markdown';
+import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { useXChat, useXConversations } from '@ant-design/x-sdk';
 import { Button, Drawer, Popover, Space, Tag, Typography } from 'antd';
 import { createStyles } from 'antd-style';
@@ -156,6 +167,13 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
       border-left-color: ${token.colorPrimary};
     }
   `,
+  scrollBottomBtn: css`
+    position: absolute;
+    right: 24px;
+    bottom: 92px;
+    z-index: 120;
+    box-shadow: 0 8px 20px rgba(17, 24, 39, 0.14);
+  `,
   markdown: css`
     width: 100%;
     max-width: 100%;
@@ -279,6 +297,9 @@ export function buildAssistantErrorContent(
 
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const shouldScrollToBottomRef = React.useRef(true);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = React.useState(false);
   const location = useLocation();
   const { scene, context } = React.useMemo(
     () => resolveScene(location.pathname),
@@ -342,6 +363,14 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     [activeConversationKey, context, scene],
   );
 
+  const Code: React.FC<ComponentProps> = (props) => {
+    const { className, children } = props;
+    const lang = className?.match(/language-(\w+)/)?.[1] || '';
+
+    if (typeof children !== 'string') return null;
+    return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+  };
+
   const defaultMessages = React.useCallback(
     async ({ conversationKey }: { conversationKey?: string }) => {
       if (!conversationKey || conversationKey === NEW_SESSION_KEY) {
@@ -383,11 +412,68 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     }),
   });
 
+  React.useEffect(() => {
+    shouldScrollToBottomRef.current = true;
+  }, [activeConversationKey, open]);
+
+  React.useEffect(() => {
+    if (!open || messages.length === 0 || !shouldScrollToBottomRef.current) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const el = contentRef.current;
+      if (!el) {
+        return;
+      }
+
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      shouldScrollToBottomRef.current = false;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length, open]);
+
+  React.useEffect(() => {
+    const el = contentRef.current;
+    if (!el || !open) {
+      return;
+    }
+
+    const updateBtnVisible = () => {
+      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBottomBtn(distanceToBottom > 120);
+    };
+
+    updateBtnVisible();
+    el.addEventListener('scroll', updateBtnVisible, { passive: true });
+
+    return () => {
+      el.removeEventListener('scroll', updateBtnVisible);
+    };
+  }, [messages.length, open]);
+
+  const handleScrollToBottom = React.useCallback(() => {
+    const el = contentRef.current;
+    if (!el) {
+      return;
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
   const bubbleRole = React.useMemo<BubbleListProps['role']>(
     () => ({
       assistant: {
         placement: 'start',
         variant: 'borderless',
+        footer: (
+          <div style={{ display: 'flex' }}>
+            <Button type="text" size="small" icon={<CopyOutlined />} />
+            <Button type="text" size="small" icon={<LikeOutlined />} />
+            <Button type="text" size="small" icon={<DislikeOutlined />} />
+            <Button type="text" size="small" icon={<ReloadOutlined />} />
+          </div>
+        ),
         styles: {
           root: {
             paddingInline: 0,
@@ -427,6 +513,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                     <table {...props}>{children}</table>
                   </div>
                 ),
+                code: Code
               }}
             />
           </div>
@@ -634,7 +721,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     >
       <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
       <div className={styles.surface}>
-        <div className={styles.content}>
+        <div ref={contentRef} className={styles.content}>
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
               <Welcome
@@ -664,6 +751,18 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
             </div>
           )}
         </div>
+
+        {messages.length > 0 && showScrollBottomBtn && (
+          <Button
+            className={styles.scrollBottomBtn}
+            type="primary"
+            shape="circle"
+            icon={<VerticalAlignBottomOutlined />}
+            onClick={handleScrollToBottom}
+            aria-label="快速回到底部"
+            title="快速回到底部"
+          />
+        )}
 
         <div className={styles.senderWrap}>
           {attachedFiles.length > 0 && (
