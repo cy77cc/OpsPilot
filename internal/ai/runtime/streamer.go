@@ -270,28 +270,6 @@ func errorEvent(runID string, err error) StreamEvent {
 	return StreamEvent{Event: "error", Data: payload}
 }
 
-// 解析planner，replanner的规划步骤
-func decodeStepsEnvelope(raw string) ([]string, bool) {
-	var payload struct {
-		Steps []string `json:"steps"`
-	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil || len(payload.Steps) == 0 {
-		return nil, false
-	}
-	return payload.Steps, true
-}
-
-// 解析replanner的最终输出
-func decodeResponseEnvelope(raw string) (string, bool) {
-	var payload struct {
-		Response string `json:"response"`
-	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil || strings.TrimSpace(payload.Response) == "" {
-		return "", false
-	}
-	return payload.Response, true
-}
-
 func decodeToolArguments(raw string) map[string]any {
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(raw), &payload); err == nil && payload != nil {
