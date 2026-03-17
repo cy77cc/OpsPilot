@@ -35,30 +35,9 @@ func (h *Handler) Chat(c *gin.Context) {
 }
 
 func writeChatEvent(writer *SSEWriter, c *gin.Context, event string, data any) {
-	normalizedEvent, normalizedData := normalizeChatEvent(event, data)
-	if err := writer.WriteEvent(normalizedEvent, normalizedData); err == nil {
+	if err := writer.WriteEvent(event, data); err == nil {
 		c.Writer.Flush()
 	}
-}
-
-func normalizeChatEvent(event string, data any) (string, any) {
-	if event != "init" {
-		return event, data
-	}
-
-	payload, ok := data.(map[string]any)
-	if !ok {
-		return "meta", map[string]any{"turn": 1}
-	}
-
-	normalized := make(map[string]any, len(payload)+1)
-	for key, value := range payload {
-		normalized[key] = value
-	}
-	if _, exists := normalized["turn"]; !exists {
-		normalized["turn"] = 1
-	}
-	return "meta", normalized
 }
 
 func mapFromAny(value any) map[string]any {

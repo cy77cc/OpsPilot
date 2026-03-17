@@ -3,10 +3,10 @@ import type { TransformMessage } from '@ant-design/x-sdk';
 import { AbstractXRequestClass } from '@ant-design/x-sdk';
 import type { XRequestOptions } from '@ant-design/x-sdk';
 import { aiApi } from '../../../api/modules/ai';
-import type { AIChatStreamHandlers } from '../../../api/modules/ai';
+import type { A2UIStreamHandlers } from '../../../api/modules/ai';
 import type { ChatRequest, PlatformStreamChunk, SceneContext, XChatMessage } from '../types';
 
-type InitHandler = (payload: { session_id: string; run_id: string }) => void;
+type MetaHandler = (payload: { session_id: string; run_id: string; turn: number }) => void;
 
 type StreamStage = 'idle' | 'preparing' | 'identifying' | 'planning' | 'agent';
 
@@ -35,12 +35,7 @@ function resolveAgentLabel(name?: string): string {
   return AGENT_LABELS[normalized] || (name || '助手');
 }
 
-function detectTransferredAgent(content: string): string | undefined {
-  const match = content.match(/transferred to agent \[([^\]]+)\]/i);
-  return match?.[1];
-}
-
-function resolveIntentStatus(assistantType?: string): { stage: StreamStage; content: string } {
+function resolveAgentStatus(assistantType?: string): { stage: StreamStage; content: string } {
   const normalized = normalizeAgentName(assistantType);
   if (normalized === 'planner') {
     return { stage: 'planning', content: '[正在规划处理方式]' };
@@ -63,7 +58,7 @@ function buildFinalContent(chunks: PlatformStreamChunk[]): string {
 }
 
 interface PlatformChatRequestConfig {
-  onInit?: InitHandler;
+  onMeta?: MetaHandler;
 }
 
 export class PlatformChatRequest extends AbstractXRequestClass<
@@ -71,7 +66,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
   PlatformStreamChunk,
   XChatMessage
 > {
-  private readonly onInit?: InitHandler;
+  private readonly onMeta?: MetaHandler;
   private _asyncHandler: Promise<void> = Promise.resolve();
   private _isRequesting = false;
   private abortController: AbortController | null = null;
@@ -84,7 +79,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
         onError: () => undefined,
       },
     } as XRequestOptions<ChatRequest, PlatformStreamChunk, XChatMessage>);
-    this.onInit = config.onInit;
+    this.onMeta = config.onMeta;
   }
 
   get asyncHandler() {
@@ -116,7 +111,6 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     this._isRequesting = true;
     const visibleChunks: PlatformStreamChunk[] = [];
     let terminalError: { error: Error; info?: unknown } | null = null;
-    let hasIntent = false;
     let hasVisibleContent = false;
     let stage: StreamStage = 'idle';
     let lastStatusContent = '';
@@ -150,31 +144,20 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       this.options.callbacks?.onUpdate?.(chunk, headers);
     };
 
-    const handlers: AIChatStreamHandlers = {
-      onInit: (payload) => {
-        this.onInit?.(payload);
+    const handlers: A2UIStreamHandlers = {
+      onMeta: (payload) => {
+        this.onMeta?.(payload);
         emitStatus('preparing', '[准备中]');
       },
-      onIntent: (payload) => {
-        hasIntent = true;
-        const status = resolveIntentStatus(payload.assistant_type);
+      onAgentHandoff: (payload) => {
+        const status = resolveAgentStatus(payload.to);
         emitStatus(status.stage, status.content);
       },
-      onStatus: (payload) => {
-        if (payload.status === 'running') {
-          emitStatus('identifying', '[识别任务]');
-        }
+      onPlan: () => {
+        emitStatus('planning', '[正在规划处理方式]');
       },
       onDelta: (payload) => {
-        const transferredAgent = detectTransferredAgent(payload.contentChunk);
-        if (transferredAgent) {
-          emitStatus('agent', `[${resolveAgentLabel(transferredAgent)}开始处理]`);
-          return;
-        }
-        if (!hasIntent) {
-          return;
-        }
-        emitVisibleChunk(payload.contentChunk);
+        emitVisibleChunk(payload.content);
       },
       onError: (payload) => {
         if (payload.code === 'tool_timeout_soft') {
@@ -228,7 +211,7 @@ interface PlatformChatProviderConfig {
   scene?: string;
   getSceneContext?: () => SceneContext | undefined;
   getSessionId?: () => string | undefined;
-  onInit?: InitHandler;
+  onMeta?: MetaHandler;
 }
 
 export class PlatformChatProvider extends AbstractChatProvider<
@@ -243,7 +226,7 @@ export class PlatformChatProvider extends AbstractChatProvider<
   constructor(config: PlatformChatProviderConfig = {}) {
     super({
       request: new PlatformChatRequest({
-        onInit: config.onInit,
+        onMeta: config.onMeta,
       }),
     });
     this.scene = config.scene;

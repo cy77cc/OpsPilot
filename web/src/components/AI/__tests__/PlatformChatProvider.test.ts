@@ -44,11 +44,11 @@ describe('PlatformChatProvider', () => {
     };
 
     vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
-      handlers.onInit?.({ session_id: 'sess-1', run_id: 'run-1' });
-      handlers.onIntent?.({ assistant_type: 'planner', intent_type: 'unknown' });
-      handlers.onDelta?.({ contentChunk: 'hello ' });
-      handlers.onDelta?.({ contentChunk: 'world' });
-      handlers.onDone?.({ session: {} as any });
+      handlers.onMeta?.({ session_id: 'sess-1', run_id: 'run-1', turn: 1 });
+      handlers.onPlan?.({ steps: ['inspect pods'], iteration: 0 });
+      handlers.onDelta?.({ content: 'hello ' });
+      handlers.onDelta?.({ content: 'world' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
     });
 
     request.run({ message: 'hi', scene: 'ai' });
@@ -83,12 +83,10 @@ describe('PlatformChatProvider', () => {
     };
 
     vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
-      handlers.onInit?.({ session_id: 'sess-1', run_id: 'run-1' });
-      handlers.onStatus?.({ status: 'running' });
-      handlers.onDelta?.({ contentChunk: 'successfully transferred to agent [DiagnosisAgent]' });
-      handlers.onIntent?.({ assistant_type: 'planner', intent_type: 'unknown' });
-      handlers.onDelta?.({ contentChunk: '诊断完成' });
-      handlers.onDone?.({ session: {} as any });
+      handlers.onMeta?.({ session_id: 'sess-1', run_id: 'run-1', turn: 1 });
+      handlers.onAgentHandoff?.({ from: 'OpsPilotAgent', to: 'DiagnosisAgent', intent: 'diagnosis' });
+      handlers.onDelta?.({ content: '诊断完成' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
     });
 
     request.run({ message: 'hi', scene: 'ai' });
@@ -101,16 +99,11 @@ describe('PlatformChatProvider', () => {
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       2,
-      { content: '[识别任务]', mode: 'replace' },
-      expect.any(Headers),
-    );
-    expect(onUpdate).toHaveBeenNthCalledWith(
-      3,
       { content: '[诊断助手开始处理]', mode: 'replace' },
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
-      4,
+      3,
       { content: '诊断完成', mode: 'replace' },
       expect.any(Headers),
     );
@@ -131,10 +124,10 @@ describe('PlatformChatProvider', () => {
     };
 
     vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
-      handlers.onIntent?.({ assistant_type: 'planner', intent_type: 'unknown' });
-      handlers.onDelta?.({ contentChunk: '第一段' });
-      handlers.onDelta?.({ contentChunk: '，第二段' });
-      handlers.onDone?.({ session: {} as any });
+      handlers.onPlan?.({ steps: ['step one'], iteration: 0 });
+      handlers.onDelta?.({ content: '第一段' });
+      handlers.onDelta?.({ content: '，第二段' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
     });
 
     request.run({ message: 'hi', scene: 'ai' });

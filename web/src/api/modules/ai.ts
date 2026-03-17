@@ -132,218 +132,93 @@ export interface AIScenePromptsPayload {
   prompts: AIScenePromptItem[];
 }
 
-interface SSEMetaEvent {
-  sessionId: string;
-  createdAt: string;
-  turn_id?: string;
-}
-
-export interface AIInitEvent {
+export interface A2UIMetaEvent {
   session_id: string;
   run_id: string;
+  turn: number;
 }
 
-export interface AIIntentEvent {
-  intent_type: string;
-  assistant_type: string;
-  risk_level?: string;
+export interface A2UIAgentHandoffEvent {
+  from: string;
+  to: string;
+  intent: 'diagnosis' | 'change' | 'qa' | 'unknown';
 }
 
-export interface AIStatusEvent {
-  status: string;
+export interface A2UIPlanEvent {
+  steps: string[];
+  iteration: number;
 }
 
-export interface AIProgressEvent {
-  summary?: string;
+export interface A2UIReplanEvent {
+  steps: string[];
+  completed: number;
+  iteration: number;
+  is_final: boolean;
 }
 
-export interface AIReportReadyEvent {
-  report_id: string;
-  summary?: string;
+export interface A2UIDeltaEvent {
+  content: string;
+  agent?: string;
 }
 
-export interface SSEPlanStep {
-  [key: string]: unknown;
-  id?: string;
-  content?: string;
-  title?: string;
-  tool_hint?: string;
-  status?: string;
-  summary?: string;
+export interface A2UIToolCallEvent {
+  call_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
 }
 
-// 工具调用事件
-export interface SSEToolCallEvent {
-  turn_id?: string;
-  call_id?: string;
-  tool_name?: string;
-  tool_display_name?: string;
-  arguments?: string;
+export interface A2UIToolApprovalEvent {
+  approval_id: string;
+  call_id: string;
+  tool_name: string;
+  preview: Record<string, unknown>;
+  timeout_seconds: number;
 }
 
-// 工具审批事件
-export interface SSEToolApprovalEvent {
-  turn_id?: string;
-  call_id?: string;
-  tool_name?: string;
-  tool_display_name?: string;
-  risk?: 'low' | 'medium' | 'high';
-  summary?: string;
-  arguments_json?: string;
-  approval_id?: string;
-  checkpoint_id?: string;
-  plan_id?: string;
-  step_id?: string;
+export interface A2UIToolResultEvent {
+  call_id: string;
+  tool_name: string;
+  content: string;
 }
 
-// 工具结果事件
-export interface SSEToolResultEvent {
-  turn_id?: string;
-  call_id?: string;
-  tool_name?: string;
-  result?: string;
-}
-
-interface SSEDeltaEvent {
-  contentChunk: string;
-  turn_id?: string;
-}
-
-export interface SSEClarifyRequiredEvent {
-  kind?: 'clarify';
-  title?: string;
-  message?: string;
-  candidates?: Array<Record<string, unknown>>;
-}
-
-export interface SSEReplanStartedEvent {
-  reason?: string;
-  previous_plan_id?: string;
-}
-
-function toContentChunk(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') {
-    return '';
-  }
-  const data = payload as Record<string, unknown>;
-  const direct = data.contentChunk ?? data.content ?? data.message;
-  if (typeof direct === 'string') {
-    return direct;
-  }
-  if (direct == null) {
-    return '';
-  }
-  try {
-    return JSON.stringify(direct);
-  } catch {
-    return String(direct);
-  }
-}
-
-// normalizeVisibleStreamChunk 将模型内部协议 JSON 转换为用户可见文本。
-// - {"steps": [...]} 视为内部计划，不透传
-// - {"response": "..."} 解包 response 文本
-// - 其他内容原样透传
-export function normalizeVisibleStreamChunk(rawChunk: string): string {
-  const chunk = typeof rawChunk === 'string' ? rawChunk : '';
-  if (!chunk) {
-    return '';
-  }
-  const trimmedForJSON = chunk.trim();
-  if (!trimmedForJSON) {
-    return '';
-  }
-  if (!trimmedForJSON.startsWith('{') || !trimmedForJSON.endsWith('}')) {
-    return chunk;
-  }
-
-  let payload: Record<string, unknown>;
-  try {
-    payload = JSON.parse(trimmedForJSON) as Record<string, unknown>;
-  } catch {
-    return chunk;
-  }
-  if (!payload || typeof payload !== 'object') {
-    return chunk;
-  }
-
-  const keys = Object.keys(payload);
-  const hasOnlyResponseEnvelope = keys.length > 0
-    && keys.every((key) => key === 'response' || key === 'reasoning' || key === 'metadata');
-  if (hasOnlyResponseEnvelope && typeof payload.response === 'string') {
-    return payload.response;
-  }
-
-  const hasOnlyStepsEnvelope = keys.length > 0
-    && keys.every((key) => key === 'steps' || key === 'plan' || key === 'reasoning' || key === 'metadata');
-  if (hasOnlyStepsEnvelope && Array.isArray(payload.steps)) {
-    return '';
-  }
-
-  return chunk;
-}
-
-function normalizeErrorEvent(payload: unknown): SSEErrorEvent {
-  const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as SSEErrorEvent) };
+function normalizeErrorEvent(payload: unknown): A2UIErrorEvent {
+  const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as A2UIErrorEvent) };
   if (!errorPayload.code && errorPayload.error_code) {
     errorPayload.code = errorPayload.error_code;
   }
   return errorPayload;
 }
 
-export interface SSEDoneEvent {
-  session: AISession;
-  stream_state?: 'ok' | 'partial' | 'failed';
-  turn_recommendations?: EmbeddedRecommendation[];
-  tool_summary?: {
-    calls: number;
-    results: number;
-    missing?: string[];
-    missing_call_ids?: string[];
-  };
-  turn_id?: string;
+export interface A2UIDoneEvent {
+  run_id: string;
+  status: 'completed';
+  iterations: number;
 }
 
-interface SSEErrorEvent {
+export interface A2UIErrorEvent {
   message: string;
   code?: string;
   error_code?: string;
-  stage?: string;
   recoverable?: boolean;
-  tool_summary?: {
-    calls: number;
-    results: number;
-    missing?: string[];
-    missing_call_ids?: string[];
-  };
-  turn_id?: string;
-}
-interface SSEThinkingEvent {
-  contentChunk: string;
-  turn_id?: string;
+  run_id?: string;
 }
 
-export interface AIChatStreamHandlers {
-  onInit?: (payload: AIInitEvent) => void;
-  onIntent?: (payload: AIIntentEvent) => void;
-  onStatus?: (payload: AIStatusEvent) => void;
-  onProgress?: (payload: AIProgressEvent) => void;
-  onReportReady?: (payload: AIReportReadyEvent) => void;
-  onMeta?: (payload: SSEMetaEvent) => void;
-  onDelta?: (payload: SSEDeltaEvent) => void;
-  onThinkingDelta?: (payload: SSEThinkingEvent) => void;
-  onToolCall?: (payload: SSEToolCallEvent) => void;
-  onToolApproval?: (payload: SSEToolApprovalEvent) => void;
-  onToolResult?: (payload: SSEToolResultEvent) => void;
-  onDone?: (payload: SSEDoneEvent) => void;
-  onError?: (payload: SSEErrorEvent) => void;
-  onHeartbeat?: (payload: { turn_id?: string; status?: string }) => void;
+export interface A2UIStreamHandlers {
+  onMeta?: (payload: A2UIMetaEvent) => void;
+  onAgentHandoff?: (payload: A2UIAgentHandoffEvent) => void;
+  onPlan?: (payload: A2UIPlanEvent) => void;
+  onReplan?: (payload: A2UIReplanEvent) => void;
+  onDelta?: (payload: A2UIDeltaEvent) => void;
+  onToolCall?: (payload: A2UIToolCallEvent) => void;
+  onToolApproval?: (payload: A2UIToolApprovalEvent) => void;
+  onToolResult?: (payload: A2UIToolResultEvent) => void;
+  onDone?: (payload: A2UIDoneEvent) => void;
+  onError?: (payload: A2UIErrorEvent) => void;
 }
 
 function dispatchAIStreamEvent(
   chunk: string,
-  handlers: AIChatStreamHandlers,
-  options?: { normalizeVisibleDelta?: boolean },
+  handlers: A2UIStreamHandlers,
 ) {
   const lines = chunk.split('\n');
   let eventType = 'message';
@@ -372,47 +247,30 @@ function dispatchAIStreamEvent(
     payload = { message: rawData };
   }
 
-  const normalizeVisibleDelta = options?.normalizeVisibleDelta ?? false;
-  if (eventType === 'init') {
-    handlers.onInit?.(payload as AIInitEvent);
-  } else if (eventType === 'intent') {
-    handlers.onIntent?.(payload as AIIntentEvent);
-  } else if (eventType === 'status') {
-    handlers.onStatus?.(payload as AIStatusEvent);
-  } else if (eventType === 'progress') {
-    handlers.onProgress?.(payload as AIProgressEvent);
-  } else if (eventType === 'report_ready') {
-    handlers.onReportReady?.(payload as AIReportReadyEvent);
-  } else if (eventType === 'meta') {
-    handlers.onMeta?.(payload as SSEMetaEvent);
-  } else if (eventType === 'delta' || eventType === 'message') {
-    const contentChunk = normalizeVisibleDelta
-      ? normalizeVisibleStreamChunk(toContentChunk(payload))
-      : toContentChunk(payload);
-    if (contentChunk) {
-      handlers.onDelta?.({
-        ...(typeof payload === 'object' && payload ? payload as Record<string, unknown> : {}),
-        contentChunk,
-      } as SSEDeltaEvent);
-    }
+  if (eventType === 'meta') {
+    handlers.onMeta?.(payload as A2UIMetaEvent);
+  } else if (eventType === 'agent_handoff') {
+    handlers.onAgentHandoff?.(payload as A2UIAgentHandoffEvent);
+  } else if (eventType === 'plan') {
+    handlers.onPlan?.(payload as A2UIPlanEvent);
+  } else if (eventType === 'replan') {
+    handlers.onReplan?.(payload as A2UIReplanEvent);
+  } else if (eventType === 'delta') {
+    handlers.onDelta?.(payload as A2UIDeltaEvent);
   } else if (eventType === 'done') {
-    handlers.onDone?.(payload as SSEDoneEvent);
+    handlers.onDone?.(payload as A2UIDoneEvent);
   } else if (eventType === 'error') {
     handlers.onError?.(normalizeErrorEvent(payload));
-  } else if (eventType === 'thinking_delta') {
-    handlers.onThinkingDelta?.(payload as SSEThinkingEvent);
   } else if (eventType === 'tool_call') {
-    handlers.onToolCall?.(payload as SSEToolCallEvent);
+    handlers.onToolCall?.(payload as A2UIToolCallEvent);
   } else if (eventType === 'tool_approval') {
-    handlers.onToolApproval?.(payload as SSEToolApprovalEvent);
+    handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);
   } else if (eventType === 'tool_result') {
-    handlers.onToolResult?.(payload as SSEToolResultEvent);
-  } else if (eventType === 'heartbeat') {
-    handlers.onHeartbeat?.(payload as { turn_id?: string; status?: string });
+    handlers.onToolResult?.(payload as A2UIToolResultEvent);
   }
 }
 
-async function consumeAIStream(response: Response, handlers: AIChatStreamHandlers, options?: { normalizeVisibleDelta?: boolean }): Promise<void> {
+async function consumeAIStream(response: Response, handlers: A2UIStreamHandlers): Promise<void> {
   if (!response.ok || !response.body) {
     throw new Error(`请求失败: ${response.status}`);
   }
@@ -429,11 +287,11 @@ async function consumeAIStream(response: Response, handlers: AIChatStreamHandler
     buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
     const segments = buffer.split('\n\n');
     buffer = segments.pop() || '';
-    segments.forEach((segment) => dispatchAIStreamEvent(segment, handlers, options));
+    segments.forEach((segment) => dispatchAIStreamEvent(segment, handlers));
   }
 
   if (buffer.trim()) {
-    dispatchAIStreamEvent(buffer, handlers, options);
+    dispatchAIStreamEvent(buffer, handlers);
   }
 }
 
@@ -636,7 +494,7 @@ export interface UsageLogsParams extends UsageStatsParams {
 // AI功能API
 export const aiApi = {
   // AI对话（SSE流式）
-  async chatStream(params: AIChatParams, handlers: AIChatStreamHandlers, signal?: AbortSignal): Promise<void> {
+  async chatStream(params: AIChatParams, handlers: A2UIStreamHandlers, signal?: AbortSignal): Promise<void> {
     const base = import.meta.env.VITE_API_BASE || '/api/v1';
     const token = localStorage.getItem('token');
     const projectId = localStorage.getItem('projectId');
@@ -706,7 +564,7 @@ export const aiApi = {
       }),
     });
 
-    const wrappedHandlers: AIChatStreamHandlers = {
+    const wrappedHandlers: A2UIStreamHandlers = {
       ...handlers,
       onDone: (payload) => {
         handlers.onDone?.(payload);
@@ -719,10 +577,6 @@ export const aiApi = {
           toolPending = false;
           clearToolTimer();
         }
-      },
-      onThinkingDelta: (payload) => {
-        handlers.onThinkingDelta?.(payload);
-        touchActivity();
       },
       onToolCall: (payload) => {
         handlers.onToolCall?.(payload);
@@ -739,14 +593,10 @@ export const aiApi = {
         toolPending = false;
         clearToolTimer();
       },
-      onHeartbeat: (payload) => {
-        handlers.onHeartbeat?.(payload);
-        touchActivity();
-      },
     };
 
     try {
-      await consumeAIStream(response, wrappedHandlers, { normalizeVisibleDelta: true });
+      await consumeAIStream(response, wrappedHandlers);
     } catch (err) {
       if (!timedOut) {
         throw err;
@@ -848,7 +698,7 @@ export const aiApi = {
     chainId: string,
     nodeId: string,
     approved: boolean,
-    handlers: AIChatStreamHandlers,
+    handlers: A2UIStreamHandlers,
     reason?: string,
     editedArguments?: string,
   ): Promise<void> {
@@ -871,7 +721,7 @@ export const aiApi = {
       }),
     });
 
-    await consumeAIStream(response, handlers, { normalizeVisibleDelta: true });
+    await consumeAIStream(response, handlers);
   },
 
   async listApprovals(status?: string): Promise<ApiResponse<ApprovalTicket[]>> {
