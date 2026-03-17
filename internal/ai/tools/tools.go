@@ -14,6 +14,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/dynamictool/toolsearch"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/cicd"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/deployment"
@@ -21,6 +22,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/host"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/infrastructure"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/kubernetes"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/middleware"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/monitor"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/service"
 )
@@ -197,4 +199,59 @@ func ToolMiddleware(ctx context.Context) (adk.ChatModelAgentMiddleware, error) {
 	return toolsearch.New(ctx, &toolsearch.Config{
 		DynamicTools: GetAllTools(ctx),
 	})
+}
+
+// ApprovalMiddleware 创建审批中间件。
+//
+// 该中间件拦截高风险工具调用，通过 Eino 的 Interrupt/Resume 机制
+// 实现 Human-in-the-Loop (HITL) 工作流。
+//
+// 使用示例:
+//
+//	mw := tools.ApprovalMiddleware(nil) // 使用默认配置
+//	agent := adk.WithMiddleware(baseAgent, mw)
+//
+// 参数:
+//   - cfg: 中间件配置，nil 表示使用默认配置
+//
+// 返回: 可应用到 Agent 的中间件实例
+func ApprovalMiddleware(cfg *middleware.ApprovalMiddlewareConfig) adk.ChatModelAgentMiddleware {
+	return middleware.ApprovalMiddleware(cfg)
+}
+
+// ApprovalToolMiddleware 创建用于 ToolsConfig 的审批中间件。
+//
+// 该函数返回一个 compose.ToolMiddleware，可以直接在 ToolsConfig.ToolCallMiddlewares 中使用。
+// 适用于 planexecute.Executor 等 Agent 配置。
+//
+// 使用示例:
+//
+//	approvalMW := tools.ApprovalToolMiddleware(nil)
+//	toolsConfig := adk.ToolsConfig{
+//	    ToolsNodeConfig: compose.ToolsNodeConfig{
+//	        Tools: toolset,
+//	        ToolCallMiddlewares: []compose.ToolMiddleware{approvalMW},
+//	    },
+//	}
+//	executor, _ := planexecute.NewExecutor(ctx, &planexecute.ExecutorConfig{
+//	    Model:       model,
+//	    ToolsConfig: toolsConfig,
+//	})
+//
+// 参数:
+//   - cfg: 中间件配置，nil 表示使用默认配置
+//
+// 返回: 可添加到 ToolCallMiddlewares 的中间件
+func ApprovalToolMiddleware(cfg *middleware.ApprovalMiddlewareConfig) compose.ToolMiddleware {
+	return middleware.NewApprovalToolMiddleware(cfg)
+}
+
+// ApprovalToolMiddlewares 将多个审批中间件转换为 ToolMiddleware 列表。
+//
+// 参数:
+//   - middlewares: 审批中间件列表
+//
+// 返回: 可添加到 ToolCallMiddlewares 的中间件列表
+func ApprovalToolMiddlewares(middlewares ...adk.ChatModelAgentMiddleware) []compose.ToolMiddleware {
+	return middleware.AsToolMiddlewares(middlewares...)
 }

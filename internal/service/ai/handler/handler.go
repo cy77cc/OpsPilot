@@ -45,6 +45,7 @@ func NewAIHandlerWithDB(db *gorm.DB) *Handler {
 			ChatDAO:            aidao.NewAIChatDAO(db),
 			RunDAO:             aidao.NewAIRunDAO(db),
 			DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
+			ApprovalDAO:        aidao.NewAIApprovalTaskDAO(db),
 			AIRouter:           &noopAgent{},
 		},
 	}

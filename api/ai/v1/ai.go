@@ -130,3 +130,61 @@ type DiagnosisReportResponse struct {
 	Status          string   `json:"status,omitempty"`
 	GeneratedAt     string   `json:"generated_at,omitempty"`
 }
+
+// =============================================================================
+// 审批相关类型
+// =============================================================================
+
+// ApprovalPreview 审批预览信息。
+type ApprovalPreview struct {
+	Action    string   `json:"action"`
+	Target    string   `json:"target"`
+	RiskLevel string   `json:"risk_level"`
+	Impact    string   `json:"impact"`
+	Warnings  []string `json:"warnings,omitempty"`
+}
+
+// ApprovalInfoResponse 审批请求详情响应。
+type ApprovalInfoResponse struct {
+	ApprovalID     string          `json:"approval_id"`
+	CallID         string          `json:"call_id"`
+	ToolName       string          `json:"tool_name"`
+	Arguments      string          `json:"arguments"`
+	Preview        ApprovalPreview `json:"preview"`
+	TimeoutSeconds int             `json:"timeout_seconds,omitempty"`
+	CreatedAt      string          `json:"created_at,omitempty"`
+	ExpiresAt      string          `json:"expires_at,omitempty"`
+}
+
+// SubmitApprovalRequest 提交审批结果请求。
+type SubmitApprovalRequest struct {
+	Approved         bool   `json:"approved"`
+	DisapproveReason string `json:"disapprove_reason,omitempty"`
+	Comment          string `json:"comment,omitempty"`
+}
+
+// SubmitApprovalResponse 提交审批结果响应。
+type SubmitApprovalResponse struct {
+	ApprovalID string `json:"approval_id"`
+	Status     string `json:"status"` // approved, rejected, expired
+	Message    string `json:"message,omitempty"`
+}
+
+// ResumeApprovalRequest 恢复审批执行的请求（SSE 流式）。
+type ResumeApprovalRequest struct {
+	SessionID  string `json:"session_id"`
+	ApprovalID string `json:"approval_id"`
+	Approved   bool   `json:"approved"`
+	Reason     string `json:"reason,omitempty"`
+	Comment    string `json:"comment,omitempty"`
+}
+
+// ApprovalStatusResponse 审批状态响应。
+type ApprovalStatusResponse struct {
+	ApprovalID string `json:"approval_id"`
+	Status     string `json:"status"` // pending, approved, rejected, expired
+	ToolName   string `json:"tool_name"`
+	ApprovedBy string `json:"approved_by,omitempty"`
+	ApprovedAt string `json:"approved_at,omitempty"`
+	Comment    string `json:"comment,omitempty"`
+}

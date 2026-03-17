@@ -165,3 +165,32 @@ type AICheckpoint struct {
 }
 
 func (AICheckpoint) TableName() string { return "ai_checkpoints" }
+
+// AIApprovalTask 存储工具审批任务，用于 Human-in-the-Loop 工作流。
+//
+// 当高风险工具需要人工审批时，系统会创建审批任务记录，
+// 用户确认或拒绝后，状态更新并通过 checkpoint 恢复执行。
+type AIApprovalTask struct {
+	ID               uint64         `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ApprovalID       string         `gorm:"column:approval_id;type:varchar(64);not null;uniqueIndex" json:"approval_id"`
+	CheckpointID     string         `gorm:"column:checkpoint_id;type:varchar(64);not null;index" json:"checkpoint_id"`
+	SessionID        string         `gorm:"column:session_id;type:varchar(64);not null;index" json:"session_id"`
+	RunID            string         `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"`
+	UserID           uint64         `gorm:"column:user_id;not null;default:0;index" json:"user_id"`
+	ToolName         string         `gorm:"column:tool_name;type:varchar(64);not null" json:"tool_name"`
+	ToolCallID       string         `gorm:"column:tool_call_id;type:varchar(64);not null" json:"tool_call_id"`
+	ArgumentsJSON    string         `gorm:"column:arguments_json;type:longtext;not null" json:"arguments_json"`
+	PreviewJSON      string         `gorm:"column:preview_json;type:longtext;not null" json:"preview_json"`
+	Status           string         `gorm:"column:status;type:varchar(16);not null;default:'pending';index" json:"status"` // pending, approved, rejected, expired
+	ApprovedBy       uint64         `gorm:"column:approved_by;not null;default:0" json:"approved_by"`
+	DisapproveReason string         `gorm:"column:disapprove_reason;type:text" json:"disapprove_reason"`
+	Comment          string         `gorm:"column:comment;type:text" json:"comment"`
+	TimeoutSeconds   int            `gorm:"column:timeout_seconds;not null;default:300" json:"timeout_seconds"`
+	ExpiresAt        *time.Time     `gorm:"column:expires_at;index" json:"expires_at"`
+	DecidedAt        *time.Time     `gorm:"column:decided_at" json:"decided_at"`
+	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
+	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
+}
+
+func (AIApprovalTask) TableName() string { return "ai_approval_tasks" }

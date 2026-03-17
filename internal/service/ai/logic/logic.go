@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -48,6 +49,7 @@ type Logic struct {
 	ChatDAO            *aidao.AIChatDAO
 	RunDAO             *aidao.AIRunDAO
 	DiagnosisReportDAO *aidao.AIDiagnosisReportDAO
+	ApprovalDAO        *aidao.AIApprovalTaskDAO
 	CheckpointStore    adk.CheckPointStore
 	AIRouter           adk.ResumableAgent
 }
@@ -68,6 +70,7 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		ChatDAO:            aidao.NewAIChatDAO(svcCtx.DB),
 		RunDAO:             aidao.NewAIRunDAO(svcCtx.DB),
 		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(svcCtx.DB),
+		ApprovalDAO:        aidao.NewAIApprovalTaskDAO(svcCtx.DB),
 		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 	}
@@ -152,6 +155,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		EnableStreaming: true,
 		CheckPointStore: l.CheckpointStore,
 	})
+
 	agentInput := []*schema.Message{
 		schema.UserMessage(l.buildAugmentedMessage(ctx, scene, input.Context, input.Message)),
 	}
@@ -560,4 +564,246 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen]
+}
+
+// =============================================================================
+// 审批相关方法
+// =============================================================================
+
+// SubmitApprovalInput 提交审批结果的输入参数。
+type SubmitApprovalInput struct {
+	ApprovalID       string
+	Approved         bool
+	DisapproveReason string
+	Comment          string
+	UserID           uint64
+}
+
+// SubmitApprovalOutput 提交审批结果的输出。
+type SubmitApprovalOutput struct {
+	ApprovalID string `json:"approval_id"`
+	Status     string `json:"status"`
+	Message    string `json:"message,omitempty"`
+}
+
+// SubmitApproval 提交审批结果。
+//
+// 该方法仅更新审批任务状态，不恢复执行。
+// 用户在前端审批界面点击"批准"或"拒绝"后调用。
+func (l *Logic) SubmitApproval(ctx context.Context, input SubmitApprovalInput) (*SubmitApprovalOutput, error) {
+	if l.ApprovalDAO == nil {
+		return nil, fmt.Errorf("approval service not initialized")
+	}
+
+	// 获取审批任务
+	task, err := l.ApprovalDAO.GetByApprovalID(ctx, input.ApprovalID)
+	if err != nil {
+		return nil, fmt.Errorf("get approval task: %w", err)
+	}
+	if task == nil {
+		return nil, fmt.Errorf("approval task not found")
+	}
+
+	// 检查状态
+	if task.Status != "pending" {
+		return &SubmitApprovalOutput{
+			ApprovalID: input.ApprovalID,
+			Status:     task.Status,
+			Message:    fmt.Sprintf("approval already %s", task.Status),
+		}, nil
+	}
+
+	// 检查是否过期
+	if task.ExpiresAt != nil && task.ExpiresAt.Before(time.Now()) {
+		_ = l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, "expired", input.UserID, "", "")
+		return &SubmitApprovalOutput{
+			ApprovalID: input.ApprovalID,
+			Status:     "expired",
+			Message:    "approval has expired",
+		}, nil
+	}
+
+	// 更新状态
+	status := "approved"
+	if !input.Approved {
+		status = "rejected"
+	}
+
+	if err := l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, status, input.UserID, input.DisapproveReason, input.Comment); err != nil {
+		return nil, fmt.Errorf("update approval status: %w", err)
+	}
+
+	return &SubmitApprovalOutput{
+		ApprovalID: input.ApprovalID,
+		Status:     status,
+		Message:    fmt.Sprintf("approval %s successfully", status),
+	}, nil
+}
+
+// ResumeApprovalInput 恢复审批执行的输入参数。
+type ResumeApprovalInput struct {
+	SessionID  string
+	ApprovalID string
+	Approved   bool
+	Reason     string
+	Comment    string
+	UserID     uint64
+}
+
+// ResumeApproval 恢复审批执行（SSE 流式）。
+//
+// 该方法通过 Runner.ResumeWithParams 恢复 AI Agent 执行，
+// 并通过 SSE 流式返回后续执行结果。
+func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, emit EventEmitter) error {
+	if l.ApprovalDAO == nil || l.CheckpointStore == nil || l.AIRouter == nil {
+		emit(airuntime.NewErrorEvent("", fmt.Errorf("AI service not initialized")).Event, nil)
+		return nil
+	}
+
+	// 获取审批任务
+	task, err := l.ApprovalDAO.GetByApprovalID(ctx, input.ApprovalID)
+	if err != nil {
+		return fmt.Errorf("get approval task: %w", err)
+	}
+	if task == nil {
+		return fmt.Errorf("approval task not found")
+	}
+
+	// 验证用户权限
+	if l.ChatDAO != nil {
+		session, err := l.ChatDAO.GetSession(ctx, task.SessionID, input.UserID, "")
+		if err != nil {
+			return fmt.Errorf("verify session: %w", err)
+		}
+		if session == nil {
+			return fmt.Errorf("session not found or no permission")
+		}
+	}
+
+	// 更新审批状态
+	if task.Status == "pending" {
+		status := "approved"
+		if !input.Approved {
+			status = "rejected"
+		}
+		if err := l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, status, input.UserID, input.Reason, input.Comment); err != nil {
+			return fmt.Errorf("update approval status: %w", err)
+		}
+	}
+
+	// 构建恢复参数
+	approvalResult := map[string]any{
+		"approved":           input.Approved,
+		"disapprove_reason":  input.Reason,
+		"comment":            input.Comment,
+		"approved_by":        input.UserID,
+		"approved_at":        time.Now().Format(time.RFC3339),
+	}
+
+	// 发送 meta 事件
+	meta := airuntime.NewMetaEvent(task.SessionID, task.RunID, 1)
+	emit(meta.Event, meta.Data)
+
+	// 创建 Runner 并恢复执行
+	runner := adk.NewRunner(ctx, adk.RunnerConfig{
+		Agent:           l.AIRouter,
+		EnableStreaming: true,
+		CheckPointStore: l.CheckpointStore,
+	})
+
+	// 使用 ResumeWithParams 恢复执行
+	resumeParams := &adk.ResumeParams{
+		Targets: map[string]any{
+			task.ToolCallID: approvalResult,
+		},
+	}
+
+	iterator, err := runner.ResumeWithParams(ctx, task.CheckpointID, resumeParams)
+	if err != nil {
+		return fmt.Errorf("resume execution: %w", err)
+	}
+
+	// 消费事件
+	var assistantContent strings.Builder
+	projector := airuntime.NewStreamProjector()
+
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+
+		if event.Err != nil {
+			projected := projector.Fail(task.RunID, event.Err)
+			emit(projected.Event, projected.Data)
+			return nil
+		}
+
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
+			for {
+				msg, err := event.Output.MessageOutput.MessageStream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					projected := projector.Fail(task.RunID, err)
+					emit(projected.Event, projected.Data)
+					break
+				}
+				if msg == nil {
+					continue
+				}
+
+				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
+				chunkEvent.AgentName = event.AgentName
+				consumeProjectedEvents(projector.Consume(chunkEvent), emit, &assistantContent)
+			}
+			continue
+		}
+
+		consumeProjectedEvents(projector.Consume(event), emit, &assistantContent)
+	}
+
+	// 发送 done 事件
+	done := projector.Finish(task.RunID)
+	emit(done.Event, done.Data)
+
+	return nil
+}
+
+// GetApproval 获取审批详情。
+func (l *Logic) GetApproval(ctx context.Context, approvalID string, userID uint64) (*model.AIApprovalTask, error) {
+	if l.ApprovalDAO == nil {
+		return nil, nil
+	}
+
+	task, err := l.ApprovalDAO.GetByApprovalID(ctx, approvalID)
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, nil
+	}
+
+	// 验证用户权限
+	if l.ChatDAO != nil && task.SessionID != "" {
+		session, err := l.ChatDAO.GetSession(ctx, task.SessionID, userID, "")
+		if err != nil {
+			return nil, err
+		}
+		if session == nil {
+			return nil, nil
+		}
+	}
+
+	return task, nil
+}
+
+// ListPendingApprovals 列出用户的待处理审批。
+func (l *Logic) ListPendingApprovals(ctx context.Context, userID uint64) ([]model.AIApprovalTask, error) {
+	if l.ApprovalDAO == nil {
+		return []model.AIApprovalTask{}, nil
+	}
+
+	return l.ApprovalDAO.ListPendingByUserID(ctx, userID, 50)
 }

@@ -8,10 +8,11 @@ import (
 )
 
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := aiHandler.NewAIHandler(svcCtx) 
+	h := aiHandler.NewAIHandler(svcCtx)
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
+		// 对话相关
 		g.POST("/chat", h.Chat)
 		g.GET("/sessions", h.ListSessions)
 		g.POST("/sessions", h.CreateSession)
@@ -19,5 +20,11 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.DELETE("/sessions/:id", h.DeleteSession)
 		g.GET("/runs/:runId", h.GetRun)
 		g.GET("/diagnosis/:reportId", h.GetDiagnosisReport)
+
+		// 审批相关 (Human-in-the-Loop)
+		g.GET("/approvals/pending", h.ListPendingApprovals)
+		g.GET("/approvals/:id", h.GetApproval)
+		g.POST("/approvals/:id/submit", h.SubmitApproval)
+		g.POST("/approvals/:id/resume", h.ResumeApproval)
 	}
 }

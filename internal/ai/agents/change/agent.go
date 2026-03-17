@@ -7,11 +7,16 @@
 //	  ├── Executor  — 挂载只读工具 + 写操作工具（写操作内置 approvalGate 审批中断）
 //	  └── Replanner — 变更后动态调整验证步骤
 //
-// 写操作工具通过 approvalGate 在执行前触发 adk.Interrupt，
-// 暂停 Agent 并创建 AIApprovalTask，等待人工批准后通过 ResumeWithParams 恢复。
+// 写操作工具通过 ApprovalMiddleware 在执行前触发 tool.StatefulInterrupt，
+// 暂停 Agent 并发送 tool_approval 事件，等待人工批准后通过 ResumeWithParams 恢复。
 //
-// Phase 1 说明：写操作工具（scale/restart/rollback/delete_pod）待 Phase 2 实现，
-// 当前仅挂载只读工具作为占位，Agent 架构已就绪。
+// HITL (Human-in-the-Loop) 工作流:
+//  1. Executor 调用高风险工具（如 host_batch, k8s_delete_pod）
+//  2. ApprovalMiddleware 拦截调用，触发 StatefulInterrupt
+//  3. Runner 检测到中断，通过 SSE 发送 tool_approval 事件给前端
+//  4. 用户在前端审批界面确认或拒绝
+//  5. 审批结果通过 API 携带 ApprovalResult 调用 ResumeWithParams 恢复执行
+//  6. ApprovalMiddleware 根据审批结果决定继续执行或返回拒绝消息
 package change
 
 import (
@@ -92,11 +97,19 @@ func newChangePlanner(ctx context.Context) (adk.Agent, error) {
 //   - 只读 K8s 工具（用于预检和验证步骤）
 //   - 写操作工具（Phase 2 实现，每个工具内置 approvalGate）
 //
+// 审批中间件集成说明:
+//   - 高风险工具（host_batch, k8s_delete_pod 等）通过 ApprovalMiddleware 拦截
+//   - 拦截后触发 StatefulInterrupt，暂停执行并等待人工审批
+//   - 审批通过后通过 ResumeWithParams 恢复执行
+//
 // Phase 1：仅挂载只读工具，写工具待 Phase 2 接入。
 func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 	// Phase 2 将调用 tools.NewChangeTools(ctx)，其中包含写操作工具
 	// 当前仅使用只读工具，确保 Phase 1 架构验证可通过
 	toolset := tools.NewChangeTools(ctx)
+
+	// 创建审批中间件，用于拦截高风险工具调用
+	approvalMW := tools.ApprovalToolMiddleware(nil)
 
 	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
 		Timeout:  120 * time.Second,
@@ -112,6 +125,8 @@ func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				Tools: toolset,
+				// 注册审批中间件，拦截高风险工具调用
+				ToolCallMiddlewares: []compose.ToolMiddleware{approvalMW},
 			},
 		},
 	})
