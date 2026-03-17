@@ -77,9 +77,9 @@ func NewQAAgent(ctx context.Context) (adk.Agent, error) {
 
 	// TODO
 	// searchTool, err := newSearchKnowledgeTool(retriever)
-	if err != nil {
-		return nil, fmt.Errorf("qa agent: build search tool: %w", err)
-	}
+	// if err != nil {
+	// 	return nil, fmt.Errorf("qa agent: build search tool: %w", err)
+	// }
 
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "QAAgent",
