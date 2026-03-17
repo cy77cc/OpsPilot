@@ -41,11 +41,12 @@ func (h *Handler) ListSessions(c *gin.Context) {
 			messageItems := make([]gin.H, 0, len(messages))
 			for _, message := range messages {
 				messageItems = append(messageItems, gin.H{
-					"id":         message.ID,
-					"role":       message.Role,
-					"content":    message.Content,
-					"status":     message.Status,
-					"created_at": formatTime(message.CreatedAt),
+					"id":             message.ID,
+					"session_id_num": message.SessionIDNum,
+					"role":           message.Role,
+					"content":        message.Content,
+					"status":         message.Status,
+					"created_at":     formatTime(message.CreatedAt),
 				})
 			}
 			summary["messages"] = messageItems
@@ -68,11 +69,12 @@ func (h *Handler) GetSession(c *gin.Context) {
 	messageItems := make([]gin.H, 0, len(messages))
 	for _, message := range messages {
 		messageItems = append(messageItems, gin.H{
-			"id":         message.ID,
-			"role":       message.Role,
-			"content":    message.Content,
-			"status":     message.Status,
-			"created_at": formatTime(message.CreatedAt),
+			"id":             message.ID,
+			"session_id_num": message.SessionIDNum,
+			"role":           message.Role,
+			"content":        message.Content,
+			"status":         message.Status,
+			"created_at":     formatTime(message.CreatedAt),
 		})
 	}
 	httpx.OK(c, gin.H{

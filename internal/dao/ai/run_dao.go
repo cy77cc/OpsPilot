@@ -1,7 +1,8 @@
-package ai 
+package ai
 
 import (
 	"context"
+	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
@@ -35,6 +36,9 @@ func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIR
 		"progress_summary":     update.ProgressSummary,
 		"error_message":        update.ErrorMessage,
 	}
+	if isTerminalRunStatus(update.Status) {
+		updates["finished_at"] = time.Now()
+	}
 	if update.IntentType != "" {
 		updates["intent_type"] = update.IntentType
 	}
@@ -45,6 +49,15 @@ func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIR
 		Model(&model.AIRun{}).
 		Where("id = ?", runID).
 		Updates(updates).Error
+}
+
+func isTerminalRunStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
 }
 
 func (d *AIRunDAO) GetRun(ctx context.Context, runID string) (*model.AIRun, error) {

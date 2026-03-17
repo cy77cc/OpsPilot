@@ -11,7 +11,6 @@ package runtime
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -50,32 +49,7 @@ var publicEventNames = map[string]struct{}{
 	"error":         {},
 }
 
-// EncodePublicEvent 将事件名称和载荷序列化为 JSON 格式的 StreamEvent。
-//
-// 参数：
-//   - event: 事件名称，必须在 publicEventNames 白名单内
-//   - data:  事件载荷，任意可序列化类型
-//
-// 返回：序列化后的 JSON 字节切片；若事件名称不在白名单内则返回错误。
-//
-// 副作用：无。调用方需自行将返回字节写入 SSE 响应流。
-func EncodePublicEvent(event string, data any) ([]byte, error) {
-	if _, ok := publicEventNames[event]; !ok {
-		// 拒绝未登记的事件名，防止内部事件意外泄露到 SSE 流
-		return nil, fmt.Errorf("unsupported public event %q", event)
-	}
-	return json.Marshal(StreamEvent{
-		Event: event,
-		Data:  data,
-	})
-}
-
-type a2uiProjectionState struct {
-	totalPlanSteps int
-	lastIterations int
-}
-
-func newMetaEvent(sessionID, runID string, turn int) StreamEvent {
+func NewMetaEvent(sessionID, runID string, turn int) StreamEvent {
 	return StreamEvent{
 		Event: "meta",
 		Data: map[string]any{

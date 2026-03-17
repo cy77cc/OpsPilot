@@ -120,6 +120,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		SessionID:     sessionID,
 		UserMessageID: userMessage.ID,
 		Status:        "running",
+		TraceJSON:     "{}",
 	}
 	if err := l.RunDAO.CreateRun(ctx, run); err != nil {
 		return fmt.Errorf("create run: %w", err)

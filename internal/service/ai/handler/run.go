@@ -28,7 +28,14 @@ func (h *Handler) GetRun(c *gin.Context) {
 		"progress_summary":     progressSummary,
 		"risk_level":           run.RiskLevel,
 		"trace_id":             run.TraceID,
+		"trace_json":           run.TraceJSON,
 		"error_message":        run.ErrorMessage,
+		"started_at":           formatTime(run.StartedAt),
+		"created_at":           formatTime(run.CreatedAt),
+		"updated_at":           formatTime(run.UpdatedAt),
+	}
+	if run.FinishedAt != nil {
+		payload["finished_at"] = formatTime(*run.FinishedAt)
 	}
 	if report != nil {
 		if report.Summary != "" {

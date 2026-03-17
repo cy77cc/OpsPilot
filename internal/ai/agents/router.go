@@ -53,7 +53,7 @@ func NewRouter(ctx context.Context) (adk.ResumableAgent, error) {
 		return nil, err
 	}
 
-	qaAgent, err := qa.NewQAAgent(ctx, nil)
+	qaAgent, err := qa.NewQAAgent(ctx)
 	if err != nil {
 		return nil, err
 	}
