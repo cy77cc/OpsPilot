@@ -153,7 +153,6 @@ func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 		HostExec(ctx),
 		HostExecByTarget(ctx),
 		HostListInventory(ctx),
-		HostBatchExecPreview(ctx),
 		OSGetCPUMem(ctx),
 		OSGetDiskFS(ctx),
 		OSGetNetStat(ctx),
