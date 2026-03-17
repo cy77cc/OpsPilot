@@ -69,13 +69,14 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 // 流程:
 //  1. 创建或复用 Session
 //  2. 创建 User Message 和 Run 记录
-//  3. 发送 init 事件
+//  3. 发送 A2UI meta 事件
 //  4. 调用 AIRouter.Run() 获取 AsyncIterator
-//  5. 消费事件，转换为 SSE 推送
+//  5. 消费事件，投影为 A2UI 事件后推送
 //  6. 持久化结果
 func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) error {
 	if l.ChatDAO == nil || l.RunDAO == nil || l.AIRouter == nil {
-		emit("error", map[string]any{"message": "AI service not initialized"})
+		projected := errorEvent("", fmt.Errorf("AI service not initialized"))
+		emit(projected.Event, projected.Data)
 		return nil
 	}
 
@@ -124,11 +125,9 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("create run: %w", err)
 	}
 
-	// Step 4: 发送 init 事件
-	emit("init", map[string]any{
-		"session_id": sessionID,
-		"run_id":     run.ID,
-	})
+	// Step 4: 发送 A2UI meta 事件
+	meta := newMetaEvent(sessionID, run.ID, 1)
+	emit(meta.Event, meta.Data)
 
 	// Step 5: 调用 AIRouter
 	agentInput := &adk.AgentInput{
@@ -144,7 +143,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	var (
 		assistantMessage *model.AIChatMessage
 		assistantContent strings.Builder
-		intentEmitted    bool
+		streamState      = &a2uiProjectionState{}
 	)
 
 	// 创建 assistant message 占位
@@ -158,8 +157,6 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("create assistant message: %w", err)
 	}
 
-	emit("status", map[string]any{"status": "running"})
-
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -167,7 +164,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 
 		if event.Err != nil {
-			emit("error", map[string]any{"message": event.Err.Error()})
+			projected := errorEvent(run.ID, event.Err)
+			emit(projected.Event, projected.Data)
 			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 				Status:       "failed",
 				ErrorMessage: event.Err.Error(),
@@ -175,59 +173,55 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 			return nil
 		}
 
-		// 发送 intent 事件（首次进入子 Agent 时）
-		if !intentEmitted && event.AgentName != "" && event.AgentName != "OpsPilotAgent" {
-			intentType := mapAgentNameToIntentType(event.AgentName)
-			emit("intent", map[string]any{
-				"intent_type":    intentType,
-				"assistant_type": event.AgentName,
-			})
-			intentEmitted = true
-
-			// 更新 Run 的 IntentType
+		if handoff := projectAgentHandoff(event); handoff != nil {
+			emit(handoff.Event, handoff.Data)
+			handoffData, _ := handoff.Data.(map[string]any)
+			assistantType, _ := handoffData["to"].(string)
+			intentType, _ := handoffData["intent"].(string)
 			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 				IntentType:    intentType,
-				AssistantType: event.AgentName,
+				AssistantType: assistantType,
 			})
 		}
 
-		// 处理消息输出（Token 级流式）
-		if event.Output != nil && event.Output.MessageOutput != nil {
-			msgOutput := event.Output.MessageOutput
-
-			if msgOutput.IsStreaming && msgOutput.MessageStream != nil {
-				// 消费 MessageStream，逐 token 发送
-				for {
-					msg, err := msgOutput.MessageStream.Recv()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						emit("error", map[string]any{"message": err.Error()})
-						break
-					}
-
-					if msg != nil && msg.Content != "" {
-						assistantContent.WriteString(msg.Content)
-						emit("delta", map[string]any{"contentChunk": msg.Content})
-					}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
+			for {
+				msg, err := event.Output.MessageOutput.MessageStream.Recv()
+				if err == io.EOF {
+					break
 				}
-			} else if msgOutput.Message != nil {
-				// 非流式消息
-				content := msgOutput.Message.Content
-				if content != "" {
-					assistantContent.WriteString(content)
-					emit("delta", map[string]any{"contentChunk": content})
+				if err != nil {
+					projected := errorEvent(run.ID, err)
+					emit(projected.Event, projected.Data)
+					break
+				}
+				if msg == nil {
+					continue
+				}
+				projected := projectAssistantMessage(event.AgentName, msg, streamState)
+				for _, item := range projected {
+					if item.Event == "delta" {
+						if data, ok := item.Data.(map[string]any); ok {
+							if content, ok := data["content"].(string); ok {
+								assistantContent.WriteString(content)
+							}
+						}
+					}
+					emit(item.Event, item.Data)
 				}
 			}
+			continue
 		}
 
-		// 处理 Action
-		if event.Action != nil {
-			// Exit: Agent 执行完成
-			if event.Action.Exit {
-				emit("status", map[string]any{"status": "completed"})
+		for _, projected := range projectAgentEvent(event, streamState) {
+			if projected.Event == "delta" {
+				if data, ok := projected.Data.(map[string]any); ok {
+					if content, ok := data["content"].(string); ok {
+						assistantContent.WriteString(content)
+					}
+				}
 			}
+			emit(projected.Event, projected.Data)
 		}
 	}
 
@@ -251,10 +245,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	// Step 8: 发送 done 事件
-	emit("done", map[string]any{
-		"run_id": run.ID,
-		"status": "completed",
-	})
+	done := doneEvent(run.ID, streamState.lastIterations)
+	emit(done.Event, done.Data)
 
 	return nil
 }

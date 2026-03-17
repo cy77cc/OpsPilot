@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
-	"fmt"
-
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
@@ -21,6 +18,7 @@ func (h *Handler) Chat(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream; charset=utf-8")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
+	writer := NewSSEWriter(c.Writer)
 
 	if err := h.logic.Chat(c.Request.Context(), logic.ChatInput{
 		SessionID: req.SessionID,
@@ -29,37 +27,38 @@ func (h *Handler) Chat(c *gin.Context) {
 		Context:   mapFromAny(req.Context),
 		UserID:    httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
-		writeChatEvent(c, event, data)
+		writeChatEvent(writer, c, event, data)
 	}); err != nil {
 		httpx.ServerErr(c, err)
 		return
 	}
 }
 
-// writeChatEvent 写入标准 SSE 事件。
-//
-// 格式:
-//
-//	event: <event_type>
-//	data: <json_data>
-//
-//	(空行)
-func writeChatEvent(c *gin.Context, event string, data any) {
-	// 写入 event 行
-	_, _ = c.Writer.Write([]byte("event: "))
-	_, _ = c.Writer.Write([]byte(event))
-	_, _ = c.Writer.Write([]byte("\n"))
-
-	// 写入 data 行
-	payload, err := json.Marshal(data)
-	if err != nil {
-		payload = fmt.Appendf(payload, `{"message":%q}`, err.Error())
+func writeChatEvent(writer *SSEWriter, c *gin.Context, event string, data any) {
+	normalizedEvent, normalizedData := normalizeChatEvent(event, data)
+	if err := writer.WriteEvent(normalizedEvent, normalizedData); err == nil {
+		c.Writer.Flush()
 	}
-	_, _ = c.Writer.Write([]byte("data: "))
-	_, _ = c.Writer.Write(payload)
-	_, _ = c.Writer.Write([]byte("\n\n"))
+}
 
-	c.Writer.Flush()
+func normalizeChatEvent(event string, data any) (string, any) {
+	if event != "init" {
+		return event, data
+	}
+
+	payload, ok := data.(map[string]any)
+	if !ok {
+		return "meta", map[string]any{"turn": 1}
+	}
+
+	normalized := make(map[string]any, len(payload)+1)
+	for key, value := range payload {
+		normalized[key] = value
+	}
+	if _, exists := normalized["turn"]; !exists {
+		normalized["turn"] = 1
+	}
+	return "meta", normalized
 }
 
 func mapFromAny(value any) map[string]any {
