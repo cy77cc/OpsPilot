@@ -17,6 +17,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents"
+	aicheckpoint "github.com/cy77cc/OpsPilot/internal/ai/checkpoint"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -41,6 +42,7 @@ type Logic struct {
 	ChatDAO            *aidao.AIChatDAO
 	RunDAO             *aidao.AIRunDAO
 	DiagnosisReportDAO *aidao.AIDiagnosisReportDAO
+	CheckpointStore    adk.CheckPointStore
 	AIRouter           adk.ResumableAgent
 }
 
@@ -60,6 +62,7 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		ChatDAO:            aidao.NewAIChatDAO(svcCtx.DB),
 		RunDAO:             aidao.NewAIRunDAO(svcCtx.DB),
 		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(svcCtx.DB),
+		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 	}
 }
@@ -125,6 +128,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	if err := l.RunDAO.CreateRun(ctx, run); err != nil {
 		return fmt.Errorf("create run: %w", err)
 	}
+	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
+		SessionID: sessionID,
+		RunID:     run.ID,
+		UserID:    input.UserID,
+		Scene:     scene,
+	})
 
 	// Step 4: 发送 A2UI meta 事件
 	meta := newMetaEvent(sessionID, run.ID, 1)
@@ -135,7 +144,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           l.AIRouter,
 		EnableStreaming: true,
-		CheckPointStore: nil,
+		CheckPointStore: l.CheckpointStore,
 	})
 	agentInput := []*schema.Message{
 		schema.UserMessage(l.buildAugmentedMessage(ctx, scene, input.Context, input.Message)),

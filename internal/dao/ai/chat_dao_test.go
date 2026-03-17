@@ -112,7 +112,7 @@ func newAIDAOTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AIChatSession{}, &model.AIChatMessage{}, &model.AIRun{}); err != nil {
+	if err := db.AutoMigrate(&model.AIChatSession{}, &model.AIChatMessage{}, &model.AIRun{}, &model.AICheckpoint{}); err != nil {
 		t.Fatalf("migrate tables: %v", err)
 	}
 	return db
