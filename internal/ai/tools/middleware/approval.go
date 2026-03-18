@@ -531,6 +531,18 @@ func DefaultToolConfigs() map[string]*common.ToolRiskConfig {
 			NeedsApproval:  true,
 			PreviewGenerator: k8sScalePreviewGenerator,
 		},
+		"k8s_rollback_deployment": {
+			ToolName:       "k8s_rollback_deployment",
+			RiskLevel:      common.RiskLevelMedium,
+			NeedsApproval:  true,
+			PreviewGenerator: k8sRollbackPreviewGenerator,
+		},
+		"k8s_delete_deployment": {
+			ToolName:       "k8s_delete_deployment",
+			RiskLevel:      common.RiskLevelCritical,
+			NeedsApproval:  true,
+			PreviewGenerator: k8sDeleteDeploymentPreviewGenerator,
+		},
 	}
 }
 
@@ -650,6 +662,67 @@ func k8sScalePreviewGenerator(args string) common.ApprovalPreview {
 			"replicas": params.Replicas,
 		}
 		preview.Impact = fmt.Sprintf("Deployment %s 副本数将调整为 %d", preview.Target, params.Replicas)
+	}
+
+	return preview
+}
+
+// k8sRollbackPreviewGenerator K8s 回滚预览生成器。
+func k8sRollbackPreviewGenerator(args string) common.ApprovalPreview {
+	preview := common.ApprovalPreview{
+		Action:    "rollback_deployment",
+		RiskLevel: common.RiskLevelMedium,
+	}
+
+	var params struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		Revision  int64  `json:"revision"`
+	}
+
+	if err := json.Unmarshal([]byte(args), &params); err == nil {
+		if params.Namespace != "" {
+			preview.Target = params.Namespace + "/" + params.Name
+		} else {
+			preview.Target = params.Name
+		}
+		if params.Revision > 0 {
+			preview.Extra = map[string]any{
+				"target_revision": params.Revision,
+			}
+			preview.Impact = fmt.Sprintf("Deployment %s 将回滚到版本 %d", preview.Target, params.Revision)
+		} else {
+			preview.Impact = fmt.Sprintf("Deployment %s 将回滚到上一版本", preview.Target)
+		}
+		preview.Warnings = append(preview.Warnings, "回滚可能导致功能变更，请确认版本差异")
+	}
+
+	return preview
+}
+
+// k8sDeleteDeploymentPreviewGenerator K8s 删除 Deployment 预览生成器。
+func k8sDeleteDeploymentPreviewGenerator(args string) common.ApprovalPreview {
+	preview := common.ApprovalPreview{
+		Action:    "delete_deployment",
+		RiskLevel: common.RiskLevelCritical,
+	}
+
+	var params struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	}
+
+	if err := json.Unmarshal([]byte(args), &params); err == nil {
+		if params.Namespace != "" {
+			preview.Target = params.Namespace + "/" + params.Name
+		} else {
+			preview.Target = params.Name
+		}
+		preview.Impact = fmt.Sprintf("Deployment %s 将被永久删除，服务将停止", preview.Target)
+		preview.Warnings = append(preview.Warnings,
+			"此操作不可逆，请确认是否真的需要删除",
+			"删除 Deployment 将同时删除关联的 ReplicaSet 和 Pod",
+		)
 	}
 
 	return preview

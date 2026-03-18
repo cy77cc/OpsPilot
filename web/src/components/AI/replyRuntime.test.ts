@@ -5,6 +5,7 @@ import {
   applyMeta,
   applyPlan,
   applyReplan,
+  applyStepDelta,
   applyRecoverableError,
   applySoftTimeout,
   applyTerminalError,
@@ -210,6 +211,17 @@ describe('assistant reply runtime shape', () => {
         }),
       ]),
     );
+  });
+
+  it('appends executor markdown to the active step instead of the final body', () => {
+    let runtime = applyPlan(createEmptyAssistantRuntime(), {
+      steps: ['获取服务器列表', '批量执行健康检查'],
+      iteration: 0,
+    });
+    runtime = applyStepDelta(runtime, { content: '正在收集服务器清单\n' });
+    runtime = applyStepDelta(runtime, { content: '已找到 5 台服务器' });
+
+    expect(runtime.plan?.steps[0].content).toBe('正在收集服务器清单\n已找到 5 台服务器');
   });
 
   it('marks tool approval and result updates on the same activity row', () => {

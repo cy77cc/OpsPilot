@@ -187,13 +187,22 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 
 		if event.Err != nil {
-			projected := projector.Fail(run.ID, event.Err)
-			emit(projected.Event, projected.Data)
-			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
-				Status:       "failed",
-				ErrorMessage: event.Err.Error(),
-			})
-			return nil
+			if event.Output != nil && event.Output.MessageOutput.Message.Role == schema.Tool {
+				projected := projector.Fail(run.ID, event.Err)
+				emit(projected.Event, projected.Data)
+				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+					Status:       "failed",
+					ErrorMessage: event.Err.Error(),
+				})
+			} else {
+				projected := projector.Fail(run.ID, event.Err)
+				emit(projected.Event, projected.Data)
+				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+					Status:       "failed",
+					ErrorMessage: event.Err.Error(),
+				})
+				return nil
+			}
 		}
 
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
@@ -424,19 +433,6 @@ func (l *Logic) GetDiagnosisReport(ctx context.Context, userID uint64, reportID 
 	return report, nil
 }
 
-// mapAgentNameToIntentType 将 Agent 名称映射为 intent_type。
-func mapAgentNameToIntentType(agentName string) string {
-	switch agentName {
-	case "QAAgent":
-		return "qa"
-	case "DiagnosisAgent":
-		return "diagnosis"
-	case "ChangeAgent":
-		return "change"
-	default:
-		return "unknown"
-	}
-}
 
 // buildSessionTitle 从首条消息生成会话标题。
 func buildSessionTitle(message string) string {
@@ -693,11 +689,11 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 
 	// 构建恢复参数
 	approvalResult := map[string]any{
-		"approved":           input.Approved,
-		"disapprove_reason":  input.Reason,
-		"comment":            input.Comment,
-		"approved_by":        input.UserID,
-		"approved_at":        time.Now().Format(time.RFC3339),
+		"approved":          input.Approved,
+		"disapprove_reason": input.Reason,
+		"comment":           input.Comment,
+		"approved_by":       input.UserID,
+		"approved_at":       time.Now().Format(time.RFC3339),
 	}
 
 	// 发送 meta 事件

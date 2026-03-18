@@ -54,7 +54,7 @@ describe('PlatformChatProvider', () => {
     request.run({ message: 'hi', scene: 'ai' });
     await request.asyncHandler;
 
-    expect(onUpdate).toHaveBeenCalledTimes(5);
+    expect(onUpdate).toHaveBeenCalledTimes(4);
     expect(onUpdate).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ content: '[准备中]', mode: 'replace' }),
@@ -65,13 +65,20 @@ describe('PlatformChatProvider', () => {
       expect.objectContaining({ content: '[正在规划处理方式]', mode: 'replace' }),
       expect.any(Headers),
     );
-    expect(onSuccess).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({ content: 'hello ', mode: 'replace' }),
-        expect.objectContaining({ content: 'world', mode: 'append' }),
-      ],
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '[正在规划处理方式]',
+        runtime: expect.objectContaining({
+          plan: expect.objectContaining({
+            steps: [
+              expect.objectContaining({ title: 'inspect pods', content: 'hello world' }),
+            ],
+          }),
+        }),
+      }),
       expect.any(Headers),
     );
+    expect(onSuccess).toHaveBeenCalledWith([], expect.any(Headers));
     expect(onError).not.toHaveBeenCalled();
   });
 
@@ -141,23 +148,20 @@ describe('PlatformChatProvider', () => {
       expect.objectContaining({ content: '[正在规划处理方式]', mode: 'replace' }),
       expect.any(Headers),
     );
-    expect(onUpdate).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ content: '第一段', mode: 'replace' }),
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '[正在规划处理方式]',
+        runtime: expect.objectContaining({
+          plan: expect.objectContaining({
+            steps: [
+              expect.objectContaining({ title: 'step one', content: '第一段，第二段' }),
+            ],
+          }),
+        }),
+      }),
       expect.any(Headers),
     );
-    expect(onUpdate).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ content: '，第二段', mode: 'append' }),
-      expect.any(Headers),
-    );
-    expect(onSuccess).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({ content: '第一段', mode: 'replace' }),
-        expect.objectContaining({ content: '，第二段', mode: 'append' }),
-      ],
-      expect.any(Headers),
-    );
+    expect(onSuccess).toHaveBeenCalledWith([], expect.any(Headers));
   });
 
   it('preserves runtime activities while streaming visible markdown', async () => {
@@ -191,11 +195,10 @@ describe('PlatformChatProvider', () => {
   it('projects replan, approval, recoverable error, handoff, tool result, and terminal error states', async () => {
     const request = new PlatformChatRequest();
     const onUpdate = vi.fn();
-    const onError = vi.fn();
     request.options.callbacks = {
       onUpdate,
       onSuccess: vi.fn(),
-      onError,
+      onError: vi.fn(),
     };
 
     vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
@@ -220,23 +223,60 @@ describe('PlatformChatProvider', () => {
     request.run({ message: 'hi', scene: 'cluster' });
     await request.asyncHandler;
 
+    const hasExpectedRuntime = onUpdate.mock.calls.some(([chunk]) => {
+      const runtime = chunk?.runtime;
+      if (!runtime?.plan?.steps) {
+        return false;
+      }
+      const hasStepContent = runtime.plan.steps.some((step: any) => step.content === '已经拿到部分结果');
+      const hasReplan = runtime.activities?.some((activity: any) => activity.kind === 'replan');
+      return hasStepContent && hasReplan;
+    });
+
+    expect(hasExpectedRuntime).toBe(true);
     expect(onUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: '已经拿到部分结果',
         runtime: expect.objectContaining({
-          activities: expect.arrayContaining([
-            expect.objectContaining({ kind: 'agent_handoff' }),
-            expect.objectContaining({ kind: 'replan' }),
-            expect.objectContaining({ kind: 'tool_result', id: 'call-1' }),
-          ]),
-          status: expect.objectContaining({ kind: 'soft-timeout' }),
+          status: expect.objectContaining({ kind: 'error', label: 'stream failed' }),
         }),
       }),
       expect.any(Headers),
     );
-    expect(onError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.anything(),
+  });
+
+  it('does not escalate tool errors to request failure fallback', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const onSuccess = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onError,
+      onSuccess,
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onPlan?.({ steps: ['获取服务器列表'], iteration: 0 });
+      handlers.onDelta?.({ agent: 'executor', content: '开始执行\n' });
+      handlers.onError?.({ message: '工具调用失败', code: 'tool_call_failed', recoverable: false });
+      handlers.onDelta?.({ agent: 'executor', content: '继续执行' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'host' });
+    await request.asyncHandler;
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledWith([], expect.any(Headers));
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime: expect.objectContaining({
+          plan: expect.objectContaining({
+            steps: [expect.objectContaining({ content: '开始执行\n继续执行' })],
+          }),
+          status: expect.objectContaining({ kind: 'error', label: '工具调用失败' }),
+        }),
+      }),
       expect.any(Headers),
     );
   });
@@ -279,6 +319,39 @@ describe('PlatformChatProvider', () => {
     );
     expect(onSuccess).toHaveBeenCalledWith(
       [expect.objectContaining({ content: '## 检查完成\n\n全部正常', mode: 'replace' })],
+      expect.any(Headers),
+    );
+  });
+
+  it('routes executor delta text into the active step instead of the final markdown body', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    const onSuccess = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess,
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onPlan?.({ steps: ['获取服务器列表', '批量执行健康检查'], iteration: 0 });
+      handlers.onDelta?.({ agent: 'executor', content: '正在获取主机列表' });
+      handlers.onToolCall?.({ call_id: 'call-1', tool_name: 'host_list_inventory', arguments: {} });
+      handlers.onDelta?.({ agent: 'replanner', content: '{"response":"## 检查完成"}' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'host' });
+    await request.asyncHandler;
+
+    const hasExecutorStepContent = onUpdate.mock.calls.some(([chunk]) => {
+      const steps = chunk?.runtime?.plan?.steps;
+      return Array.isArray(steps) && steps.some((step: any) => step.title === '获取服务器列表' && step.content === '正在获取主机列表');
+    });
+
+    expect(hasExecutorStepContent).toBe(true);
+    expect(onSuccess).toHaveBeenCalledWith(
+      [expect.objectContaining({ content: '## 检查完成', mode: 'replace' })],
       expect.any(Headers),
     );
   });

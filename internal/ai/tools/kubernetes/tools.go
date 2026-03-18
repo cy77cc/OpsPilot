@@ -105,22 +105,22 @@ func NewKubernetesReadonlyTools(ctx context.Context) []tool.InvokableTool {
 
 // NewKubernetesWriteTools 创建 Kubernetes 写操作工具子集。
 //
-// Phase 2 实现：返回写操作工具列表，包括：
-//   - 资源创建/更新/删除
-//   - Pod 重启/扩缩容
-//   - 配置更新
+// 返回写操作工具列表，包括：
+//   - Deployment 扩缩容（k8s_scale_deployment）
+//   - Deployment 滚动重启（k8s_restart_deployment）
+//   - Pod 删除（k8s_delete_pod）
+//   - Deployment 回滚（k8s_rollback_deployment）
+//   - Deployment 删除（k8s_delete_deployment）
 //
-// 每个写工具将内置 approvalGate 审批机制。
+// 每个写工具通过审批中间件实现 Human-in-the-Loop。
 func NewKubernetesWriteTools(ctx context.Context) []tool.InvokableTool {
-	// Phase 2: 实现写操作工具
-	// return []tool.InvokableTool{
-	// 	K8sCreateResource(ctx),
-	// 	K8sUpdateResource(ctx),
-	// 	K8sDeleteResource(ctx),
-	// 	K8sRestartPod(ctx),
-	// 	K8sScaleDeployment(ctx),
-	// }
-	return nil
+	return []tool.InvokableTool{
+		K8sScaleDeployment(ctx),
+		K8sRestartDeployment(ctx),
+		K8sDeletePod(ctx),
+		K8sRollbackDeployment(ctx),
+		K8sDeleteDeployment(ctx),
+	}
 }
 
 type K8sQueryOutput struct {

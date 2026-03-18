@@ -75,8 +75,8 @@ describe('AssistantReply', () => {
           plan: {
             activeStepIndex: 1,
             steps: [
-              { id: 'plan-step-0', title: '获取服务器列表', status: 'done' },
-              { id: 'plan-step-1', title: '批量执行健康检查', status: 'active' },
+              { id: 'plan-step-0', title: '获取服务器列表', status: 'done', content: '已找到 5 台服务器' },
+              { id: 'plan-step-1', title: '批量执行健康检查', status: 'active', content: '正在执行 uptime\n' },
               { id: 'plan-step-2', title: '汇总检查结果', status: 'pending' },
             ],
           },
@@ -92,6 +92,7 @@ describe('AssistantReply', () => {
     expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
     expect(screen.getByText('批量执行健康检查')).toBeInTheDocument();
     expect(screen.getByText('host_exec')).toBeInTheDocument();
+    expect(screen.getAllByTestId('x-markdown').at(0)).toHaveTextContent('正在执行 uptime');
     expect(screen.queryByText('host_list_inventory')).not.toBeInTheDocument();
     expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('x-markdown').at(-1)).toHaveTextContent('## 最终报告');
@@ -108,7 +109,7 @@ describe('AssistantReply', () => {
           plan: {
             activeStepIndex: 0,
             steps: [
-              { id: 'plan-step-0', title: '获取服务器列表', status: 'active' },
+              { id: 'plan-step-0', title: '获取服务器列表', status: 'active', content: '正在获取主机列表' },
               { id: 'plan-step-1', title: '批量执行健康检查', status: 'pending' },
               { id: 'plan-step-2', title: '汇总检查结果', status: 'pending' },
             ],
@@ -123,6 +124,7 @@ describe('AssistantReply', () => {
 
     expect(screen.getAllByText('获取服务器列表').at(-1)).toBeInTheDocument();
     expect(screen.getByText('host_list_inventory')).toBeInTheDocument();
+    expect(screen.getByTestId('x-markdown')).toHaveTextContent('正在获取主机列表');
     expect(screen.queryByText('批量执行健康检查')).not.toBeInTheDocument();
     expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
   });

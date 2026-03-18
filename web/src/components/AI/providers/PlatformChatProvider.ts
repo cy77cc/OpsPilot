@@ -12,6 +12,7 @@ import {
   applyPlan,
   applyRecoverableError,
   applyReplan,
+  applyStepDelta,
   applySoftTimeout,
   applyTerminalError,
   applyToolApproval,
@@ -79,6 +80,10 @@ function buildFinalRuntime(chunks: PlatformStreamChunk[]) {
     }
   }
   return undefined;
+}
+
+function hasPlanContent(runtime: ReturnType<typeof createEmptyAssistantRuntime>): boolean {
+  return Boolean(runtime.plan?.steps?.some((step) => (step.content || '').trim()));
 }
 
 function parsePlannerEnvelope(raw: string): { steps?: string[]; response?: string } | null {
@@ -295,6 +300,12 @@ export class PlatformChatRequest extends AbstractXRequestClass<
           }
         }
 
+        if (runtime.plan?.activeStepIndex !== undefined) {
+          runtime = applyStepDelta(runtime, payload);
+          emitRuntimeOnlyUpdate();
+          return;
+        }
+
         const next = applyDelta(
           {
             content,
@@ -308,14 +319,14 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       },
       onDone: () => {
         runtime = applyDone(runtime);
-        if (hasVisibleContent) {
+        if (hasVisibleContent || hasPlanContent(runtime)) {
           emitRuntimeOnlyUpdate();
         }
       },
       onError: (payload) => {
         if (payload.code === 'tool_timeout_soft') {
           runtime = applySoftTimeout(runtime);
-          if (hasVisibleContent) {
+          if (hasVisibleContent || hasPlanContent(runtime)) {
             const next = applyRecoverableError({ content, runtime }, payload);
             content = next.content;
             runtime = next.runtime || runtime;
@@ -323,6 +334,17 @@ export class PlatformChatRequest extends AbstractXRequestClass<
           }
           return;
         }
+
+        const isToolError = (payload.code || '').startsWith('tool_');
+        const hasProgress = hasVisibleContent || Boolean(content.trim()) || hasPlanContent(runtime);
+        if (payload.recoverable || isToolError || hasProgress) {
+          const next = applyTerminalError({ content, runtime }, payload);
+          content = next.content;
+          runtime = next.runtime || runtime;
+          emitRuntimeOnlyUpdate();
+          return;
+        }
+
         const next = applyTerminalError({ content, runtime }, payload);
         content = next.content;
         runtime = next.runtime || runtime;

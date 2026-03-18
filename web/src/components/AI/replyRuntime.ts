@@ -46,6 +46,7 @@ function reconcilePlan(
       id: buildPlanStepId(index),
       title: previous?.steps[index]?.title || `步骤 ${index + 1}`,
       status: 'done',
+      content: previous?.steps[index]?.content,
     });
   }
 
@@ -54,6 +55,7 @@ function reconcilePlan(
       id: buildPlanStepId(index + completed),
       title,
       status: isFinal ? 'done' : index === 0 ? 'active' : 'pending',
+      content: previous?.steps[index + completed]?.content,
     });
   });
 
@@ -63,6 +65,7 @@ function reconcilePlan(
         id: buildPlanStepId(total + index),
         title: step.title,
         status: 'done',
+        content: step.content,
       });
     });
   }
@@ -110,6 +113,32 @@ export function applyDelta(
   return {
     content: nextContent,
     runtime: message.runtime,
+  };
+}
+
+export function applyStepDelta(
+  runtime: AssistantReplyRuntime,
+  payload: { content: string },
+): AssistantReplyRuntime {
+  const stepIndex = runtime.plan?.activeStepIndex;
+  if (stepIndex === undefined || !runtime.plan) {
+    return runtime;
+  }
+
+  return {
+    ...runtime,
+    plan: {
+      ...runtime.plan,
+      steps: runtime.plan.steps.map((step, index) => {
+        if (index !== stepIndex) {
+          return step;
+        }
+        return {
+          ...step,
+          content: `${step.content || ''}${payload.content || ''}`,
+        };
+      }),
+    },
   };
 }
 

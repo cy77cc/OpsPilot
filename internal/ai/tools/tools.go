@@ -24,6 +24,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/kubernetes"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/middleware"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/monitor"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/platform"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/service"
 )
 
@@ -40,6 +41,7 @@ import (
 //   - 基础工具列表
 func NewCommonTools(ctx context.Context) []tool.BaseTool {
 	return []tool.BaseTool{
+		platform.PlatformDiscoverResources(ctx), // 资源发现工具（优先级最高）
 		cicd.CICDPipelineList(ctx),
 		deployment.ClusterListInventory(ctx),
 		governance.AuditLogSearch(ctx),
@@ -127,35 +129,33 @@ func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
 
 // NewChangeTools 创建 Change Agent 工具集（只读工具 + 写操作工具）。
 //
-// Phase 1：与 NewDiagnosisTools 等同，仅包含只读工具。
-// Phase 2：追加写操作工具（每个写工具内置 approvalGate）。
-//
 // 包含：
 //   - Kubernetes 只读工具（预检和验证步骤使用）
 //   - 监控工具（变更前后对比）
 //   - 主机诊断工具
-//   - 写操作工具（Phase 2 接入）
+//   - 资源发现工具
+//   - 写操作工具（需审批）
 //
 // 参数:
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewChangeTools(ctx context.Context) []tool.BaseTool {
-	// Phase 1: 与诊断工具集相同，仅包含只读工具
-	return NewDiagnosisTools(ctx)
+	// 只读工具（诊断 + 资源发现）
+	readonly := NewDiagnosisTools(ctx)
 
-	// Phase 2: 追加写操作工具（含 approvalGate 包装）
-	// result := NewDiagnosisTools(ctx)
-	// writeTools := [][]tool.InvokableTool{
-	// 	host.NewHostWriteTools(ctx),
-	// 	service.NewServiceWriteTools(ctx),
-	// 	cicd.NewCICDWriteTools(ctx),
-	// 	// kubernetes.NewKubernetesWriteTools(ctx),
-	// }
-	// for _, group := range writeTools {
-	// 	for _, t := range group {
-	// 		result = append(result, t)
-	// 	}
-	// }
-	// return result
+	// 写操作工具（需审批中间件）
+	writeTools := [][]tool.InvokableTool{
+		kubernetes.NewKubernetesWriteTools(ctx),
+		host.NewHostWriteTools(ctx),
+	}
+
+	result := make([]tool.BaseTool, 0, len(readonly)+len(writeTools)*5)
+	result = append(result, readonly...)
+	for _, group := range writeTools {
+		for _, t := range group {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 // NewInspectionTools 创建 Inspection Agent 工具集。

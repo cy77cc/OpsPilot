@@ -48,6 +48,7 @@ export interface AssistantReplyPlanStep {
   id: string;
   title: string;
   status: 'pending' | 'active' | 'done';
+  content?: string;
 }
 
 export interface AssistantReplyPlan {

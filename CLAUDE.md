@@ -69,20 +69,39 @@ internal/ai/
 ├── chatmodel/            # LLM client initialization
 └── tools/                # Domain-organized tools
     ├── common/           # PlatformDeps, ToolMeta, ToolResult
-    ├── kubernetes/       # K8s operations
+    ├── platform/         # Resource discovery (clusters, hosts, services, namespaces, metrics)
+    ├── kubernetes/       # K8s operations (readonly + write with approval)
     ├── host/             # Host management
     ├── service/          # Service operations
     ├── monitor/          # Monitoring tools
     ├── cicd/             # CI/CD operations
     ├── deployment/       # Deployment tools
     ├── infrastructure/   # Infrastructure management
-    └── governance/       # Policy & approval tools
+    ├── governance/       # Policy & approval tools
+    └── middleware/       # Approval middleware for write operations
 ```
 
 **Key concepts:**
 - Uses `adk.Runner` with `Interrupt/ResumeWithParams` for human-in-the-loop
 - `feature_flags.ai_assistant_v2: true` enables this runtime (default)
 - Max 20 iterations per conversation turn
+
+**Tool Categories:**
+
+| Category | Tools | Approval Required |
+|----------|-------|-------------------|
+| **Platform Discovery** | `platform_discover_resources` | No |
+| **K8s Readonly** | `k8s_query`, `k8s_list_resources`, `k8s_events`, `k8s_logs` | No |
+| **K8s Write** | `k8s_scale_deployment`, `k8s_restart_deployment`, `k8s_delete_pod`, `k8s_rollback_deployment`, `k8s_delete_deployment` | Yes |
+| **Host Readonly** | `host_list_inventory`, `os_get_cpu_mem`, etc. | No |
+| **Host Write** | `host_batch`, `host_batch_exec_apply`, `host_batch_status_update` | Yes |
+
+**Approval Flow:**
+1. Write tool invoked → `StatefulInterrupt` pauses execution
+2. `ApprovalInfo` sent via SSE to frontend
+3. User approves/rejects via UI
+4. Result passed via `ResumeWithParams`
+5. Execution continues or returns rejection message
 
 ### Frontend Structure
 

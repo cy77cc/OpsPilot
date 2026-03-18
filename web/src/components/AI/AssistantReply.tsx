@@ -53,6 +53,12 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     gap: 6px;
   `,
+  stepMarkdown: css`
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.65;
+    word-break: break-word;
+  `,
   activity: css`
     display: flex;
     justify-content: space-between;
@@ -175,6 +181,21 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
                 </div>
                 {isExpanded ? (
                   <div className={styles.planStepBody}>
+                    {step.content ? (
+                      <div className={styles.stepMarkdown}>
+                        <XMarkdown
+                          content={step.content}
+                          streaming={{
+                            hasNextChunk: status === 'loading' || status === 'updating',
+                            enableAnimation: true,
+                            animationConfig: {
+                              fadeDuration: 180,
+                              easing: 'ease-out',
+                            },
+                          }}
+                        />
+                      </div>
+                    ) : null}
                     {scopedActivities.length ? scopedActivities.map((activity) => (
                       <div key={activity.id} className={styles.activity}>
                         <span>{activity.label}</span>
@@ -216,19 +237,21 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
         </div>
       ) : null}
 
-      <div className={styles.markdown}>
-        <XMarkdown
-          content={content}
-          streaming={{
-            hasNextChunk: status === 'loading' || status === 'updating',
-            enableAnimation: true,
-            animationConfig: {
-              fadeDuration: 180,
-              easing: 'ease-out',
-            },
-          }}
-        />
-      </div>
+      {content ? (
+        <div className={styles.markdown}>
+          <XMarkdown
+            content={content}
+            streaming={{
+              hasNextChunk: status === 'loading' || status === 'updating',
+              enableAnimation: true,
+              animationConfig: {
+                fadeDuration: 180,
+                easing: 'ease-out',
+              },
+            }}
+          />
+        </div>
+      ) : null}
 
       {runtime?.status ? <div className={styles.footer}>{runtime.status.label}</div> : null}
     </div>

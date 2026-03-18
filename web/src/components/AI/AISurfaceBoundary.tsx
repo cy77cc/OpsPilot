@@ -35,7 +35,7 @@ export class AISurfaceBoundary extends React.Component<
           <Alert
             type="error"
             showIcon
-            message="AI Copilot unavailable"
+            title="AI Copilot unavailable"
             description="The assistant surface failed to load. The rest of the app is still available."
           />
         </div>
