@@ -17,8 +17,14 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
+
+func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
+}
 
 // =============================================================================
 // 输入类型定义
@@ -125,7 +131,7 @@ func ServiceGetDetail(ctx context.Context) tool.InvokableTool {
 		"service_get_detail",
 		"Get detailed information about a specific service including configuration, deployment settings, runtime type, and metadata. service_id is required. Returns complete service object with all fields. Use this when you need comprehensive service information. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceDetailInput, opts ...tool.Option) (*ServiceGetDetailOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -162,7 +168,7 @@ func ServiceStatus(ctx context.Context) tool.InvokableTool {
 		"service_status",
 		"Get current status and basic runtime information of a service. service_id is required. Returns service name, status, environment, runtime type (k8s/compose/helm), container image, replica count, and last update time. Use this for quick status checks. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceStatusInput, opts ...tool.Option) (*ServiceStatusOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -196,7 +202,7 @@ func ServiceStatusByTarget(ctx context.Context) tool.InvokableTool {
 		"service_status_by_target",
 		"Resolve a service by target string and get current status. target may be a service id or exact service name. Returns the same runtime status fields as service_status. Example: {\"target\":\"payment-service\"}.",
 		func(ctx context.Context, input *ServiceStatusByTargetInput, opts ...tool.Option) (*ServiceStatusOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -236,7 +242,7 @@ func ServiceDeployPreview(ctx context.Context) tool.InvokableTool {
 		"service_deploy_preview",
 		"Preview a service deployment without actually applying changes. service_id and cluster_id are required. Returns the deployment plan including service name, container image, and replica count. Use this to verify deployment configuration before executing with service_deploy_apply. Example: {\"service_id\":123,\"cluster_id\":456}.",
 		func(ctx context.Context, input *ServiceDeployPreviewInput, opts ...tool.Option) (*ServiceDeployPreviewOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -279,7 +285,7 @@ func ServiceDeployApply(ctx context.Context) tool.InvokableTool {
 		"service_deploy_apply",
 		"Execute a service deployment to a target cluster. service_id and cluster_id are required. This is a mutating operation that will create/update the deployment. Ensure you have previewed the deployment with service_deploy_preview first. Returns deployment status and applied configuration. Example: {\"service_id\":123,\"cluster_id\":456}.",
 		func(ctx context.Context, input *ServiceDeployApplyInput, opts ...tool.Option) (*ServiceDeployApplyOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -325,7 +331,7 @@ func ServiceDeploy(ctx context.Context) tool.InvokableTool {
 		"service_deploy",
 		"Unified service deployment tool supporting both preview and apply modes. service_id and cluster_id are required. Set preview=true (default) to see the deployment plan without applying. Set apply=true to execute the deployment. This operation deploys the service container image to the specified cluster. Example: {\"service_id\":123,\"cluster_id\":456,\"preview\":true}.",
 		func(ctx context.Context, input *ServiceDeployInput, opts ...tool.Option) (*ServiceDeployOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -385,7 +391,7 @@ func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 		"service_catalog_list",
 		"Query the service catalog with filtering options. Optional parameters: keyword searches by service name or owner, category_id filters by service kind (1=middleware, 2=business), limit controls max results (default 50, max 200). Returns services with id, name, owner, environment, service_kind, visibility, and deployment count. Example: {\"keyword\":\"payment\",\"category_id\":2,\"limit\":20}.",
 		func(ctx context.Context, input *ServiceCatalogListInput, opts ...tool.Option) (*ServiceCatalogListOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -450,7 +456,7 @@ func ServiceCategoryTree(ctx context.Context) tool.InvokableTool {
 		"service_category_tree",
 		"Get the service category tree structure showing middleware and business service categories with counts. Returns an array of categories, each with id, key (middleware/business), label, and count of services. Use this to understand the service distribution across categories. Example: {}.",
 		func(ctx context.Context, _ struct{}, opts ...tool.Option) (*ServiceCategoryTreeOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -502,7 +508,7 @@ func ServiceVisibilityCheck(ctx context.Context) tool.InvokableTool {
 		"service_visibility_check",
 		"Check the visibility configuration of a service including access control settings. service_id is required. Returns visibility level (public/private/team), granted team IDs that can access the service, owner user ID, and owner team ID. Use this to understand who can access a service. Example: {\"service_id\":123}.",
 		func(ctx context.Context, input *ServiceVisibilityCheckInput, opts ...tool.Option) (*ServiceVisibilityCheckOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}

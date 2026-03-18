@@ -3,9 +3,9 @@ package logic
 import (
 	"context"
 	"encoding/json"
-)
 
-type auditContextKey struct{}
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+)
 
 type CommandAuditContext struct {
 	CommandID       string         `json:"command_id"`
@@ -16,15 +16,17 @@ type CommandAuditContext struct {
 	Summary         string         `json:"summary,omitempty"`
 }
 
+type commandAuditContextKey struct{}
+
 func WithCommandAuditContext(ctx context.Context, meta CommandAuditContext) context.Context {
-	return context.WithValue(ctx, auditContextKey{}, meta)
+	return runtimectx.WithValue(ctx, commandAuditContextKey{}, meta)
 }
 
 func commandAuditContextFromContext(ctx context.Context) (CommandAuditContext, bool) {
 	if ctx == nil {
 		return CommandAuditContext{}, false
 	}
-	meta, ok := ctx.Value(auditContextKey{}).(CommandAuditContext)
+	meta, ok := runtimectx.Value(ctx, commandAuditContextKey{}).(CommandAuditContext)
 	if !ok {
 		return CommandAuditContext{}, false
 	}

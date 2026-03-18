@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/logger"
-	"github.com/cy77cc/OpsPilot/internal/xctx"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,16 +18,20 @@ func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		ctx := c.Request.Context()
-		myCtx := xctx.FromContext(ctx)
+		myCtx := runtimectx.FromContext(ctx)
 
 		c.Next()
 
+		traceID := ""
+		if myCtx != nil {
+			traceID = myCtx.TraceID
+		}
 		logger.L().Info(
 			"http request",
 			logger.String("method", c.Request.Method),
 			logger.String("path", c.Request.URL.Path),
 			logger.Int("status", c.Writer.Status()),
-			logger.String("trace_id", myCtx.TraceID),
+			logger.String("trace_id", traceID),
 			logger.String("latency", time.Since(start).String()),
 		)
 	}

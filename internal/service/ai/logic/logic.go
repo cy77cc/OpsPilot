@@ -22,6 +22,7 @@ import (
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
 )
@@ -60,7 +61,7 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		return &Logic{}
 	}
 
-	aiRouter, err := agents.NewRouter(svcCtx.GetContext())
+	aiRouter, err := agents.NewRouter(runtimectx.WithServices(context.Background(), svcCtx))
 	if err != nil {
 		return &Logic{}
 	}
@@ -137,6 +138,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	if err := l.RunDAO.CreateRun(ctx, run); err != nil {
 		return fmt.Errorf("create run: %w", err)
 	}
+	ctx = l.runtimeContext(ctx)
 	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
 		SessionID: sessionID,
 		RunID:     run.ID,
@@ -307,6 +309,13 @@ func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmit
 		emit(projected.Event, projected.Data)
 	}
 	return update
+}
+
+func (l *Logic) runtimeContext(ctx context.Context) context.Context {
+	if l == nil || l.svcCtx == nil {
+		return ctx
+	}
+	return runtimectx.WithServices(ctx, l.svcCtx)
 }
 
 // CreateSession 创建新的 AI 会话。
@@ -743,6 +752,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 	emit(meta.Event, meta.Data)
 
 	// 创建 Runner 并恢复执行
+	ctx = l.runtimeContext(ctx)
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           l.AIRouter,
 		EnableStreaming: true,

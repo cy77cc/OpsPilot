@@ -8,6 +8,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	monitoringlogic "github.com/cy77cc/OpsPilot/internal/service/monitoring/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
@@ -31,8 +32,9 @@ func NewHandler(svcCtx *svc.ServiceContext) *Handler {
 }
 
 func (h *Handler) StartRuleSync() {
-	_, _ = h.ruleSync.SyncRules(context.Background())
-	h.ruleSync.StartPeriodic(context.Background(), 5*time.Minute)
+	rootCtx := runtimectx.WithServices(context.Background(), h.svcCtx)
+	_, _ = h.ruleSync.SyncRules(rootCtx)
+	h.ruleSync.StartPeriodic(rootCtx, 5*time.Minute)
 }
 
 func (h *Handler) ReceiveWebhook(c *gin.Context) {

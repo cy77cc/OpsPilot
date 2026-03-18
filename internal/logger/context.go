@@ -3,17 +3,15 @@
 // 本文件实现上下文相关的日志记录，支持从 context 中提取 trace_id。
 package logger
 
-import "context"
+import (
+	"context"
 
-// ctxKey 是上下文键类型。
-type ctxKey string
-
-// traceIDKey 是 trace_id 在上下文中的键。
-const traceIDKey ctxKey = "trace_id"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+)
 
 // WithTraceID 将 trace_id 存入上下文。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
-	return context.WithValue(ctx, traceIDKey, traceID)
+	return runtimectx.WithTraceID(ctx, traceID)
 }
 
 // WithContext 创建带有上下文信息的子 Logger。
@@ -24,8 +22,8 @@ func (z *zapLogger) WithContext(ctx context.Context) Logger {
 		return z
 	}
 
-	if v := ctx.Value(traceIDKey); v != nil {
-		return z.With(String("trace_id", v.(string)))
+	if traceID := runtimectx.TraceID(ctx); traceID != "" {
+		return z.With(String("trace_id", traceID))
 	}
 	return z
 }

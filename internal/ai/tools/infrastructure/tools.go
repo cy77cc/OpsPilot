@@ -13,8 +13,14 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
+
+func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
+}
 
 // =============================================================================
 // 输入类型定义
@@ -63,7 +69,7 @@ func CredentialList(ctx context.Context) tool.InvokableTool {
 		"credential_list",
 		"Query cluster credential list for accessing Kubernetes clusters or other infrastructure. Optional parameters: type filters by runtime type or source (k8s/helm/compose), keyword searches by name or endpoint, limit controls max results (default 50, max 200). Returns credentials with id, name, runtime type, endpoint, status, and last test result. Use credential IDs for deployment target configuration. Example: {\"type\":\"k8s\",\"limit\":20}.",
 		func(ctx context.Context, input *CredentialListInput, opts ...tool.Option) (*CredentialListOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -126,7 +132,7 @@ func CredentialTest(ctx context.Context) tool.InvokableTool {
 		"credential_test",
 		"Get credential connectivity test result. credential_id is required. Returns the last test result including test timestamp, status (success/failed), and any error message. Use this to verify if a credential is valid before using it for deployment. Example: {\"credential_id\":5}.",
 		func(ctx context.Context, input *CredentialTestInput, opts ...tool.Option) (*CredentialTestOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}

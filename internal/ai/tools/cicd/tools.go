@@ -16,8 +16,14 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
+
+func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
+}
 
 // =============================================================================
 // 输入类型定义
@@ -111,7 +117,7 @@ func CICDPipelineList(ctx context.Context) tool.InvokableTool {
 		"cicd_pipeline_list",
 		"Query CI pipeline configuration list from the CI/CD system. Optional parameters: status filters by pipeline status (active/inactive/queued), keyword searches by repository URL or branch name using fuzzy matching, limit controls max results (default 50, max 200). Returns pipelines with repository info, branch, build configuration, and status. Use pipeline IDs for triggering builds or checking status. Example: {\"status\":\"active\",\"keyword\":\"main\",\"limit\":20}.",
 		func(ctx context.Context, input *CICDPipelineListInput, opts ...tool.Option) (*CICDPipelineListOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -156,7 +162,7 @@ func CICDPipelineStatus(ctx context.Context) tool.InvokableTool {
 		"cicd_pipeline_status",
 		"Query detailed pipeline status including configuration and recent build runs. pipeline_id is required and can be obtained from cicd_pipeline_list. Returns the pipeline configuration (repository URL, branch, build settings) and up to 10 most recent run records with status, duration, and timestamps. Use this to check pipeline health or investigate build failures. Example: {\"pipeline_id\":3}.",
 		func(ctx context.Context, input *CICDPipelineStatusInput, opts ...tool.Option) (*CICDPipelineStatusOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -193,7 +199,7 @@ func CICDPipelineTrigger(ctx context.Context) tool.InvokableTool {
 		"cicd_pipeline_trigger",
 		"Trigger a new build for a CI/CD pipeline. pipeline_id and branch are required parameters. pipeline_id can be obtained from cicd_pipeline_list. The branch parameter specifies which branch to build (e.g., 'main', 'develop', 'feature/xyz'). Optional params can pass additional build parameters as key-value pairs. This is a mutating operation that queues a new build run. Returns the created run ID and initial status (queued). Example: {\"pipeline_id\":3,\"branch\":\"main\"}.",
 		func(ctx context.Context, input *CICDPipelineTriggerInput, opts ...tool.Option) (*CICDPipelineTriggerOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -242,7 +248,7 @@ func JobList(ctx context.Context) tool.InvokableTool {
 		"job_list",
 		"Query scheduled job list from the job management system. Optional parameters: status filters by job status (running/scheduled/paused/completed/failed), keyword searches by job name or job type using fuzzy matching, limit controls max results (default 50, max 200). Returns jobs with name, type, schedule (cron expression), next run time, and status. Use job IDs for checking execution status or triggering manual runs. Example: {\"status\":\"running\",\"keyword\":\"backup\"}.",
 		func(ctx context.Context, input *JobListInput, opts ...tool.Option) (*JobListOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -287,7 +293,7 @@ func JobExecutionStatus(ctx context.Context) tool.InvokableTool {
 		"job_execution_status",
 		"Query execution history and status for a specific scheduled job. job_id is required and can be obtained from job_list. Optional execution_id filters to a specific execution run. Returns up to 20 most recent execution records with start/end time, duration, exit code, output logs, and status (running/success/failed). Use this to investigate job failures or monitor long-running jobs. Example: {\"job_id\":12}.",
 		func(ctx context.Context, input *JobExecutionStatusInput, opts ...tool.Option) (*JobExecutionStatusOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}
@@ -325,7 +331,7 @@ func JobRun(ctx context.Context) tool.InvokableTool {
 		"job_run",
 		"Manually trigger a scheduled job to run immediately, bypassing its normal schedule. job_id is required and can be obtained from job_list. Optional params can override default job parameters as key-value pairs. This is a mutating operation that creates a new execution run with 'running' status. Returns the created execution ID and initial status. Use this for on-demand job execution or testing. Example: {\"job_id\":12}.",
 		func(ctx context.Context, input *JobRunInput, opts ...tool.Option) (*JobRunOutput, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
 				return nil, fmt.Errorf("service context is nil")
 			}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifsvc "github.com/cy77cc/OpsPilot/internal/service/notification"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -54,7 +55,7 @@ func (g *NotificationGateway) HandleWebhook(ctx context.Context, payload Alertma
 			return processed, err
 		}
 		processed++
-		g.dispatchAsync(context.Background(), *event)
+		g.dispatchAsync(runtimectx.Detach(ctx), *event)
 	}
 	return processed, nil
 }
@@ -162,7 +163,7 @@ func (g *NotificationGateway) dispatchAsync(ctx context.Context, alert model.Ale
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			g.sendWithRetry(context.Background(), alert, channel)
+			g.sendWithRetry(runtimectx.Detach(ctx), alert, channel)
 		}()
 	}
 	go func() {

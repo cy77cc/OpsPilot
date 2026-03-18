@@ -7,7 +7,7 @@ package middleware
 import (
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/xctx"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -15,13 +15,13 @@ import (
 // ContextMiddleware 返回上下文注入中间件。
 //
 // 功能：
-//   - 初始化自定义上下文（xctx.Context）
+//   - 初始化运行时上下文（runtimectx.Context）
 //   - 生成或复用追踪 ID
 //   - 将上下文注入到 gin.Context 中
 func ContextMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 初始化自定义 Context
-		myCtx := xctx.NewContext()
+		myCtx := runtimectx.NewContext()
 		traceID := c.GetHeader("X-Trace-ID")
 		if traceID == "" {
 			traceID = uuid.NewString()
@@ -31,7 +31,7 @@ func ContextMiddleware() gin.HandlerFunc {
 
 		// 2. 将其注入到标准 Context 中
 		// 这一点至关重要：这样后续的 Service 层即使只拿到了 context.Context，也能取出 myCtx
-		ctx := xctx.WithContext(c.Request.Context(), myCtx)
+		ctx := runtimectx.WithContext(c.Request.Context(), myCtx)
 
 		// 3. 更新 Gin 的 Request，以便后续 c.Request.Context() 能拿到包含 myCtx 的 context
 		c.Request = c.Request.WithContext(ctx)

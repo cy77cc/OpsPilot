@@ -11,12 +11,13 @@ import (
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	"gorm.io/gorm"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"gorm.io/gorm"
 )
 
 // Collector 主控台数据采集器。
@@ -51,8 +52,9 @@ func NewCollector(svcCtx *svc.ServiceContext) *Collector {
 //   - 每 30 秒采集异常 Pod
 func (c *Collector) Start() {
 	c.collectorOnce.Do(func() {
+		rootCtx := runtimectx.WithServices(context.Background(), c.svcCtx)
 		// 首次立即采集
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(rootCtx, 60*time.Second)
 		c.Collect(ctx)
 		cancel()
 
@@ -73,15 +75,15 @@ func (c *Collector) Start() {
 			for {
 				select {
 				case <-resourceTicker.C:
-					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					ctx, cancel := context.WithTimeout(rootCtx, 60*time.Second)
 					c.collectClusterResources(ctx)
 					cancel()
 				case <-workloadTicker.C:
-					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					ctx, cancel := context.WithTimeout(rootCtx, 60*time.Second)
 					c.collectWorkloadStats(ctx)
 					cancel()
 				case <-issuePodTicker.C:
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					ctx, cancel := context.WithTimeout(rootCtx, 30*time.Second)
 					c.collectIssuePods(ctx)
 					cancel()
 				}

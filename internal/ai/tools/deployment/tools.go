@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -112,7 +113,8 @@ func NewDeploymentWriteTools(ctx context.Context) []tool.InvokableTool {
 }
 
 func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
-	return svc.GetServiceContext(ctx)
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
 }
 
 type DeploymentTargetListOutput struct {

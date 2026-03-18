@@ -14,6 +14,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
@@ -231,7 +232,7 @@ func (s *RuleSyncService) StartPeriodic(ctx context.Context, interval time.Durat
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_, _ = s.SyncRules(context.Background())
+				_, _ = s.SyncRules(runtimectx.Detach(ctx))
 			}
 		}
 	}()

@@ -12,6 +12,7 @@ import (
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,8 +43,9 @@ func (c *Collector) Start() {
 	}
 
 	c.collectorOnce.Do(func() {
+		rootCtx := runtimectx.WithServices(context.Background(), c.svcCtx)
 		// 首次立即采集
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(rootCtx, 30*time.Second)
 		c.Collect(ctx)
 		cancel()
 
@@ -53,7 +55,7 @@ func (c *Collector) Start() {
 			defer ticker.Stop()
 			for {
 				<-ticker.C
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				ctx, cancel := context.WithTimeout(rootCtx, 30*time.Second)
 				c.Collect(ctx)
 				cancel()
 			}

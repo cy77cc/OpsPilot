@@ -7,6 +7,7 @@ import (
 
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -61,6 +62,21 @@ func TestBuildAugmentedMessage_IncludesStructuredSceneContextBlocks(t *testing.T
 		if !strings.Contains(message, fragment) {
 			t.Fatalf("expected augmented message to contain %q, got: %s", fragment, message)
 		}
+	}
+}
+
+func TestRuntimeContext_AttachesServiceContext(t *testing.T) {
+	baseCtx := context.WithValue(context.Background(), struct{}{}, "keep")
+	svcCtx := &svc.ServiceContext{}
+	l := &Logic{svcCtx: svcCtx}
+
+	runtimeCtx := l.runtimeContext(baseCtx)
+
+	if got := runtimectx.Services(runtimeCtx); got != svcCtx {
+		t.Fatalf("expected runtime context to contain service context")
+	}
+	if got := runtimeCtx.Value(struct{}{}); got != "keep" {
+		t.Fatalf("expected runtime context to preserve original values, got %#v", got)
 	}
 }
 

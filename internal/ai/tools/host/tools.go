@@ -21,9 +21,15 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 )
+
+func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
+}
 
 // =============================================================================
 // 输入类型定义
@@ -185,7 +191,7 @@ type HostSSHReadonlyOutput struct {
 }
 
 func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_ssh_exec_readonly",
 		"Execute a readonly SSH command on a host. host_id and command are required. Only predefined safe readonly commands are allowed such as: hostname, uptime, df -h, free -m, ps aux --sort=-%cpu. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
@@ -227,7 +233,7 @@ type HostExecOutput struct {
 }
 
 func HostExec(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
 		"Execute a readonly command on a single host via SSH. host_id and command are required. Only safe readonly commands are allowed. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"df -h\"}.",
@@ -273,7 +279,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 }
 
 func HostExecByTarget(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec_by_target",
 		"Resolve a host by target string and execute a readonly command. Target may be a host id, IP, hostname, name, or localhost. command is required. Only safe readonly commands are allowed. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"df -h\"}.",
@@ -339,7 +345,7 @@ type HostListInventoryOutput struct {
 }
 
 func HostListInventory(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_list_inventory",
 		"Query host inventory list with detailed information including CPU, memory, disk, SSH configuration, and status. Optional parameters: status filters by host status (online/offline/maintenance), keyword searches by name/IP/hostname, limit controls max results (default 50, max 200). Example: {\"status\":\"online\",\"keyword\":\"web\",\"limit\":20}.",
@@ -409,7 +415,7 @@ type HostBatchOutput struct {
 }
 
 func HostBatch(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch",
 		"Execute a command on multiple hosts in batch. host_ids (array of integers) and command are required. Dangerous commands like 'rm -rf /', 'mkfs', 'shutdown' are blocked. Returns execution results for each host including stdout, stderr, and exit code. Example: {\"host_ids\":[1,2,3],\"command\":\"uptime\",\"reason\":\"health check\"}.",
@@ -482,7 +488,7 @@ type HostBatchExecPreviewOutput struct {
 }
 
 func HostBatchExecPreview(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_preview",
 		"Preview batch command execution before actually running it. host_ids (array) and command are required. Returns resolved target hosts, command classification (readonly/mutating/dangerous), risk level, and whether the command is blocked. Use this to verify the impact before executing with host_batch_exec_apply. Example: {\"host_ids\":[1,2],\"command\":\"systemctl status nginx\"}.",
@@ -536,7 +542,7 @@ type HostBatchExecApplyOutput struct {
 }
 
 func HostBatchExecApply(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_exec_apply",
 		"Execute a command on multiple hosts after preview confirmation. host_ids (array) and command are required. Dangerous commands are blocked. Returns execution results for each host. This is a mutating operation - ensure you have previewed with host_batch_exec_preview first. Example: {\"host_ids\":[1,2],\"command\":\"systemctl restart nginx\",\"reason\":\"restart nginx service\"}.",
@@ -604,7 +610,7 @@ type HostBatchStatusUpdateOutput struct {
 }
 
 func HostBatchStatusUpdate(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_batch_status_update",
 		"Batch update host status to online, offline, or maintenance. host_ids (array) and action are required. Action must be one of: online, offline, maintenance. Use this to change the operational status of multiple hosts at once. Example: {\"host_ids\":[1,2,3],\"action\":\"maintenance\",\"reason\":\"scheduled maintenance\"}.",
@@ -648,7 +654,7 @@ type OSGetCPUMemOutput struct {
 }
 
 func OSGetCPUMem(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_cpu_mem",
 		"Get CPU, memory and load average information from a target host. Returns loadavg from /proc/loadavg, meminfo from /proc/meminfo, and uptime output. Target can be host ID, IP address, hostname, or 'localhost' (default) for local execution. Example: {\"target\":\"10.0.0.5\"}.",
@@ -678,7 +684,7 @@ type OSGetDiskFSOutput struct {
 }
 
 func OSGetDiskFS(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_disk_fs",
 		"Get disk and filesystem usage information using 'df -h' command. Shows mounted filesystems, total size, used space, available space, and mount points. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"web-server-01\"}.",
@@ -703,7 +709,7 @@ type OSGetNetStatOutput struct {
 }
 
 func OSGetNetStat(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_net_stat",
 		"Get network statistics including network device traffic from /proc/net/dev and listening TCP ports using 'ss -ltn'. Shows bytes sent/received per interface and all listening ports. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"192.168.1.10\"}.",
@@ -732,7 +738,7 @@ type OSGetProcessTopOutput struct {
 }
 
 func OSGetProcessTop(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_process_top",
 		"Get top processes sorted by CPU usage using 'ps aux --sort=-%cpu'. Returns the most CPU-intensive processes. Limit parameter controls how many processes to show (default 10, max 50). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"localhost\",\"limit\":20}.",
@@ -769,7 +775,7 @@ type OSGetJournalTailOutput struct {
 }
 
 func OSGetJournalTail(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_journal_tail",
 		"Get systemd journal logs for a specific service using 'journalctl -u <service> -n <lines>'. Service name is required. Lines parameter controls how many log lines to retrieve (default 200, max 500). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"10.0.0.1\",\"service\":\"nginx\",\"lines\":100}.",
@@ -814,7 +820,7 @@ type OSGetContainerRuntimeOutput struct {
 }
 
 func OSGetContainerRuntime(ctx context.Context) tool.InvokableTool {
-	svcCtx := svc.GetServiceContext(ctx)
+	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"os_get_container_runtime",
 		"Get container runtime information and running containers. Detects Docker or containerd. For Docker, runs 'docker ps' to show container ID, image, and status. For containerd, runs 'ctr -n k8s.io containers list'. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"node-01\"}.",

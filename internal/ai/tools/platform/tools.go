@@ -14,11 +14,17 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
+	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	return svcCtx
+}
 
 // =============================================================================
 // 输入类型定义
@@ -50,7 +56,7 @@ func PlatformDiscoverResources(ctx context.Context) tool.InvokableTool {
 		"platform_discover_resources",
 		"Discover platform resources available for operations. Optional resource_type filters results: clusters (K8s clusters), hosts (server list), services (service catalog), namespaces (K8s namespaces, requires cluster_id), metrics (Prometheus metrics). Omit resource_type to get an overview of all resource types with counts. Example: {\"resource_type\":\"clusters\"} or {\"resource_type\":\"namespaces\",\"cluster_id\":1}.",
 		func(ctx context.Context, input *PlatformDiscoverInput, opts ...tool.Option) (map[string]any, error) {
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}
@@ -127,13 +133,13 @@ func discoverHosts(ctx context.Context, svcCtx *svc.ServiceContext) (map[string]
 	items := make([]map[string]any, 0, len(nodes))
 	for _, n := range nodes {
 		items = append(items, map[string]any{
-			"id":          n.ID,
-			"name":        n.Name,
-			"ip":          n.IP,
-			"hostname":    n.Hostname,
-			"status":      n.Status,
-			"os":          n.OS,
-			"cluster_id":  n.ClusterID,
+			"id":         n.ID,
+			"name":       n.Name,
+			"ip":         n.IP,
+			"hostname":   n.Hostname,
+			"status":     n.Status,
+			"os":         n.OS,
+			"cluster_id": n.ClusterID,
 		})
 	}
 	return map[string]any{
@@ -209,10 +215,10 @@ func discoverMetrics(ctx context.Context, svcCtx *svc.ServiceContext) (map[strin
 	items := make([]map[string]any, 0, len(metadata))
 	for _, m := range metadata {
 		items = append(items, map[string]any{
-			"name":  m.Metric,
-			"type":  m.Type,
-			"help":  m.Help,
-			"unit":  m.Unit,
+			"name": m.Metric,
+			"type": m.Type,
+			"help": m.Help,
+			"unit": m.Unit,
 		})
 	}
 	return map[string]any{

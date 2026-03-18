@@ -44,9 +44,9 @@ type K8sRestartDeploymentInput struct {
 
 // K8sDeletePodInput Pod 删除输入。
 type K8sDeletePodInput struct {
-	ClusterID         int    `json:"cluster_id" jsonschema_description:"required,cluster id in database"`
-	Namespace         string `json:"namespace" jsonschema_description:"required,kubernetes namespace"`
-	Name              string `json:"name" jsonschema_description:"required,pod name"`
+	ClusterID          int    `json:"cluster_id" jsonschema_description:"required,cluster id in database"`
+	Namespace          string `json:"namespace" jsonschema_description:"required,kubernetes namespace"`
+	Name               string `json:"name" jsonschema_description:"required,pod name"`
 	GracePeriodSeconds *int64 `json:"grace_period_seconds,omitempty" jsonschema_description:"optional,grace period in seconds,default=30"`
 }
 
@@ -81,7 +81,7 @@ func K8sScaleDeployment(ctx context.Context) tool.InvokableTool {
 			if err := validateScaleInput(input); err != nil {
 				return nil, err
 			}
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}
@@ -134,7 +134,7 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
 			}
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}
@@ -162,13 +162,13 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 			}
 
 			return map[string]any{
-				"cluster_id":        input.ClusterID,
-				"cluster_name":      clusterName,
-				"namespace":         input.Namespace,
-				"name":              input.Name,
-				"restarted_at":      restartTimestamp,
-				"action":            "restart",
-				"status":            "success",
+				"cluster_id":   input.ClusterID,
+				"cluster_name": clusterName,
+				"namespace":    input.Namespace,
+				"name":         input.Name,
+				"restarted_at": restartTimestamp,
+				"action":       "restart",
+				"status":       "success",
 			}, nil
 		},
 	)
@@ -190,7 +190,7 @@ func K8sDeletePod(ctx context.Context) tool.InvokableTool {
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
 			}
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}
@@ -214,13 +214,13 @@ func K8sDeletePod(ctx context.Context) tool.InvokableTool {
 			}
 
 			return map[string]any{
-				"cluster_id":            input.ClusterID,
-				"cluster_name":          clusterName,
-				"namespace":             input.Namespace,
-				"name":                  input.Name,
-				"grace_period_seconds":  gracePeriod,
-				"action":                "delete_pod",
-				"status":                "success",
+				"cluster_id":           input.ClusterID,
+				"cluster_name":         clusterName,
+				"namespace":            input.Namespace,
+				"name":                 input.Name,
+				"grace_period_seconds": gracePeriod,
+				"action":               "delete_pod",
+				"status":               "success",
 			}, nil
 		},
 	)
@@ -242,7 +242,7 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
 			}
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}
@@ -329,7 +329,7 @@ func K8sDeleteDeployment(ctx context.Context) tool.InvokableTool {
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
 			}
-			svcCtx := svc.GetServiceContext(ctx)
+			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
 			}

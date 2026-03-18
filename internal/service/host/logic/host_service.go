@@ -15,6 +15,7 @@ import (
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/service/notification"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
@@ -297,17 +298,18 @@ func (s *HostService) RunHealthCheck(ctx context.Context, hostID uint64, operato
 
 func (s *HostService) StartHealthSnapshotCollector() {
 	hostHealthCollectorOnce.Do(func() {
+		rootCtx := runtimectx.WithServices(context.Background(), s.svcCtx)
 		go func() {
 			ticker := time.NewTicker(2 * time.Minute)
 			defer ticker.Stop()
 			for {
-				roundCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+				roundCtx, cancel := context.WithTimeout(rootCtx, 90*time.Second)
 				s.CollectHealthSnapshots(roundCtx)
 				cancel()
 				<-ticker.C
 			}
 		}()
-		roundCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		roundCtx, cancel := context.WithTimeout(rootCtx, 90*time.Second)
 		s.CollectHealthSnapshots(roundCtx)
 		cancel()
 	})

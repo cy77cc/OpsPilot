@@ -10,6 +10,7 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -309,7 +310,7 @@ func (h *Handler) AddClusterNodes(c *gin.Context) {
 	}
 
 	// Sync nodes
-	go h.SyncClusterNodes(context.Background(), cluster.ID)
+	go h.SyncClusterNodes(runtimectx.Detach(c.Request.Context()), cluster.ID)
 	h.invalidateClusterCache(c.Request.Context(), cluster.ID)
 
 	httpx.OK(c, gin.H{

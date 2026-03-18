@@ -9,6 +9,7 @@ import (
 
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,8 +19,6 @@ type redisClient interface {
 	Get(ctx context.Context, key string) *redis.StringCmd
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
 }
-
-type metadataKey struct{}
 
 type Metadata struct {
 	SessionID string
@@ -49,15 +48,22 @@ func NewStore(dao *aidao.AICheckpointDAO, redisClient redisClient, prefix string
 }
 
 func ContextWithMetadata(ctx context.Context, meta Metadata) context.Context {
-	return context.WithValue(ctx, metadataKey{}, meta)
+	return runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
+		SessionID: meta.SessionID,
+		RunID:     meta.RunID,
+		UserID:    meta.UserID,
+		Scene:     meta.Scene,
+	})
 }
 
 func metadataFromContext(ctx context.Context) Metadata {
-	if ctx == nil {
-		return Metadata{}
+	meta := runtimectx.AIMetadataFrom(ctx)
+	return Metadata{
+		SessionID: meta.SessionID,
+		RunID:     meta.RunID,
+		UserID:    meta.UserID,
+		Scene:     meta.Scene,
 	}
-	meta, _ := ctx.Value(metadataKey{}).(Metadata)
-	return meta
 }
 
 func (s *Store) Get(ctx context.Context, checkpointID string) ([]byte, bool, error) {

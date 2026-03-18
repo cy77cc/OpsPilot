@@ -20,6 +20,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -421,7 +422,7 @@ func (h *Handler) ApplyBootstrap(c *gin.Context) {
 	}
 
 	// Execute bootstrap asynchronously
-	go h.executeBootstrap(context.Background(), task)
+	go h.executeBootstrap(runtimectx.Detach(c.Request.Context()), task)
 
 	httpx.OK(c, BootstrapApplyResp{
 		TaskID: task.ID,
