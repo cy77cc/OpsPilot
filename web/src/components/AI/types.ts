@@ -40,7 +40,19 @@ export interface AssistantReplyActivity {
   label: string;
   detail?: string;
   status?: AssistantReplyActivityStatus;
+  stepIndex?: number;
   createdAt?: string;
+}
+
+export interface AssistantReplyPlanStep {
+  id: string;
+  title: string;
+  status: 'pending' | 'active' | 'done';
+}
+
+export interface AssistantReplyPlan {
+  steps: AssistantReplyPlanStep[];
+  activeStepIndex?: number;
 }
 
 export type AssistantSummaryTone = 'default' | 'success' | 'warning' | 'danger';
@@ -70,6 +82,7 @@ export interface AssistantReplyRuntime {
   phase?: AssistantReplyPhase;
   phaseLabel?: string;
   activities: AssistantReplyActivity[];
+  plan?: AssistantReplyPlan;
   summary?: AssistantReplySummary;
   status?: AssistantReplyRuntimeStatus;
 }

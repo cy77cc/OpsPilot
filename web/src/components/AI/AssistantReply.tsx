@@ -1,7 +1,7 @@
 import React from 'react';
 import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
-import type { AssistantReplyRuntime } from './types';
+import type { AssistantReplyActivity, AssistantReplyRuntime } from './types';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
   root: css`
@@ -17,6 +17,38 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     letter-spacing: 0.02em;
   `,
   activities: css`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `,
+  planSteps: css`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  `,
+  planStep: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  planStepHeader: css`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 20px;
+    color: ${token.colorText};
+  `,
+  planStepLine: css`
+    flex: 1;
+    min-width: 24px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+  `,
+  planStepTitle: css`
+    flex: 0 0 auto;
+    white-space: nowrap;
+  `,
+  planStepBody: css`
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -109,16 +141,57 @@ interface AssistantReplyProps {
   status?: string;
 }
 
+function getVisibleActivities(runtime?: AssistantReplyRuntime): AssistantReplyActivity[] {
+  if (!runtime?.activities?.length) {
+    return [];
+  }
+  return runtime.activities.filter((activity) => activity.stepIndex === undefined && activity.kind !== 'plan' && activity.kind !== 'replan');
+}
+
 export function AssistantReply({ content, runtime, status }: AssistantReplyProps) {
   const { styles } = useAssistantReplyStyles();
+  const visibleActivities = getVisibleActivities(runtime);
+  const activeStepIndex = runtime?.plan?.activeStepIndex;
+  const visiblePlanSteps = runtime?.plan?.steps?.filter((_, index) => (
+    activeStepIndex === undefined ? true : index <= activeStepIndex
+  )) || [];
 
   return (
     <div className={styles.root}>
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
-      {runtime?.activities?.length ? (
+      {visiblePlanSteps.length ? (
+        <div className={styles.planSteps}>
+          {visiblePlanSteps.map((step, index) => {
+            const isExpanded = activeStepIndex === index;
+            const scopedActivities = runtime.activities.filter((activity) => activity.stepIndex === index);
+
+            return (
+              <div key={step.id} className={styles.planStep}>
+                <div className={styles.planStepHeader}>
+                  <span className={styles.planStepLine} />
+                  <span className={styles.planStepTitle}>{step.title}</span>
+                  <span className={styles.planStepLine} />
+                </div>
+                {isExpanded ? (
+                  <div className={styles.planStepBody}>
+                    {scopedActivities.length ? scopedActivities.map((activity) => (
+                      <div key={activity.id} className={styles.activity}>
+                        <span>{activity.label}</span>
+                        {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+                      </div>
+                    )) : <div className={styles.activityDetail}>执行中</div>}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {visibleActivities.length ? (
         <div className={styles.activities}>
-          {runtime.activities.map((activity) => (
+          {visibleActivities.map((activity) => (
             <div key={activity.id} className={styles.activity}>
               <span>{activity.label}</span>
               {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}

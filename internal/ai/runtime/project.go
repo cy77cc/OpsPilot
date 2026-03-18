@@ -3,9 +3,11 @@ package runtime
 import "strings"
 
 type ProjectionState struct {
-	TotalPlanSteps  int
-	ReplanIteration int
-	RunPhase        string
+	TotalPlanSteps       int
+	ReplanIteration      int
+	RunPhase             string
+	PendingPlannerJSON   string
+	PendingReplannerJSON string
 }
 
 func projectNormalizedEvents(events []NormalizedEvent, state *ProjectionState) []PublicStreamEvent {
@@ -66,7 +68,9 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 	trimmedContent := strings.TrimSpace(event.Message.Content)
 
 	if trimmedAgent == "planner" {
-		if steps, ok := decodeStepsEnvelope(trimmedContent); ok {
+		raw := appendAgentJSONBuffer(state.PendingPlannerJSON, event.Message.Content)
+		if steps, ok := decodeStepsEnvelope(strings.TrimSpace(raw)); ok {
+			state.PendingPlannerJSON = ""
 			state.TotalPlanSteps = len(steps)
 			state.ReplanIteration = 0
 			state.RunPhase = "planning"
@@ -78,10 +82,29 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 				},
 			}}
 		}
+
+		if shouldBufferAgentEnvelope(state.PendingPlannerJSON, raw) {
+			state.PendingPlannerJSON = raw
+			return nil
+		}
+
+		state.PendingPlannerJSON = ""
+		if strings.TrimSpace(raw) == "" {
+			return nil
+		}
+		return []PublicStreamEvent{{
+			Event: "delta",
+			Data: map[string]any{
+				"content": raw,
+				"agent":   trimmedAgent,
+			},
+		}}
 	}
 
 	if trimmedAgent == "replanner" {
-		if response, ok := decodeResponseEnvelope(trimmedContent); ok {
+		raw := appendAgentJSONBuffer(state.PendingReplannerJSON, event.Message.Content)
+		if response, ok := decodeResponseEnvelope(strings.TrimSpace(raw)); ok {
+			state.PendingReplannerJSON = ""
 			state.ReplanIteration++
 			state.RunPhase = "executing"
 			return []PublicStreamEvent{
@@ -103,7 +126,8 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 				},
 			}
 		}
-		if steps, ok := decodeStepsEnvelope(trimmedContent); ok {
+		if steps, ok := decodeStepsEnvelope(strings.TrimSpace(raw)); ok {
+			state.PendingReplannerJSON = ""
 			state.ReplanIteration++
 			completed := state.TotalPlanSteps - len(steps)
 			if completed < 0 {
@@ -120,6 +144,23 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 				},
 			}}
 		}
+
+		if shouldBufferAgentEnvelope(state.PendingReplannerJSON, raw) {
+			state.PendingReplannerJSON = raw
+			return nil
+		}
+
+		state.PendingReplannerJSON = ""
+		if strings.TrimSpace(raw) == "" {
+			return nil
+		}
+		return []PublicStreamEvent{{
+			Event: "delta",
+			Data: map[string]any{
+				"content": raw,
+				"agent":   trimmedAgent,
+			},
+		}}
 	}
 
 	projected := make([]PublicStreamEvent, 0, 1)
@@ -133,4 +174,16 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 		})
 	}
 	return projected
+}
+
+func appendAgentJSONBuffer(existing, chunk string) string {
+	return existing + chunk
+}
+
+func shouldBufferAgentEnvelope(existing, raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if existing != "" {
+		return true
+	}
+	return strings.HasPrefix(trimmed, "{")
 }

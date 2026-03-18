@@ -19,6 +19,7 @@ describe('assistant reply runtime shape', () => {
   it('creates an empty runtime with append-ready activity state', () => {
     expect(createEmptyAssistantRuntime()).toEqual({
       activities: [],
+      plan: undefined,
       phase: undefined,
       phaseLabel: undefined,
       summary: undefined,
@@ -73,6 +74,7 @@ describe('assistant reply runtime shape', () => {
         label: string;
         detail?: string;
         status?: 'pending' | 'active' | 'done' | 'error';
+        stepIndex?: number;
         createdAt?: string;
       }>
     >();
@@ -171,6 +173,42 @@ describe('assistant reply runtime shape', () => {
         kind: 'replan',
         detail: '检查节点 -> 汇总异常',
       }),
+    );
+  });
+
+  it('tracks active plan step and scopes tool activity to that step', () => {
+    let runtime = applyPlan(createEmptyAssistantRuntime(), {
+      steps: ['获取服务器列表', '批量执行健康检查'],
+      iteration: 0,
+    });
+    runtime = applyToolCall(runtime, {
+      call_id: 'call-1',
+      tool_name: 'host_list_inventory',
+      arguments: {},
+    });
+    runtime = applyReplan(runtime, {
+      steps: ['批量执行健康检查', '汇总结果'],
+      completed: 1,
+      iteration: 1,
+      is_final: false,
+    });
+
+    expect(runtime.plan).toEqual({
+      activeStepIndex: 1,
+      steps: [
+        { id: 'plan-step-0', title: '获取服务器列表', status: 'done' },
+        { id: 'plan-step-1', title: '批量执行健康检查', status: 'active' },
+        { id: 'plan-step-2', title: '汇总结果', status: 'pending' },
+      ],
+    });
+    expect(runtime.activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'call-1',
+          label: 'host_list_inventory',
+          stepIndex: 0,
+        }),
+      ]),
     );
   });
 

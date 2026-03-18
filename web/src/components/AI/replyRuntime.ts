@@ -1,5 +1,7 @@
 import type {
   AssistantReplyActivity,
+  AssistantReplyPlan,
+  AssistantReplyPlanStep,
   AssistantReplyRuntime,
   XChatMessage,
 } from './types';
@@ -8,9 +10,14 @@ const PLACEHOLDER_CONTENT = '[准备中]';
 const SOFT_TIMEOUT_MESSAGE = '工具执行较慢，正在继续等待结果…';
 const MAX_ACTIVITIES = 50;
 
+function buildPlanStepId(index: number): string {
+  return `plan-step-${index}`;
+}
+
 export function createEmptyAssistantRuntime(): AssistantReplyRuntime {
   return {
     activities: [],
+    plan: undefined,
     phase: undefined,
     phaseLabel: undefined,
     summary: undefined,
@@ -23,6 +30,47 @@ function trimActivities(activities: AssistantReplyActivity[]): AssistantReplyAct
     return activities;
   }
   return activities.slice(activities.length - MAX_ACTIVITIES);
+}
+
+function reconcilePlan(
+  previous: AssistantReplyPlan | undefined,
+  steps: string[],
+  completed: number,
+  isFinal: boolean,
+): AssistantReplyPlan {
+  const total = completed + steps.length;
+  const nextSteps: AssistantReplyPlanStep[] = [];
+
+  for (let index = 0; index < completed; index += 1) {
+    nextSteps.push({
+      id: buildPlanStepId(index),
+      title: previous?.steps[index]?.title || `步骤 ${index + 1}`,
+      status: 'done',
+    });
+  }
+
+  steps.forEach((title, index) => {
+    nextSteps.push({
+      id: buildPlanStepId(index + completed),
+      title,
+      status: isFinal ? 'done' : index === 0 ? 'active' : 'pending',
+    });
+  });
+
+  if (isFinal && previous && previous.steps.length > total) {
+    previous.steps.slice(total).forEach((step, index) => {
+      nextSteps.push({
+        id: buildPlanStepId(total + index),
+        title: step.title,
+        status: 'done',
+      });
+    });
+  }
+
+  return {
+    activeStepIndex: isFinal ? undefined : completed,
+    steps: nextSteps,
+  };
 }
 
 function upsertActivity(
@@ -69,6 +117,7 @@ export function applyToolCall(
   runtime: AssistantReplyRuntime,
   payload: { call_id: string; tool_name: string; arguments?: Record<string, unknown> },
 ): AssistantReplyRuntime {
+  const activeStepIndex = runtime.plan?.activeStepIndex;
   return upsertActivity(
     runtime,
     {
@@ -76,6 +125,7 @@ export function applyToolCall(
       kind: 'tool_call',
       label: payload.tool_name,
       status: 'active',
+      stepIndex: activeStepIndex,
     },
     (item) => item.id === payload.call_id,
   );
@@ -136,6 +186,7 @@ export function applyPlan(
       },
       (item) => item.id === 'planning',
     ),
+    plan: reconcilePlan(undefined, payload.steps, 0, false),
     phase: 'planning',
     phaseLabel: '正在规划处理方式',
   };
@@ -157,6 +208,7 @@ export function applyReplan(
       },
       (item) => item.id === 'planning',
     ),
+    plan: reconcilePlan(runtime.plan, payload.steps, payload.completed, payload.is_final),
     phase: 'planning',
     phaseLabel: '正在调整处理计划',
   };
@@ -172,6 +224,7 @@ export function applyToolApproval(
     timeout_seconds: number;
   },
 ): AssistantReplyRuntime {
+  const activeStepIndex = runtime.plan?.activeStepIndex;
   return upsertActivity(
     runtime,
     {
@@ -180,6 +233,7 @@ export function applyToolApproval(
       label: payload.tool_name,
       detail: `等待审批 ${payload.timeout_seconds}s`,
       status: 'pending',
+      stepIndex: activeStepIndex,
     },
     (item) => item.id === payload.call_id,
   );
@@ -189,6 +243,7 @@ export function applyToolResult(
   runtime: AssistantReplyRuntime,
   payload: { call_id: string; tool_name: string; content: string },
 ): AssistantReplyRuntime {
+  const existing = runtime.activities.find((item) => item.id === payload.call_id);
   return upsertActivity(
     runtime,
     {
@@ -197,6 +252,7 @@ export function applyToolResult(
       label: payload.tool_name,
       detail: payload.content,
       status: 'done',
+      stepIndex: existing?.stepIndex ?? runtime.plan?.activeStepIndex,
     },
     (item) => item.id === payload.call_id,
   );
@@ -205,6 +261,13 @@ export function applyToolResult(
 export function applyDone(runtime: AssistantReplyRuntime): AssistantReplyRuntime {
   return {
     ...runtime,
+    plan: runtime.plan
+      ? {
+          ...runtime.plan,
+          activeStepIndex: undefined,
+          steps: runtime.plan.steps.map((step) => ({ ...step, status: 'done' })),
+        }
+      : runtime.plan,
     phase: 'completed',
     phaseLabel: runtime.phaseLabel || '已完成',
     status: {

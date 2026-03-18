@@ -103,3 +103,25 @@ func TestDecodeResponseEnvelope(t *testing.T) {
 		t.Fatalf("unexpected decoded response: %q", response)
 	}
 }
+
+func TestProjectNormalizedEvent_PartialPlannerChunkIsBuffered(t *testing.T) {
+	t.Parallel()
+
+	state := &ProjectionState{}
+	got := projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindMessage,
+		AgentName: "planner",
+		Message: &NormalizedMessage{
+			Role:        "assistant",
+			Content:     `{"steps":["inspect pods",`,
+			IsStreaming: true,
+		},
+	}, state)
+
+	if len(got) != 0 {
+		t.Fatalf("expected partial planner chunk to stay buffered, got %#v", got)
+	}
+	if state.PendingPlannerJSON != `{"steps":["inspect pods",` {
+		t.Fatalf("expected planner buffer to persist partial chunk, got %q", state.PendingPlannerJSON)
+	}
+}

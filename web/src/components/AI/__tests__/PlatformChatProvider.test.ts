@@ -240,4 +240,46 @@ describe('PlatformChatProvider', () => {
       expect.any(Headers),
     );
   });
+
+  it('buffers planner and replanner delta envelopes before exposing them', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    const onSuccess = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess,
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onDelta?.({ agent: 'planner', content: '{"steps":["获取服务器列表",' });
+      handlers.onDelta?.({ agent: 'planner', content: '"批量执行健康检查"]}' });
+      handlers.onToolCall?.({ call_id: 'call-1', tool_name: 'host_list_inventory', arguments: {} });
+      handlers.onDelta?.({ agent: 'replanner', content: '{"response":"## 检查完成' });
+      handlers.onDelta?.({ agent: 'replanner', content: '\\n\\n全部正常"}' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'host' });
+    await request.asyncHandler;
+
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '## 检查完成\n\n全部正常',
+        runtime: expect.objectContaining({
+          plan: expect.objectContaining({
+            steps: [
+              expect.objectContaining({ title: '获取服务器列表' }),
+              expect.objectContaining({ title: '批量执行健康检查' }),
+            ],
+          }),
+        }),
+      }),
+      expect.any(Headers),
+    );
+    expect(onSuccess).toHaveBeenCalledWith(
+      [expect.objectContaining({ content: '## 检查完成\n\n全部正常', mode: 'replace' })],
+      expect.any(Headers),
+    );
+  });
 });
