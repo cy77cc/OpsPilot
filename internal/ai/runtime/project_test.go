@@ -125,3 +125,78 @@ func TestProjectNormalizedEvent_PartialPlannerChunkIsBuffered(t *testing.T) {
 		t.Fatalf("expected planner buffer to persist partial chunk, got %q", state.PendingPlannerJSON)
 	}
 }
+
+func TestProjectNormalizedEvent_ToolCall(t *testing.T) {
+	event := NormalizedEvent{
+		Kind:      NormalizedKindToolCall,
+		AgentName: "executor",
+		Tool: &NormalizedTool{
+			CallID:    "call-123",
+			ToolName:  "k8s_query",
+			Arguments: map[string]any{"namespace": "default"},
+		},
+	}
+
+	got := projectNormalizedEvent(event, &ProjectionState{})
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(got))
+	}
+	if got[0].Event != "tool_call" {
+		t.Fatalf("expected event tool_call, got %s", got[0].Event)
+	}
+
+	data, ok := got[0].Data.(map[string]any)
+	if !ok {
+		t.Fatal("expected data to be map[string]any")
+	}
+	if data["call_id"] != "call-123" {
+		t.Errorf("expected call_id=call-123, got %v", data["call_id"])
+	}
+	if data["tool_name"] != "k8s_query" {
+		t.Errorf("expected tool_name=k8s_query, got %v", data["tool_name"])
+	}
+}
+
+func TestProjectNormalizedEvent_ToolResult(t *testing.T) {
+	event := NormalizedEvent{
+		Kind:      NormalizedKindToolResult,
+		AgentName: "executor",
+		Tool: &NormalizedTool{
+			CallID:   "call-123",
+			ToolName: "k8s_query",
+			Content:  "tool output",
+		},
+	}
+
+	got := projectNormalizedEvent(event, &ProjectionState{})
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(got))
+	}
+	if got[0].Event != "tool_result" {
+		t.Fatalf("expected event tool_result, got %s", got[0].Event)
+	}
+
+	data, ok := got[0].Data.(map[string]any)
+	if !ok {
+		t.Fatal("expected data to be map[string]any")
+	}
+	if data["content"] != "tool output" {
+		t.Errorf("expected content='tool output', got %v", data["content"])
+	}
+}
+
+func TestProjectNormalizedEvent_ToolCall_NilTool(t *testing.T) {
+	event := NormalizedEvent{
+		Kind:      NormalizedKindToolCall,
+		AgentName: "executor",
+		Tool:      nil,
+	}
+
+	got := projectNormalizedEvent(event, &ProjectionState{})
+
+	if len(got) != 0 {
+		t.Fatalf("expected 0 events for nil tool, got %d", len(got))
+	}
+}

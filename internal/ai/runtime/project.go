@@ -52,6 +52,32 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 				"agent": event.AgentName,
 			}),
 		}
+	case NormalizedKindToolCall:
+		if event.Tool == nil {
+			return nil
+		}
+		return []PublicStreamEvent{{
+			Event: "tool_call",
+			Data: map[string]any{
+				"call_id":    event.Tool.CallID,
+				"tool_name":  event.Tool.ToolName,
+				"arguments":  event.Tool.Arguments,
+				"agent":      strings.TrimSpace(event.AgentName),
+			},
+		}}
+	case NormalizedKindToolResult:
+		if event.Tool == nil {
+			return nil
+		}
+		return []PublicStreamEvent{{
+			Event: "tool_result",
+			Data: map[string]any{
+				"call_id":    event.Tool.CallID,
+				"tool_name":  event.Tool.ToolName,
+				"content":    event.Tool.Content,
+				"agent":      strings.TrimSpace(event.AgentName),
+			},
+		}}
 	case NormalizedKindMessage:
 		return projectNormalizedMessage(event, state)
 	default:
