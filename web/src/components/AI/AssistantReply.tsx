@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
+import { Collapse } from 'antd';
 import type { AssistantReplyActivity, AssistantReplyRuntime } from './types';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
@@ -26,29 +27,25 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     gap: 10px;
   `,
-  planStep: css`
+  activeStep: css`
     display: flex;
     flex-direction: column;
     gap: 8px;
+    padding: 12px;
+    background: ${token.colorFillQuaternary};
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
   `,
-  planStepHeader: css`
+  activeStepHeader: css`
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    line-height: 20px;
+    gap: 8px;
+    font-size: 14px;
+    line-height: 22px;
     color: ${token.colorText};
+    font-weight: 500;
   `,
-  planStepLine: css`
-    flex: 1;
-    min-width: 24px;
-    border-top: 1px solid ${token.colorBorderSecondary};
-  `,
-  planStepTitle: css`
-    flex: 0 0 auto;
-    white-space: nowrap;
-  `,
-  planStepBody: css`
+  activeStepBody: css`
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -58,6 +55,33 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     max-width: 100%;
     line-height: 1.65;
     word-break: break-word;
+  `,
+  completedStepsCollapse: css`
+    .ant-collapse-header {
+      font-size: 12px;
+      color: ${token.colorTextSecondary};
+      padding: 4px 0 !important;
+    }
+    .ant-collapse-content-box {
+      padding: 8px 0 !important;
+    }
+  `,
+  completedStepItem: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    &:last-child {
+      border-bottom: none;
+    }
+  `,
+  completedStepTitle: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: ${token.colorTextSecondary};
   `,
   activity: css`
     display: flex;
@@ -158,7 +182,24 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
   const { styles } = useAssistantReplyStyles();
   const visibleActivities = getVisibleActivities(runtime);
   const activeStepIndex = runtime?.plan?.activeStepIndex;
-  const planSteps = runtime?.plan?.steps || [];
+  const allSteps = runtime?.plan?.steps || [];
+
+  // 当前执行的步骤
+  const activeStep = activeStepIndex !== undefined && activeStepIndex < allSteps.length
+    ? allSteps[activeStepIndex]
+    : null;
+
+  // 已完成的步骤
+  // - 当有当前步骤时：当前步骤之前的已完成步骤
+  // - 当计划完成时：所有已完成的步骤
+  const completedSteps = activeStepIndex !== undefined
+    ? allSteps.slice(0, activeStepIndex).filter((step) => step.status === 'done')
+    : allSteps.filter((step) => step.status === 'done');
+
+  // 当前步骤的 activities
+  const activeStepActivities = activeStepIndex !== undefined
+    ? runtime?.activities?.filter((activity) => activity.stepIndex === activeStepIndex) || []
+    : [];
 
   return (
     <div className={styles.root}>
@@ -176,56 +217,63 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
 
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
-      {planSteps.length ? (
-        <div className={styles.planSteps}>
-          {planSteps.map((step, index) => {
-            const isActive = activeStepIndex === index;
-            const isDone = step.status === 'done';
-            const isExpanded = isActive && activeStepIndex !== undefined;
-            const scopedActivities = runtime?.activities?.filter((activity) => activity.stepIndex === index) || [];
-
-            // 状态图标: ✓ done, ◐ active, ○ pending
-            const statusIcon = isDone ? '✓ ' : isActive ? '◐ ' : '○ ';
-
-            return (
-              <div key={step.id} className={styles.planStep}>
-                <div className={styles.planStepHeader}>
-                  <span className={styles.planStepLine} />
-                  <span className={styles.planStepTitle}>{statusIcon}{step.title}</span>
-                  <span className={styles.planStepLine} />
+      {/* 已完成的步骤（折叠，可展开） */}
+      {completedSteps.length > 0 ? (
+        <Collapse
+          className={styles.completedStepsCollapse}
+          ghost
+          items={[{
+            key: 'completed',
+            label: `已完成 ${completedSteps.length} 个步骤`,
+            children: completedSteps.map((step) => (
+              <div key={step.id} className={styles.completedStepItem}>
+                <div className={styles.completedStepTitle}>
+                  <span>✓</span>
+                  <span>{step.title}</span>
                 </div>
-                {isExpanded ? (
-                <div className={styles.planStepBody}>
-                  {step.content ? (
-                    <div className={styles.stepMarkdown}>
-                      <XMarkdown
-                        content={step.content}
-                        streaming={{
-                          hasNextChunk: status === 'loading' || status === 'updating',
-                          enableAnimation: true,
-                          animationConfig: {
-                            fadeDuration: 180,
-                            easing: 'ease-out',
-                          },
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                  {scopedActivities.length ? scopedActivities.map((activity) => (
-                    <div key={activity.id} className={styles.activity}>
-                      <span>{activity.label}</span>
-                      {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-                    </div>
-                  )) : <div className={styles.activityDetail}>执行中</div>}
-                </div>
+                {step.content ? (
+                  <div className={styles.stepMarkdown}>
+                    <XMarkdown content={step.content} />
+                  </div>
                 ) : null}
               </div>
-            );
-          })}
-        </div>
+            )),
+          }]}
+        />
       ) : null}
 
-
+      {/* 当前执行的步骤（展开） */}
+      {activeStep ? (
+        <div className={styles.activeStep}>
+          <div className={styles.activeStepHeader}>
+            <span>◐</span>
+            <span>{activeStep.title}</span>
+          </div>
+          <div className={styles.activeStepBody}>
+            {activeStep.content ? (
+              <div className={styles.stepMarkdown}>
+                <XMarkdown
+                  content={activeStep.content}
+                  streaming={{
+                    hasNextChunk: status === 'loading' || status === 'updating',
+                    enableAnimation: true,
+                    animationConfig: {
+                      fadeDuration: 180,
+                      easing: 'ease-out',
+                    },
+                  }}
+                />
+              </div>
+            ) : null}
+            {activeStepActivities.map((activity) => (
+              <div key={activity.id} className={styles.activity}>
+                <span>{activity.label}</span>
+                {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {runtime?.summary ? (
         <div className={styles.summary}>

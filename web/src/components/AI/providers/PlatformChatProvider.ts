@@ -249,6 +249,16 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       onDelta: (payload) => {
         const agent = normalizeAgentName(payload.agent);
         if (agent === 'planner' || agent === 'replanner') {
+          // 当计划已完成（activeStepIndex 为 undefined），直接显示 replanner 的内容
+          // 不再尝试解析 JSON envelope
+          if (runtime.plan?.activeStepIndex === undefined && agent === 'replanner') {
+            const next = applyDelta({ content, runtime }, { content: payload.content || '' });
+            content = next.content;
+            runtime = next.runtime || runtime;
+            emitVisibleChunk(payload.content || '');
+            return;
+          }
+
           const nextBuffered = `${plannerBuffers[agent] || ''}${payload.content || ''}`;
           const envelope = parsePlannerEnvelope(nextBuffered);
           if (!envelope) {

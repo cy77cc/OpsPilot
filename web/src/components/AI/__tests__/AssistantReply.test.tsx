@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AssistantReply } from '../AssistantReply';
 
@@ -64,7 +64,7 @@ describe('AssistantReply', () => {
     expect(screen.getAllByText('建议先处理 node-2 的磁盘压力。')).toHaveLength(1);
   });
 
-  it('renders plan steps as auto-expanded execution sections', () => {
+  it('shows completed steps in collapsible section and active step expanded', () => {
     render(
       <AssistantReply
         content="## 最终报告"
@@ -89,28 +89,21 @@ describe('AssistantReply', () => {
       />,
     );
 
-    // All step titles should be visible
-    expect(screen.getByText(/获取服务器列表/)).toBeInTheDocument();
-    expect(screen.getByText(/批量执行健康检查/)).toBeInTheDocument();
-    expect(screen.getByText(/汇总检查结果/)).toBeInTheDocument();
-
-    // Only active step (index 1) is expanded
+    // Active step (index 1) is expanded
     expect(screen.getByText('host_exec')).toBeInTheDocument();
-    expect(screen.getAllByTestId('x-markdown').at(0)).toHaveTextContent('正在执行 uptime');
+    expect(screen.getByText('批量执行健康检查')).toBeInTheDocument();
 
-    // Step 0 (done) is collapsed, so its activities are hidden
-    expect(screen.queryByText('host_list_inventory')).not.toBeInTheDocument();
+    // Completed steps are in collapse header
+    expect(screen.getByText(/已完成 1 个步骤/)).toBeInTheDocument();
+
+    // Pending step is not shown
+    expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
 
     // Final report content
     expect(screen.getAllByTestId('x-markdown').at(-1)).toHaveTextContent('## 最终报告');
-
-    // Status icons
-    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument(); // done
-    expect(screen.getByText(/◐ 批量执行健康检查/)).toBeInTheDocument(); // active
-    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
   });
 
-  it('shows all steps but only expands the current active step', () => {
+  it('shows only active step when no completed steps', () => {
     render(
       <AssistantReply
         content=""
@@ -134,22 +127,20 @@ describe('AssistantReply', () => {
       />,
     );
 
-    // All step titles should be visible
-    expect(screen.getByText(/获取服务器列表/)).toBeInTheDocument();
-    expect(screen.getByText(/批量执行健康检查/)).toBeInTheDocument();
-    expect(screen.getByText(/汇总检查结果/)).toBeInTheDocument();
-
-    // Only the active step should be expanded (showing content and activities)
+    // Only active step is shown
+    expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
     expect(screen.getByText('host_list_inventory')).toBeInTheDocument();
     expect(screen.getByTestId('x-markdown')).toHaveTextContent('正在获取主机列表');
 
-    // Status icons should be present
-    expect(screen.getByText(/◐ 获取服务器列表/)).toBeInTheDocument(); // active
-    expect(screen.getByText(/○ 批量执行健康检查/)).toBeInTheDocument(); // pending
-    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
+    // Pending steps are not shown
+    expect(screen.queryByText('批量执行健康检查')).not.toBeInTheDocument();
+    expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
+
+    // No completed steps collapse
+    expect(screen.queryByText(/已完成/)).not.toBeInTheDocument();
   });
 
-  it('shows done icon for completed steps and expands only active step', () => {
+  it('can expand completed steps to see their content', async () => {
     render(
       <AssistantReply
         content=""
@@ -162,7 +153,6 @@ describe('AssistantReply', () => {
             steps: [
               { id: 'plan-step-0', title: '获取服务器列表', status: 'done', content: '已找到 5 台服务器' },
               { id: 'plan-step-1', title: '批量执行健康检查', status: 'active', content: '正在执行检查' },
-              { id: 'plan-step-2', title: '汇总检查结果', status: 'pending' },
             ],
           },
           activities: [
@@ -173,20 +163,19 @@ describe('AssistantReply', () => {
       />,
     );
 
-    // All step titles visible with correct status icons
-    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument(); // done
-    expect(screen.getByText(/◐ 批量执行健康检查/)).toBeInTheDocument(); // active
-    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
-
-    // Only active step content is expanded
-    expect(screen.getByText('health_check')).toBeInTheDocument();
-    expect(screen.getByText('正在执行检查')).toBeInTheDocument();
-
-    // Done step content should NOT be expanded (collapsed)
+    // Completed step content is initially hidden
     expect(screen.queryByText('已找到 5 台服务器')).not.toBeInTheDocument();
+
+    // Click to expand completed steps
+    const collapseHeader = screen.getByText(/已完成 1 个步骤/);
+    fireEvent.click(collapseHeader);
+
+    // Now completed step content is visible
+    expect(screen.getByText('已找到 5 台服务器')).toBeInTheDocument();
+    expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
   });
 
-  it('collapses all steps when activeStepIndex is undefined (is_final=true)', () => {
+  it('shows completed steps collapse when plan is finished', () => {
     render(
       <AssistantReply
         content="最终报告内容"
@@ -208,17 +197,13 @@ describe('AssistantReply', () => {
       />,
     );
 
-    // All step titles should be visible with done icons
-    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument();
-    expect(screen.getByText(/✓ 批量执行健康检查/)).toBeInTheDocument();
-    expect(screen.getByText(/✓ 汇总检查结果/)).toBeInTheDocument();
+    // Completed steps are in collapse
+    expect(screen.getByText(/已完成 3 个步骤/)).toBeInTheDocument();
 
-    // No step content should be expanded (all collapsed)
-    expect(screen.queryByText('已找到 5 台服务器')).not.toBeInTheDocument();
-    expect(screen.queryByText('检查完成')).not.toBeInTheDocument();
-    expect(screen.queryByText('汇总完成')).not.toBeInTheDocument();
+    // No active step
+    expect(screen.queryByText('◐')).not.toBeInTheDocument();
 
-    // Final report content is still shown
+    // Final report content is shown
     expect(screen.getByText('最终报告内容')).toBeInTheDocument();
   });
 });
