@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CopilotSurface from '../CopilotSurface';
+import { aiApi } from '../../../api/modules/ai';
 
 const mockUseXChat = vi.hoisted(() => vi.fn());
 const mockUseXConversations = vi.hoisted(() => vi.fn());
@@ -37,6 +38,11 @@ vi.mock('../../../api/modules/ai', () => ({
 describe('CopilotSurface XMarkdown streaming', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     vi.stubGlobal(
       'IntersectionObserver',
       class IntersectionObserver {
@@ -116,5 +122,83 @@ describe('CopilotSurface XMarkdown streaming', () => {
         }),
       }),
     );
+  });
+
+  it('renders assistant runtime details inside the assistant reply surface', () => {
+    mockUseXChat.mockReturnValue({
+      messages: [
+        {
+          id: 'assistant-1',
+          status: 'updating',
+          message: {
+            role: 'assistant',
+            content: 'hello',
+            runtime: {
+              phase: 'planning',
+              phaseLabel: '正在规划',
+              activities: [],
+              status: { kind: 'streaming', label: '持续生成中' },
+            },
+          },
+        },
+      ],
+      onRequest: vi.fn(),
+      isRequesting: true,
+      queueRequest: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('正在规划')).toBeInTheDocument();
+    expect(screen.getByText('持续生成中')).toBeInTheDocument();
+    expect(screen.getAllByTestId('x-markdown').some((node) => node.textContent?.includes('hello'))).toBe(true);
+  });
+
+  it('preserves persisted runtime in defaultMessages hydration', async () => {
+    let capturedDefaultMessages: ((args: { conversationKey?: string }) => Promise<any[]>) | undefined;
+    mockUseXChat.mockImplementation((config: any) => {
+      capturedDefaultMessages = config.defaultMessages;
+      return {
+        messages: [],
+        onRequest: vi.fn(),
+        isRequesting: false,
+        queueRequest: vi.fn(),
+      };
+    });
+
+    vi.mocked(aiApi.getSession).mockResolvedValue({
+      data: {
+        messages: [
+          {
+            role: 'assistant',
+            content: '历史回答',
+            status: 'done',
+            runtime: {
+              phase: 'completed',
+              phaseLabel: '已完成诊断',
+              activities: [],
+              status: { kind: 'completed', label: '已生成' },
+            },
+          },
+        ],
+      },
+    } as any);
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    const hydrated = await capturedDefaultMessages?.({ conversationKey: 'sess-1' });
+    expect(hydrated?.[0]?.message?.runtime?.phaseLabel).toBe('已完成诊断');
+    expect(hydrated?.[0]?.message?.runtime?.status).toEqual({
+      kind: 'completed',
+      label: '已生成',
+    });
   });
 });

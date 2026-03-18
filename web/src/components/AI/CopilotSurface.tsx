@@ -11,14 +11,15 @@ import {
   LikeOutlined,
   DislikeOutlined,
 } from '@ant-design/icons';
-import { Bubble, Conversations, Prompts, Sender, Think, Welcome, CodeHighlighter } from '@ant-design/x';
+import { Bubble, Conversations, Prompts, Sender, Welcome } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
-import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { useXChat, useXConversations } from '@ant-design/x-sdk';
 import { Button, Drawer, Popover, Space, Tag, Typography } from 'antd';
 import { createStyles } from 'antd-style';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
+import { AssistantReply } from './AssistantReply';
+import { hydrateAssistantHistoryMessage } from './historyRuntime';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
 
@@ -173,32 +174,6 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     bottom: 92px;
     z-index: 120;
     box-shadow: 0 8px 20px rgba(17, 24, 39, 0.14);
-  `,
-  markdown: css`
-    width: 100%;
-    max-width: 100%;
-    line-height: 1.65;
-    word-break: break-word;
-
-    pre {
-      overflow-x: auto;
-      padding: 12px;
-      border-radius: 10px;
-      background: #111827;
-      color: #f9fafb;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th,
-    td {
-      border: 1px solid ${token.colorBorderSecondary};
-      padding: 8px 10px;
-      text-align: left;
-    }
   `,
 }));
 
@@ -363,14 +338,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     [activeConversationKey, context, scene],
   );
 
-  const Code: React.FC<ComponentProps> = (props) => {
-    const { className, children } = props;
-    const lang = className?.match(/language-(\w+)/)?.[1] || '';
-
-    if (typeof children !== 'string') return null;
-    return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
-  };
-
   const defaultMessages = React.useCallback(
     async ({ conversationKey }: { conversationKey?: string }) => {
       if (!conversationKey || conversationKey === NEW_SESSION_KEY) {
@@ -380,10 +347,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       const session = response?.data;
       const messages = Array.isArray(session?.messages) ? session.messages : [];
       return messages.map((message) => ({
-        message: {
-          role: (message.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
-          content: message.content || '',
-        },
+        message: hydrateAssistantHistoryMessage(message, session?.turns || []),
         status: (message.status === 'done' ? 'success' : 'loading') as 'success' | 'loading',
       }));
     },
@@ -491,32 +455,11 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           },
         },
         contentRender: (content: string, info) => (
-          <div className={styles.markdown}>
-            <XMarkdown
-              content={content}
-              streaming={{
-                hasNextChunk: info.status === 'loading' || info.status === 'updating',
-                enableAnimation: true,
-                animationConfig: {
-                  fadeDuration: 180,
-                  easing: 'ease-out',
-                },
-              }}
-              components={{
-                think: ({ children }: any) => (
-                  <Think title="Thinking" loading={false}>
-                    {children}
-                  </Think>
-                ),
-                table: ({ children, ...props }: any) => (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table {...props}>{children}</table>
-                  </div>
-                ),
-                code: Code
-              }}
-            />
-          </div>
+          <AssistantReply
+            content={content}
+            runtime={(info as any).extraInfo?.runtime}
+            status={info.status}
+          />
         ),
       },
       user: {
@@ -530,7 +473,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         },
       },
     }),
-    [styles.markdown],
+    [],
   );
 
   React.useEffect(() => {
@@ -745,6 +688,9 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                   content: item.message.content,
                   loading: item.status === 'loading' && !item.message.content,
                   status: item.status,
+                  extraInfo: {
+                    runtime: item.message.runtime,
+                  },
                 }))}
                 role={bubbleRole}
               />
