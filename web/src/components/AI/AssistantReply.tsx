@@ -164,6 +164,18 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
 
   return (
     <div className={styles.root}>
+
+      {visibleActivities.length ? (
+        <div className={styles.activities}>
+          {visibleActivities.map((activity) => (
+            <div key={activity.id} className={styles.activity}>
+              <span>{activity.label}</span>
+              {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
       {visiblePlanSteps.length ? (
@@ -180,29 +192,29 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
                   <span className={styles.planStepLine} />
                 </div>
                 {isExpanded ? (
-                  <div className={styles.planStepBody}>
-                    {step.content ? (
-                      <div className={styles.stepMarkdown}>
-                        <XMarkdown
-                          content={step.content}
-                          streaming={{
-                            hasNextChunk: status === 'loading' || status === 'updating',
-                            enableAnimation: true,
-                            animationConfig: {
-                              fadeDuration: 180,
-                              easing: 'ease-out',
-                            },
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                    {scopedActivities.length ? scopedActivities.map((activity) => (
-                      <div key={activity.id} className={styles.activity}>
-                        <span>{activity.label}</span>
-                        {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-                      </div>
-                    )) : <div className={styles.activityDetail}>执行中</div>}
-                  </div>
+                <div className={styles.planStepBody}>
+                  {step.content ? (
+                    <div className={styles.stepMarkdown}>
+                      <XMarkdown
+                        content={step.content}
+                        streaming={{
+                          hasNextChunk: status === 'loading' || status === 'updating',
+                          enableAnimation: true,
+                          animationConfig: {
+                            fadeDuration: 180,
+                            easing: 'ease-out',
+                          },
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {scopedActivities.length ? scopedActivities.map((activity) => (
+                    <div key={activity.id} className={styles.activity}>
+                      <span>{activity.label}</span>
+                      {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+                    </div>
+                  )) : <div className={styles.activityDetail}>执行中</div>}
+                </div>
                 ) : null}
               </div>
             );
@@ -210,16 +222,7 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
         </div>
       ) : null}
 
-      {visibleActivities.length ? (
-        <div className={styles.activities}>
-          {visibleActivities.map((activity) => (
-            <div key={activity.id} className={styles.activity}>
-              <span>{activity.label}</span>
-              {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
+
 
       {runtime?.summary ? (
         <div className={styles.summary}>

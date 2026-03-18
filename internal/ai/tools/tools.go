@@ -99,6 +99,9 @@ func GetAllTools(ctx context.Context) []tool.BaseTool {
 // 参数:
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
+	platformTools := []tool.InvokableTool{
+		platform.PlatformDiscoverResources(ctx),
+	}
 	// K8s 只读工具
 	k8sTools := kubernetes.NewKubernetesTools(ctx)
 	// 监控工具（全部只读）
@@ -111,7 +114,10 @@ func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
 		deployment.ServiceListInventory(ctx),
 	}
 
-	result := make([]tool.BaseTool, 0, len(k8sTools)+len(monitorTools)+len(hostReadonly)+len(deploymentTools))
+	result := make([]tool.BaseTool, 0, len(platformTools)+len(k8sTools)+len(monitorTools)+len(hostReadonly)+len(deploymentTools))
+	for _, t := range platformTools {
+		result = append(result, t)
+	}
 	for _, t := range k8sTools {
 		result = append(result, t)
 	}

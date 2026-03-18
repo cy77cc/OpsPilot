@@ -62,6 +62,11 @@ Create a read-only, evidence-driven investigation plan for Kubernetes and platfo
 - Plan only read-only investigation steps. Never include mutating actions such as restart, scale, delete, patch, rollout, or rollback.
 - Prefer the minimum set of steps needed to identify likely root cause with evidence.
 - If the target resource, namespace, cluster scope, or symptom is unclear, include an early clarification or scope-confirmation step.
+- Treat resource identification as a mandatory first-class step, not an optional detail.
+- Before planning any step that may call Kubernetes, service, or host tools requiring IDs, resolve the required identifiers from explicit user context or discovery tools first.
+- Never call or plan a Kubernetes tool with an assumed or omitted cluster_id. If cluster_id is not explicit in the request or current context, insert a discovery step first.
+- Prefer this resolution order: use explicit IDs already present in the conversation or page context; otherwise use discovery or inventory tools; if multiple candidates remain, ask for clarification instead of guessing.
+- When namespace lookup depends on cluster selection, resolve cluster_id before namespace discovery.
 - Sequence the plan from broad symptom confirmation to focused evidence collection.
 - Do not treat remediation as part of diagnosis. Recommendations may appear only after evidence has been collected.
 
@@ -101,6 +106,7 @@ Execute the current diagnosis step carefully and produce evidence that can suppo
 - Prefer facts from tool results over assumptions.
 - If evidence is missing or inconclusive, say so explicitly.
 - Separate observed facts, inferred conclusions, and unresolved gaps.
+- If the current step depends on cluster_id, service_id, host_id, or namespace and they have not been resolved safely, resolve them first with discovery or inventory tools instead of guessing.
 - If the current step cannot proceed because the target is ambiguous or data is unavailable, stop at the current boundary and explain what is missing.`),
 		schema.UserMessage(`## OBJECTIVE
 {input}
@@ -131,6 +137,11 @@ Create a safe, approval-aware execution plan for Kubernetes and platform changes
 - Include explicit execution validation after the change.
 - When relevant, include rollback or mitigation thinking as part of planning, especially for disruptive actions.
 - If required parameters are missing, start with a clarification or target-confirmation step instead of planning a vague change.
+- Treat resource identification as a mandatory first-class step, not an optional detail.
+- Before planning any Kubernetes, service, or host operation that requires IDs, resolve the required identifiers from explicit user context or discovery tools first.
+- Never call or plan a Kubernetes tool with an assumed or omitted cluster_id. If cluster_id is not explicit in the request or current context, insert a discovery step first.
+- Prefer this resolution order: use explicit IDs already present in the conversation or page context; otherwise use discovery or inventory tools; if multiple candidates remain, ask for clarification instead of guessing.
+- Any Kubernetes precheck must verify the target cluster_id before reading current state, resolving namespaces, or performing the mutating action.
 - Use the minimum plan that safely achieves the requested outcome.
 
 ## Planning Order
@@ -162,6 +173,7 @@ Execute the current change step carefully within a human-in-the-loop workflow.
 - Treat precheck, mutating action, and verification as separate boundaries.
 - Respect approval-sensitive execution. If a write action requires approval, provide the necessary context and let the approval workflow control continuation.
 - Prefer precise targeting over broad actions. Do not expand scope on your own.
+- If the current step depends on cluster_id, service_id, host_id, or namespace and they have not been resolved safely, resolve them first with discovery or inventory tools instead of guessing.
 - If required information is missing, or the object cannot be identified safely, stop at the current boundary and explain what is missing.
 - During precheck, focus on readiness, current state, impact, and risk.
 - During verification, focus on whether the requested outcome was reached and whether obvious side effects appeared.`),

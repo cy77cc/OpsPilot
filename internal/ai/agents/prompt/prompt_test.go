@@ -3,6 +3,8 @@ package prompt
 import (
 	"strings"
 	"testing"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 func TestRouterPrompt_EncodesPlatformRoutingAndSafetyBoundaries(t *testing.T) {
@@ -44,5 +46,60 @@ func TestChangeExecutorPrompt_EncodesApprovalAwareExecutionRules(t *testing.T) {
 		if !strings.Contains(content, fragment) {
 			t.Fatalf("expected change executor prompt content to contain %q", fragment)
 		}
+	}
+}
+
+func TestPlannerPrompts_RequireIdentifierResolutionBeforeScopedToolCalls(t *testing.T) {
+	tests := []struct {
+		name string
+		load func(t *testing.T) string
+	}{
+		{
+			name: "diagnosis planner",
+			load: func(t *testing.T) string {
+				t.Helper()
+				msgs, err := DiagnosisPlannerPrompt.Format(t.Context(), map[string]any{
+					"input": []*schema.Message{schema.UserMessage("check nginx pod status")},
+				})
+				if err != nil {
+					t.Fatalf("format diagnosis planner prompt: %v", err)
+				}
+				if len(msgs) == 0 {
+					t.Fatal("expected diagnosis planner prompt messages")
+				}
+				return msgs[0].Content
+			},
+		},
+		{
+			name: "change planner",
+			load: func(t *testing.T) string {
+				t.Helper()
+				msgs, err := ChangePlannerPrompt.Format(t.Context(), map[string]any{
+					"input": []*schema.Message{schema.UserMessage("restart nginx deployment")},
+				})
+				if err != nil {
+					t.Fatalf("format change planner prompt: %v", err)
+				}
+				if len(msgs) == 0 {
+					t.Fatal("expected change planner prompt messages")
+				}
+				return msgs[0].Content
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := tt.load(t)
+			for _, fragment := range []string{
+				"resolve the required identifiers",
+				"Never call or plan a Kubernetes tool with an assumed or omitted cluster_id",
+				"ask for clarification instead of guessing",
+			} {
+				if !strings.Contains(content, fragment) {
+					t.Fatalf("expected planner prompt content to contain %q", fragment)
+				}
+			}
+		})
 	}
 }

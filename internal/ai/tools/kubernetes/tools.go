@@ -136,7 +136,7 @@ type K8sQueryOutput struct {
 func K8sQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_query",
-		"Query Kubernetes resources with filtering options. resource is required and specifies the resource type (pods/services/deployments/nodes). Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), name filters by exact name, label uses label selector, limit caps results (default 50). Returns resource details with status and metadata. Example: {\"resource\":\"pods\",\"namespace\":\"default\",\"label\":\"app=nginx\"}.",
+		"Query Kubernetes resources with filtering options. resource is required and specifies the resource type (pods/services/deployments/nodes). cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), name filters by exact name, label uses label selector, limit caps results (default 50). Returns resource details with status and metadata. Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"default\",\"label\":\"app=nginx\"}.",
 		func(ctx context.Context, input *K8sQueryInput, opts ...tool.Option) (*K8sQueryOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
@@ -270,7 +270,7 @@ type K8sListResourcesOutput struct {
 func K8sListResources(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_list_resources",
-		"List Kubernetes resources of a specific type. resource is required and must be one of: pods, services, deployments, nodes. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns a simplified list of resources with basic information. Example: {\"resource\":\"pods\",\"namespace\":\"kube-system\",\"limit\":20}.",
+		"List Kubernetes resources of a specific type. resource is required and must be one of: pods, services, deployments, nodes. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), limit caps results (default 50). Returns a simplified list of resources with basic information. Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"kube-system\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sListInput, opts ...tool.Option) (*K8sListResourcesOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
@@ -363,7 +363,7 @@ type K8sEventsOutput struct {
 func K8sEvents(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_events",
-		"Query Kubernetes events with optional filtering. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), kind filters by involved object kind (Pod/Deployment/Service/Node), name filters by object name, limit caps results (default 50). Returns events with type, reason, message, and involved object info. Example: {\"namespace\":\"default\",\"kind\":\"Pod\",\"limit\":20}.",
+		"Query Kubernetes events with optional filtering. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), kind filters by involved object kind (Pod/Deployment/Service/Node), name filters by object name, limit caps results (default 50). Returns events with type, reason, message, and involved object info. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"kind\":\"Pod\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sEventsQueryInput, opts ...tool.Option) (*K8sEventsOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
@@ -423,7 +423,7 @@ type K8sGetEventsOutput struct {
 func K8sGetEvents(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_events",
-		"Get Kubernetes events from a namespace. Optional parameters: cluster_id targets a specific cluster, namespace limits scope (default: all namespaces), limit caps results (default 50). Returns events with type, reason, and message. Use this for a quick event overview. Example: {\"namespace\":\"default\",\"limit\":30}.",
+		"Get Kubernetes events from a namespace. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), limit caps results (default 50). Returns events with type, reason, and message. Use this for a quick event overview. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"limit\":30}.",
 		func(ctx context.Context, input *K8sEventsInput, opts ...tool.Option) (*K8sGetEventsOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
@@ -471,7 +471,7 @@ type K8sLogsOutput struct {
 func K8sLogs(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_logs",
-		"Get logs from a Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container specifies which container in a multi-container pod, tail_lines limits log lines (default 200). Returns pod logs as a string. Example: {\"namespace\":\"default\",\"pod\":\"nginx-abc123\",\"tail_lines\":100}.",
+		"Get logs from a Kubernetes pod. pod is required. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace (default: default), container specifies which container in a multi-container pod, tail_lines limits log lines (default 200). Returns pod logs as a string. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"pod\":\"nginx-abc123\",\"tail_lines\":100}.",
 		func(ctx context.Context, input *K8sLogsInput, opts ...tool.Option) (*K8sLogsOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
@@ -521,7 +521,7 @@ type K8sGetPodLogsOutput struct {
 func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_get_pod_logs",
-		"Get logs from a specific Kubernetes pod. pod is required. Optional parameters: cluster_id targets a specific cluster, namespace (default: default), container for multi-container pods, tail_lines limits output (default 200). Returns pod logs for debugging and troubleshooting. Example: {\"namespace\":\"production\",\"pod\":\"api-server-xyz789\",\"tail_lines\":500}.",
+		"Get logs from a specific Kubernetes pod. pod is required. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace (default: default), container for multi-container pods, tail_lines limits output (default 200). Returns pod logs for debugging and troubleshooting. Example: {\"cluster_id\":1,\"namespace\":\"production\",\"pod\":\"api-server-xyz789\",\"tail_lines\":500}.",
 		func(ctx context.Context, input *K8sPodLogsInput, opts ...tool.Option) (*K8sGetPodLogsOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
