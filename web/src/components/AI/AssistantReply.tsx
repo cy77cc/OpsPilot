@@ -158,9 +158,7 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
   const { styles } = useAssistantReplyStyles();
   const visibleActivities = getVisibleActivities(runtime);
   const activeStepIndex = runtime?.plan?.activeStepIndex;
-  const visiblePlanSteps = runtime?.plan?.steps?.filter((_, index) => (
-    activeStepIndex === undefined ? true : index <= activeStepIndex
-  )) || [];
+  const planSteps = runtime?.plan?.steps || [];
 
   return (
     <div className={styles.root}>
@@ -178,17 +176,22 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
 
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
-      {visiblePlanSteps.length ? (
+      {planSteps.length ? (
         <div className={styles.planSteps}>
-          {visiblePlanSteps.map((step, index) => {
-            const isExpanded = activeStepIndex === index;
-            const scopedActivities = runtime.activities.filter((activity) => activity.stepIndex === index);
+          {planSteps.map((step, index) => {
+            const isActive = activeStepIndex === index;
+            const isDone = step.status === 'done';
+            const isExpanded = isActive && activeStepIndex !== undefined;
+            const scopedActivities = runtime?.activities?.filter((activity) => activity.stepIndex === index) || [];
+
+            // 状态图标: ✓ done, ◐ active, ○ pending
+            const statusIcon = isDone ? '✓ ' : isActive ? '◐ ' : '○ ';
 
             return (
               <div key={step.id} className={styles.planStep}>
                 <div className={styles.planStepHeader}>
                   <span className={styles.planStepLine} />
-                  <span className={styles.planStepTitle}>{step.title}</span>
+                  <span className={styles.planStepTitle}>{statusIcon}{step.title}</span>
                   <span className={styles.planStepLine} />
                 </div>
                 {isExpanded ? (

@@ -89,16 +89,28 @@ describe('AssistantReply', () => {
       />,
     );
 
-    expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
-    expect(screen.getByText('批量执行健康检查')).toBeInTheDocument();
+    // All step titles should be visible
+    expect(screen.getByText(/获取服务器列表/)).toBeInTheDocument();
+    expect(screen.getByText(/批量执行健康检查/)).toBeInTheDocument();
+    expect(screen.getByText(/汇总检查结果/)).toBeInTheDocument();
+
+    // Only active step (index 1) is expanded
     expect(screen.getByText('host_exec')).toBeInTheDocument();
     expect(screen.getAllByTestId('x-markdown').at(0)).toHaveTextContent('正在执行 uptime');
+
+    // Step 0 (done) is collapsed, so its activities are hidden
     expect(screen.queryByText('host_list_inventory')).not.toBeInTheDocument();
-    expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
+
+    // Final report content
     expect(screen.getAllByTestId('x-markdown').at(-1)).toHaveTextContent('## 最终报告');
+
+    // Status icons
+    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument(); // done
+    expect(screen.getByText(/◐ 批量执行健康检查/)).toBeInTheDocument(); // active
+    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
   });
 
-  it('only reveals the current step while hiding future steps', () => {
+  it('shows all steps but only expands the current active step', () => {
     render(
       <AssistantReply
         content=""
@@ -122,10 +134,91 @@ describe('AssistantReply', () => {
       />,
     );
 
-    expect(screen.getAllByText('获取服务器列表').at(-1)).toBeInTheDocument();
+    // All step titles should be visible
+    expect(screen.getByText(/获取服务器列表/)).toBeInTheDocument();
+    expect(screen.getByText(/批量执行健康检查/)).toBeInTheDocument();
+    expect(screen.getByText(/汇总检查结果/)).toBeInTheDocument();
+
+    // Only the active step should be expanded (showing content and activities)
     expect(screen.getByText('host_list_inventory')).toBeInTheDocument();
     expect(screen.getByTestId('x-markdown')).toHaveTextContent('正在获取主机列表');
-    expect(screen.queryByText('批量执行健康检查')).not.toBeInTheDocument();
-    expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
+
+    // Status icons should be present
+    expect(screen.getByText(/◐ 获取服务器列表/)).toBeInTheDocument(); // active
+    expect(screen.getByText(/○ 批量执行健康检查/)).toBeInTheDocument(); // pending
+    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
+  });
+
+  it('shows done icon for completed steps and expands only active step', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          phase: 'executing',
+          phaseLabel: '执行第二步',
+          plan: {
+            activeStepIndex: 1,
+            steps: [
+              { id: 'plan-step-0', title: '获取服务器列表', status: 'done', content: '已找到 5 台服务器' },
+              { id: 'plan-step-1', title: '批量执行健康检查', status: 'active', content: '正在执行检查' },
+              { id: 'plan-step-2', title: '汇总检查结果', status: 'pending' },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool_call', label: 'health_check', detail: '执行中', stepIndex: 1 },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
+
+    // All step titles visible with correct status icons
+    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument(); // done
+    expect(screen.getByText(/◐ 批量执行健康检查/)).toBeInTheDocument(); // active
+    expect(screen.getByText(/○ 汇总检查结果/)).toBeInTheDocument(); // pending
+
+    // Only active step content is expanded
+    expect(screen.getByText('health_check')).toBeInTheDocument();
+    expect(screen.getByText('正在执行检查')).toBeInTheDocument();
+
+    // Done step content should NOT be expanded (collapsed)
+    expect(screen.queryByText('已找到 5 台服务器')).not.toBeInTheDocument();
+  });
+
+  it('collapses all steps when activeStepIndex is undefined (is_final=true)', () => {
+    render(
+      <AssistantReply
+        content="最终报告内容"
+        status="success"
+        runtime={{
+          phase: 'completed',
+          phaseLabel: '执行完成',
+          plan: {
+            activeStepIndex: undefined,
+            steps: [
+              { id: 'plan-step-0', title: '获取服务器列表', status: 'done', content: '已找到 5 台服务器' },
+              { id: 'plan-step-1', title: '批量执行健康检查', status: 'done', content: '检查完成' },
+              { id: 'plan-step-2', title: '汇总检查结果', status: 'done', content: '汇总完成' },
+            ],
+          },
+          activities: [],
+          status: { kind: 'completed', label: '已完成' },
+        }}
+      />,
+    );
+
+    // All step titles should be visible with done icons
+    expect(screen.getByText(/✓ 获取服务器列表/)).toBeInTheDocument();
+    expect(screen.getByText(/✓ 批量执行健康检查/)).toBeInTheDocument();
+    expect(screen.getByText(/✓ 汇总检查结果/)).toBeInTheDocument();
+
+    // No step content should be expanded (all collapsed)
+    expect(screen.queryByText('已找到 5 台服务器')).not.toBeInTheDocument();
+    expect(screen.queryByText('检查完成')).not.toBeInTheDocument();
+    expect(screen.queryByText('汇总完成')).not.toBeInTheDocument();
+
+    // Final report content is still shown
+    expect(screen.getByText('最终报告内容')).toBeInTheDocument();
   });
 });
