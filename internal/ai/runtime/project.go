@@ -16,6 +16,7 @@ type ResponseExtractState struct {
 	InResponse    bool   // 是否在 response 字段值内
 	ContentStart  int    // response 内容开始位置
 	QuoteClosed   bool   // response 值的引号是否已关闭
+	EscapeNext    bool   // 下一个字符是否是转义字符
 	BufferContent string // 缓冲的内容，累积到一定量后发送
 	ReplanSent    bool   // 是否已发送 replan 事件
 }
@@ -240,7 +241,7 @@ func shouldBufferAgentEnvelope(existing, raw string) bool {
 }
 
 // extractResponseStreaming 增量提取 response 字段内容。
-// 不解析转义字符，只去掉 {"response": " 和结尾的 "}
+// 解析 JSON 字符串转义（\n -> 换行符等），去掉 {"response": " 和结尾的 "}
 // 返回值：需要发送的事件列表（可能包含 replan + delta，或只有 delta，或空）
 func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, agent string) []PublicStreamEvent {
 	// 初始化状态
@@ -276,25 +277,48 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, a
 		rs.ContentStart = idx + keyLen
 	}
 
-	// 从上次位置开始提取新内容（不解析转义字符，直接提取原始内容）
+	// 从上次位置开始提取新内容，并解析 JSON 转义
 	startPos := max(rs.ContentStart, prevLen)
 	var newContent strings.Builder
 
 	for i := startPos; i < len(raw); i++ {
 		ch := raw[i]
-		// 检查是否是结束引号（需要考虑是否被转义）
-		if ch == '"' {
-			// 检查前面是否有奇数个反斜杠
-			backslashCount := 0
-			for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
-				backslashCount++
+
+		// 处理转义字符
+		if rs.EscapeNext {
+			switch ch {
+			case 'n':
+				newContent.WriteByte('\n')
+			case 't':
+				newContent.WriteByte('\t')
+			case 'r':
+				newContent.WriteByte('\r')
+			case '"':
+				newContent.WriteByte('"')
+			case '\\':
+				newContent.WriteByte('\\')
+			case '/':
+				newContent.WriteByte('/')
+			default:
+				// 未知的转义序列，保留反斜杠
+				newContent.WriteByte('\\')
+				newContent.WriteByte(ch)
 			}
-			// 如果前面有偶数个反斜杠（包括0），则这个引号是结束引号
-			if backslashCount%2 == 0 {
-				rs.QuoteClosed = true
-				break
-			}
+			rs.EscapeNext = false
+			continue
 		}
+
+		if ch == '\\' {
+			rs.EscapeNext = true
+			continue
+		}
+
+		// 检查是否是结束引号
+		if ch == '"' {
+			rs.QuoteClosed = true
+			break
+		}
+
 		newContent.WriteByte(ch)
 	}
 

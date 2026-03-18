@@ -79,8 +79,8 @@ func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
 		t.Fatalf("expected fourth[0].Data to be map[string]any, got %T", fourth[0].Data)
 	}
 	fourthData, ok := fourthDataMap["content"].(string)
-	// 内容不应该解析转义字符，直接提取原始内容
-	expectedContent := `## done\n\nall clear`
+	// JSON 字符串中的 \n 应该被解析为真正的换行符
+	expectedContent := "## done\n\nall clear"
 	if !ok || fourthData != expectedContent {
 		t.Fatalf("expected delta content %q, got %#v", expectedContent, fourthDataMap["content"])
 	}
