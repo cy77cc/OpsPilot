@@ -15,10 +15,16 @@ type ProjectionState struct {
 type ResponseExtractState struct {
 	InResponse    bool   // 是否在 response 字段值内
 	ContentStart  int    // response 内容开始位置
-	EscapeNext    bool   // 下一个字符是否被转义
 	QuoteClosed   bool   // response 值的引号是否已关闭
-	PendingBuffer string // 未提取的缓冲内容
+	BufferContent string // 缓冲的内容，累积到一定量后发送
+	ReplanSent    bool   // 是否已发送 replan 事件
 }
+
+// ResponseBufferConfig 缓冲配置
+const (
+	ResponseMinChunkSize = 50  // 最小累积字符数
+	ResponseMaxWaitChars = 200 // 最大累积字符数（超过则强制发送）
+)
 
 func projectNormalizedEvents(events []NormalizedEvent, state *ProjectionState) []PublicStreamEvent {
 	projected := make([]PublicStreamEvent, 0, len(events))
@@ -144,31 +150,8 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 		state.PendingReplannerJSON = raw
 
 		// 尝试增量提取 response 字段
-		if extracted, hasReplan := extractResponseStreaming(state, raw, prevLen); len(extracted) > 0 {
-			events := make([]PublicStreamEvent, 0, 2)
-
-			// 首次检测到 response 字段时，发送 replan 事件
-			if hasReplan {
-				state.ReplanIteration++
-				state.RunPhase = "executing"
-				events = append(events, PublicStreamEvent{
-					Event: "replan",
-					Data: map[string]any{
-						"steps":     []string{},
-						"completed": state.TotalPlanSteps,
-						"iteration": state.ReplanIteration,
-						"is_final":  true,
-					},
-				})
-			}
-
-			events = append(events, PublicStreamEvent{
-				Event: "delta",
-				Data: map[string]any{
-					"content": extracted,
-					"agent":   trimmedAgent,
-				},
-			})
+		events := extractResponseStreaming(state, raw, prevLen, trimmedAgent)
+		if len(events) > 0 {
 			return events
 		}
 
@@ -226,6 +209,24 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 	return projected
 }
 
+// FlushReplannerBuffer 刷新 replanner response 缓冲区
+func FlushReplannerBuffer(state *ProjectionState, agent string) []PublicStreamEvent {
+	if state.ReplannerResponseState == nil || state.ReplannerResponseState.BufferContent == "" {
+		return nil
+	}
+
+	content := state.ReplannerResponseState.BufferContent
+	state.ReplannerResponseState.BufferContent = ""
+
+	return []PublicStreamEvent{{
+		Event: "delta",
+		Data: map[string]any{
+			"content": content,
+			"agent":   agent,
+		},
+	}}
+}
+
 func appendAgentJSONBuffer(existing, chunk string) string {
 	return existing + chunk
 }
@@ -239,10 +240,9 @@ func shouldBufferAgentEnvelope(existing, raw string) bool {
 }
 
 // extractResponseStreaming 增量提取 response 字段内容。
-// 返回值：
-//   - string: 新提取的内容（可发送 delta）
-//   - bool: 是否首次检测到 response 字段（需要发送 replan 事件）
-func extractResponseStreaming(state *ProjectionState, raw string, prevLen int) (string, bool) {
+// 不解析转义字符，只去掉 {"response": " 和结尾的 "}
+// 返回值：需要发送的事件列表（可能包含 replan + delta，或只有 delta，或空）
+func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, agent string) []PublicStreamEvent {
 	// 初始化状态
 	if state.ReplannerResponseState == nil {
 		state.ReplannerResponseState = &ResponseExtractState{}
@@ -252,10 +252,10 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int) (
 
 	// 如果 response 值的引号已关闭，不再提取
 	if rs.QuoteClosed {
-		return "", false
+		return nil
 	}
 
-	justEntered := false
+	// 查找 response 字段开始
 	if !rs.InResponse {
 		// 尝试两种格式："response": " 和 "response":"
 		responseKeys := []string{`"response": "`, `"response":"`}
@@ -269,62 +269,73 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int) (
 			}
 		}
 		if keyLen == 0 {
-			return "", false
+			return nil
 		}
 		// 找到 response 字段开始
 		rs.InResponse = true
 		rs.ContentStart = idx + keyLen
-		rs.EscapeNext = false
-		justEntered = true
 	}
 
-	// 从上次位置开始提取新内容
-	newContent := strings.Builder{}
+	// 从上次位置开始提取新内容（不解析转义字符，直接提取原始内容）
 	startPos := max(rs.ContentStart, prevLen)
+	var newContent strings.Builder
 
 	for i := startPos; i < len(raw); i++ {
 		ch := raw[i]
-
-		if rs.EscapeNext {
-			// 处理转义字符
-			switch ch {
-			case '"':
-				newContent.WriteByte('"')
-			case '\\':
-				newContent.WriteByte('\\')
-			case 'n':
-				newContent.WriteByte('\n')
-			case 't':
-				newContent.WriteByte('\t')
-			default:
-				// 其他转义，原样输出
-				newContent.WriteByte('\\')
-				newContent.WriteByte(ch)
-			}
-			rs.EscapeNext = false
-			continue
-		}
-
-		if ch == '\\' {
-			rs.EscapeNext = true
-			continue
-		}
-
+		// 检查是否是结束引号（需要考虑是否被转义）
 		if ch == '"' {
-			// response 值结束
-			rs.QuoteClosed = true
-			break
+			// 检查前面是否有奇数个反斜杠
+			backslashCount := 0
+			for j := i - 1; j >= 0 && raw[j] == '\\'; j-- {
+				backslashCount++
+			}
+			// 如果前面有偶数个反斜杠（包括0），则这个引号是结束引号
+			if backslashCount%2 == 0 {
+				rs.QuoteClosed = true
+				break
+			}
 		}
-
 		newContent.WriteByte(ch)
 	}
 
-	// 更新 ContentStart 位置（用于下一次提取）
+	// 更新 ContentStart 位置
 	rs.ContentStart = len(raw)
 
-	result := newContent.String()
-	// 首次进入 response 字段且有内容时，返回 hasReplan=true
-	hasReplan := justEntered && len(result) > 0
+	// 累积到缓冲区
+	rs.BufferContent += newContent.String()
 
-	return result, hasReplan
+	// 检查是否需要发送
+	events := make([]PublicStreamEvent, 0, 2)
+
+	// 首次检测到 response 字段时，发送 replan 事件
+	if !rs.ReplanSent && len(rs.BufferContent) > 0 {
+		rs.ReplanSent = true
+		state.ReplanIteration++
+		state.RunPhase = "executing"
+		events = append(events, PublicStreamEvent{
+			Event: "replan",
+			Data: map[string]any{
+				"steps":     []string{},
+				"completed": state.TotalPlanSteps,
+				"iteration": state.ReplanIteration,
+				"is_final":  true,
+			},
+		})
+	}
+
+	// 缓冲区达到阈值或 response 结束时发送
+	if len(rs.BufferContent) >= ResponseMinChunkSize || len(rs.BufferContent) >= ResponseMaxWaitChars || rs.QuoteClosed {
+		if len(rs.BufferContent) > 0 {
+			events = append(events, PublicStreamEvent{
+				Event: "delta",
+				Data: map[string]any{
+					"content": rs.BufferContent,
+					"agent":   agent,
+				},
+			})
+			rs.BufferContent = ""
+		}
+	}
+
+	return events
 }

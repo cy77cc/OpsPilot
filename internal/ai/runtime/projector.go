@@ -58,9 +58,14 @@ func (p *StreamProjector) Consume(event *adk.AgentEvent) []PublicStreamEvent {
 	return events
 }
 
-// FlushBuffer 刷新缓冲区（公开方法供调用方使用）。
+// FlushBuffer 刷新所有缓冲区（公开方法供调用方使用）。
 func (p *StreamProjector) FlushBuffer() []PublicStreamEvent {
-	return p.buffer.Flush()
+	events := p.buffer.Flush()
+	// 刷新 replanner response 缓冲区
+	if flushed := FlushReplannerBuffer(&p.state, "replanner"); len(flushed) > 0 {
+		events = append(events, flushed...)
+	}
+	return events
 }
 
 // Finish 返回 done 事件。
