@@ -100,3 +100,97 @@ func TestNormalizeAgentEvent_InterruptAction(t *testing.T) {
 		t.Fatalf("unexpected interrupt payload: %#v", got[0].Interrupt)
 	}
 }
+
+func TestNormalizeAgentEvent_AssistantWithToolCalls(t *testing.T) {
+	tests := []struct {
+		name       string
+		event      *adk.AgentEvent
+		wantKinds  []NormalizedKind
+		wantLen    int
+		wantToolID string
+	}{
+		{
+			name: "assistant with content and tool_calls",
+			event: &adk.AgentEvent{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role:    schema.Assistant,
+						Content: "some content",
+						ToolCalls: []schema.ToolCall{
+							{ID: "call-1", Function: schema.FunctionCall{Name: "tool_a", Arguments: `{"arg": "value"}`}},
+						},
+					}},
+				},
+			},
+			wantKinds:  []NormalizedKind{NormalizedKindMessage, NormalizedKindToolCall},
+			wantLen:    2,
+			wantToolID: "call-1",
+		},
+		{
+			name: "assistant with only tool_calls",
+			event: &adk.AgentEvent{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role:      schema.Assistant,
+						ToolCalls: []schema.ToolCall{{ID: "call-1", Function: schema.FunctionCall{Name: "tool_a"}}},
+					}},
+				},
+			},
+			wantKinds:  []NormalizedKind{NormalizedKindToolCall},
+			wantLen:    1,
+			wantToolID: "call-1",
+		},
+		{
+			name: "assistant with nil tool_calls",
+			event: &adk.AgentEvent{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role:      schema.Assistant,
+						Content:   "content",
+						ToolCalls: nil,
+					}},
+				},
+			},
+			wantKinds: []NormalizedKind{NormalizedKindMessage},
+			wantLen:   1,
+		},
+		{
+			name: "assistant with empty tool_calls",
+			event: &adk.AgentEvent{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role:      schema.Assistant,
+						Content:   "content",
+						ToolCalls: []schema.ToolCall{},
+					}},
+				},
+			},
+			wantKinds: []NormalizedKind{NormalizedKindMessage},
+			wantLen:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeAgentEvent(tt.event)
+			if len(got) != tt.wantLen {
+				t.Fatalf("expected %d events, got %d", tt.wantLen, len(got))
+			}
+			for i, kind := range tt.wantKinds {
+				if got[i].Kind != kind {
+					t.Errorf("event %d: expected kind %s, got %s", i, kind, got[i].Kind)
+				}
+				// 验证 tool call ID
+				if kind == NormalizedKindToolCall && tt.wantToolID != "" {
+					if got[i].Tool == nil || got[i].Tool.CallID != tt.wantToolID {
+						t.Errorf("expected tool call_id=%s, got %v", tt.wantToolID, got[i].Tool)
+					}
+				}
+			}
+		})
+	}
+}

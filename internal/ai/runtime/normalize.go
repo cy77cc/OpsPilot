@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"strings"
+
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 )
@@ -94,16 +96,39 @@ func normalizeMessageOutput(event *adk.AgentEvent) []NormalizedEvent {
 
 	switch message.Role {
 	case schema.Assistant:
-		return []NormalizedEvent{{
-			Kind:      NormalizedKindMessage,
-			AgentName: event.AgentName,
-			Message: &NormalizedMessage{
-				Role:        string(message.Role),
-				Content:     message.Content,
-				IsStreaming: event.Output.MessageOutput.IsStreaming,
-			},
-			Raw: event,
-		}}
+		// 收集所有事件（消息内容 + 工具调用）
+		events := make([]NormalizedEvent, 0, len(message.ToolCalls)+1)
+
+		// 如果有内容，先添加消息事件
+		if strings.TrimSpace(message.Content) != "" {
+			events = append(events, NormalizedEvent{
+				Kind:      NormalizedKindMessage,
+				AgentName: event.AgentName,
+				Message: &NormalizedMessage{
+					Role:        string(message.Role),
+					Content:     message.Content,
+					IsStreaming: event.Output.MessageOutput.IsStreaming,
+				},
+				Raw: event,
+			})
+		}
+
+		// 提取 ToolCalls
+		for _, toolCall := range message.ToolCalls {
+			events = append(events, NormalizedEvent{
+				Kind:      NormalizedKindToolCall,
+				AgentName: event.AgentName,
+				Tool: &NormalizedTool{
+					CallID:    toolCall.ID,
+					ToolName:  toolCall.Function.Name,
+					Arguments: decodeToolArguments(toolCall.Function.Arguments),
+					Phase:     "call",
+				},
+				Raw: event,
+			})
+		}
+
+		return events
 	case schema.Tool:
 		return []NormalizedEvent{{
 			Kind:      NormalizedKindToolResult,
