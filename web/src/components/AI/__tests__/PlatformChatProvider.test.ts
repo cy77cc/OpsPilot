@@ -54,7 +54,7 @@ describe('PlatformChatProvider', () => {
     request.run({ message: 'hi', scene: 'ai' });
     await request.asyncHandler;
 
-    expect(onUpdate).toHaveBeenCalledTimes(4);
+    expect(onUpdate).toHaveBeenCalledTimes(5);
     expect(onUpdate).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ content: '[准备中]', mode: 'replace' }),

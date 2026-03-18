@@ -27,6 +27,36 @@ const { Text } = Typography;
 
 const NEW_SESSION_KEY = '__new__';
 
+/**
+ * mapHistoryMessageStatus 将后端消息状态映射为 Bubble 组件状态。
+ *
+ * 后端状态值:
+ *   - 'done': 正常完成
+ *   - 'error': 流式处理出错
+ *   - 'streaming': 正在流式传输
+ *   - 其他: 兜底为 loading
+ *
+ * Bubble 状态值:
+ *   - 'success': 完成成功
+ *   - 'error': 出错
+ *   - 'abort': 中断/取消
+ *   - 'loading': 加载中
+ */
+function mapHistoryMessageStatus(status?: string): 'success' | 'error' | 'abort' | 'loading' {
+  switch (status) {
+    case 'done':
+      return 'success';
+    case 'error':
+      return 'error';
+    case 'interrupted':
+      return 'abort';
+    case 'streaming':
+      return 'loading';
+    default:
+      return 'loading';
+  }
+}
+
 const SCENE_FALLBACK_PROMPTS: Record<string, PromptsItemType[]> = {
   host: [
     { key: 'host-health', label: '诊断主机健康', description: '帮我检查当前主机的健康状态和风险点' },
@@ -348,7 +378,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       const messages = Array.isArray(session?.messages) ? session.messages : [];
       return messages.map((message) => ({
         message: hydrateAssistantHistoryMessage(message, session?.turns || []),
-        status: (message.status === 'done' ? 'success' : 'loading') as 'success' | 'loading',
+        status: mapHistoryMessageStatus(message.status),
       }));
     },
     [],

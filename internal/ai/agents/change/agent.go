@@ -22,11 +22,13 @@ package change
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools"
 )
@@ -88,6 +90,7 @@ func newChangePlanner(ctx context.Context) (adk.Agent, error) {
 	}
 	return planexecute.NewPlanner(ctx, &planexecute.PlannerConfig{
 		ToolCallingChatModel: model,
+		GenInputFn:           genPlannerInputFn,
 	})
 }
 
@@ -129,6 +132,7 @@ func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 				ToolCallMiddlewares: []compose.ToolMiddleware{approvalMW},
 			},
 		},
+		GenInputFn: genExecutorInputFn,
 	})
 }
 
@@ -147,4 +151,43 @@ func newChangeReplanner(ctx context.Context) (adk.Agent, error) {
 	return planexecute.NewReplanner(ctx, &planexecute.ReplannerConfig{
 		ChatModel: model,
 	})
+}
+
+func genPlannerInputFn(ctx context.Context, userInput []adk.Message) ([]adk.Message, error) {
+	msgs, err := prompt.ChangePlannerPrompt.Format(ctx, map[string]any{
+		"input": userInput,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return msgs, nil
+}
+
+func genExecutorInputFn(ctx context.Context, in *planexecute.ExecutionContext) ([]adk.Message, error) {
+	planContent, err_ := in.Plan.MarshalJSON()
+	if err_ != nil {
+		return nil, err_
+	}
+
+	firstStep := in.Plan.FirstStep()
+
+	msgs, err_ := prompt.ChangeExecutorPrompt.Format(ctx, map[string]any{
+		"input":          in.UserInput[0].Content,
+		"plan":           string(planContent),
+		"executed_steps": formatExecutedSteps(in.ExecutedSteps),
+		"step":           firstStep,
+	})
+	if err_ != nil {
+		return nil, err_
+	}
+
+	return msgs, nil
+}
+
+func formatExecutedSteps(in []planexecute.ExecutedStep) string {
+	var sb strings.Builder
+	for idx, m := range in {
+		_, _ = fmt.Fprintf(&sb, "## %d. Step: %v\n  Result: %v\n\n", idx+1, m.Step, m.Result)
+	}
+	return sb.String()
 }

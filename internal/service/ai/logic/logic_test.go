@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestBuildAugmentedMessage_IncludesSceneContextPromptsAndConstraints(t *testing.T) {
+func TestBuildAugmentedMessage_IncludesStructuredSceneContextBlocks(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:logic-test?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -45,11 +45,17 @@ func TestBuildAugmentedMessage_IncludesSceneContextPromptsAndConstraints(t *test
 	}, "检查这个集群为什么不健康")
 
 	for _, fragment := range []string{
+		"[Hidden platform context",
+		"[Scene]",
 		"scene=cluster",
+		"[Scene Context]",
 		`scene_context={"resource_id":"42","route":"/deployment/infrastructure/clusters/42"}`,
+		"[Scene Prompts & Constraints]",
 		"scene_prompts=[",
+		"[Tool Constraints]",
 		"allowed_tools=[\"cluster_inspect\",\"k8s_topology\"]",
 		"blocked_tools=[\"host_batch_exec_apply\"]",
+		"These tool constraints are mandatory.",
 		"User request:\n检查这个集群为什么不健康",
 	} {
 		if !strings.Contains(message, fragment) {

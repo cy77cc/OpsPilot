@@ -167,6 +167,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		assistantMessage *model.AIChatMessage
 		assistantContent strings.Builder
 		projector        = airuntime.NewStreamProjector()
+		streamError      error
 	)
 
 	// 创建 assistant message 占位
@@ -187,6 +188,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 
 		if event.Err != nil {
+			streamError = event.Err
 			if event.Output != nil && event.Output.MessageOutput.Message.Role == schema.Tool {
 				projected := projector.Fail(run.ID, event.Err)
 				emit(projected.Event, projected.Data)
@@ -201,6 +203,11 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					Status:       "failed",
 					ErrorMessage: event.Err.Error(),
 				})
+				// 更新消息状态为 error
+				_ = l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
+					"content": assistantContent.String(),
+					"status":  "error",
+				})
 				return nil
 			}
 		}
@@ -212,6 +219,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
+					streamError = err
 					projected := projector.Fail(run.ID, err)
 					emit(projected.Event, projected.Data)
 					break
@@ -244,9 +252,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	// Step 7: 持久化结果
 	finalContent := assistantContent.String()
+	finalStatus := "done"
+	if streamError != nil {
+		finalStatus = "error"
+	}
 	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
 		"content": finalContent,
-		"status":  "done",
+		"status":  finalStatus,
 	}); err != nil {
 		return fmt.Errorf("update assistant message: %w", err)
 	}
@@ -256,6 +268,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		Status:             "completed",
 		AssistantMessageID: assistantMessage.ID,
 		ProgressSummary:    truncateString(finalContent, 500),
+	}
+	if streamError != nil {
+		runStatus.Status = "failed"
+		runStatus.ErrorMessage = streamError.Error()
 	}
 	if err := l.RunDAO.UpdateRunStatus(ctx, run.ID, runStatus); err != nil {
 		return fmt.Errorf("update run status: %w", err)
@@ -433,7 +449,6 @@ func (l *Logic) GetDiagnosisReport(ctx context.Context, userID uint64, reportID 
 	return report, nil
 }
 
-
 // buildSessionTitle 从首条消息生成会话标题。
 func buildSessionTitle(message string) string {
 	trimmed := strings.TrimSpace(message)
@@ -466,27 +481,41 @@ func resolveChatScene(requestScene string, session *model.AIChatSession) string 
 
 func (l *Logic) buildAugmentedMessage(ctx context.Context, scene string, sceneContext map[string]any, message string) string {
 	scene = normalizeScene(scene)
-	hidden := []string{fmt.Sprintf("scene=%s", scene)}
+	sections := []string{
+		"[Hidden platform context for routing, tool selection, and safety policy]",
+		"[Scene]",
+		fmt.Sprintf("scene=%s", scene),
+	}
 
 	if payload := stringifyJSON(sceneContext); payload != "" && payload != "{}" {
-		hidden = append(hidden, fmt.Sprintf("scene_context=%s", payload))
+		sections = append(sections,
+			"",
+			"[Scene Context]",
+			fmt.Sprintf("scene_context=%s", payload),
+		)
 	}
 
-	if augmentation := l.loadSceneAugmentation(ctx, scene); augmentation != "" {
-		hidden = append(hidden, augmentation)
+	sceneSections := l.loadSceneAugmentation(ctx, scene)
+	if len(sceneSections) > 0 {
+		for _, section := range sceneSections {
+			if len(section) == 0 {
+				continue
+			}
+			sections = append(sections, "", strings.Join(section, "\n"))
+		}
 	}
 
-	return strings.Join([]string{
-		"[Hidden scene-aware context for routing and tool selection]",
-		strings.Join(hidden, "\n"),
+	sections = append(sections,
 		"",
 		fmt.Sprintf("User request:\n%s", strings.TrimSpace(message)),
-	}, "\n")
+	)
+
+	return strings.Join(sections, "\n")
 }
 
-func (l *Logic) loadSceneAugmentation(ctx context.Context, scene string) string {
+func (l *Logic) loadSceneAugmentation(ctx context.Context, scene string) [][]string {
 	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil || strings.TrimSpace(scene) == "" {
-		return ""
+		return nil
 	}
 
 	var prompts []model.AIScenePrompt
@@ -500,7 +529,7 @@ func (l *Logic) loadSceneAugmentation(ctx context.Context, scene string) string 
 		Where("scene = ?", scene).
 		First(&config).Error == nil
 
-	lines := make([]string, 0, 4)
+	sceneLines := make([]string, 0, 4)
 	if len(prompts) > 0 {
 		promptTexts := make([]string, 0, len(prompts))
 		for _, item := range prompts {
@@ -509,26 +538,39 @@ func (l *Logic) loadSceneAugmentation(ctx context.Context, scene string) string 
 			}
 		}
 		if len(promptTexts) > 0 {
-			lines = append(lines, fmt.Sprintf("scene_prompts=%s", stringifyJSON(promptTexts)))
+			sceneLines = append(sceneLines, fmt.Sprintf("scene_prompts=%s", stringifyJSON(promptTexts)))
 		}
 	}
 
 	if hasConfig {
 		if description := strings.TrimSpace(config.Description); description != "" {
-			lines = append(lines, fmt.Sprintf("scene_description=%s", description))
+			sceneLines = append(sceneLines, fmt.Sprintf("scene_description=%s", description))
 		}
 		if constraints := compactJSONString(config.ConstraintsJSON); constraints != "" {
-			lines = append(lines, fmt.Sprintf("scene_constraints=%s", constraints))
-		}
-		if allowed := compactJSONString(config.AllowedToolsJSON); allowed != "" {
-			lines = append(lines, fmt.Sprintf("allowed_tools=%s", allowed))
-		}
-		if blocked := compactJSONString(config.BlockedToolsJSON); blocked != "" {
-			lines = append(lines, fmt.Sprintf("blocked_tools=%s", blocked))
+			sceneLines = append(sceneLines, fmt.Sprintf("scene_constraints=%s", constraints))
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	sections := make([][]string, 0, 2)
+	if len(sceneLines) > 0 {
+		sections = append(sections, append([]string{"[Scene Prompts & Constraints]"}, sceneLines...))
+	}
+
+	toolLines := make([]string, 0, 3)
+	if hasConfig {
+		if allowed := compactJSONString(config.AllowedToolsJSON); allowed != "" {
+			toolLines = append(toolLines, fmt.Sprintf("allowed_tools=%s", allowed))
+		}
+		if blocked := compactJSONString(config.BlockedToolsJSON); blocked != "" {
+			toolLines = append(toolLines, fmt.Sprintf("blocked_tools=%s", blocked))
+		}
+	}
+	if len(toolLines) > 0 {
+		toolLines = append(toolLines, "These tool constraints are mandatory.")
+		sections = append(sections, append([]string{"[Tool Constraints]"}, toolLines...))
+	}
+
+	return sections
 }
 
 func stringifyJSON(value any) string {
