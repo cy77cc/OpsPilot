@@ -50,6 +50,7 @@ func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
 		t.Fatalf("expected buffered planner chunk to emit one plan event, got %#v", second)
 	}
 
+	// Replanner 现在支持流式提取 response 字段
 	firstReplannerChunk := adk.EventFromMessage(schema.AssistantMessage(`{"response":"## done`, nil), nil, schema.Assistant, "")
 	firstReplannerChunk.AgentName = "replanner"
 
@@ -59,11 +60,30 @@ func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
 	third := projector.Consume(firstReplannerChunk)
 	fourth := projector.Consume(secondReplannerChunk)
 
-	if len(third) != 0 {
-		t.Fatalf("expected no public events for partial replanner chunk, got %#v", third)
+	// 第一个 replanner chunk 应该返回 replan + delta（流式提取）
+	if len(third) != 2 || third[0].Event != "replan" || third[1].Event != "delta" {
+		t.Fatalf("expected first replanner chunk to emit replan+delta, got %#v", third)
 	}
-	if len(fourth) != 2 || fourth[0].Event != "replan" || fourth[1].Event != "delta" {
-		t.Fatalf("expected buffered replanner chunk to emit final replan+delta, got %#v", fourth)
+	thirdDataMap, ok := third[1].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected third[1].Data to be map[string]any, got %T", third[1].Data)
+	}
+	thirdData, ok := thirdDataMap["content"].(string)
+	if !ok || thirdData != "## done" {
+		t.Fatalf("expected first delta content, got %#v", thirdDataMap["content"])
+	}
+
+	// 第二个 replanner chunk 应该返回剩余的 delta
+	if len(fourth) != 1 || fourth[0].Event != "delta" {
+		t.Fatalf("expected second replanner chunk to emit delta, got %#v", fourth)
+	}
+	fourthDataMap, ok := fourth[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected fourth[0].Data to be map[string]any, got %T", fourth[0].Data)
+	}
+	fourthData, ok := fourthDataMap["content"].(string)
+	if !ok || fourthData != "\n\nall clear" {
+		t.Fatalf("expected second delta content, got %#v", fourthDataMap["content"])
 	}
 }
 
