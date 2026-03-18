@@ -109,7 +109,7 @@ interface AssistantReplyRuntime {
     items?: Array<{ label: string; value: string; tone?: 'default' | 'success' | 'warning' | 'danger' }>;
   };
   status?: {
-    kind: 'streaming' | 'completed' | 'soft-timeout' | 'error';
+    kind: 'streaming' | 'completed' | 'soft-timeout' | 'error' | 'interrupted';
     label: string;
   };
 }
@@ -259,7 +259,7 @@ Required semantics:
 - `delta`: append visible content to markdown body and retain previously collected runtime state
 - `done`: finalize footer status and freeze activity list
 - recoverable `error`: append transient hint state without wiping markdown
-- terminal `error`: finalize footer status as interrupted or failed without wiping markdown
+- terminal `error`: finalize footer status as `interrupted` or `error` without wiping markdown
 
 ## Rendering Design
 
