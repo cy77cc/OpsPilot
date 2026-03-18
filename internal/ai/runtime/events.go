@@ -1,6 +1,9 @@
 package runtime
 
-import "time"
+import (
+	"maps"
+	"time"
+)
 
 type PublicStreamEvent = StreamEvent
 
@@ -21,9 +24,7 @@ func NewRunStateEvent(status string, payload map[string]any) PublicStreamEvent {
 	data := map[string]any{
 		"status": status,
 	}
-	for key, value := range payload {
-		data[key] = value
-	}
+	maps.Copy(data, payload)
 	return PublicStreamEvent{
 		Event: "run_state",
 		Data:  data,
