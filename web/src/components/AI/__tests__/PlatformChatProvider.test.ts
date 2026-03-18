@@ -54,19 +54,22 @@ describe('PlatformChatProvider', () => {
     request.run({ message: 'hi', scene: 'ai' });
     await request.asyncHandler;
 
-    expect(onUpdate).toHaveBeenCalledTimes(4);
+    expect(onUpdate).toHaveBeenCalledTimes(5);
     expect(onUpdate).toHaveBeenNthCalledWith(
       1,
-      { content: '[准备中]', mode: 'replace' },
+      expect.objectContaining({ content: '[准备中]', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       2,
-      { content: '[正在规划处理方式]', mode: 'replace' },
+      expect.objectContaining({ content: '[正在规划处理方式]', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onSuccess).toHaveBeenCalledWith(
-      [{ content: 'hello ', mode: 'replace' }, { content: 'world', mode: 'append' }],
+      [
+        expect.objectContaining({ content: 'hello ', mode: 'replace' }),
+        expect.objectContaining({ content: 'world', mode: 'append' }),
+      ],
       expect.any(Headers),
     );
     expect(onError).not.toHaveBeenCalled();
@@ -94,21 +97,21 @@ describe('PlatformChatProvider', () => {
 
     expect(onUpdate).toHaveBeenNthCalledWith(
       1,
-      { content: '[准备中]', mode: 'replace' },
+      expect.objectContaining({ content: '[准备中]', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       2,
-      { content: '[诊断助手开始处理]', mode: 'replace' },
+      expect.objectContaining({ content: '[诊断助手开始处理]', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       3,
-      { content: '诊断完成', mode: 'replace' },
+      expect.objectContaining({ content: '诊断完成', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onSuccess).toHaveBeenCalledWith(
-      [{ content: '诊断完成', mode: 'replace' }],
+      [expect.objectContaining({ content: '诊断完成', mode: 'replace' })],
       expect.any(Headers),
     );
   });
@@ -135,24 +138,105 @@ describe('PlatformChatProvider', () => {
 
     expect(onUpdate).toHaveBeenNthCalledWith(
       1,
-      { content: '[正在规划处理方式]', mode: 'replace' },
+      expect.objectContaining({ content: '[正在规划处理方式]', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       2,
-      { content: '第一段', mode: 'replace' },
+      expect.objectContaining({ content: '第一段', mode: 'replace' }),
       expect.any(Headers),
     );
     expect(onUpdate).toHaveBeenNthCalledWith(
       3,
-      { content: '，第二段', mode: 'append' },
+      expect.objectContaining({ content: '，第二段', mode: 'append' }),
       expect.any(Headers),
     );
     expect(onSuccess).toHaveBeenCalledWith(
       [
-        { content: '第一段', mode: 'replace' },
-        { content: '，第二段', mode: 'append' },
+        expect.objectContaining({ content: '第一段', mode: 'replace' }),
+        expect.objectContaining({ content: '，第二段', mode: 'append' }),
       ],
+      expect.any(Headers),
+    );
+  });
+
+  it('preserves runtime activities while streaming visible markdown', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onToolCall?.({ call_id: 'call-1', tool_name: 'kubectl_get', arguments: {} });
+      handlers.onDelta?.({ content: '巡检完成' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'cluster' });
+    await request.asyncHandler;
+
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime: expect.objectContaining({
+          activities: [expect.objectContaining({ id: 'call-1' })],
+        }),
+      }),
+      expect.any(Headers),
+    );
+  });
+
+  it('projects replan, approval, recoverable error, handoff, tool result, and terminal error states', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess: vi.fn(),
+      onError,
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ session_id: 'sess-1', run_id: 'run-1', turn: 1 });
+      handlers.onAgentHandoff?.({ from: 'OpsPilotAgent', to: 'DiagnosisAgent', intent: 'diagnosis' });
+      handlers.onPlan?.({ steps: ['检查节点'], iteration: 0 });
+      handlers.onReplan?.({ steps: ['检查节点', '汇总异常'], completed: 1, iteration: 1, is_final: false });
+      handlers.onToolCall?.({ call_id: 'call-1', tool_name: 'kubectl_get', arguments: {} });
+      handlers.onToolApproval?.({
+        approval_id: 'approval-1',
+        call_id: 'call-1',
+        tool_name: 'kubectl_get',
+        preview: {},
+        timeout_seconds: 300,
+      });
+      handlers.onDelta?.({ content: '已经拿到部分结果' });
+      handlers.onToolResult?.({ call_id: 'call-1', tool_name: 'kubectl_get', content: 'node-1 ok' });
+      handlers.onError?.({ message: '工具执行较慢，正在继续等待结果…', code: 'tool_timeout_soft', recoverable: true });
+      handlers.onError?.({ message: 'stream failed', code: 'stream_failed', recoverable: false });
+    });
+
+    request.run({ message: 'hi', scene: 'cluster' });
+    await request.asyncHandler;
+
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '已经拿到部分结果',
+        runtime: expect.objectContaining({
+          activities: expect.arrayContaining([
+            expect.objectContaining({ kind: 'agent_handoff' }),
+            expect.objectContaining({ kind: 'replan' }),
+            expect.objectContaining({ kind: 'tool_result', id: 'call-1' }),
+          ]),
+          status: expect.objectContaining({ kind: 'soft-timeout' }),
+        }),
+      }),
+      expect.any(Headers),
+    );
+    expect(onError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.anything(),
       expect.any(Headers),
     );
   });

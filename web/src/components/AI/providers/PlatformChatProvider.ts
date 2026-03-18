@@ -4,6 +4,21 @@ import { AbstractXRequestClass } from '@ant-design/x-sdk';
 import type { XRequestOptions } from '@ant-design/x-sdk';
 import { aiApi } from '../../../api/modules/ai';
 import type { A2UIStreamHandlers } from '../../../api/modules/ai';
+import {
+  applyAgentHandoff,
+  applyDelta,
+  applyDone,
+  applyMeta,
+  applyPlan,
+  applyRecoverableError,
+  applyReplan,
+  applySoftTimeout,
+  applyTerminalError,
+  applyToolApproval,
+  applyToolCall,
+  applyToolResult,
+  createEmptyAssistantRuntime,
+} from '../replyRuntime';
 import type { ChatRequest, PlatformStreamChunk, SceneContext, XChatMessage } from '../types';
 
 type MetaHandler = (payload: { session_id: string; run_id: string; turn: number }) => void;
@@ -55,6 +70,15 @@ function applyChunkContent(current: string, chunk: PlatformStreamChunk): string 
 
 function buildFinalContent(chunks: PlatformStreamChunk[]): string {
   return chunks.reduce((content, chunk) => applyChunkContent(content, chunk), '');
+}
+
+function buildFinalRuntime(chunks: PlatformStreamChunk[]) {
+  for (let index = chunks.length - 1; index >= 0; index -= 1) {
+    if (chunks[index].runtime) {
+      return chunks[index].runtime;
+    }
+  }
+  return undefined;
 }
 
 interface PlatformChatRequestConfig {
@@ -114,6 +138,8 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     let hasVisibleContent = false;
     let stage: StreamStage = 'idle';
     let lastStatusContent = '';
+    let content = '';
+    let runtime = createEmptyAssistantRuntime();
     const headers = new Headers({ 'content-type': 'text/event-stream' });
 
     const emitStatus = (nextStage: StreamStage, content: string) => {
@@ -128,7 +154,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       }
       stage = nextStage;
       lastStatusContent = content;
-      this.options.callbacks?.onUpdate?.({ content, mode: 'replace' }, headers);
+      this.options.callbacks?.onUpdate?.({ content, mode: 'replace', runtime }, headers);
     };
 
     const emitVisibleChunk = (content: string) => {
@@ -138,34 +164,101 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       const chunk: PlatformStreamChunk = {
         content,
         mode: hasVisibleContent ? 'append' : 'replace',
+        runtime,
       };
       hasVisibleContent = true;
       visibleChunks.push(chunk);
       this.options.callbacks?.onUpdate?.(chunk, headers);
     };
 
+    const emitRuntimeOnlyUpdate = () => {
+      const chunk: PlatformStreamChunk = {
+        content: hasVisibleContent ? content : lastStatusContent || '[准备中]',
+        mode: 'replace',
+        runtime,
+      };
+      this.options.callbacks?.onUpdate?.(chunk, headers);
+    };
+
     const handlers: A2UIStreamHandlers = {
       onMeta: (payload) => {
         this.onMeta?.(payload);
+        runtime = applyMeta(runtime);
         emitStatus('preparing', '[准备中]');
       },
       onAgentHandoff: (payload) => {
+        runtime = applyAgentHandoff(runtime, payload);
         const status = resolveAgentStatus(payload.to);
         emitStatus(status.stage, status.content);
       },
-      onPlan: () => {
+      onPlan: (payload) => {
+        runtime = applyPlan(runtime, payload);
         emitStatus('planning', '[正在规划处理方式]');
       },
+      onReplan: (payload) => {
+        runtime = applyReplan(runtime, payload);
+        if (hasVisibleContent) {
+          emitRuntimeOnlyUpdate();
+        } else {
+          emitStatus('planning', '[正在规划处理方式]');
+        }
+      },
+      onToolCall: (payload) => {
+        runtime = applyToolCall(runtime, payload);
+        if (hasVisibleContent) {
+          emitRuntimeOnlyUpdate();
+        }
+      },
+      onToolApproval: (payload) => {
+        runtime = applyToolApproval(runtime, payload);
+        if (hasVisibleContent) {
+          emitRuntimeOnlyUpdate();
+        }
+      },
+      onToolResult: (payload) => {
+        runtime = applyToolResult(runtime, payload);
+        if (hasVisibleContent) {
+          emitRuntimeOnlyUpdate();
+        }
+      },
       onDelta: (payload) => {
+        const next = applyDelta(
+          {
+            content,
+            runtime,
+          },
+          payload,
+        );
+        content = next.content;
+        runtime = next.runtime || runtime;
         emitVisibleChunk(payload.content);
+      },
+      onDone: () => {
+        runtime = applyDone(runtime);
+        if (hasVisibleContent) {
+          emitRuntimeOnlyUpdate();
+        }
       },
       onError: (payload) => {
         if (payload.code === 'tool_timeout_soft') {
+          runtime = applySoftTimeout(runtime);
+          if (hasVisibleContent) {
+            const next = applyRecoverableError({ content, runtime }, payload);
+            content = next.content;
+            runtime = next.runtime || runtime;
+            emitRuntimeOnlyUpdate();
+          }
           return;
         }
+        const next = applyTerminalError({ content, runtime }, payload);
+        content = next.content;
+        runtime = next.runtime || runtime;
         terminalError = {
           error: new Error(payload.message || 'AI chat request failed'),
-          info: payload,
+          info: {
+            ...payload,
+            runtime,
+          },
         };
       },
     };
@@ -255,22 +348,26 @@ export class PlatformChatProvider extends AbstractChatProvider<
   transformMessage(info: TransformMessage<XChatMessage, PlatformStreamChunk>): XChatMessage {
     const current = info.originMessage?.content || '';
     const chunkContent = info.chunk?.content || '';
+    const runtime = info.chunk?.runtime || info.originMessage?.runtime || buildFinalRuntime(info.chunks);
     if (info.status === 'success') {
       const finalContent = buildFinalContent(info.chunks);
       return {
         role: 'assistant',
         content: finalContent || current,
+        runtime,
       };
     }
     if (info.chunk) {
       return {
         role: 'assistant',
         content: applyChunkContent(current, info.chunk),
+        runtime,
       };
     }
     return {
       role: 'assistant',
       content: `${current}${chunkContent}`,
+      runtime,
     };
   }
 }
