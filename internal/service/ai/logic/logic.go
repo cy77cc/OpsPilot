@@ -279,7 +279,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("update run status: %w", err)
 	}
 
-	// Step 8: 发送 done 事件
+	// Step 8: 发送 done 事件前先刷新缓冲
+	if remaining := projector.FlushBuffer(); len(remaining) > 0 {
+		for _, e := range remaining {
+			emit(e.Event, e.Data)
+		}
+	}
 	done := projector.Finish(run.ID)
 	emit(done.Event, done.Data)
 
@@ -812,7 +817,12 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		consumeProjectedEvents(projector.Consume(event), emit, &assistantContent)
 	}
 
-	// 发送 done 事件
+	// 刷新缓冲区
+	if remaining := projector.FlushBuffer(); len(remaining) > 0 {
+		for _, e := range remaining {
+			emit(e.Event, e.Data)
+		}
+	}
 	done := projector.Finish(task.RunID)
 	emit(done.Event, done.Data)
 
