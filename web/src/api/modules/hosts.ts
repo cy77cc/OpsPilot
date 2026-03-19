@@ -185,6 +185,11 @@ export interface CloudAccount {
   status: string;
 }
 
+export interface CloudProviderInfo {
+  name: string;
+  displayName: string;
+}
+
 export interface CloudInstance {
   instanceId: string;
   name: string;
@@ -599,6 +604,17 @@ export const hostApi = {
         accessKeyId: x.access_key_id,
         regionDefault: x.region_default,
         status: x.status,
+      })),
+    };
+  },
+
+  async listCloudProviders(): Promise<ApiResponse<CloudProviderInfo[]>> {
+    const res = await apiService.get<any[]>('/hosts/cloud/providers');
+    return {
+      ...res,
+      data: (res.data || []).map((x: any) => ({
+        name: x.name,
+        displayName: x.display_name,
       })),
     };
   },

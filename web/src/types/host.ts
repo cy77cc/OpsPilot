@@ -40,6 +40,7 @@ export enum CloudProvider {
   ALIBABA = 'alibaba',
   TENCENT = 'tencent',
   HUAWEI = 'huawei',
+  VOLCENGINE = 'volcengine',
   ON_PREMISE = 'on_premise'
 }
 

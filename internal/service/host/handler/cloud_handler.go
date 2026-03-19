@@ -2,10 +2,19 @@ package handler
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/service/host/logic"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
+
+// ListCloudProviders 列出所有已注册的云厂商。
+//
+// GET /api/v1/hosts/cloud/providers
+func (h *Handler) ListCloudProviders(c *gin.Context) {
+	providers := cloud.ListProviders()
+	httpx.OK(c, providers)
+}
 
 func (h *Handler) ListCloudAccounts(c *gin.Context) {
 	provider := c.Query("provider")

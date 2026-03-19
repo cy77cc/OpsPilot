@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CopilotSurface from '../CopilotSurface';
@@ -217,6 +217,35 @@ describe('CopilotSurface XMarkdown streaming', () => {
     expect(hydrated?.[0]?.message?.runtime?.status).toEqual({
       kind: 'completed',
       label: '已生成',
+    });
+  });
+
+  it('scrolls to the latest turn when opening a conversation with existing messages', async () => {
+    mockUseXChat.mockReturnValue({
+      messages: [
+        { id: 'u1', status: 'success', message: { role: 'user', content: 'q1' } },
+        { id: 'a1', status: 'success', message: { role: 'assistant', content: 'a1' } },
+        { id: 'u2', status: 'success', message: { role: 'user', content: 'q2' } },
+        { id: 'a2', status: 'success', message: { role: 'assistant', content: 'a2' } },
+      ],
+      onRequest: vi.fn(),
+      isRequesting: false,
+      queueRequest: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    const scrollContainer = screen.getByTestId('copilot-scroll-container');
+    Object.defineProperty(scrollContainer, 'scrollHeight', { configurable: true, value: 1280 });
+
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalledWith(
+        expect.objectContaining({ top: 1280, behavior: 'auto' }),
+      );
     });
   });
 

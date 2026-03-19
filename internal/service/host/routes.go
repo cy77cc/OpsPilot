@@ -29,6 +29,7 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/sources", func(c *gin.Context) {
 			httpx.OK(c, []string{"manual_ssh", "cloud_import", "kvm_provision"})
 		})
+		g.GET("/cloud/providers", h.ListCloudProviders)
 		g.GET("/cloud/accounts", h.ListCloudAccounts)
 		g.POST("/cloud/accounts", h.CreateCloudAccount)
 		g.POST("/cloud/providers/:provider/accounts/test", h.TestCloudAccount)
