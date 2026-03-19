@@ -33,10 +33,21 @@ type PersistedPlan struct {
 
 // PersistedStep 单个步骤。
 type PersistedStep struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Status  string `json:"status"` // pending, active, done
-	Content string `json:"content,omitempty"`
+	ID       string             `json:"id"`
+	Title    string             `json:"title"`
+	Status   string             `json:"status"` // pending, active, done
+	Content  string             `json:"content,omitempty"`
+	Segments []PersistedSegment `json:"segments,omitempty"` // 内容片段序列（记录文本和工具引用的顺序）
+}
+
+// PersistedSegment 内容片段。
+//
+// 用于记录 step 内容中文本和工具引用的顺序关系。
+// Type 可选值: text, tool_ref
+type PersistedSegment struct {
+	Type   string `json:"type"`             // "text" 或 "tool_ref"
+	Text   string `json:"text,omitempty"`   // 文本内容（type=text 时）
+	CallID string `json:"callId,omitempty"` // 工具调用 ID（type=tool_ref 时）
 }
 
 // PersistedActivity 工具调用活动。

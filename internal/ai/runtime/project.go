@@ -121,6 +121,8 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 			StepIndex: activeStepIndex,
 			Arguments: event.Tool.Arguments,
 		})
+		// 追加 tool_ref segment 到当前步骤
+		appendSegmentToActiveStep(state, "tool_ref", "", event.Tool.CallID)
 		return []PublicStreamEvent{{
 			Event: "tool_call",
 			Data: map[string]any{
@@ -303,6 +305,8 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 
 	projected := make([]PublicStreamEvent, 0, 1)
 	if trimmedContent != "" {
+		// 追加 text segment 到当前步骤
+		appendSegmentToActiveStep(state, "text", event.Message.Content, "")
 		projected = append(projected, PublicStreamEvent{
 			Event: "delta",
 			Data: map[string]any{
@@ -474,6 +478,35 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen]
+}
+
+// appendSegmentToActiveStep 追加内容片段到当前活动步骤。
+//
+// 参数:
+//   - state: 投影状态
+//   - segmentType: 片段类型 ("text" 或 "tool_ref")
+//   - text: 文本内容（segmentType="text" 时使用）
+//   - callID: 工具调用 ID（segmentType="tool_ref" 时使用）
+func appendSegmentToActiveStep(state *ProjectionState, segmentType, text, callID string) {
+	if state.Persisted == nil || state.Persisted.Plan == nil {
+		return
+	}
+
+	activeStepIndex := state.Persisted.Plan.ActiveStepIndex
+	if activeStepIndex < 0 || activeStepIndex >= len(state.Persisted.Plan.Steps) {
+		return
+	}
+
+	segment := PersistedSegment{
+		Type:   segmentType,
+		Text:   text,
+		CallID: callID,
+	}
+
+	state.Persisted.Plan.Steps[activeStepIndex].Segments = append(
+		state.Persisted.Plan.Steps[activeStepIndex].Segments,
+		segment,
+	)
 }
 
 // buildPersistedPlanFromSteps 从步骤字符串数组构建 PersistedPlan。

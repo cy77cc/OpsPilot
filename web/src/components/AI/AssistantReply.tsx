@@ -3,7 +3,7 @@ import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
-import type { AssistantReplyActivity, AssistantReplyRuntime } from './types';
+import type { AssistantReplyActivity, AssistantReplyRuntime, AssistantReplySegment } from './types';
 import ToolReference from './ToolReference';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
@@ -202,6 +202,89 @@ function SimpleMarkdownContent({ content, styles }: { content: string; styles: R
   );
 }
 
+// StepContentRenderer 按 segments 顺序渲染步骤内容
+function StepContentRenderer({
+  step,
+  activities,
+  isStreaming,
+  styles,
+}: {
+  step: { content?: string; segments?: AssistantReplySegment[] };
+  activities: AssistantReplyActivity[];
+  isStreaming: boolean;
+  styles: Record<string, string>;
+}) {
+  // 如果有 segments，按顺序渲染
+  if (step.segments && step.segments.length > 0) {
+    // 构建 activity map，方便查找
+    const activityMap = new Map<string, AssistantReplyActivity>();
+    activities.forEach((a) => activityMap.set(a.id, a));
+
+    // 用于累积文本内容，最后一起渲染
+    let textBuffer = '';
+    const elements: React.ReactNode[] = [];
+
+    step.segments.forEach((segment, index) => {
+      if (segment.type === 'text' && segment.text) {
+        textBuffer += segment.text;
+      } else if (segment.type === 'tool_ref' && segment.callId) {
+        // 先渲染累积的文本
+        if (textBuffer) {
+          elements.push(
+            <XMarkdown
+              key={`text-${index}`}
+              content={textBuffer}
+              streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+            />
+          );
+          textBuffer = '';
+        }
+        // 渲染工具引用
+        const activity = activityMap.get(segment.callId);
+        if (activity) {
+          elements.push(<ToolReference key={`tool-${segment.callId}`} activity={activity} />);
+        }
+      }
+    });
+
+    // 渲染剩余的文本
+    if (textBuffer) {
+      elements.push(
+        <XMarkdown
+          key="text-final"
+          content={textBuffer}
+          streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+        />
+      );
+    }
+
+    return <div className={styles.stepMarkdown}>{elements}</div>;
+  }
+
+  // 向后兼容：使用 content 字段 + activities 追加在末尾
+  if (step.content || activities.length > 0) {
+    return (
+      <div className={styles.stepMarkdown}>
+        {step.content && (
+          <XMarkdown
+            content={step.content}
+            streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+          />
+        )}
+        {activities.length > 0 && (
+          <span>
+            {activities.map((tool) => (
+              <ToolReference key={tool.id} activity={tool} />
+            ))}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // AssistantReplyContent 渲染完整的 runtime 内容
 function AssistantReplyContent({
   content,
@@ -270,11 +353,12 @@ function AssistantReplyContent({
                   <span>✓</span>
                   <span>{step.title}</span>
                 </div>
-                {step.content ? (
-                  <div className={styles.stepMarkdown}>
-                    <XMarkdown content={step.content} />
-                  </div>
-                ) : null}
+                <StepContentRenderer
+                  step={step}
+                  activities={runtime?.activities || []}
+                  isStreaming={false}
+                  styles={styles}
+                />
               </div>
             )),
           }]}
@@ -289,34 +373,12 @@ function AssistantReplyContent({
             <span>{activeStep.title}</span>
           </div>
           <div className={styles.activeStepBody}>
-            {activeStep.content ? (
-              <div className={styles.stepMarkdown}>
-                <XMarkdown
-                  content={activeStep.content}
-                  streaming={{
-                    hasNextChunk: isStreaming,
-                    enableAnimation: true,
-                  }}
-                />
-                {/* 工具引用显示在步骤内容后 */}
-                {toolActivities.length > 0 && (
-                  <span>
-                    {toolActivities.map((tool) => (
-                      <ToolReference key={tool.id} activity={tool} />
-                    ))}
-                  </span>
-                )}
-              </div>
-            ) : (
-              /* 如果没有内容但有工具引用，也要显示 */
-              toolActivities.length > 0 && (
-                <span>
-                  {toolActivities.map((tool) => (
-                    <ToolReference key={tool.id} activity={tool} />
-                  ))}
-                </span>
-              )
-            )}
+            <StepContentRenderer
+              step={activeStep}
+              activities={toolActivities}
+              isStreaming={isStreaming}
+              styles={styles}
+            />
             {activeStepActivities.map((activity) => (
               <div key={activity.id} className={styles.activity}>
                 <span>{activity.label}</span>

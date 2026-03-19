@@ -51,6 +51,13 @@ export interface AssistantReplyPlanStep {
   title: string;
   status: 'pending' | 'active' | 'done';
   content?: string;
+  segments?: AssistantReplySegment[];
+}
+
+export interface AssistantReplySegment {
+  type: 'text' | 'tool_ref';
+  text?: string;
+  callId?: string;
 }
 
 export interface AssistantReplyPlan {
