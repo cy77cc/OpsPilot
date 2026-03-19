@@ -191,13 +191,6 @@ interface AssistantReplyProps {
   onLoadRuntime?: (messageId: string) => Promise<AssistantReplyRuntime | null>;
 }
 
-function getVisibleActivities(runtime?: AssistantReplyRuntime): AssistantReplyActivity[] {
-  if (!runtime?.activities?.length) {
-    return [];
-  }
-  return runtime.activities.filter((activity) => activity.stepIndex === undefined && activity.kind !== 'plan' && activity.kind !== 'replan');
-}
-
 // SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
 function SimpleMarkdownContent({ content, styles }: { content: string; styles: Record<string, string> }) {
   if (!content) return null;
@@ -220,7 +213,6 @@ function AssistantReplyContent({
   status?: string;
   styles: Record<string, string>;
 }) {
-  const visibleActivities = getVisibleActivities(runtime);
   const activeStepIndex = runtime?.plan?.activeStepIndex;
   const allSteps = runtime?.plan?.steps || [];
 
@@ -243,17 +235,6 @@ function AssistantReplyContent({
 
   return (
     <>
-      {visibleActivities.length ? (
-        <div className={styles.activities}>
-          {visibleActivities.map((activity) => (
-            <div key={activity.id} className={styles.activity}>
-              <span>{activity.label}</span>
-              {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
       {/* 已完成的步骤（折叠，可展开） */}
@@ -296,10 +277,6 @@ function AssistantReplyContent({
                   streaming={{
                     hasNextChunk: isStreaming,
                     enableAnimation: true,
-                    animationConfig: {
-                      fadeDuration: 180,
-                      easing: 'ease-out',
-                    },
                   }}
                 />
               </div>
@@ -337,10 +314,6 @@ function AssistantReplyContent({
             streaming={{
               hasNextChunk: isStreaming,
               enableAnimation: true,
-              animationConfig: {
-                fadeDuration: 180,
-                easing: 'ease-out',
-              },
             }}
           />
         </div>
