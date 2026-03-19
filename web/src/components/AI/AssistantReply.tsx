@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
-import { Collapse } from 'antd';
+import { Collapse, Button, Skeleton } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
 import type { AssistantReplyActivity, AssistantReplyRuntime } from './types';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
@@ -163,12 +164,31 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     line-height: 18px;
     color: ${token.colorTextDescription};
   `,
+  expandButton: css`
+    padding: 0;
+    height: auto;
+    font-size: 13px;
+    color: ${token.colorPrimary};
+    margin-top: 4px;
+
+    &:hover {
+      background: transparent;
+    }
+  `,
+  loadingContainer: css`
+    padding: 12px;
+    background: ${token.colorFillQuaternary};
+    border-radius: 8px;
+  `,
 }));
 
 interface AssistantReplyProps {
   content: string;
   runtime?: AssistantReplyRuntime;
   status?: string;
+  messageId?: string;
+  hasRuntime?: boolean;
+  onLoadRuntime?: (messageId: string) => Promise<AssistantReplyRuntime | null>;
 }
 
 function getVisibleActivities(runtime?: AssistantReplyRuntime): AssistantReplyActivity[] {
@@ -178,32 +198,51 @@ function getVisibleActivities(runtime?: AssistantReplyRuntime): AssistantReplyAc
   return runtime.activities.filter((activity) => activity.stepIndex === undefined && activity.kind !== 'plan' && activity.kind !== 'replan');
 }
 
-export function AssistantReply({ content, runtime, status }: AssistantReplyProps) {
-  const { styles } = useAssistantReplyStyles();
+// SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
+function SimpleMarkdownContent({ content, styles }: { content: string; styles: Record<string, string> }) {
+  if (!content) return null;
+  return (
+    <div className={styles.markdown}>
+      <XMarkdown content={content} />
+    </div>
+  );
+}
+
+// AssistantReplyContent 渲染完整的 runtime 内容
+function AssistantReplyContent({
+  content,
+  runtime,
+  status,
+  styles,
+}: {
+  content: string;
+  runtime: AssistantReplyRuntime;
+  status?: string;
+  styles: Record<string, string>;
+}) {
   const visibleActivities = getVisibleActivities(runtime);
   const activeStepIndex = runtime?.plan?.activeStepIndex;
   const allSteps = runtime?.plan?.steps || [];
 
   // 当前执行的步骤
-  const activeStep = activeStepIndex !== undefined && activeStepIndex < allSteps.length
+  const activeStep = activeStepIndex !== undefined && activeStepIndex >= 0 && activeStepIndex < allSteps.length
     ? allSteps[activeStepIndex]
     : null;
 
-  // 已完成的步骤
-  // - 当有当前步骤时：当前步骤之前的已完成步骤
-  // - 当计划完成时：所有已完成的步骤
-  const completedSteps = activeStepIndex !== undefined
+  // 已完成的步骤（历史对话中所有步骤都是 done）
+  const completedSteps = activeStepIndex !== undefined && activeStepIndex >= 0
     ? allSteps.slice(0, activeStepIndex).filter((step) => step.status === 'done')
     : allSteps.filter((step) => step.status === 'done');
 
   // 当前步骤的 activities
-  const activeStepActivities = activeStepIndex !== undefined
+  const activeStepActivities = activeStepIndex !== undefined && activeStepIndex >= 0
     ? runtime?.activities?.filter((activity) => activity.stepIndex === activeStepIndex) || []
     : [];
 
-  return (
-    <div className={styles.root}>
+  const isStreaming = status === 'loading' || status === 'updating';
 
+  return (
+    <>
       {visibleActivities.length ? (
         <div className={styles.activities}>
           {visibleActivities.map((activity) => (
@@ -255,7 +294,7 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
                 <XMarkdown
                   content={activeStep.content}
                   streaming={{
-                    hasNextChunk: status === 'loading' || status === 'updating',
+                    hasNextChunk: isStreaming,
                     enableAnimation: true,
                     animationConfig: {
                       fadeDuration: 180,
@@ -296,7 +335,7 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
           <XMarkdown
             content={content}
             streaming={{
-              hasNextChunk: status === 'loading' || status === 'updating',
+              hasNextChunk: isStreaming,
               enableAnimation: true,
               animationConfig: {
                 fadeDuration: 180,
@@ -308,6 +347,106 @@ export function AssistantReply({ content, runtime, status }: AssistantReplyProps
       ) : null}
 
       {runtime?.status ? <div className={styles.footer}>{runtime.status.label}</div> : null}
+    </>
+  );
+}
+
+export function AssistantReply({
+  content,
+  runtime,
+  status,
+  messageId,
+  hasRuntime,
+  onLoadRuntime,
+}: AssistantReplyProps) {
+  const { styles } = useAssistantReplyStyles();
+  const [localRuntime, setLocalRuntime] = useState<AssistantReplyRuntime | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  // 显示的 runtime：优先使用已加载的，其次使用传入的
+  const displayRuntime = localRuntime || runtime;
+
+  // 有 runtime 时直接显示完整内容
+  if (displayRuntime) {
+    return (
+      <div className={styles.root}>
+        <AssistantReplyContent
+          content={content}
+          runtime={displayRuntime}
+          status={status}
+          styles={styles}
+        />
+      </div>
+    );
+  }
+
+  // 无 runtime 且没有懒加载能力，只显示 markdown
+  if (!messageId || !hasRuntime || !onLoadRuntime) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} />
+      </div>
+    );
+  }
+
+  // 懒加载场景
+  const handleExpand = async () => {
+    if (loading) return;
+    setLoading(true);
+    setExpanded(true);
+    const loaded = await onLoadRuntime(messageId);
+    if (loaded) {
+      setLocalRuntime(loaded);
+    }
+    setLoading(false);
+  };
+
+  // 加载中
+  if (loading) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} />
+        <div className={styles.loadingContainer}>
+          <Skeleton active paragraph={{ rows: 3 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // 已展开但加载失败
+  if (expanded && !localRuntime) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} />
+        <Button type="link" className={styles.expandButton} onClick={handleExpand}>
+          重试加载详情
+        </Button>
+      </div>
+    );
+  }
+
+  // 未展开，显示展开按钮
+  if (!expanded) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} />
+        <Button
+          type="link"
+          className={styles.expandButton}
+          onClick={handleExpand}
+          icon={<DownOutlined />}
+        >
+          展开详情
+        </Button>
+      </div>
+    );
+  }
+
+  // 已展开且有 localRuntime（正常情况会走第一个分支）
+  return (
+    <div className={styles.root}>
+      <SimpleMarkdownContent content={content} styles={styles} />
     </div>
   );
 }

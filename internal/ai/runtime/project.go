@@ -1,7 +1,15 @@
 package runtime
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
+// ProjectionState 跟踪流式投影状态。
+//
+// 包含两部分状态：
+//   - 解析状态：用于增量解析 SSE 事件（PendingPlannerJSON 等）
+//   - 持久化状态：用于存储到数据库（Persisted）
 type ProjectionState struct {
 	TotalPlanSteps         int
 	ReplanIteration        int
@@ -9,6 +17,9 @@ type ProjectionState struct {
 	PendingPlannerJSON     string
 	PendingReplannerJSON   string
 	ReplannerResponseState *ResponseExtractState // 用于增量提取 response 字段
+
+	// Persisted 累积的持久化状态，用于存储到数据库。
+	Persisted *PersistedRuntime
 }
 
 // ResponseExtractState 跟踪 response 字段的增量提取状态。
@@ -36,11 +47,25 @@ func projectNormalizedEvents(events []NormalizedEvent, state *ProjectionState) [
 }
 
 func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []PublicStreamEvent {
+	// 确保 Persisted 已初始化
+	if state.Persisted == nil {
+		state.Persisted = &PersistedRuntime{}
+	}
+
 	switch event.Kind {
 	case NormalizedKindHandoff:
 		if event.Handoff == nil {
 			return nil
 		}
+		// 更新持久化状态
+		state.Persisted.Phase = "executing"
+		state.Persisted.PhaseLabel = fmt.Sprintf("%s 开始处理", strings.TrimSpace(event.Handoff.To))
+		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+			ID:     fmt.Sprintf("handoff:%s", strings.TrimSpace(event.Handoff.To)),
+			Kind:   "agent_handoff",
+			Label:  strings.TrimSpace(event.Handoff.To),
+			Status: "done",
+		})
 		return []PublicStreamEvent{{
 			Event: "agent_handoff",
 			Data: map[string]any{
@@ -54,6 +79,16 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 			return nil
 		}
 		state.RunPhase = "waiting_approval"
+		// 更新持久化状态
+		state.Persisted.Phase = "waiting_approval"
+		state.Persisted.PhaseLabel = "等待审批"
+		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+			ID:     event.Interrupt.CallID,
+			Kind:   "tool_approval",
+			Label:  event.Interrupt.ToolName,
+			Detail: fmt.Sprintf("等待审批 %ds", event.Interrupt.TimeoutSeconds),
+			Status: "pending",
+		})
 		return []PublicStreamEvent{
 			{
 				Event: "tool_approval",
@@ -73,6 +108,18 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		if event.Tool == nil {
 			return nil
 		}
+		// 更新持久化状态
+		activeStepIndex := 0
+		if state.Persisted.Plan != nil {
+			activeStepIndex = state.Persisted.Plan.ActiveStepIndex
+		}
+		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+			ID:        event.Tool.CallID,
+			Kind:      "tool_call",
+			Label:     event.Tool.ToolName,
+			Status:    "active",
+			StepIndex: activeStepIndex,
+		})
 		return []PublicStreamEvent{{
 			Event: "tool_call",
 			Data: map[string]any{
@@ -85,6 +132,14 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 	case NormalizedKindToolResult:
 		if event.Tool == nil {
 			return nil
+		}
+		// 更新持久化状态：找到对应的 activity 并更新
+		for i := range state.Persisted.Activities {
+			if state.Persisted.Activities[i].ID == event.Tool.CallID {
+				state.Persisted.Activities[i].Status = "done"
+				state.Persisted.Activities[i].Kind = "tool_result"
+				state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)
+			}
 		}
 		return []PublicStreamEvent{{
 			Event: "tool_result",
@@ -110,6 +165,11 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 	trimmedAgent := strings.TrimSpace(event.AgentName)
 	trimmedContent := strings.TrimSpace(event.Message.Content)
 
+	// 确保 Persisted 已初始化
+	if state.Persisted == nil {
+		state.Persisted = &PersistedRuntime{}
+	}
+
 	if trimmedAgent == "planner" {
 		raw := appendAgentJSONBuffer(state.PendingPlannerJSON, event.Message.Content)
 		if steps, ok := decodeStepsEnvelope(strings.TrimSpace(raw)); ok {
@@ -117,6 +177,16 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 			state.TotalPlanSteps = len(steps)
 			state.ReplanIteration = 0
 			state.RunPhase = "planning"
+			// 更新持久化状态
+			state.Persisted.Plan = buildPersistedPlanFromSteps(steps, 0)
+			state.Persisted.Phase = "planning"
+			state.Persisted.PhaseLabel = "正在规划处理方式"
+			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+				ID:     "planning",
+				Kind:   "plan",
+				Label:  "规划处理步骤",
+				Status: "done",
+			})
 			return []PublicStreamEvent{{
 				Event: "plan",
 				Data: map[string]any{
@@ -166,6 +236,16 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 				completed = 0
 			}
 			state.RunPhase = "planning"
+			// 更新持久化状态
+			state.Persisted.Plan = buildPersistedPlanFromSteps(steps, completed)
+			state.Persisted.Phase = "planning"
+			state.Persisted.PhaseLabel = "正在调整处理计划"
+			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+				ID:     "planning",
+				Kind:   "replan",
+				Label:  "更新处理计划",
+				Status: "active",
+			})
 			return []PublicStreamEvent{{
 				Event: "replan",
 				Data: map[string]any{
@@ -362,4 +442,38 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, a
 	}
 
 	return events
+}
+
+// truncateString 截断字符串到指定长度。
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}
+
+// buildPersistedPlanFromSteps 从步骤字符串数组构建 PersistedPlan。
+//
+// 参数:
+//   - steps: 步骤标题数组
+//   - completedCount: 已完成的步骤数量
+func buildPersistedPlanFromSteps(steps []string, completedCount int) *PersistedPlan {
+	result := &PersistedPlan{}
+	for i, title := range steps {
+		status := "pending"
+		if i < completedCount {
+			status = "done"
+		} else if i == completedCount {
+			status = "active"
+		}
+		result.Steps = append(result.Steps, PersistedStep{
+			ID:     fmt.Sprintf("plan-step-%d", i),
+			Title:  title,
+			Status: status,
+		})
+	}
+	if completedCount < len(steps) {
+		result.ActiveStepIndex = completedCount
+	}
+	return result
 }

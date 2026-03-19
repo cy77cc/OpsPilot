@@ -27,6 +27,7 @@ type AIChatMessage struct {
 	Role         string         `gorm:"column:role;type:varchar(16);not null;default:'assistant';index:idx_ai_chat_messages_session_role,priority:2" json:"role"`
 	Content      string         `gorm:"column:content;type:longtext;not null" json:"content"`
 	Status       string         `gorm:"column:status;type:varchar(16);not null;default:'done'" json:"status"`
+	RuntimeJSON  string         `gorm:"column:runtime_json;type:longtext" json:"-"` // 持久化的运行时状态，不随普通响应返回
 	CreatedAt    time.Time      `gorm:"column:created_at;autoCreateTime;index:idx_ai_chat_messages_session_created,priority:2" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`

@@ -89,9 +89,11 @@ export interface AssistantReplyRuntime {
 }
 
 export interface XChatMessage {
+  id?: string; // 消息 ID，用于懒加载 runtime
   role: 'user' | 'assistant';
   content: string;
   runtime?: AssistantReplyRuntime;
+  hasRuntime?: boolean; // 标记是否有 runtime 数据
 }
 
 export interface ConversationSummary {

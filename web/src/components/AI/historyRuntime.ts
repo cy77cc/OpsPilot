@@ -1,77 +1,65 @@
-import type { AIMessage, AIReplayBlock, AIReplayTurn } from '../../api/modules/ai';
+import type { AIMessage } from '../../api/modules/ai';
+import { aiApi } from '../../api/modules/ai';
 import type { AssistantReplyRuntime, XChatMessage } from './types';
 
-function mapHistoricalStatus(
-  status?: string,
-  runtime?: AssistantReplyRuntime,
-): AssistantReplyRuntime | undefined {
-  if (!runtime) {
-    return undefined;
-  }
+// 缓存配置
+const MAX_CACHE_SIZE = 50;
 
-  if (status === 'done') {
-    return {
-      ...runtime,
-      status: {
-        kind: 'completed',
-        label: '已生成',
-      },
-    };
-  }
+// LRU 缓存
+const runtimeCache = new Map<string, AssistantReplyRuntime>();
+const cacheOrder: string[] = [];
 
-  return runtime;
+// 淘汰最旧的缓存
+function evictOldest(): void {
+  if (cacheOrder.length > MAX_CACHE_SIZE) {
+    const oldest = cacheOrder.shift();
+    if (oldest) {
+      runtimeCache.delete(oldest);
+    }
+  }
 }
 
-function synthesizeRuntimeFromBlocks(blocks: AIReplayBlock[]): AssistantReplyRuntime | undefined {
-  if (!blocks.length) {
-    return undefined;
+// loadMessageRuntime 懒加载消息的 runtime 数据。
+//
+// 使用 LRU 缓存避免重复请求。
+export async function loadMessageRuntime(messageId: string): Promise<AssistantReplyRuntime | null> {
+  // 缓存命中
+  if (runtimeCache.has(messageId)) {
+    // 更新 LRU 顺序
+    const index = cacheOrder.indexOf(messageId);
+    if (index > -1) {
+      cacheOrder.splice(index, 1);
+      cacheOrder.push(messageId);
+    }
+    return runtimeCache.get(messageId)!;
   }
 
-  const runtime: AssistantReplyRuntime = {
-    activities: [],
-  };
-
-  blocks.forEach((block) => {
-    if (block.blockType === 'phase' && block.contentJson) {
-      runtime.phase = block.contentJson.phase as AssistantReplyRuntime['phase'];
-      runtime.phaseLabel = String(block.contentJson.phaseLabel || '');
-      return;
+  try {
+    const response = await aiApi.getMessageRuntime(messageId);
+    if (response.data?.runtime) {
+      const runtime = response.data.runtime as unknown as AssistantReplyRuntime;
+      runtimeCache.set(messageId, runtime);
+      cacheOrder.push(messageId);
+      evictOldest();
+      return runtime;
     }
-
-    if (block.blockType === 'summary' && block.contentJson) {
-      runtime.summary = {
-        title: typeof block.contentJson.title === 'string' ? block.contentJson.title : undefined,
-        items: Array.isArray(block.contentJson.items)
-          ? block.contentJson.items.map((item: any) => ({
-              label: String(item.label || ''),
-              value: String(item.value || ''),
-              tone: item.tone,
-            }))
-          : undefined,
-      };
-    }
-  });
-
-  if (!runtime.phase && !runtime.summary) {
-    return undefined;
+  } catch (error) {
+    console.error('Failed to load runtime:', error);
   }
-
-  return runtime;
+  return null;
 }
 
+// hydrateAssistantHistoryMessage 将历史消息转换为前端可用的 XChatMessage。
+//
+// 不再尝试合成 runtime，而是传递 ID 和 hasRuntime 标志，
+// 让组件在需要时懒加载。
 export function hydrateAssistantHistoryMessage(
-  message: AIMessage,
-  turns: AIReplayTurn[] = [],
-  blocks: AIReplayBlock[] = [],
+  message: AIMessage & { has_runtime?: boolean },
 ): XChatMessage {
-  const persistedRuntime = message.runtime as unknown as AssistantReplyRuntime | undefined;
-  const turnBlocks = turns.flatMap((turn) => turn.blocks || []);
-  const synthesizedRuntime = synthesizeRuntimeFromBlocks([...turnBlocks, ...blocks]);
-  const runtime = mapHistoricalStatus(message.status, persistedRuntime || synthesizedRuntime);
-
   return {
+    id: message.id,
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content: message.content || '',
-    ...(runtime ? { runtime } : {}),
+    hasRuntime: message.has_runtime ?? false,
   };
 }

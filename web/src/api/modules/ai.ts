@@ -620,6 +620,18 @@ export const aiApi = {
     return apiService.get(`/ai/sessions/${id}`);
   },
 
+  // 获取单条消息的 runtime 数据
+  async getMessageRuntime(
+    id: string,
+  ): Promise<
+    ApiResponse<{
+      message_id: string;
+      runtime: Record<string, unknown> | null;
+    }>
+  > {
+    return apiService.get(`/ai/messages/${id}/runtime`);
+  },
+
   async getRunStatus(runId: string): Promise<ApiResponse<AIRun>> {
     return apiService.get(`/ai/runs/${runId}`);
   },

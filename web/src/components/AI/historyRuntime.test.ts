@@ -1,80 +1,122 @@
-import { describe, expect, it } from 'vitest';
-import { hydrateAssistantHistoryMessage } from './historyRuntime';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { hydrateAssistantHistoryMessage, loadMessageRuntime } from './historyRuntime';
+import { aiApi } from '../../api/modules/ai';
+
+// Mock aiApi
+vi.mock('../../api/modules/ai', () => ({
+  aiApi: {
+    getMessageRuntime: vi.fn(),
+  },
+}));
 
 describe('hydrateAssistantHistoryMessage', () => {
-  it('preserves persisted assistant runtime from session history', () => {
-    const hydrated = hydrateAssistantHistoryMessage(
-      {
-        role: 'assistant',
-        content: '历史回答',
-        status: 'done',
-        runtime: {
-          phase: 'completed',
-          phaseLabel: '已完成诊断',
-          activities: [],
-          status: { kind: 'completed', label: '已生成' },
-        },
-      } as any,
-      [],
-      [],
-    );
+  it('returns message with id and hasRuntime flag', () => {
+    const hydrated = hydrateAssistantHistoryMessage({
+      id: 'msg-123',
+      role: 'assistant',
+      content: '历史回答',
+      status: 'done',
+      has_runtime: true,
+    } as any);
 
-    expect(hydrated.runtime?.phaseLabel).toBe('已完成诊断');
-    expect(hydrated.runtime?.status).toEqual({
-      kind: 'completed',
-      label: '已生成',
-    });
+    expect(hydrated.id).toBe('msg-123');
+    expect(hydrated.hasRuntime).toBe(true);
+    expect(hydrated.content).toBe('历史回答');
+    expect(hydrated.role).toBe('assistant');
   });
 
-  it('synthesizes runtime from replay turns and blocks when persisted runtime is absent', () => {
-    const hydrated = hydrateAssistantHistoryMessage(
-      {
-        role: 'assistant',
-        content: '历史回答',
-        status: 'done',
-      } as any,
-      [
-        {
-          role: 'assistant',
-          blocks: [
-            { blockType: 'phase', contentJson: { phase: 'completed', phaseLabel: '已完成诊断' } },
-            { blockType: 'summary', contentJson: { title: '巡检摘要', items: [{ label: '高风险', value: '1' }] } },
-          ],
-        },
-      ] as any,
-      [],
-    );
+  it('sets hasRuntime to false when has_runtime is absent', () => {
+    const hydrated = hydrateAssistantHistoryMessage({
+      id: 'msg-456',
+      role: 'assistant',
+      content: '历史回答',
+      status: 'done',
+    } as any);
 
-    expect(hydrated.runtime?.phaseLabel).toBe('已完成诊断');
-    expect(hydrated.runtime?.summary?.title).toBe('巡检摘要');
+    expect(hydrated.hasRuntime).toBe(false);
   });
 
-  it('falls back to markdown-only history when runtime and replay blocks are absent', () => {
-    const hydrated = hydrateAssistantHistoryMessage(
-      { role: 'assistant', content: '纯文本历史', status: 'done' } as any,
-      [],
-      [],
-    );
+  it('does not include runtime in initial hydration', () => {
+    const hydrated = hydrateAssistantHistoryMessage({
+      id: 'msg-789',
+      role: 'assistant',
+      content: '历史回答',
+      status: 'done',
+      has_runtime: true,
+    } as any);
 
     expect(hydrated.runtime).toBeUndefined();
-    expect(hydrated.content).toBe('纯文本历史');
+  });
+});
+
+describe('loadMessageRuntime', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('maps historical done status to completed footer state', () => {
-    const hydrated = hydrateAssistantHistoryMessage(
-      {
-        role: 'assistant',
-        content: '历史回答',
-        status: 'done',
-        runtime: { activities: [] },
-      } as any,
-      [],
-      [],
-    );
+  it('loads runtime from API and caches it', async () => {
+    const mockRuntime = {
+      phase: 'completed',
+      phaseLabel: '已完成诊断',
+      activities: [],
+      status: { kind: 'completed', label: '已生成' },
+    };
 
-    expect(hydrated.runtime?.status).toEqual({
-      kind: 'completed',
-      label: '已生成',
+    (aiApi.getMessageRuntime as any).mockResolvedValue({
+      data: {
+        message_id: 'msg-123',
+        runtime: mockRuntime,
+      },
     });
+
+    const result = await loadMessageRuntime('msg-123');
+
+    expect(result).toEqual(mockRuntime);
+    expect(aiApi.getMessageRuntime).toHaveBeenCalledWith('msg-123');
+  });
+
+  it('returns null when API returns no runtime', async () => {
+    (aiApi.getMessageRuntime as any).mockResolvedValue({
+      data: {
+        message_id: 'msg-456',
+        runtime: null,
+      },
+    });
+
+    const result = await loadMessageRuntime('msg-456');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null on API error', async () => {
+    (aiApi.getMessageRuntime as any).mockRejectedValue(new Error('Network error'));
+
+    const result = await loadMessageRuntime('msg-789');
+
+    expect(result).toBeNull();
+  });
+
+  it('uses cached runtime on subsequent calls', async () => {
+    const mockRuntime = {
+      phase: 'completed',
+      activities: [],
+    };
+
+    (aiApi.getMessageRuntime as any).mockResolvedValue({
+      data: {
+        message_id: 'msg-cached',
+        runtime: mockRuntime,
+      },
+    });
+
+    // First call
+    await loadMessageRuntime('msg-cached');
+
+    // Second call should use cache
+    const result = await loadMessageRuntime('msg-cached');
+
+    expect(result).toEqual(mockRuntime);
+    // API should only be called once
+    expect(aiApi.getMessageRuntime).toHaveBeenCalledTimes(1);
   });
 });

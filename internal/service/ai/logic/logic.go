@@ -258,9 +258,19 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	if streamError != nil {
 		finalStatus = "error"
 	}
+
+	// 提取持久化状态
+	runtimeJSON := ""
+	if persisted := projector.GetPersistedState(); persisted != nil && len(persisted.Activities) > 0 {
+		if data, err := json.Marshal(persisted); err == nil {
+			runtimeJSON = string(data)
+		}
+	}
+
 	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-		"content": finalContent,
-		"status":  finalStatus,
+		"content":      finalContent,
+		"status":       finalStatus,
+		"runtime_json": runtimeJSON,
 	}); err != nil {
 		return fmt.Errorf("update assistant message: %w", err)
 	}
@@ -402,6 +412,33 @@ func (l *Logic) DeleteSession(ctx context.Context, userID uint64, sessionID stri
 		return false, err
 	}
 	return true, nil
+}
+
+// GetMessageWithOwnership 获取消息并验证所有权。
+//
+// 验证消息所属会话是否属于当前用户。
+// 返回消息或 nil（不存在或无权限时）。
+func (l *Logic) GetMessageWithOwnership(ctx context.Context, userID uint64, messageID string) (*model.AIChatMessage, error) {
+	if l.ChatDAO == nil {
+		return nil, nil
+	}
+
+	// 获取消息
+	message, err := l.ChatDAO.GetMessage(ctx, messageID)
+	if err != nil || message == nil {
+		return nil, err
+	}
+
+	// 验证会话所有权
+	session, err := l.ChatDAO.GetSession(ctx, message.SessionID, userID, "")
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, nil // 无权限
+	}
+
+	return message, nil
 }
 
 // GetRun 获取 Run 状态。

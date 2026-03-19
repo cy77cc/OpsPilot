@@ -98,3 +98,17 @@ func (d *AIChatDAO) ListMessagesBySession(ctx context.Context, sessionID string)
 		Find(&messages).Error
 	return messages, err
 }
+
+// GetMessage 根据 ID 获取单条消息。
+//
+// 返回消息或 nil（不存在时）。
+func (d *AIChatDAO) GetMessage(ctx context.Context, messageID string) (*model.AIChatMessage, error) {
+	var message model.AIChatMessage
+	if err := d.db.WithContext(ctx).Where("id = ?", messageID).First(&message).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &message, nil
+}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -9,6 +10,12 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 )
+
+// MessageRuntimeResponse 消息 runtime 响应结构。
+type MessageRuntimeResponse struct {
+	MessageID string         `json:"message_id"`
+	Runtime   map[string]any `json:"runtime,omitempty"`
+}
 
 func (h *Handler) CreateSession(c *gin.Context) {
 	var req aiv1.CreateSessionRequest
@@ -74,6 +81,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 			"role":           message.Role,
 			"content":        message.Content,
 			"status":         message.Status,
+			"has_runtime":    message.RuntimeJSON != "",
 			"created_at":     formatTime(message.CreatedAt),
 		})
 	}
@@ -84,6 +92,39 @@ func (h *Handler) GetSession(c *gin.Context) {
 		"messages":   messageItems,
 		"created_at": formatTime(session.CreatedAt),
 		"updated_at": formatTime(session.UpdatedAt),
+	})
+}
+
+// GetMessageRuntime 获取单条消息的运行时状态。
+//
+// 权限验证：检查消息所属会话是否属于当前用户。
+func (h *Handler) GetMessageRuntime(c *gin.Context) {
+	messageID := c.Param("id")
+	userID := httpx.UIDFromCtx(c)
+
+	// 获取消息并验证权限
+	message, err := h.logic.GetMessageWithOwnership(c.Request.Context(), userID, messageID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	if message == nil {
+		httpx.NotFound(c, "消息不存在或无权限访问")
+		return
+	}
+
+	// 解析 runtime JSON
+	var runtime map[string]any
+	if message.RuntimeJSON != "" {
+		if err := json.Unmarshal([]byte(message.RuntimeJSON), &runtime); err != nil {
+			// JSON 解析失败，返回 null
+			runtime = nil
+		}
+	}
+
+	httpx.OK(c, MessageRuntimeResponse{
+		MessageID: messageID,
+		Runtime:   runtime,
 	})
 }
 

@@ -377,7 +377,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       const session = response?.data;
       const messages = Array.isArray(session?.messages) ? session.messages : [];
       return messages.map((message) => ({
-        message: hydrateAssistantHistoryMessage(message, session?.turns || []),
+        message: hydrateAssistantHistoryMessage(message as any),
         status: mapHistoryMessageStatus(message.status),
       }));
     },
