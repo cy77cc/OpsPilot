@@ -112,9 +112,11 @@ function getDisplayMode(content: string): 'popover' | 'modal' {
 由于 SSE 事件顺序是 `delta -> tool_call -> tool_result`，LLM 通常在调用工具前会说一句话。渲染逻辑：
 
 ```typescript
-// 获取当前步骤关联的工具 activities（tool_call 被更新为 tool_result 后）
+// 获取当前步骤关联的工具 activities
+// 注意：流式过程中 tool_call 还没变成 tool_result，需要同时查询两种 kind
 const toolActivities = runtime?.activities?.filter(
-  (a) => a.stepIndex === activeStepIndex && (a.kind === 'tool_result')
+  (a) => a.stepIndex === activeStepIndex &&
+        (a.kind === 'tool_call' || a.kind === 'tool_result')
 ) || [];
 
 // 渲染：步骤内容 + 工具引用
@@ -124,6 +126,26 @@ const toolActivities = runtime?.activities?.filter(
     <ToolReference key={tool.id} activity={tool} />
   ))}
 </div>
+```
+
+**ToolReference 组件状态处理**：
+
+```typescript
+function ToolReference({ activity }: { activity: AssistantReplyActivity }) {
+  // 执行中状态
+  if (activity.kind === 'tool_call' && activity.status === 'active') {
+    return <span className="tool-ref loading">[◐ {activity.label}]</span>;
+  }
+  // 完成状态
+  if (activity.kind === 'tool_result' && activity.status === 'done') {
+    return <span className="tool-ref success">[→ {activity.label}]</span>;
+  }
+  // 错误状态
+  if (activity.kind === 'tool_result' && activity.status === 'error') {
+    return <span className="tool-ref error">[✗ {activity.label}]</span>;
+  }
+  return null;
+}
 ```
 
 **Activity 状态转换说明**：
@@ -163,10 +185,49 @@ state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivit
 处理 `tool_result` 事件时：
 ```go
 // 更新 activity，存储完整结果
-state.Persisted.Activities[i].Status = status
+state.Persisted.Activities[i].Status = status           // "done" 或 "error"
 state.Persisted.Activities[i].Kind = "tool_result"
 state.Persisted.Activities[i].RawContent = event.Tool.Content  // 完整结果
 state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)  // 保留预览
+```
+
+#### 前端 replyRuntime.ts 修改
+
+`applyToolCall` 函数需要存储 arguments：
+```typescript
+export function applyToolCall(
+  runtime: AssistantReplyRuntime,
+  payload: { call_id: string; tool_name: string; arguments?: Record<string, unknown> },
+): AssistantReplyRuntime {
+  // ...
+  return upsertActivity(runtime, {
+    id: payload.call_id,
+    kind: 'tool_call',
+    label: payload.tool_name,
+    status: 'active',
+    stepIndex: activeStepIndex,
+    arguments: payload.arguments,  // 新增
+  }, ...);
+}
+```
+
+`applyToolResult` 函数需要存储 rawContent 和正确传递 status：
+```typescript
+export function applyToolResult(
+  runtime: AssistantReplyRuntime,
+  payload: { call_id: string; tool_name: string; content: string; status?: string },
+): AssistantReplyRuntime {
+  // ...
+  return upsertActivity(runtime, {
+    id: payload.call_id,
+    kind: 'tool_result',
+    label: payload.tool_name,
+    detail: payload.content.slice(0, 200),
+    rawContent: payload.content,  // 新增：完整内容
+    status: payload.status === 'error' ? 'error' : 'done',  // 修复：正确传递错误状态
+    stepIndex: existing?.stepIndex,
+  }, ...);
+}
 ```
 
 ### 4. 事件顺序与渲染逻辑
@@ -190,10 +251,33 @@ SSE 事件顺序：`delta -> tool_call -> tool_result`
 `RawContent` 字段可能包含大型数据（如完整的 K8s 资源列表），会增加 `runtime_json` 的数据库存储大小。
 
 **处理策略**：
-- 正常存储完整内容（当前方案）
-- 如果后续出现性能问题，可考虑：
-  - 添加大小限制（如超过 10KB 截断）
-  - 大型内容仅存储预览，完整内容按需从日志系统获取
+- `detail` 字段：截断到 200 字符（用于列表预览）
+- `rawContent` 字段：存储完整内容，但前端显示时截断超长内容
+
+**内容截断逻辑**（前端）：
+
+```typescript
+function formatContent(content: string, maxSize = 10000): string {
+  if (content.length > maxSize) {
+    return content.slice(0, maxSize) + '\n\n... [内容已截断，完整内容过大]';
+  }
+  try {
+    const parsed = JSON.parse(content);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return content;
+  }
+}
+```
+
+### 7. 向后兼容性
+
+现有数据库中的 `runtime_json` 不包含 `arguments` 和 `rawContent` 字段。
+
+**处理方式**：
+- 前端渲染时检查字段是否存在，使用可选链 `activity.arguments?.xxx`
+- 历史对话仍可正常显示 markdown 内容，只是工具引用卡片信息不完整
+- 无需数据库迁移
 
 ## 文件变更清单
 
@@ -212,6 +296,7 @@ SSE 事件顺序：`delta -> tool_call -> tool_result`
 1. 后端数据结构变更（types.go、project.go）
 2. 前端类型变更（types.ts、replyRuntime.ts）
 3. ToolReference 组件实现
-4. ToolResultCard 组件实现
-5. AssistantReply 集成
+4. ToolResultCard 组件实现（Popover/Modal 自适应）
+5. AssistantReply 集成（过滤 activities、追加引用）
 6. 测试与调优
+7. 向后兼容性验证（历史对话正常显示）
