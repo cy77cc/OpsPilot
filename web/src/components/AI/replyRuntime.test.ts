@@ -226,18 +226,38 @@ describe('assistant reply runtime shape', () => {
     expect(runtime.plan?.steps[0].content).toBe('正在收集服务器清单\n已找到 5 台服务器');
   });
 
-  it('marks tool approval and result updates on the same activity row', () => {
+  it('inserts tool references into active step segments in stream order', () => {
+    let runtime = applyPlan(createEmptyAssistantRuntime(), {
+      steps: ['采集主机网络指标'],
+      iteration: 0,
+    });
+    runtime = applyStepDelta(runtime, { content: 'Let me start by gathering network statistics ' });
+    runtime = applyToolCall(runtime, {
+      call_id: 'call-1',
+      tool_name: 'os_get_net_stat',
+      arguments: { target: '2' },
+    });
+    runtime = applyStepDelta(runtime, { content: 'from the host.' });
+
+    expect(runtime.plan?.steps[0].segments).toEqual([
+      { type: 'text', text: 'Let me start by gathering network statistics ' },
+      { type: 'tool_ref', callId: 'call-1' },
+      { type: 'text', text: 'from the host.' },
+    ]);
+    expect(runtime.activities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'call-1',
+        kind: 'tool_call',
+        label: 'os_get_net_stat',
+      }),
+    ]));
+  });
+
+  it('keeps tool call activity and appends a separate tool result row', () => {
     let runtime = applyToolCall(createEmptyAssistantRuntime(), {
       call_id: 'call-1',
       tool_name: 'kubectl_describe',
       arguments: {},
-    });
-    runtime = applyToolApproval(runtime, {
-      approval_id: 'approval-1',
-      call_id: 'call-1',
-      tool_name: 'kubectl_describe',
-      preview: {},
-      timeout_seconds: 300,
     });
     runtime = applyToolResult(runtime, {
       call_id: 'call-1',
@@ -245,8 +265,14 @@ describe('assistant reply runtime shape', () => {
       content: 'node ok',
     });
 
-    expect(runtime.activities).toHaveLength(1);
+    expect(runtime.activities).toHaveLength(2);
     expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        kind: 'tool_call',
+        status: 'done',
+      }),
+    );
+    expect(runtime.activities[1]).toEqual(
       expect.objectContaining({
         kind: 'tool_result',
         status: 'done',
@@ -313,6 +339,12 @@ describe('assistant reply runtime shape', () => {
 
     expect(runtime.activities[0]).toEqual(
       expect.objectContaining({
+        kind: 'tool_call',
+        status: 'error',
+      }),
+    );
+    expect(runtime.activities[1]).toEqual(
+      expect.objectContaining({
         kind: 'tool_result',
         status: 'error',
         rawContent: '{"error": "timeout"}',
@@ -333,7 +365,7 @@ describe('assistant reply runtime shape', () => {
       content: longContent,
     });
 
-    expect(runtime.activities[0].detail).toBe('x'.repeat(200));
-    expect(runtime.activities[0].rawContent).toBe(longContent);
+    expect(runtime.activities[1].detail).toBe('x'.repeat(200));
+    expect(runtime.activities[1].rawContent).toBe(longContent);
   });
 });

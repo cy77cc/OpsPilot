@@ -240,7 +240,7 @@ function StepContentRenderer({
           textBuffer = '';
         }
         // 渲染工具引用
-        const activity = activityMap.get(segment.callId);
+        const activity = activityMap.get(`${segment.callId}:result`) || activityMap.get(segment.callId);
         if (activity) {
           elements.push(<ToolReference key={`tool-${segment.callId}`} activity={activity} />);
         }
@@ -324,14 +324,17 @@ function AssistantReplyContent({
     : [];
 
   // 当前步骤的其他 activities（排除 tool_call 和 tool_result）
-  // 如果没有 plan，则显示所有 activities
+  // 只有完全没有 plan 时，才回退为显示全部 activities。
+  // 对于“plan 已结束但 activeStepIndex 为空”的情况，不再把历史 tool 活动整体挂到最终正文前面。
   const activeStepActivities = isPlanBased
     ? runtime?.activities?.filter(
         (activity) => activity.stepIndex === activeStepIndex &&
           activity.kind !== 'tool_call' &&
           activity.kind !== 'tool_result'
       ) || []
-    : runtime?.activities || [];
+    : hasPlan
+      ? []
+      : runtime?.activities || [];
 
   const isStreaming = status === 'loading' || status === 'updating';
 

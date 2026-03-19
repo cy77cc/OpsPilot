@@ -166,11 +166,67 @@ func TestProjectorEmitsToolResultErrorWithoutFatalError(t *testing.T) {
 	}
 
 	persisted := projector.GetPersistedState()
-	if len(persisted.Activities) != 1 {
-		t.Fatalf("expected one persisted activity, got %#v", persisted.Activities)
+	if len(persisted.Activities) != 2 {
+		t.Fatalf("expected tool_call + tool_result persisted activities, got %#v", persisted.Activities)
 	}
-	if persisted.Activities[0].Status != "error" {
-		t.Fatalf("expected tool result activity status error, got %#v", persisted.Activities[0])
+	if persisted.Activities[0].Kind != "tool_call" || persisted.Activities[0].Status != "error" {
+		t.Fatalf("expected tool call activity status error, got %#v", persisted.Activities[0])
+	}
+	if persisted.Activities[1].Kind != "tool_result" || persisted.Activities[1].Status != "error" {
+		t.Fatalf("expected tool result activity status error, got %#v", persisted.Activities[1])
+	}
+}
+
+func TestStreamProjector_MergesStreamingToolCallChunksIntoOneEvent(t *testing.T) {
+	t.Parallel()
+
+	projector := NewStreamProjector()
+
+	first := adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+		{ID: "call-1", Function: schema.FunctionCall{Name: "os_get_net_stat", Arguments: ""}},
+	}), nil, schema.Assistant, "")
+	first.AgentName = "executor"
+
+	second := adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+		{Function: schema.FunctionCall{Arguments: `{"target": `}},
+	}), nil, schema.Assistant, "")
+	second.AgentName = "executor"
+
+	third := adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+		{Function: schema.FunctionCall{Arguments: `"2"`}},
+	}), nil, schema.Assistant, "")
+	third.AgentName = "executor"
+
+	fourth := adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+		{Function: schema.FunctionCall{Arguments: `}`}},
+	}), nil, schema.Assistant, "")
+	fourth.AgentName = "executor"
+
+	got1 := projector.Consume(first)
+	got2 := projector.Consume(second)
+	got3 := projector.Consume(third)
+	got4 := projector.Consume(fourth)
+
+	if len(got1) != 0 || len(got2) != 0 || len(got3) != 0 {
+		t.Fatalf("expected partial tool call chunks to stay buffered, got %#v %#v %#v", got1, got2, got3)
+	}
+	if len(got4) != 1 || got4[0].Event != "tool_call" {
+		t.Fatalf("expected one merged tool_call event, got %#v", got4)
+	}
+
+	data, ok := got4[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_call data to be a map, got %T", got4[0].Data)
+	}
+	if data["call_id"] != "call-1" || data["tool_name"] != "os_get_net_stat" {
+		t.Fatalf("unexpected merged tool call identity: %#v", data)
+	}
+	args, ok := data["arguments"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected merged tool arguments to be a map, got %T", data["arguments"])
+	}
+	if args["target"] != "2" {
+		t.Fatalf("expected merged target argument, got %#v", args)
 	}
 }
 

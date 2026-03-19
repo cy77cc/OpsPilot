@@ -17,9 +17,18 @@ type ProjectionState struct {
 	PendingPlannerJSON     string
 	PendingReplannerJSON   string
 	ReplannerResponseState *ResponseExtractState // 用于增量提取 response 字段
+	PendingToolCall        *PendingToolCallState // 用于合并流式 tool_call chunk
 
 	// Persisted 累积的持久化状态，用于存储到数据库。
 	Persisted *PersistedRuntime
+}
+
+type PendingToolCallState struct {
+	AgentName    string
+	CallID       string
+	ToolName     string
+	ArgumentsRaw string
+	Arguments    map[string]any
 }
 
 // ResponseExtractState 跟踪 response 字段的增量提取状态。
@@ -145,27 +154,44 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		for i := range state.Persisted.Activities {
 			if state.Persisted.Activities[i].ID == event.Tool.CallID {
 				state.Persisted.Activities[i].Status = status
-				state.Persisted.Activities[i].Kind = "tool_result"
-				state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)
-				state.Persisted.Activities[i].RawContent = event.Tool.Content
 				updated = true
 			}
 		}
-		if !updated {
-			activeStepIndex := 0
-			if state.Persisted.Plan != nil {
-				activeStepIndex = state.Persisted.Plan.ActiveStepIndex
+
+		resultActivityID := toolResultActivityID(event.Tool.CallID)
+		resultStepIndex := 0
+		if updated {
+			for _, activity := range state.Persisted.Activities {
+				if activity.ID == event.Tool.CallID {
+					resultStepIndex = activity.StepIndex
+					break
+				}
 			}
+		} else if state.Persisted.Plan != nil {
+			resultStepIndex = state.Persisted.Plan.ActiveStepIndex
+		}
+
+		resultUpdated := false
+		for i := range state.Persisted.Activities {
+			if state.Persisted.Activities[i].ID == resultActivityID {
+				state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)
+				state.Persisted.Activities[i].RawContent = event.Tool.Content
+				state.Persisted.Activities[i].Status = status
+				resultUpdated = true
+			}
+		}
+		if !resultUpdated {
 			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
-				ID:         event.Tool.CallID,
+				ID:         resultActivityID,
 				Kind:       "tool_result",
 				Label:      event.Tool.ToolName,
 				Detail:     truncateString(event.Tool.Content, 200),
 				RawContent: event.Tool.Content,
 				Status:     status,
-				StepIndex:  activeStepIndex,
+				StepIndex:  resultStepIndex,
 			})
 		}
+
 		return []PublicStreamEvent{{
 			Event: "tool_result",
 			Data: map[string]any{
@@ -181,6 +207,10 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 	default:
 		return nil
 	}
+}
+
+func toolResultActivityID(callID string) string {
+	return callID + ":result"
 }
 
 func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []PublicStreamEvent {

@@ -103,6 +103,44 @@ describe('AssistantReply', () => {
     expect(screen.getAllByTestId('x-markdown').at(-1)).toHaveTextContent('## 最终报告');
   });
 
+  it('renders tool calls inline inside active step content while keeping tool results separate', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          phase: 'executing',
+          phaseLabel: '执行中',
+          plan: {
+            activeStepIndex: 0,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '采集主机网络指标',
+                status: 'active',
+                segments: [
+                  { type: 'text', text: 'Let me start by gathering network statistics ' },
+                  { type: 'tool_ref', callId: 'call-1' },
+                  { type: 'text', text: 'from the host.' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool_call', label: 'os_get_net_stat', status: 'active', stepIndex: 0 },
+            { id: 'call-1:result', kind: 'tool_result', label: 'os_get_net_stat', detail: 'ok', rawContent: 'ok', status: 'done', stepIndex: 0 },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Let me start by gathering network statistics/)).toBeInTheDocument();
+    expect(screen.getByText('os_get_net_stat')).toBeInTheDocument();
+    expect(screen.getByText('from the host.')).toBeInTheDocument();
+    expect(screen.queryByText('ok')).not.toBeInTheDocument();
+  });
+
   it('shows only active step when no completed steps', () => {
     render(
       <AssistantReply
@@ -205,5 +243,40 @@ describe('AssistantReply', () => {
 
     // Final report content is shown
     expect(screen.getByText('最终报告内容')).toBeInTheDocument();
+  });
+
+  it('does not re-list historical tool activities above the final markdown when plan is finished', () => {
+    render(
+      <AssistantReply
+        content="最终报告内容"
+        status="success"
+        runtime={{
+          phase: 'completed',
+          phaseLabel: '执行完成',
+          plan: {
+            activeStepIndex: undefined,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '获取服务器列表',
+                status: 'done',
+                segments: [
+                  { type: 'text', text: '正在获取主机列表 ' },
+                  { type: 'tool_ref', callId: 'call-1' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool_call', label: 'host_list_inventory', status: 'done', stepIndex: 0 },
+            { id: 'call-1:result', kind: 'tool_result', label: 'host_list_inventory', status: 'done', rawContent: 'ok', stepIndex: 0 },
+          ],
+          status: { kind: 'completed', label: '已完成' },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('最终报告内容')).toBeInTheDocument();
+    expect(screen.queryAllByText('host_list_inventory')).toHaveLength(0);
   });
 });

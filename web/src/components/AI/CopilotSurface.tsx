@@ -10,6 +10,7 @@ import {
   CopyOutlined,
   LikeOutlined,
   DislikeOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import { Bubble, Conversations, Prompts, Sender, Welcome } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
@@ -199,11 +200,82 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     }
   `,
   scrollBottomBtn: css`
-    position: absolute;
-    right: 24px;
-    bottom: 92px;
-    z-index: 120;
-    box-shadow: 0 8px 20px rgba(17, 24, 39, 0.14);
+    && {
+      position: absolute;
+      left: 50%;
+      bottom: 102px;
+      transform: translateX(-50%);
+      z-index: 120;
+      width: 36px;
+      min-width: 36px;
+      max-width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #0f172a;
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(8px) saturate(1.08);
+      -webkit-backdrop-filter: blur(8px) saturate(1.08);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+
+      .anticon {
+        font-size: 18px;
+        color: inherit;
+      }
+
+      .anticon svg {
+        color: inherit;
+        fill: currentColor;
+      }
+
+      &&:hover {
+        color: #0b1220;
+        border-color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.74);
+        transform: translateX(-50%) translateY(-1px);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.24);
+        filter: none;
+      }
+
+      &&:focus,
+      &&:focus-visible {
+        color: #0f172a;
+        border-color: rgba(255, 255, 255, 0.88);
+        background: rgba(255, 255, 255, 0.68);
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
+        outline: none;
+      }
+
+      &:active {
+        transform: translateX(-50%);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.16);
+      }
+    }
+  `,
+  scrollBottomBtnLoading: css`
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(148, 163, 184, 0.3);
+      border-top-color: rgba(255, 255, 255, 0.96);
+      animation: scrollBtnRingSpin 0.9s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes scrollBtnRingSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   `,
 }));
 
@@ -460,14 +532,27 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       assistant: {
         placement: 'start',
         variant: 'borderless',
-        footer: (
-          <div style={{ display: 'flex' }}>
-            <Button type="text" size="small" icon={<CopyOutlined />} />
-            <Button type="text" size="small" icon={<LikeOutlined />} />
-            <Button type="text" size="small" icon={<DislikeOutlined />} />
-            <Button type="text" size="small" icon={<ReloadOutlined />} />
-          </div>
-        ),
+        footer: (_content: string, info) => {
+          const isStreaming = info.status === 'loading' || info.status === 'updating';
+
+          if (isStreaming) {
+            return (
+              <Space size={6} style={{ color: 'rgba(17, 24, 39, 0.62)' }}>
+                <LoadingOutlined spin />
+                <Text type="secondary">正在生成...</Text>
+              </Space>
+            );
+          }
+
+          return (
+            <div style={{ display: 'flex', gap: 2 }}>
+              <Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回复" />
+              <Button type="text" size="small" icon={<LikeOutlined />} aria-label="点赞" />
+              <Button type="text" size="small" icon={<DislikeOutlined />} aria-label="点踩" />
+              <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="重新生成" />
+            </div>
+          );
+        },
         styles: {
           root: {
             paddingInline: 0,
@@ -641,6 +726,8 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     ],
   );
 
+  const isGenerating = isRequesting;
+
   return (
     <Drawer
       title={(
@@ -730,13 +817,13 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
         {messages.length > 0 && showScrollBottomBtn && (
           <Button
-            className={styles.scrollBottomBtn}
-            type="primary"
+            className={`${styles.scrollBottomBtn}${isGenerating ? ` ${styles.scrollBottomBtnLoading}` : ''}`}
+            type="default"
             shape="circle"
             icon={<VerticalAlignBottomOutlined />}
             onClick={handleScrollToBottom}
             aria-label="快速回到底部"
-            title="快速回到底部"
+            title={isGenerating ? '正在生成，点击快速回到底部' : '快速回到底部'}
           />
         )}
 

@@ -3,6 +3,7 @@ import type {
   AssistantReplyPlan,
   AssistantReplyPlanStep,
   AssistantReplyRuntime,
+  AssistantReplySegment,
   XChatMessage,
 } from './types';
 
@@ -101,6 +102,49 @@ function upsertActivity(
   };
 }
 
+function buildToolResultActivityId(callId: string): string {
+  return `${callId}:result`;
+}
+
+function appendSegmentToActiveStep(
+  runtime: AssistantReplyRuntime,
+  segment: AssistantReplySegment,
+): AssistantReplyRuntime {
+  const stepIndex = runtime.plan?.activeStepIndex;
+  if (stepIndex === undefined || !runtime.plan) {
+    return runtime;
+  }
+
+  return {
+    ...runtime,
+    plan: {
+      ...runtime.plan,
+      steps: runtime.plan.steps.map((step, index) => {
+        if (index !== stepIndex) {
+          return step;
+        }
+        const segments = [...(step.segments || [])];
+        if (segments.length === 0 && step.content) {
+          segments.push({ type: 'text', text: step.content });
+        }
+        const previous = segments[segments.length - 1];
+        if (segment.type === 'text' && previous?.type === 'text') {
+          previous.text = `${previous.text || ''}${segment.text || ''}`;
+        } else {
+          segments.push(segment);
+        }
+        return {
+          ...step,
+          content: segment.type === 'text'
+            ? `${step.content || ''}${segment.text || ''}`
+            : step.content,
+          segments,
+        };
+      }),
+    },
+  };
+}
+
 export function applyDelta(
   message: Pick<XChatMessage, 'content' | 'runtime'>,
   payload: { content: string },
@@ -120,26 +164,10 @@ export function applyStepDelta(
   runtime: AssistantReplyRuntime,
   payload: { content: string },
 ): AssistantReplyRuntime {
-  const stepIndex = runtime.plan?.activeStepIndex;
-  if (stepIndex === undefined || !runtime.plan) {
-    return runtime;
-  }
-
-  return {
-    ...runtime,
-    plan: {
-      ...runtime.plan,
-      steps: runtime.plan.steps.map((step, index) => {
-        if (index !== stepIndex) {
-          return step;
-        }
-        return {
-          ...step,
-          content: `${step.content || ''}${payload.content || ''}`,
-        };
-      }),
-    },
-  };
+  return appendSegmentToActiveStep(runtime, {
+    type: 'text',
+    text: payload.content || '',
+  });
 }
 
 export function applyToolCall(
@@ -147,7 +175,7 @@ export function applyToolCall(
   payload: { call_id: string; tool_name: string; arguments?: Record<string, unknown> },
 ): AssistantReplyRuntime {
   const activeStepIndex = runtime.plan?.activeStepIndex;
-  return upsertActivity(
+  const withActivity = upsertActivity(
     runtime,
     {
       id: payload.call_id,
@@ -159,6 +187,15 @@ export function applyToolCall(
     },
     (item) => item.id === payload.call_id,
   );
+
+  if (!payload.call_id) {
+    return withActivity;
+  }
+
+  return appendSegmentToActiveStep(withActivity, {
+    type: 'tool_ref',
+    callId: payload.call_id,
+  });
 }
 
 export function applyMeta(runtime: AssistantReplyRuntime): AssistantReplyRuntime {
@@ -277,18 +314,30 @@ export function applyToolResult(
   const detailContent = payload.content.length > 200
     ? payload.content.slice(0, 200)
     : payload.content;
+  const withCallUpdated = existing
+    ? upsertActivity(
+        runtime,
+        {
+          ...existing,
+          status: payload.status === 'error' ? 'error' : 'done',
+        },
+        (item) => item.id === payload.call_id,
+      )
+    : runtime;
+
   return upsertActivity(
-    runtime,
+    withCallUpdated,
     {
-      id: payload.call_id,
+      id: buildToolResultActivityId(payload.call_id),
       kind: 'tool_result',
       label: payload.tool_name,
       detail: detailContent,
       rawContent: payload.content,
       status: payload.status === 'error' ? 'error' : 'done',
       stepIndex: existing?.stepIndex ?? runtime.plan?.activeStepIndex,
+      arguments: existing?.arguments,
     },
-    (item) => item.id === payload.call_id,
+    (item) => item.id === buildToolResultActivityId(payload.call_id),
   );
 }
 
