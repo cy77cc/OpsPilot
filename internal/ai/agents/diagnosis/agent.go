@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/planexecute"
@@ -99,7 +100,8 @@ func newDiagnosisExecutor(ctx context.Context) (adk.Agent, error) {
 	}
 
 	return planexecute.NewExecutor(ctx, &planexecute.ExecutorConfig{
-		Model: model,
+		Model:         model,
+		MaxIterations: 24,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				Tools: toolset,
@@ -158,9 +160,38 @@ func genExecutorInputFn(ctx context.Context, in *planexecute.ExecutionContext) (
 }
 
 func formatExecutedSteps(in []planexecute.ExecutedStep) string {
+	const (
+		maxPromptSteps       = 5
+		maxResultRunes       = 600
+		truncatedResultLabel = "...<truncated>"
+	)
+
 	var sb strings.Builder
-	for idx, m := range in {
-		_, _ = fmt.Fprintf(&sb, "## %d. Step: %v\n  Result: %v\n\n", idx+1, m.Step, m.Result)
+	total := len(in)
+	if total == 0 {
+		return "Completed 0 step(s). No previous step results."
+	}
+
+	start := 0
+	if total > maxPromptSteps {
+		start = total - maxPromptSteps
+	}
+
+	_, _ = fmt.Fprintf(&sb, "Completed %d step(s). Showing the latest %d step(s).\n\n", total, total-start)
+	for idx, m := range in[start:] {
+		_, _ = fmt.Fprintf(&sb, "## %d. Step: %v\n  Result: %s\n\n", start+idx+1, m.Step, truncateForPrompt(m.Result, maxResultRunes, truncatedResultLabel))
 	}
 	return sb.String()
+}
+
+func truncateForPrompt(input string, maxRunes int, suffix string) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(input) <= maxRunes {
+		return input
+	}
+	if maxRunes <= len(suffix) {
+		return suffix[:maxRunes]
+	}
+
+	runes := []rune(input)
+	return string(runes[:maxRunes-len([]rune(suffix))]) + suffix
 }

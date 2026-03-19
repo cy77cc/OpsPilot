@@ -42,9 +42,39 @@ func TestChangeExecutorPrompt_EncodesApprovalAwareExecutionRules(t *testing.T) {
 		"precheck",
 		"verification",
 		"stop at the current boundary",
+		"Prefer one high-signal batch or aggregate tool call",
+		"Keep tool usage tight",
+		"Stop after enough evidence",
 	} {
 		if !strings.Contains(content, fragment) {
 			t.Fatalf("expected change executor prompt content to contain %q", fragment)
+		}
+	}
+}
+
+func TestDiagnosisExecutorPrompt_EncodesBatchFirstAndToolBudgetRules(t *testing.T) {
+	msgs, err := DiagnosisExecutorPrompt.Format(t.Context(), map[string]any{
+		"input":          "check why nginx is unhealthy",
+		"plan":           `{"steps":["inspect target health","check recent events","summarize findings"]}`,
+		"executed_steps": "",
+		"step":           "inspect target health",
+	})
+	if err != nil {
+		t.Fatalf("format diagnosis executor prompt: %v", err)
+	}
+	if len(msgs) < 2 {
+		t.Fatalf("expected formatted messages, got %d", len(msgs))
+	}
+
+	content := msgs[0].Content + "\n" + msgs[1].Content
+	for _, fragment := range []string{
+		"diagnosis executor",
+		"Prefer one high-signal batch or aggregate tool call",
+		"Keep tool usage tight",
+		"Stop after enough evidence",
+	} {
+		if !strings.Contains(content, fragment) {
+			t.Fatalf("expected diagnosis executor prompt content to contain %q", fragment)
 		}
 	}
 }

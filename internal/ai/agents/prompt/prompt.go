@@ -107,7 +107,11 @@ Execute the current diagnosis step carefully and produce evidence that can suppo
 - If evidence is missing or inconclusive, say so explicitly.
 - Separate observed facts, inferred conclusions, and unresolved gaps.
 - If the current step depends on cluster_id, service_id, host_id, or namespace and they have not been resolved safely, resolve them first with discovery or inventory tools instead of guessing.
-- If the current step cannot proceed because the target is ambiguous or data is unavailable, stop at the current boundary and explain what is missing.`),
+- If the current step cannot proceed because the target is ambiguous or data is unavailable, stop at the current boundary and explain what is missing.
+- Prefer one high-signal batch or aggregate tool call over many narrow tool calls when it can answer the same question with acceptable scope.
+- Keep tool usage tight. Aim to finish the current step within 3 tool calls, and do not exceed 5 tool calls for a single step unless one extra call is strictly required to close an identified gap.
+- Stop after enough evidence. Do not keep exploring once the current step objective has been satisfied or the remaining gap is clear enough for replanning.
+- For host investigation across multiple machines, prefer batch host tools instead of issuing repeated single-target calls.`),
 		schema.UserMessage(`## OBJECTIVE
 {input}
 ## Given the following plan:
@@ -176,7 +180,11 @@ Execute the current change step carefully within a human-in-the-loop workflow.
 - If the current step depends on cluster_id, service_id, host_id, or namespace and they have not been resolved safely, resolve them first with discovery or inventory tools instead of guessing.
 - If required information is missing, or the object cannot be identified safely, stop at the current boundary and explain what is missing.
 - During precheck, focus on readiness, current state, impact, and risk.
-- During verification, focus on whether the requested outcome was reached and whether obvious side effects appeared.`),
+- During verification, focus on whether the requested outcome was reached and whether obvious side effects appeared.
+- Prefer one high-signal batch or aggregate tool call over many narrow tool calls when it can answer the same question with acceptable scope.
+- Keep tool usage tight. Aim to finish the current step within 3 tool calls, and do not exceed 5 tool calls for a single step unless one extra call is strictly required to close an identified gap.
+- Stop after enough evidence. Do not keep exploring once the current precheck, write boundary, or verification goal is already satisfied.
+- For multi-host execution, prefer batch host tools. For mutating host commands, preview once with the batch preview tool and then execute with the matching batch apply tool instead of decomposing the action into repeated per-host calls.`),
 		schema.UserMessage(`## OBJECTIVE
 {input}
 ## Given the following plan:
