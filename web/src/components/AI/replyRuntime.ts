@@ -155,6 +155,7 @@ export function applyToolCall(
       label: payload.tool_name,
       status: 'active',
       stepIndex: activeStepIndex,
+      arguments: payload.arguments,
     },
     (item) => item.id === payload.call_id,
   );
@@ -270,17 +271,21 @@ export function applyToolApproval(
 
 export function applyToolResult(
   runtime: AssistantReplyRuntime,
-  payload: { call_id: string; tool_name: string; content: string },
+  payload: { call_id: string; tool_name: string; content: string; status?: string },
 ): AssistantReplyRuntime {
   const existing = runtime.activities.find((item) => item.id === payload.call_id);
+  const detailContent = payload.content.length > 200
+    ? payload.content.slice(0, 200)
+    : payload.content;
   return upsertActivity(
     runtime,
     {
       id: payload.call_id,
       kind: 'tool_result',
       label: payload.tool_name,
-      detail: payload.content,
-      status: 'done',
+      detail: detailContent,
+      rawContent: payload.content,
+      status: payload.status === 'error' ? 'error' : 'done',
       stepIndex: existing?.stepIndex ?? runtime.plan?.activeStepIndex,
     },
     (item) => item.id === payload.call_id,

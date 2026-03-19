@@ -119,6 +119,7 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 			Label:     event.Tool.ToolName,
 			Status:    "active",
 			StepIndex: activeStepIndex,
+			Arguments: event.Tool.Arguments,
 		})
 		return []PublicStreamEvent{{
 			Event: "tool_call",
@@ -144,6 +145,7 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 				state.Persisted.Activities[i].Status = status
 				state.Persisted.Activities[i].Kind = "tool_result"
 				state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)
+				state.Persisted.Activities[i].RawContent = event.Tool.Content
 				updated = true
 			}
 		}
@@ -153,12 +155,13 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 				activeStepIndex = state.Persisted.Plan.ActiveStepIndex
 			}
 			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
-				ID:        event.Tool.CallID,
-				Kind:      "tool_result",
-				Label:     event.Tool.ToolName,
-				Detail:    truncateString(event.Tool.Content, 200),
-				Status:    status,
-				StepIndex: activeStepIndex,
+				ID:         event.Tool.CallID,
+				Kind:       "tool_result",
+				Label:      event.Tool.ToolName,
+				Detail:     truncateString(event.Tool.Content, 200),
+				RawContent: event.Tool.Content,
+				Status:     status,
+				StepIndex:  activeStepIndex,
 			})
 		}
 		return []PublicStreamEvent{{

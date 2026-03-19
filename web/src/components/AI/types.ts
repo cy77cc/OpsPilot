@@ -42,6 +42,8 @@ export interface AssistantReplyActivity {
   status?: AssistantReplyActivityStatus;
   stepIndex?: number;
   createdAt?: string;
+  arguments?: Record<string, unknown>;  // 工具调用参数
+  rawContent?: string;                  // 完整结果内容
 }
 
 export interface AssistantReplyPlanStep {

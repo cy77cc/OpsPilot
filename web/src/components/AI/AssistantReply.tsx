@@ -4,6 +4,7 @@ import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import type { AssistantReplyActivity, AssistantReplyRuntime } from './types';
+import ToolReference from './ToolReference';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
   root: css`
@@ -215,6 +216,7 @@ function AssistantReplyContent({
 }) {
   const activeStepIndex = runtime?.plan?.activeStepIndex;
   const allSteps = runtime?.plan?.steps || [];
+  const hasPlan = runtime?.plan && allSteps.length > 0;
 
   // 当前执行的步骤
   const activeStep = activeStepIndex !== undefined && activeStepIndex >= 0 && activeStepIndex < allSteps.length
@@ -226,10 +228,27 @@ function AssistantReplyContent({
     ? allSteps.slice(0, activeStepIndex).filter((step) => step.status === 'done')
     : allSteps.filter((step) => step.status === 'done');
 
-  // 当前步骤的 activities
-  const activeStepActivities = activeStepIndex !== undefined && activeStepIndex >= 0
-    ? runtime?.activities?.filter((activity) => activity.stepIndex === activeStepIndex) || []
+  // 是否有 plan 结构
+  const isPlanBased = hasPlan && activeStepIndex !== undefined && activeStepIndex >= 0;
+
+  // 当前步骤的工具 activities（tool_call 和 tool_result）
+  // 仅在有 plan 时过滤，否则保留在 activities 列表中
+  const toolActivities = isPlanBased
+    ? runtime?.activities?.filter(
+        (activity) => activity.stepIndex === activeStepIndex &&
+          (activity.kind === 'tool_call' || activity.kind === 'tool_result')
+      ) || []
     : [];
+
+  // 当前步骤的其他 activities（排除 tool_call 和 tool_result）
+  // 如果没有 plan，则显示所有 activities
+  const activeStepActivities = isPlanBased
+    ? runtime?.activities?.filter(
+        (activity) => activity.stepIndex === activeStepIndex &&
+          activity.kind !== 'tool_call' &&
+          activity.kind !== 'tool_result'
+      ) || []
+    : runtime?.activities || [];
 
   const isStreaming = status === 'loading' || status === 'updating';
 
@@ -279,8 +298,25 @@ function AssistantReplyContent({
                     enableAnimation: true,
                   }}
                 />
+                {/* 工具引用显示在步骤内容后 */}
+                {toolActivities.length > 0 && (
+                  <span>
+                    {toolActivities.map((tool) => (
+                      <ToolReference key={tool.id} activity={tool} />
+                    ))}
+                  </span>
+                )}
               </div>
-            ) : null}
+            ) : (
+              /* 如果没有内容但有工具引用，也要显示 */
+              toolActivities.length > 0 && (
+                <span>
+                  {toolActivities.map((tool) => (
+                    <ToolReference key={tool.id} activity={tool} />
+                  ))}
+                </span>
+              )
+            )}
             {activeStepActivities.map((activity) => (
               <div key={activity.id} className={styles.activity}>
                 <span>{activity.label}</span>
@@ -288,6 +324,16 @@ function AssistantReplyContent({
               </div>
             ))}
           </div>
+        </div>
+      ) : activeStepActivities.length > 0 ? (
+        /* 没有 plan 时，直接显示 activities 列表 */
+        <div className={styles.activities}>
+          {activeStepActivities.map((activity) => (
+            <div key={activity.id} className={styles.activity}>
+              <span>{activity.label}</span>
+              {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+            </div>
+          ))}
         </div>
       ) : null}
 

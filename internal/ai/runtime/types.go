@@ -44,12 +44,14 @@ type PersistedStep struct {
 // 记录工具调用、审批、结果等活动信息。
 // Kind 可选值: agent_handoff, plan, replan, tool_call, tool_approval, tool_result, hint, error
 type PersistedActivity struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Label     string `json:"label"`
-	Detail    string `json:"detail,omitempty"`
-	Status    string `json:"status,omitempty"`
-	StepIndex int    `json:"stepIndex,omitempty"`
+	ID         string         `json:"id"`
+	Kind       string         `json:"kind"`
+	Label      string         `json:"label"`
+	Detail     string         `json:"detail,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	StepIndex  int            `json:"stepIndex,omitempty"`
+	Arguments  map[string]any `json:"arguments,omitempty"`  // 工具调用参数
+	RawContent string         `json:"rawContent,omitempty"` // 完整结果内容
 }
 
 // PersistedSummary 执行摘要。

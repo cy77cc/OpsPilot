@@ -77,6 +77,8 @@ describe('assistant reply runtime shape', () => {
         status?: 'pending' | 'active' | 'done' | 'error';
         stepIndex?: number;
         createdAt?: string;
+        arguments?: Record<string, unknown>;
+        rawContent?: string;
       }>
     >();
   });
@@ -249,6 +251,7 @@ describe('assistant reply runtime shape', () => {
         kind: 'tool_result',
         status: 'done',
         detail: 'node ok',
+        rawContent: 'node ok',
       }),
     );
   });
@@ -276,5 +279,61 @@ describe('assistant reply runtime shape', () => {
       kind: 'error',
       label: 'stream failed',
     });
+  });
+
+  it('stores arguments on tool call', () => {
+    const runtime = applyToolCall(createEmptyAssistantRuntime(), {
+      call_id: 'call-1',
+      tool_name: 'host_get_metrics',
+      arguments: { host_id: '123', metric: 'cpu' },
+    });
+
+    expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        id: 'call-1',
+        kind: 'tool_call',
+        label: 'host_get_metrics',
+        arguments: { host_id: '123', metric: 'cpu' },
+      }),
+    );
+  });
+
+  it('propagates error status from tool result', () => {
+    let runtime = applyToolCall(createEmptyAssistantRuntime(), {
+      call_id: 'call-1',
+      tool_name: 'host_get_metrics',
+      arguments: {},
+    });
+    runtime = applyToolResult(runtime, {
+      call_id: 'call-1',
+      tool_name: 'host_get_metrics',
+      content: '{"error": "timeout"}',
+      status: 'error',
+    });
+
+    expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        kind: 'tool_result',
+        status: 'error',
+        rawContent: '{"error": "timeout"}',
+      }),
+    );
+  });
+
+  it('truncates long content in detail but stores full content in rawContent', () => {
+    const longContent = 'x'.repeat(300);
+    let runtime = applyToolCall(createEmptyAssistantRuntime(), {
+      call_id: 'call-1',
+      tool_name: 'host_get_metrics',
+      arguments: {},
+    });
+    runtime = applyToolResult(runtime, {
+      call_id: 'call-1',
+      tool_name: 'host_get_metrics',
+      content: longContent,
+    });
+
+    expect(runtime.activities[0].detail).toBe('x'.repeat(200));
+    expect(runtime.activities[0].rawContent).toBe(longContent);
   });
 });
