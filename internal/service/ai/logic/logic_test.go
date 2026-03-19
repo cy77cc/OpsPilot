@@ -2,10 +2,15 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -121,4 +126,406 @@ func TestConsumeProjectedEvents_AccumulatesAssistantContentAndHandoff(t *testing
 	if len(emitted) != 3 {
 		t.Fatalf("expected all projected events to be emitted, got %#v", emitted)
 	}
+}
+
+func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-recoverable",
+		UserID: 11,
+		Scene:  "ai",
+		Title:  "Recoverable Tool Failure",
+	})
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("checking cluster", nil), nil, schema.Assistant, ""),
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(
+					schema.ToolMessage(`{"ok":false}`, "call-1", schema.WithToolName("kubectl_get_pods")),
+					nil,
+					schema.Tool,
+					"kubectl_get_pods",
+				)
+				event.Err = errors.New("tool execution failed")
+				return event
+			}(),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := &Logic{
+		ChatDAO:  aidao.NewAIChatDAO(db),
+		RunDAO:   aidao.NewAIRunDAO(db),
+		AIRouter: agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-recoverable",
+		Message:   "inspect pods",
+		Scene:     "ai",
+		UserID:    11,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected recoverable tool failure to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected run status completed_with_tool_errors, got %q", run.Status)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("session_id = ? AND role = ?", "session-recoverable", "assistant").First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Content == "" {
+		t.Fatal("expected assistant message content to be persisted")
+	}
+	if assistant.RuntimeJSON == "" {
+		t.Fatal("expected runtime json to be persisted")
+	}
+	var runtimeState struct {
+		Status struct {
+			Kind string `json:"kind"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(assistant.RuntimeJSON), &runtimeState); err != nil {
+		t.Fatalf("decode runtime json: %v", err)
+	}
+	if runtimeState.Status.Kind != "completed_with_tool_errors" {
+		t.Fatalf("expected runtime status completed_with_tool_errors, got %#v", runtimeState.Status.Kind)
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-recoverable",
+		Message:   "continue after tool failure",
+		Scene:     "ai",
+		UserID:    11,
+	}, func(string, any) {}); err != nil {
+		t.Fatalf("expected session to remain usable, got %v", err)
+	}
+}
+
+func TestChatMarksFatalRuntimeFailure(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-fatal",
+		UserID: 12,
+		Scene:  "ai",
+		Title:  "Fatal Runtime Failure",
+	})
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("starting run", nil), nil, schema.Assistant, ""),
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(schema.AssistantMessage("runtime crashed", nil), nil, schema.Assistant, "")
+				event.Err = errors.New("runtime failure")
+				return event
+			}(),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := &Logic{
+		ChatDAO:  aidao.NewAIChatDAO(db),
+		RunDAO:   aidao.NewAIRunDAO(db),
+		AIRouter: agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-fatal",
+		Message:   "run diagnosis",
+		Scene:     "ai",
+		UserID:    12,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected fatal runtime failure to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "failed_runtime" {
+		t.Fatalf("expected run status failed_runtime, got %q", run.Status)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("session_id = ? AND role = ?", "session-fatal", "assistant").First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Status != "error" {
+		t.Fatalf("expected assistant message status error, got %q", assistant.Status)
+	}
+	if assistant.RuntimeJSON == "" {
+		t.Fatal("expected runtime json to be persisted for fatal failure")
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-fatal",
+		Message:   "follow up after fatal failure",
+		Scene:     "ai",
+		UserID:    12,
+	}, func(string, any) {}); err != nil {
+		t.Fatalf("expected session to remain usable, got %v", err)
+	}
+}
+
+func TestChatStopsConsumingAfterStreamingMessageError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-stream-error",
+		UserID: 13,
+		Scene:  "ai",
+		Title:  "Streaming Error",
+	})
+
+	streamReader, streamWriter := schema.Pipe[*schema.Message](2)
+	go func() {
+		streamWriter.Send(schema.AssistantMessage("partial output", nil), nil)
+		streamWriter.Send(nil, errors.New("stream recv failed"))
+		streamWriter.Close()
+	}()
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{
+				AgentName: "scripted-agent",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{
+						IsStreaming:   true,
+						MessageStream: streamReader,
+					},
+				},
+			},
+			adk.EventFromMessage(schema.AssistantMessage("should not be emitted", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := &Logic{
+		ChatDAO:  aidao.NewAIChatDAO(db),
+		RunDAO:   aidao.NewAIRunDAO(db),
+		AIRouter: agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-stream-error",
+		Message:   "trigger stream error",
+		Scene:     "ai",
+		UserID:    13,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected streaming message error to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "failed_runtime" {
+		t.Fatalf("expected run status failed_runtime, got %q", run.Status)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("session_id = ? AND role = ?", "session-stream-error", "assistant").First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if !strings.Contains(assistant.Content, "partial output") {
+		t.Fatalf("expected assistant content to include streamed prefix, got %q", assistant.Content)
+	}
+	if strings.Contains(assistant.Content, "should not be emitted") {
+		t.Fatalf("expected assistant content to stop before later iterator events, got %q", assistant.Content)
+	}
+
+	for _, event := range emitted {
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			continue
+		}
+		content, _ := data["content"].(string)
+		if strings.Contains(content, "should not be emitted") {
+			t.Fatalf("expected no emitted event after stream failure, found %#v", event)
+		}
+	}
+}
+
+func TestChatKeepsRunAliveOnToolInvocationNodeError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-tool-node-error",
+		UserID: 14,
+		Scene:  "ai",
+		Title:  "Tool Invocation Node Error",
+	})
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+				{ID: "call-499641dbc60642ffb66c1e05", Function: schema.FunctionCall{Name: "host_exec", Arguments: `{"host_id":1,"command":"systemctl status nginx"}`}},
+			}), nil, schema.Assistant, ""),
+			{
+				AgentName: "executor",
+				Err: errors.New("[NodeRunError] failed to stream tool call call-499641dbc60642ffb66c1e05: " +
+					"[LocalFunc] failed to invoke tool, toolName=host_exec, err=command not allowed: only readonly commands are permitted\n" +
+					"------------------------\nnode path: [node_1, ToolNode]"),
+			},
+			adk.EventFromMessage(schema.AssistantMessage("tool failed, continue with fallback", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := &Logic{
+		ChatDAO:  aidao.NewAIChatDAO(db),
+		RunDAO:   aidao.NewAIRunDAO(db),
+		AIRouter: agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-tool-node-error",
+		Message:   "run host command",
+		Scene:     "ai",
+		UserID:    14,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected tool invocation node error to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected run status completed_with_tool_errors, got %q", run.Status)
+	}
+
+	var (
+		sawToolResult bool
+		sawDone       bool
+	)
+	for _, event := range emitted {
+		if event.Event == "error" {
+			t.Fatalf("expected tool invocation node error to avoid terminal error event, got %#v", event)
+		}
+		if event.Event == "tool_result" {
+			sawToolResult = true
+		}
+		if event.Event == "done" {
+			sawDone = true
+		}
+	}
+	if !sawToolResult {
+		t.Fatal("expected synthesized tool_result event for tool invocation node error")
+	}
+	if !sawDone {
+		t.Fatal("expected done event after tool invocation node error")
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("session_id = ? AND role = ?", "session-tool-node-error", "assistant").First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if !strings.Contains(assistant.Content, "fallback") {
+		t.Fatalf("expected assistant fallback content to be preserved, got %q", assistant.Content)
+	}
+}
+
+func newLogicTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AIChatSession{}, &model.AIChatMessage{}, &model.AIRun{}); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+	return db
+}
+
+func seedLogicTestSession(t *testing.T, db *gorm.DB, session model.AIChatSession) {
+	t.Helper()
+	if err := db.Create(&session).Error; err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+}
+
+func findEventField(t *testing.T, events []airuntime.PublicStreamEvent, wantEvent, field string) string {
+	t.Helper()
+	for _, event := range events {
+		if event.Event != wantEvent {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected %s event data to be a map, got %T", wantEvent, event.Data)
+		}
+		value, _ := data[field].(string)
+		return value
+	}
+	return ""
+}
+
+type scriptedAgent struct {
+	runEvents []*adk.AgentEvent
+}
+
+func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
+func (s *scriptedAgent) Description(context.Context) string { return "scripted agent for tests" }
+
+func (s *scriptedAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	go func() {
+		for _, event := range s.runEvents {
+			gen.Send(event)
+		}
+		gen.Close()
+	}()
+	return iter
+}
+
+func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	return s.Run(ctx, nil)
 }

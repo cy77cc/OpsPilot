@@ -31,6 +31,19 @@ func NewRunStateEvent(status string, payload map[string]any) PublicStreamEvent {
 	}
 }
 
+func NewToolResultEvent(callID, toolName, content, status, agentName string) PublicStreamEvent {
+	return PublicStreamEvent{
+		Event: "tool_result",
+		Data: map[string]any{
+			"call_id":   callID,
+			"tool_name": toolName,
+			"content":   content,
+			"status":    status,
+			"agent":     agentName,
+		},
+	}
+}
+
 func mapAgentNameToIntentType(agentName string) string {
 	switch agentName {
 	case "QAAgent":

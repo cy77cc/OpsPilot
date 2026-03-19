@@ -123,31 +123,52 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		return []PublicStreamEvent{{
 			Event: "tool_call",
 			Data: map[string]any{
-				"call_id":    event.Tool.CallID,
-				"tool_name":  event.Tool.ToolName,
-				"arguments":  event.Tool.Arguments,
-				"agent":      strings.TrimSpace(event.AgentName),
+				"call_id":   event.Tool.CallID,
+				"tool_name": event.Tool.ToolName,
+				"arguments": event.Tool.Arguments,
+				"agent":     strings.TrimSpace(event.AgentName),
 			},
 		}}
 	case NormalizedKindToolResult:
 		if event.Tool == nil {
 			return nil
 		}
+		status := "done"
+		if strings.TrimSpace(event.Tool.Phase) == "error" {
+			status = "error"
+		}
+		updated := false
 		// 更新持久化状态：找到对应的 activity 并更新
 		for i := range state.Persisted.Activities {
 			if state.Persisted.Activities[i].ID == event.Tool.CallID {
-				state.Persisted.Activities[i].Status = "done"
+				state.Persisted.Activities[i].Status = status
 				state.Persisted.Activities[i].Kind = "tool_result"
 				state.Persisted.Activities[i].Detail = truncateString(event.Tool.Content, 200)
+				updated = true
 			}
+		}
+		if !updated {
+			activeStepIndex := 0
+			if state.Persisted.Plan != nil {
+				activeStepIndex = state.Persisted.Plan.ActiveStepIndex
+			}
+			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
+				ID:        event.Tool.CallID,
+				Kind:      "tool_result",
+				Label:     event.Tool.ToolName,
+				Detail:    truncateString(event.Tool.Content, 200),
+				Status:    status,
+				StepIndex: activeStepIndex,
+			})
 		}
 		return []PublicStreamEvent{{
 			Event: "tool_result",
 			Data: map[string]any{
-				"call_id":    event.Tool.CallID,
-				"tool_name":  event.Tool.ToolName,
-				"content":    event.Tool.Content,
-				"agent":      strings.TrimSpace(event.AgentName),
+				"call_id":   event.Tool.CallID,
+				"tool_name": event.Tool.ToolName,
+				"content":   event.Tool.Content,
+				"status":    status,
+				"agent":     strings.TrimSpace(event.AgentName),
 			},
 		}}
 	case NormalizedKindMessage:

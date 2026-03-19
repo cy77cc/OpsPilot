@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -130,6 +131,7 @@ func normalizeMessageOutput(event *adk.AgentEvent) []NormalizedEvent {
 
 		return events
 	case schema.Tool:
+		phase := normalizeToolResultPhase(event.Err, message.Content)
 		return []NormalizedEvent{{
 			Kind:      NormalizedKindToolResult,
 			AgentName: event.AgentName,
@@ -137,13 +139,33 @@ func normalizeMessageOutput(event *adk.AgentEvent) []NormalizedEvent {
 				CallID:   message.ToolCallID,
 				ToolName: message.ToolName,
 				Content:  message.Content,
-				Phase:    "result",
+				Phase:    phase,
 			},
 			Raw: event,
 		}}
 	default:
 		return nil
 	}
+}
+
+func normalizeToolResultPhase(err error, content string) string {
+	if err != nil {
+		return "error"
+	}
+
+	var payload map[string]any
+	if json.Unmarshal([]byte(content), &payload) != nil || payload == nil {
+		return "result"
+	}
+
+	if status, ok := payload["status"].(string); ok && strings.EqualFold(strings.TrimSpace(status), "error") {
+		return "error"
+	}
+	if okValue, ok := payload["ok"].(bool); ok && !okValue {
+		return "error"
+	}
+
+	return "result"
 }
 
 func normalizeInterrupt(event *adk.AgentEvent) *NormalizedEvent {

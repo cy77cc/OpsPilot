@@ -36,6 +36,7 @@ type AIChatMessage struct {
 func (AIChatMessage) TableName() string { return "ai_chat_messages" }
 
 // AIRun stores one model execution bound to a session and a user/assistant message pair.
+// Status uses: running, completed, completed_with_tool_errors, failed_runtime, cancelled.
 type AIRun struct {
 	ID                 string         `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`
 	SessionID          string         `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_runs_session_id" json:"session_id"`

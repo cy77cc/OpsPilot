@@ -30,11 +30,18 @@ func (d *AIRunDAO) CreateRun(ctx context.Context, run *model.AIRun) error {
 }
 
 func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIRunStatusUpdate) error {
-	updates := map[string]any{
-		"status":               update.Status,
-		"assistant_message_id": update.AssistantMessageID,
-		"progress_summary":     update.ProgressSummary,
-		"error_message":        update.ErrorMessage,
+	updates := map[string]any{}
+	if update.Status != "" {
+		updates["status"] = update.Status
+	}
+	if update.AssistantMessageID != "" {
+		updates["assistant_message_id"] = update.AssistantMessageID
+	}
+	if update.ProgressSummary != "" {
+		updates["progress_summary"] = update.ProgressSummary
+	}
+	if update.ErrorMessage != "" {
+		updates["error_message"] = update.ErrorMessage
 	}
 	if isTerminalRunStatus(update.Status) {
 		updates["finished_at"] = time.Now()
@@ -45,6 +52,9 @@ func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIR
 	if update.AssistantType != "" {
 		updates["assistant_type"] = update.AssistantType
 	}
+	if len(updates) == 0 {
+		return nil
+	}
 	return d.db.WithContext(ctx).
 		Model(&model.AIRun{}).
 		Where("id = ?", runID).
@@ -53,7 +63,7 @@ func (d *AIRunDAO) UpdateRunStatus(ctx context.Context, runID string, update AIR
 
 func isTerminalRunStatus(status string) bool {
 	switch status {
-	case "completed", "failed", "cancelled":
+	case "completed", "completed_with_tool_errors", "failed", "failed_runtime", "cancelled":
 		return true
 	default:
 		return false

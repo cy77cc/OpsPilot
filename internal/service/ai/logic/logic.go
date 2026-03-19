@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -170,6 +171,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		assistantContent strings.Builder
 		projector        = airuntime.NewStreamProjector()
 		streamError      error
+		hasToolErrors    bool
+		stopConsuming    bool
 	)
 
 	// 创建 assistant message 占位
@@ -184,31 +187,46 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	for {
+		if stopConsuming {
+			break
+		}
+
 		event, ok := iterator.Next()
 		if !ok {
 			break
 		}
 
 		if event.Err != nil {
-			streamError = event.Err
-			if event.Output != nil && event.Output.MessageOutput.Message.Role == schema.Tool {
-				projected := projector.Fail(run.ID, event.Err)
-				emit(projected.Event, projected.Data)
-				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
-					Status:       "failed",
-					ErrorMessage: event.Err.Error(),
-				})
+			if toolErrorEvent, ok := recoverableToolErrorEvent(event); ok {
+				hasToolErrors = true
+				update := consumeProjectedEvents(projector.Consume(toolErrorEvent), emit, &assistantContent)
+				if update.AssistantType != "" || update.IntentType != "" {
+					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+						IntentType:    update.IntentType,
+						AssistantType: update.AssistantType,
+					})
+				}
+				continue
 			} else {
+				streamError = event.Err
+				flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
 				projected := projector.Fail(run.ID, event.Err)
 				emit(projected.Event, projected.Data)
+				runtimeJSON := ""
+				if persisted := projector.GetPersistedState(); shouldPersistRuntimeState(persisted) {
+					if data, err := json.Marshal(persisted); err == nil {
+						runtimeJSON = string(data)
+					}
+				}
 				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
-					Status:       "failed",
+					Status:       "failed_runtime",
 					ErrorMessage: event.Err.Error(),
 				})
 				// 更新消息状态为 error
 				_ = l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-					"content": assistantContent.String(),
-					"status":  "error",
+					"content":      assistantContent.String(),
+					"status":       "error",
+					"runtime_json": runtimeJSON,
 				})
 				return nil
 			}
@@ -222,6 +240,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 				}
 				if err != nil {
 					streamError = err
+					stopConsuming = true
+					flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
 					projected := projector.Fail(run.ID, err)
 					emit(projected.Event, projected.Data)
 					break
@@ -253,22 +273,29 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	// Step 7: 持久化结果
-	finalContent := assistantContent.String()
 	finalStatus := "done"
 	if streamError != nil {
 		finalStatus = "error"
 	}
 
+	// Step 8: 发送 done 事件前先刷新缓冲
+	flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
+
+	var done airuntime.PublicStreamEvent
+	if streamError == nil {
+		done = projector.Finish(run.ID)
+	}
+
 	// 提取持久化状态
 	runtimeJSON := ""
-	if persisted := projector.GetPersistedState(); persisted != nil && len(persisted.Activities) > 0 {
+	if persisted := projector.GetPersistedState(); shouldPersistRuntimeState(persisted) {
 		if data, err := json.Marshal(persisted); err == nil {
 			runtimeJSON = string(data)
 		}
 	}
 
 	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-		"content":      finalContent,
+		"content":      assistantContent.String(),
 		"status":       finalStatus,
 		"runtime_json": runtimeJSON,
 	}); err != nil {
@@ -279,24 +306,21 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	runStatus := aidao.AIRunStatusUpdate{
 		Status:             "completed",
 		AssistantMessageID: assistantMessage.ID,
-		ProgressSummary:    truncateString(finalContent, 500),
+		ProgressSummary:    truncateString(assistantContent.String(), 500),
 	}
 	if streamError != nil {
-		runStatus.Status = "failed"
+		runStatus.Status = "failed_runtime"
 		runStatus.ErrorMessage = streamError.Error()
+	} else if hasToolErrors {
+		runStatus.Status = "completed_with_tool_errors"
 	}
 	if err := l.RunDAO.UpdateRunStatus(ctx, run.ID, runStatus); err != nil {
 		return fmt.Errorf("update run status: %w", err)
 	}
 
-	// Step 8: 发送 done 事件前先刷新缓冲
-	if remaining := projector.FlushBuffer(); len(remaining) > 0 {
-		for _, e := range remaining {
-			emit(e.Event, e.Data)
-		}
+	if streamError == nil {
+		emit(done.Event, done.Data)
 	}
-	done := projector.Finish(run.ID)
-	emit(done.Event, done.Data)
 
 	return nil
 }
@@ -324,6 +348,90 @@ func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmit
 		emit(projected.Event, projected.Data)
 	}
 	return update
+}
+
+func flushProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) {
+	if len(events) == 0 {
+		return
+	}
+	consumeProjectedEvents(events, emit, assistantContent)
+}
+
+func shouldPersistRuntimeState(persisted *airuntime.PersistedRuntime) bool {
+	if persisted == nil {
+		return false
+	}
+	return len(persisted.Activities) > 0 ||
+		persisted.Plan != nil ||
+		persisted.Summary != nil ||
+		persisted.Status != nil ||
+		strings.TrimSpace(persisted.Phase) != "" ||
+		strings.TrimSpace(persisted.PhaseLabel) != ""
+}
+
+func isRecoverableToolErrorEvent(event *adk.AgentEvent) bool {
+	if event == nil || event.Err == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return false
+	}
+
+	message, err := event.Output.MessageOutput.GetMessage()
+	if err != nil || message == nil {
+		return false
+	}
+
+	return message.Role == schema.Tool
+}
+
+var (
+	streamToolCallErrPattern = regexp.MustCompile(`failed to stream tool call (\S+): .*toolName=([^,\s]+), err=(.+)`)
+	invokeToolErrPattern     = regexp.MustCompile(`failed to invoke tool\[name:([^\s\]]+) id:([^\s\]]+)\]: (.+)`)
+)
+
+func recoverableToolErrorEvent(event *adk.AgentEvent) (*adk.AgentEvent, bool) {
+	if isRecoverableToolErrorEvent(event) {
+		return event, true
+	}
+	if event == nil || event.Err == nil {
+		return nil, false
+	}
+
+	callID, toolName, ok := parseToolInvocationError(event.Err.Error())
+	if !ok {
+		return nil, false
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"ok":         false,
+		"status":     "error",
+		"tool_name":  toolName,
+		"call_id":    callID,
+		"message":    event.Err.Error(),
+		"error_type": "tool_invocation",
+	})
+	if err != nil {
+		return nil, false
+	}
+
+	message := schema.ToolMessage(string(payload), callID, schema.WithToolName(toolName))
+	synthetic := adk.EventFromMessage(message, nil, schema.Tool, toolName)
+	synthetic.AgentName = event.AgentName
+	synthetic.Err = event.Err
+	return synthetic, true
+}
+
+func parseToolInvocationError(errText string) (callID, toolName string, ok bool) {
+	trimmed := strings.TrimSpace(errText)
+	if trimmed == "" {
+		return "", "", false
+	}
+
+	if matches := streamToolCallErrPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
+		return matches[1], matches[2], matches[3] != ""
+	}
+	if matches := invokeToolErrPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
+		return matches[2], matches[1], matches[3] != ""
+	}
+	return "", "", false
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {
@@ -816,8 +924,13 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 	// 消费事件
 	var assistantContent strings.Builder
 	projector := airuntime.NewStreamProjector()
+	stopConsuming := false
 
 	for {
+		if stopConsuming {
+			break
+		}
+
 		event, ok := iterator.Next()
 		if !ok {
 			break
@@ -836,6 +949,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 					break
 				}
 				if err != nil {
+					stopConsuming = true
 					projected := projector.Fail(task.RunID, err)
 					emit(projected.Event, projected.Data)
 					break

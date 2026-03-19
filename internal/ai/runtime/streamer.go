@@ -62,7 +62,7 @@ func NewMetaEvent(sessionID, runID string, turn int) StreamEvent {
 }
 
 func NewDoneEvent(runID string, iterations int) StreamEvent {
-	return doneEvent(runID, iterations)
+	return doneEvent(runID, iterations, "completed")
 }
 
 func NewErrorEvent(runID string, err error) StreamEvent {
@@ -253,12 +253,15 @@ func projectApprovalEvent(event *adk.AgentEvent) *StreamEvent {
 	}
 }
 
-func doneEvent(runID string, iterations int) StreamEvent {
+func doneEvent(runID string, iterations int, status string) StreamEvent {
+	if strings.TrimSpace(status) == "" {
+		status = "completed"
+	}
 	return StreamEvent{
 		Event: "done",
 		Data: map[string]any{
 			"run_id":     runID,
-			"status":     "completed",
+			"status":     status,
 			"iterations": iterations,
 		},
 	}

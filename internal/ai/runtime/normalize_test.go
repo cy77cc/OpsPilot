@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
@@ -67,6 +68,33 @@ func TestNormalizeAgentEvent_ToolResult(t *testing.T) {
 	}
 	if got[0].Tool == nil || got[0].Tool.ToolName != "kubectl_get_pods" || got[0].Tool.CallID != "call-1" {
 		t.Fatalf("unexpected tool payload: %#v", got[0].Tool)
+	}
+}
+
+func TestNormalizeRecoverableToolError(t *testing.T) {
+	t.Parallel()
+
+	message := schema.ToolMessage(`{"status":"error","message":"tool failed"}`, "call-err", schema.WithToolName("kubectl_get_pods"))
+	event := adk.EventFromMessage(message, nil, schema.Tool, message.ToolName)
+	event.AgentName = "executor"
+	event.Err = errors.New("tool execution failed")
+
+	got := NormalizeAgentEvent(event)
+
+	if len(got) != 1 {
+		t.Fatalf("expected one normalized event, got %d", len(got))
+	}
+	if got[0].Kind != NormalizedKindToolResult {
+		t.Fatalf("expected tool result event, got %q", got[0].Kind)
+	}
+	if got[0].Tool == nil {
+		t.Fatal("expected tool payload, got nil")
+	}
+	if got[0].Tool.Phase != "error" {
+		t.Fatalf("expected recoverable tool error phase error, got %q", got[0].Tool.Phase)
+	}
+	if got[0].Tool.Content == "" {
+		t.Fatal("expected tool error content to be preserved")
 	}
 }
 

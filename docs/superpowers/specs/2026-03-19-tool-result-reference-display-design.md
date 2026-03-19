@@ -75,28 +75,74 @@ export interface AssistantReplyActivity {
 | 条件 | 展示方式 | 样式 |
 |------|---------|------|
 | JSON 行数 ≤ 20 | Popover | 最大高度 300px，最大宽度 360px |
-| JSON 行数 > 20 | Drawer | 宽度 360px（适配嵌套在 AI 助手 Drawer 中） |
+| JSON 行数 > 20 | Modal | 居中弹窗，宽度 600px，避免嵌套 Drawer 问题 |
+
+> **注意**：不使用 Drawer 是因为 AI 助手本身已是 Drawer，嵌套会导致 z-index 冲突和多层遮罩问题。
 
 ```typescript
-function getDisplayMode(content: string): 'popover' | 'drawer' {
+function getDisplayMode(content: string): 'popover' | 'modal' {
+  // 预计算并缓存结果，避免每次渲染重复计算
   try {
     const parsed = JSON.parse(content);
     const formatted = JSON.stringify(parsed, null, 2);
     const lineCount = formatted.split('\n').length;
-    return lineCount > 20 ? 'drawer' : 'popover';
+    return lineCount > 20 ? 'modal' : 'popover';
   } catch {
+    // 非 JSON 内容：纯文本错误消息、Markdown 等
     const lineCount = content.split('\n').length;
-    return lineCount > 20 ? 'drawer' : 'popover';
+    return lineCount > 20 ? 'modal' : 'popover';
   }
 }
 ```
+
+**非 JSON 内容处理**：
+- 纯文本错误消息：直接显示原文
+- Markdown 内容：使用 XMarkdown 渲染
+- 大型二进制数据（base64）：截断显示，提示"内容过大"
 
 #### AssistantReply.tsx 修改
 
 1. 渲染 `activeStep.content` 后，检测关联的 `tool_call`/`tool_result` activities
 2. 在文本末尾追加 `ToolReference` 组件
-3. 移除 `tool_call` 和 `tool_result` 在 activities 列表中的显示
+3. 过滤 activities 列表：不显示 `kind === 'tool_call' || kind === 'tool_result'` 的条目
 4. 保留其他 activities：`agent_handoff`、`plan`、`replan`、`tool_approval`、`hint`、`error`
+
+**工具引用与文本内容的关联**：
+
+由于 SSE 事件顺序是 `delta -> tool_call -> tool_result`，LLM 通常在调用工具前会说一句话。渲染逻辑：
+
+```typescript
+// 获取当前步骤关联的工具 activities（tool_call 被更新为 tool_result 后）
+const toolActivities = runtime?.activities?.filter(
+  (a) => a.stepIndex === activeStepIndex && (a.kind === 'tool_result')
+) || [];
+
+// 渲染：步骤内容 + 工具引用
+<div>
+  <XMarkdown content={activeStep.content} />
+  {toolActivities.map((tool) => (
+    <ToolReference key={tool.id} activity={tool} />
+  ))}
+</div>
+```
+
+**Activity 状态转换说明**：
+
+后端处理逻辑：当 `tool_result` 到达时，会**更新已有的 activity**（而非创建新条目）：
+
+```go
+// project.go 第 142-148 行
+// 找到对应的 tool_call activity 并更新
+for i := range state.Persisted.Activities {
+    if state.Persisted.Activities[i].ID == event.Tool.CallID {
+        state.Persisted.Activities[i].Status = status      // "done" 或 "error"
+        state.Persisted.Activities[i].Kind = "tool_result" // kind 从 tool_call 变为 tool_result
+        state.Persisted.Activities[i].RawContent = ...
+    }
+}
+```
+
+因此前端只需关注 `kind === 'tool_result'` 的 activities，它们已包含完整的状态信息。
 
 ### 3. 后端改动
 
@@ -139,6 +185,16 @@ SSE 事件顺序：`delta -> tool_call -> tool_result`
 - 点击后在卡片中显示错误详情
 - 卡片中明确标注错误状态
 
+### 6. 持久化考虑
+
+`RawContent` 字段可能包含大型数据（如完整的 K8s 资源列表），会增加 `runtime_json` 的数据库存储大小。
+
+**处理策略**：
+- 正常存储完整内容（当前方案）
+- 如果后续出现性能问题，可考虑：
+  - 添加大小限制（如超过 10KB 截断）
+  - 大型内容仅存储预览，完整内容按需从日志系统获取
+
 ## 文件变更清单
 
 | 文件 | 变更类型 | 说明 |
@@ -146,10 +202,10 @@ SSE 事件顺序：`delta -> tool_call -> tool_result`
 | `internal/ai/runtime/types.go` | 修改 | 添加 `Arguments`、`RawContent` 字段 |
 | `internal/ai/runtime/project.go` | 修改 | 存储 arguments 和完整 content |
 | `web/src/components/AI/types.ts` | 修改 | 添加 `arguments`、`rawContent` 字段 |
-| `web/src/components/AI/replyRuntime.ts` | 修改 | 更新 `applyToolCall` 存储 arguments |
-| `web/src/components/AI/ToolReference.tsx` | 新增 | 工具引用组件 |
-| `web/src/components/AI/ToolResultCard.tsx` | 新增 | 结果卡片组件 |
-| `web/src/components/AI/AssistantReply.tsx` | 修改 | 集成引用渲染，移除 tool_call/tool_result 的 activities 显示 |
+| `web/src/components/AI/replyRuntime.ts` | 修改 | 更新 `applyToolCall`、`applyToolResult` 存储 arguments 和 rawContent |
+| `web/src/components/AI/ToolReference.tsx` | 新增 | 工具引用组件（执行中/完成/错误状态） |
+| `web/src/components/AI/ToolResultCard.tsx` | 新增 | 结果卡片组件（Popover/Modal 自适应） |
+| `web/src/components/AI/AssistantReply.tsx` | 修改 | 集成引用渲染，过滤 tool_call/tool_result activities |
 
 ## 实现优先级
 

@@ -38,3 +38,41 @@ func TestUpdateRunStatus_SetsFinishedAtForTerminalStates(t *testing.T) {
 		t.Fatalf("expected finished_at to be set for completed run, got %#v", refreshed)
 	}
 }
+
+func TestUpdateRunStatus_DoesNotBlankExistingFieldsOnPartialUpdate(t *testing.T) {
+	db := newAIDAOTestDB(t)
+	dao := NewAIRunDAO(db)
+	ctx := context.Background()
+
+	run := &model.AIRun{
+		ID:            "run-2",
+		SessionID:     "session-2",
+		UserMessageID: "msg-2",
+		Status:        "running",
+		TraceJSON:     "{}",
+	}
+	if err := dao.CreateRun(ctx, run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	if err := dao.UpdateRunStatus(ctx, run.ID, AIRunStatusUpdate{
+		IntentType:    "diagnosis",
+		AssistantType: "DiagnosisAgent",
+	}); err != nil {
+		t.Fatalf("partial update run status: %v", err)
+	}
+
+	refreshed, err := dao.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+	if refreshed == nil {
+		t.Fatal("expected run to exist")
+	}
+	if refreshed.Status != "running" {
+		t.Fatalf("expected status to remain running, got %q", refreshed.Status)
+	}
+	if refreshed.IntentType != "diagnosis" || refreshed.AssistantType != "DiagnosisAgent" {
+		t.Fatalf("expected partial fields to be updated, got %#v", refreshed)
+	}
+}

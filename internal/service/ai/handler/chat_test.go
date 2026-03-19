@@ -2,12 +2,16 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 )
@@ -133,6 +137,71 @@ func TestChatHandler_PersistsSceneFromRequest(t *testing.T) {
 	}
 }
 
+func TestChatStreamsRecoverableToolErrorAndDone(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+	h.logic.AIRouter = &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("checking pods", nil), nil, schema.Assistant, ""),
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(
+					schema.ToolMessage(`{"ok":false}`, "call-1", schema.WithToolName("kubectl_get_pods")),
+					nil,
+					schema.Tool,
+					"kubectl_get_pods",
+				)
+				event.Err = errors.New("tool execution failed")
+				return event
+			}(),
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(105))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"inspect pods"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+
+	var (
+		sawToolResult bool
+		sawDone       bool
+	)
+	for _, event := range events {
+		if event.Event == "error" {
+			t.Fatalf("expected recoverable tool failure to avoid terminal error event, got %#v", event)
+		}
+		if event.Event == "tool_result" {
+			sawToolResult = true
+		}
+		if event.Event == "done" {
+			data, ok := event.Data.(map[string]any)
+			if !ok {
+				t.Fatalf("expected done data to be a map, got %T", event.Data)
+			}
+			if data["status"] != "completed_with_tool_errors" {
+				t.Fatalf("expected done status completed_with_tool_errors, got %#v", data["status"])
+			}
+			sawDone = true
+		}
+	}
+
+	if !sawToolResult {
+		t.Fatal("expected tool_result event in recoverable failure stream")
+	}
+	if !sawDone {
+		t.Fatal("expected done event after recoverable failure")
+	}
+}
+
 func decodeSSEEvents(t *testing.T, body string) []chatEvent {
 	t.Helper()
 
@@ -171,4 +240,26 @@ func decodeSSEEvents(t *testing.T, body string) []chatEvent {
 type chatEvent struct {
 	Event string `json:"event"`
 	Data  any    `json:"data"`
+}
+
+type scriptedAgent struct {
+	runEvents []*adk.AgentEvent
+}
+
+func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
+func (s *scriptedAgent) Description(context.Context) string { return "scripted agent for tests" }
+
+func (s *scriptedAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	go func() {
+		for _, event := range s.runEvents {
+			gen.Send(event)
+		}
+		gen.Close()
+	}()
+	return iter
+}
+
+func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	return s.Run(ctx, nil)
 }

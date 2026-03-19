@@ -134,6 +134,46 @@ func TestStreamProjector_FinishAndFail(t *testing.T) {
 	}
 }
 
+func TestProjectorEmitsToolResultErrorWithoutFatalError(t *testing.T) {
+	t.Parallel()
+
+	projector := NewStreamProjector()
+	callEvent := adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+		{ID: "call-err", Function: schema.FunctionCall{Name: "kubectl_get_pods", Arguments: `{"namespace":"default"}`}},
+	}), nil, schema.Assistant, "")
+	callEvent.AgentName = "executor"
+	projector.Consume(callEvent)
+
+	message := schema.ToolMessage(`{"status":"error","message":"tool failed"}`, "call-err", schema.WithToolName("kubectl_get_pods"))
+	resultEvent := adk.EventFromMessage(message, nil, schema.Tool, message.ToolName)
+	resultEvent.AgentName = "executor"
+
+	got := projector.Consume(resultEvent)
+
+	if len(got) != 1 {
+		t.Fatalf("expected one projected event, got %#v", got)
+	}
+	if got[0].Event != "tool_result" {
+		t.Fatalf("expected tool_result event, got %#v", got[0])
+	}
+
+	data, ok := got[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_result data to be a map, got %T", got[0].Data)
+	}
+	if data["content"] == "" {
+		t.Fatal("expected tool_result content to be preserved")
+	}
+
+	persisted := projector.GetPersistedState()
+	if len(persisted.Activities) != 1 {
+		t.Fatalf("expected one persisted activity, got %#v", persisted.Activities)
+	}
+	if persisted.Activities[0].Status != "error" {
+		t.Fatalf("expected tool result activity status error, got %#v", persisted.Activities[0])
+	}
+}
+
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }

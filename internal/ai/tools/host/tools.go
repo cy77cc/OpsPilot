@@ -194,7 +194,7 @@ func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_ssh_exec_readonly",
-		"Execute a readonly SSH command on a host. host_id and command are required. Only predefined safe readonly commands are allowed such as: hostname, uptime, df -h, free -m, ps aux --sort=-%cpu. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
+		"Execute an SSH command on a host for diagnosis or remediation. host_id and command are required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
 		func(ctx context.Context, input *HostSSHReadonlyInput, opts ...tool.Option) (*HostSSHReadonlyOutput, error) {
 			hostID := input.HostID
 			cmd := strings.TrimSpace(input.Command)
@@ -204,8 +204,8 @@ func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if !isReadonlyHostCommand(cmd) {
-				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
+			if _, _, blocked := classifyHostCommand(cmd); blocked {
+				return nil, fmt.Errorf("dangerous command is blocked")
 			}
 			var node model.Node
 			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
@@ -236,7 +236,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
-		"Execute a readonly command on a single host via SSH. host_id and command are required. Only safe readonly commands are allowed. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"df -h\"}.",
+		"Execute a command on a single host via SSH. host_id and command are required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"systemctl status nginx\"}.",
 		func(ctx context.Context, input *HostExecInput, opts ...tool.Option) (*HostExecOutput, error) {
 			hostID := input.HostID
 			cmd := strings.TrimSpace(input.Command)
@@ -246,8 +246,8 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if !isReadonlyHostCommand(cmd) {
-				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
+			if _, _, blocked := classifyHostCommand(cmd); blocked {
+				return nil, fmt.Errorf("dangerous command is blocked")
 			}
 			var node model.Node
 			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
@@ -282,14 +282,14 @@ func HostExecByTarget(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec_by_target",
-		"Resolve a host by target string and execute a readonly command. Target may be a host id, IP, hostname, name, or localhost. command is required. Only safe readonly commands are allowed. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"df -h\"}.",
+		"Resolve a host by target string and execute a command. Target may be a host id, IP, hostname, name, or localhost. command is required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"systemctl status nginx\"}.",
 		func(ctx context.Context, input *HostExecByTargetInput, opts ...tool.Option) (*HostExecOutput, error) {
 			cmd := strings.TrimSpace(input.Command)
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if !isReadonlyHostCommand(cmd) {
-				return nil, fmt.Errorf("command not allowed: only readonly commands are permitted")
+			if _, _, blocked := classifyHostCommand(cmd); blocked {
+				return nil, fmt.Errorf("dangerous command is blocked")
 			}
 			node, err := resolveNodeByTarget(svcCtx, input.Target)
 			if err != nil {

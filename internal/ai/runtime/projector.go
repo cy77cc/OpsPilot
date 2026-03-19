@@ -81,12 +81,17 @@ func (p *StreamProjector) FlushBuffer() []PublicStreamEvent {
 // Finish 返回 done 事件，并设置持久化状态的最终值。
 func (p *StreamProjector) Finish(runID string) PublicStreamEvent {
 	// 设置最终状态
+	statusKind := p.finalStatusKind()
 	if p.state.Persisted != nil {
+		statusLabel := "已生成"
+		if statusKind == "completed_with_tool_errors" {
+			statusLabel = "已完成，部分步骤失败"
+		}
 		p.state.Persisted.Phase = "completed"
 		p.state.Persisted.PhaseLabel = "已完成"
 		p.state.Persisted.Status = &PersistedStatus{
-			Kind:  "completed",
-			Label: "已生成",
+			Kind:  statusKind,
+			Label: statusLabel,
 		}
 		// 清除活动步骤索引，标记所有步骤为完成
 		if p.state.Persisted.Plan != nil {
@@ -96,13 +101,31 @@ func (p *StreamProjector) Finish(runID string) PublicStreamEvent {
 			}
 		}
 	}
-	return doneEvent(runID, p.state.ReplanIteration)
+	return doneEvent(runID, p.state.ReplanIteration, statusKind)
 }
 
 // Fail 返回 error 事件（保留现有方法）。
 func (p *StreamProjector) Fail(runID string, err error) PublicStreamEvent {
-	// 刷新缓冲区
-	p.buffer.Flush()
 	p.state.RunPhase = "failed"
+	if p.state.Persisted != nil {
+		p.state.Persisted.Phase = "failed_runtime"
+		p.state.Persisted.PhaseLabel = "运行失败"
+		p.state.Persisted.Status = &PersistedStatus{
+			Kind:  "failed_runtime",
+			Label: "运行失败",
+		}
+	}
 	return errorEvent(runID, err)
+}
+
+func (p *StreamProjector) finalStatusKind() string {
+	if p == nil || p.state.Persisted == nil {
+		return "completed"
+	}
+	for _, activity := range p.state.Persisted.Activities {
+		if activity.Status == "error" {
+			return "completed_with_tool_errors"
+		}
+	}
+	return "completed"
 }
