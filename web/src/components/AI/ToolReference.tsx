@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { createStyles } from 'antd-style';
 import type { AssistantReplyActivity } from './types';
 import ToolResultCard from './ToolResultCard';
@@ -7,22 +7,51 @@ const useToolReferenceStyles = createStyles(({ token, css }) => ({
   root: css`
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    vertical-align: baseline;
+    white-space: nowrap;
     margin-left: 4px;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 1px 6px;
+    border-radius: 5px;
     font-size: 12px;
+    line-height: 18px;
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
     cursor: default;
     transition: all 0.2s ease;
+    border: 1px solid transparent;
   `,
   loading: css`
-    color: ${token.colorTextSecondary};
+    color: rgba(15, 23, 42, 0.42);
     background: ${token.colorFillQuaternary};
+    border-color: ${token.colorBorderSecondary};
+
+    .tool-reference-label {
+      background-image: linear-gradient(
+        90deg,
+        rgba(15, 23, 42, 0.38) 0%,
+        rgba(37, 99, 235, 0.92) 42%,
+        rgba(15, 23, 42, 0.38) 100%
+      );
+      background-size: 220% 100%;
+      background-position: 100% 50%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: toolRefSweep 1.2s linear infinite;
+    }
+
+    @keyframes toolRefSweep {
+      from {
+        background-position: 100% 50%;
+      }
+      to {
+        background-position: -100% 50%;
+      }
+    }
   `,
   success: css`
     color: ${token.colorPrimary};
     background: ${token.colorPrimaryBg};
+    border-color: ${token.colorPrimaryBorder};
     cursor: pointer;
 
     &:hover {
@@ -32,27 +61,15 @@ const useToolReferenceStyles = createStyles(({ token, css }) => ({
   error: css`
     color: ${token.colorError};
     background: ${token.colorErrorBg};
+    border-color: ${token.colorErrorBorder};
     cursor: pointer;
 
     &:hover {
       background: ${token.colorErrorBgHover};
     }
   `,
-  icon: css`
-    font-size: 10px;
-  `,
-  spinner: css`
+  label: css`
     display: inline-block;
-    animation: spin 1s linear infinite;
-
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
   `,
 }));
 
@@ -79,17 +96,6 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
     isError && styles.error,
   );
 
-  // 获取图标
-  const renderIcon = () => {
-    if (isLoading) {
-      return <span className={cx(styles.icon, styles.spinner)}>◐</span>;
-    }
-    if (isError) {
-      return <span className={styles.icon}>✗</span>;
-    }
-    return <span className={styles.icon}>→</span>;
-  };
-
   // 是否可点击
   const isClickable = isSuccess || isError;
 
@@ -112,8 +118,7 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
           }
         }}
       >
-        {renderIcon()}
-        <span>{label}</span>
+        <span className={`tool-reference-label ${styles.label}`}>{label}</span>
       </span>
       {cardVisible && (
         <ToolResultCard

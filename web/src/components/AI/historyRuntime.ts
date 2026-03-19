@@ -60,6 +60,7 @@ export function hydrateAssistantHistoryMessage(
     id: message.id,
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content: message.content || '',
+    runtime: message.runtime as AssistantReplyRuntime | undefined,
     hasRuntime: message.has_runtime ?? false,
   };
 }

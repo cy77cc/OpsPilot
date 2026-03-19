@@ -178,6 +178,105 @@ describe('AssistantReply', () => {
     expect(screen.queryByText(/已完成/)).not.toBeInTheDocument();
   });
 
+  it('renders tool-only active steps without requiring markdown body content', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          phase: 'executing',
+          phaseLabel: '执行工具',
+          plan: {
+            activeStepIndex: 0,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '执行工具',
+                status: 'active',
+                segments: [
+                  { type: 'tool_ref', callId: 'call-1' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool_call', label: 'k8s_query', status: 'active', stepIndex: 0 },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText('执行工具')).toHaveLength(2);
+    expect(screen.getByText('k8s_query')).toBeInTheDocument();
+    expect(screen.queryByTestId('x-markdown')).not.toBeInTheDocument();
+  });
+
+  it('only exposes button semantics after tool result is ready', () => {
+    const { rerender } = render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          phase: 'executing',
+          phaseLabel: '执行中',
+          plan: {
+            activeStepIndex: 0,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '采集信息',
+                status: 'active',
+                segments: [
+                  { type: 'text', text: 'Checking cluster state ' },
+                  { type: 'tool_ref', callId: 'call-1' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool_call', label: 'cluster_query', status: 'active', stepIndex: 0 },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'cluster_query' })).not.toBeInTheDocument();
+
+    rerender(
+      <AssistantReply
+        content=""
+        status="success"
+        runtime={{
+          phase: 'completed',
+          phaseLabel: '执行完成',
+          plan: {
+            activeStepIndex: 0,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '采集信息',
+                status: 'active',
+                segments: [
+                  { type: 'text', text: 'Checking cluster state ' },
+                  { type: 'tool_ref', callId: 'call-1' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1:result', kind: 'tool_result', label: 'cluster_query', status: 'done', rawContent: 'ok', stepIndex: 0 },
+          ],
+          status: { kind: 'completed', label: '已完成' },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'cluster_query' })).toBeInTheDocument();
+    expect(screen.queryAllByText('cluster_query')).toHaveLength(1);
+  });
+
   it('can expand completed steps to see their content', async () => {
     render(
       <AssistantReply

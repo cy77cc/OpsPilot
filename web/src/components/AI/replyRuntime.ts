@@ -355,7 +355,7 @@ export function applyDone(runtime: AssistantReplyRuntime): AssistantReplyRuntime
     phaseLabel: runtime.phaseLabel || '已完成',
     status: {
       kind: 'completed',
-      label: '已生成',
+      label: `已生成 ${new Date().toLocaleString('zh-CN')}`,
     },
   };
 }

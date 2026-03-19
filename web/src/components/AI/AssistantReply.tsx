@@ -181,6 +181,22 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     background: ${token.colorFillQuaternary};
     border-radius: 8px;
   `,
+  inlineToolFlow: css`
+    display: inline;
+    white-space: normal;
+  `,
+  inlineText: css`
+    display: inline;
+    line-height: 1.65;
+    white-space: pre-wrap;
+  `,
+  inlineToolFallback: css`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+  `,
 }));
 
 interface AssistantReplyProps {
@@ -193,13 +209,35 @@ interface AssistantReplyProps {
 }
 
 // SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
-function SimpleMarkdownContent({ content, styles }: { content: string; styles: Record<string, string> }) {
+function SimpleMarkdownContent({
+  content,
+  styles,
+  isStreaming = false,
+}: {
+  content: string;
+  styles: Record<string, string>;
+  isStreaming?: boolean;
+}) {
   if (!content) return null;
   return (
     <div className={styles.markdown}>
-      <XMarkdown content={content} />
+      <XMarkdown content={content} streaming={{ hasNextChunk: isStreaming, enableAnimation: true }} />
     </div>
   );
+}
+
+function shouldRenderInlineText(text: string): boolean {
+  const value = (text || '').trim();
+  if (!value) {
+    return false;
+  }
+  if (/\n/.test(value)) {
+    return false;
+  }
+  if (/^\s{0,3}(#{1,6}|\d+\. |- |\* |```|>|---)/.test(value)) {
+    return false;
+  }
+  return true;
 }
 
 // StepContentRenderer 按 segments 顺序渲染步骤内容
@@ -230,13 +268,18 @@ function StepContentRenderer({
       } else if (segment.type === 'tool_ref' && segment.callId) {
         // 先渲染累积的文本
         if (textBuffer) {
-          elements.push(
+          const inlineText = shouldRenderInlineText(textBuffer);
+          elements.push(inlineText ? (
+            <span key={`text-${index}`} className={styles.inlineText}>
+              {textBuffer}
+            </span>
+          ) : (
             <XMarkdown
               key={`text-${index}`}
               content={textBuffer}
               streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
             />
-          );
+          ));
           textBuffer = '';
         }
         // 渲染工具引用
@@ -249,16 +292,28 @@ function StepContentRenderer({
 
     // 渲染剩余的文本
     if (textBuffer) {
-      elements.push(
+      const inlineText = shouldRenderInlineText(textBuffer);
+      elements.push(inlineText ? (
+        <span key="text-final" className={styles.inlineText}>
+          {textBuffer}
+        </span>
+      ) : (
         <XMarkdown
           key="text-final"
           content={textBuffer}
           streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
         />
-      );
+      ));
     }
 
-    return <div className={styles.stepMarkdown}>{elements}</div>;
+    const hasOnlyTools = elements.length > 0 && elements.every((element) =>
+      React.isValidElement(element) && typeof element.key === 'string' && String(element.key).startsWith('tool-'));
+
+    return (
+      <div className={hasOnlyTools ? styles.inlineToolFallback : styles.stepMarkdown}>
+        <span className={styles.inlineToolFlow}>{elements}</span>
+      </div>
+    );
   }
 
   // 向后兼容：使用 content 字段 + activities 追加在末尾
@@ -447,6 +502,7 @@ export function AssistantReply({
   const [localRuntime, setLocalRuntime] = useState<AssistantReplyRuntime | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const isStreaming = status === 'loading' || status === 'updating';
 
   // 显示的 runtime：优先使用已加载的，其次使用传入的
   const displayRuntime = localRuntime || runtime;
@@ -469,7 +525,7 @@ export function AssistantReply({
   if (!messageId || !hasRuntime || !onLoadRuntime) {
     return (
       <div className={styles.root}>
-        <SimpleMarkdownContent content={content} styles={styles} />
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
       </div>
     );
   }
@@ -490,7 +546,7 @@ export function AssistantReply({
   if (loading) {
     return (
       <div className={styles.root}>
-        <SimpleMarkdownContent content={content} styles={styles} />
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
         <div className={styles.loadingContainer}>
           <Skeleton active paragraph={{ rows: 3 }} />
         </div>
@@ -502,7 +558,7 @@ export function AssistantReply({
   if (expanded && !localRuntime) {
     return (
       <div className={styles.root}>
-        <SimpleMarkdownContent content={content} styles={styles} />
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
         <Button type="link" className={styles.expandButton} onClick={handleExpand}>
           重试加载详情
         </Button>
@@ -514,7 +570,7 @@ export function AssistantReply({
   if (!expanded) {
     return (
       <div className={styles.root}>
-        <SimpleMarkdownContent content={content} styles={styles} />
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
         <Button
           type="link"
           className={styles.expandButton}
@@ -530,7 +586,7 @@ export function AssistantReply({
   // 已展开且有 localRuntime（正常情况会走第一个分支）
   return (
     <div className={styles.root}>
-      <SimpleMarkdownContent content={content} styles={styles} />
+      <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
     </div>
   );
 }

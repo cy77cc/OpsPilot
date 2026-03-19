@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CopilotSurface from '../CopilotSurface';
 import { aiApi } from '../../../api/modules/ai';
 
@@ -36,12 +36,30 @@ vi.mock('../../../api/modules/ai', () => ({
 }));
 
 describe('CopilotSurface XMarkdown streaming', () => {
+  const scrollToMock = vi.fn();
+
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
       writable: true,
-      value: vi.fn(),
+      value: scrollToMock,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get() {
+        return Number((this as HTMLElement).dataset.offsetTop || 0);
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        return Number((this as HTMLElement).dataset.offsetHeight || 0);
+      },
     });
     vi.stubGlobal(
       'IntersectionObserver',
@@ -201,4 +219,5 @@ describe('CopilotSurface XMarkdown streaming', () => {
       label: '已生成',
     });
   });
+
 });

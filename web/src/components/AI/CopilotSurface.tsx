@@ -27,6 +27,9 @@ import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } fro
 const { Text } = Typography;
 
 const NEW_SESSION_KEY = '__new__';
+const FOLLOW_BOTTOM_SAFE_GAP = 72;
+const SCROLL_BUTTON_RECOVERY_THRESHOLD = 24;
+const SCROLL_BUTTON_VISIBILITY_THRESHOLD = 120;
 
 /**
  * mapHistoryMessageStatus 将后端消息状态映射为 Bubble 组件状态。
@@ -203,28 +206,28 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     && {
       position: absolute;
       left: 50%;
-      bottom: 102px;
+      bottom: 106px;
       transform: translateX(-50%);
       z-index: 120;
-      width: 36px;
-      min-width: 36px;
-      max-width: 36px;
-      height: 36px;
+      width: 32px;
+      min-width: 32px;
+      max-width: 32px;
+      height: 32px;
       padding: 0;
       border-radius: 999px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: #0f172a;
-      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
-      border: 1px solid rgba(255, 255, 255, 0.75);
-      background: rgba(255, 255, 255, 0.6);
-      backdrop-filter: blur(8px) saturate(1.08);
-      -webkit-backdrop-filter: blur(8px) saturate(1.08);
-      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      color: #334155;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.1);
+      border: 1px solid rgba(203, 213, 225, 0.78);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(14px) saturate(1.15);
+      -webkit-backdrop-filter: blur(14px) saturate(1.15);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
 
       .anticon {
-        font-size: 18px;
+        font-size: 13px;
         color: inherit;
       }
 
@@ -234,26 +237,26 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
       }
 
       &&:hover {
-        color: #0b1220;
-        border-color: rgba(255, 255, 255, 0.9);
-        background: rgba(255, 255, 255, 0.74);
+        color: #0f172a;
+        border-color: rgba(148, 163, 184, 0.95);
+        background: rgba(255, 255, 255, 0.98);
         transform: translateX(-50%) translateY(-1px);
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.24);
+        box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
         filter: none;
       }
 
       &&:focus,
       &&:focus-visible {
         color: #0f172a;
-        border-color: rgba(255, 255, 255, 0.88);
-        background: rgba(255, 255, 255, 0.68);
-        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.22);
+        border-color: rgba(148, 163, 184, 0.95);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 0 0 3px rgba(226, 232, 240, 0.85), 0 8px 16px rgba(15, 23, 42, 0.1);
         outline: none;
       }
 
       &:active {
         transform: translateX(-50%);
-        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.16);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
       }
     }
   `,
@@ -263,17 +266,26 @@ const useCopilotStyles = createStyles(({ token, css }) => ({
     &::after {
       content: '';
       position: absolute;
-      inset: -3px;
-      border-radius: 50%;
-      border: 1.5px solid rgba(148, 163, 184, 0.3);
-      border-top-color: rgba(255, 255, 255, 0.96);
-      animation: scrollBtnRingSpin 0.9s linear infinite;
+      inset: -1px;
+      border-radius: 999px;
+      padding: 1px;
+      background: linear-gradient(90deg, rgba(148, 163, 184, 0.08), rgba(59, 130, 246, 0.45), rgba(148, 163, 184, 0.08));
+      background-size: 200% 100%;
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: scrollBtnSweep 1.4s linear infinite;
       pointer-events: none;
     }
 
-    @keyframes scrollBtnRingSpin {
+    @keyframes scrollBtnSweep {
+      from {
+        background-position: 100% 50%;
+      }
       to {
-        transform: rotate(360deg);
+        background-position: -100% 50%;
       }
     }
   `,
@@ -358,6 +370,8 @@ interface CopilotSurfaceProps {
   onClose: () => void;
 }
 
+type FollowState = 'following' | 'detached';
+
 export function buildAssistantErrorContent(
   previousContent: string | undefined,
   errorMessage: string,
@@ -375,7 +389,9 @@ export function buildAssistantErrorContent(
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
   const contentRef = React.useRef<HTMLDivElement>(null);
-  const shouldScrollToBottomRef = React.useRef(true);
+  const followStateRef = React.useRef<FollowState>('following');
+  const programmaticScrollRef = React.useRef(false);
+  const pendingInitialScrollRef = React.useRef(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = React.useState(false);
   const location = useLocation();
   const { scene, context } = React.useMemo(
@@ -478,12 +494,42 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     }),
   });
 
+  const renderedMessages = React.useMemo(
+    () => messages.map((item, index) => ({
+      ...item,
+      renderKey: String(item.id || `${item.message.role}-${index}`),
+    })),
+    [messages],
+  );
+
+  const currentAssistantMessage = React.useMemo(
+    () => [...renderedMessages].reverse().find((item) => item.message.role === 'assistant'),
+    [renderedMessages],
+  );
+
+  const withProgrammaticScroll = React.useCallback((callback: () => void) => {
+    programmaticScrollRef.current = true;
+    callback();
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, []);
+
+  const getMessageAnchor = React.useCallback((messageId?: string) => {
+    const el = contentRef.current;
+    if (!el || !messageId) {
+      return null;
+    }
+    return el.querySelector<HTMLElement>(`[data-message-anchor="${messageId}"]`);
+  }, []);
+
   React.useEffect(() => {
-    shouldScrollToBottomRef.current = true;
+    followStateRef.current = 'following';
+    pendingInitialScrollRef.current = true;
   }, [activeConversationKey, open]);
 
   React.useEffect(() => {
-    if (!open || messages.length === 0 || !shouldScrollToBottomRef.current) {
+    if (!open || !pendingInitialScrollRef.current || renderedMessages.length === 0) {
       return;
     }
 
@@ -492,13 +538,45 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       if (!el) {
         return;
       }
-
-      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
-      shouldScrollToBottomRef.current = false;
+      pendingInitialScrollRef.current = false;
+      withProgrammaticScroll(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      });
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [messages.length, open]);
+  }, [open, renderedMessages.length, withProgrammaticScroll]);
+
+  React.useEffect(() => {
+    if (!open || !currentAssistantMessage?.renderKey || followStateRef.current !== 'following') {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const el = contentRef.current;
+      const anchor = getMessageAnchor(currentAssistantMessage.renderKey);
+      if (!el || !anchor) {
+        return;
+      }
+      const nextTop = Math.max(
+        0,
+        anchor.offsetTop + anchor.offsetHeight - el.clientHeight + FOLLOW_BOTTOM_SAFE_GAP,
+      );
+      withProgrammaticScroll(() => {
+        el.scrollTo({ top: nextTop, behavior: 'auto' });
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [
+    currentAssistantMessage?.renderKey,
+    currentAssistantMessage?.message.content,
+    currentAssistantMessage?.message.runtime,
+    currentAssistantMessage?.status,
+    getMessageAnchor,
+    open,
+    withProgrammaticScroll,
+  ]);
 
   React.useEffect(() => {
     const el = contentRef.current;
@@ -508,7 +586,14 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
     const updateBtnVisible = () => {
       const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollBottomBtn(distanceToBottom > 120);
+      if (!programmaticScrollRef.current) {
+        if (distanceToBottom <= SCROLL_BUTTON_RECOVERY_THRESHOLD) {
+          followStateRef.current = 'following';
+        } else {
+          followStateRef.current = 'detached';
+        }
+      }
+      setShowScrollBottomBtn(distanceToBottom > SCROLL_BUTTON_VISIBILITY_THRESHOLD);
     };
 
     updateBtnVisible();
@@ -524,12 +609,15 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     if (!el) {
       return;
     }
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, []);
+    followStateRef.current = 'following';
+    withProgrammaticScroll(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    });
+  }, [withProgrammaticScroll]);
 
   const bubbleRole = React.useMemo<BubbleListProps['role']>(
     () => ({
-      assistant: {
+      assistant: (item) => ({
         placement: 'start',
         variant: 'borderless',
         footer: (_content: string, info) => {
@@ -570,13 +658,15 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           },
         },
         contentRender: (content: string, info) => (
-          <AssistantReply
-            content={content}
-            runtime={(info as any).extraInfo?.runtime}
-            status={info.status}
-          />
+          <div data-message-anchor={(item as any).extraInfo?.messageId}>
+            <AssistantReply
+              content={content}
+              runtime={(info as any).extraInfo?.runtime}
+              status={info.status}
+            />
+          </div>
         ),
-      },
+      }),
       user: {
         placement: 'end',
         styles: {
@@ -781,7 +871,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     >
       <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
       <div className={styles.surface}>
-        <div ref={contentRef} className={styles.content}>
+        <div ref={contentRef} className={styles.content} data-testid="copilot-scroll-container">
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
               <Welcome
@@ -798,14 +888,16 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           ) : (
             <div className={styles.chatCard}>
               <Bubble.List
-                autoScroll
-                items={messages.map((item) => ({
-                  key: item.id,
+                items={renderedMessages.map((item) => ({
+                  key: item.renderKey,
                   role: item.message.role,
-                  content: item.message.content,
+                  content: item.message.role === 'user'
+                    ? <div data-message-anchor={item.renderKey}>{item.message.content}</div>
+                    : item.message.content,
                   loading: item.status === 'loading' && !item.message.content,
                   status: item.status,
                   extraInfo: {
+                    messageId: item.renderKey,
                     runtime: item.message.runtime,
                   },
                 }))}
