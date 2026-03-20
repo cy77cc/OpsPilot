@@ -1,15 +1,39 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { AssistantReply } from '../AssistantReply';
-import { copyAssistantReplyToClipboard } from '../CopilotSurface';
+import CopilotSurface, { copyAssistantReplyToClipboard } from '../CopilotSurface';
 
 const mockXMarkdown = vi.hoisted(() => vi.fn());
+const mockUseXChat = vi.hoisted(() => vi.fn());
+const mockUseXConversations = vi.hoisted(() => vi.fn());
+
+vi.mock('@ant-design/x-sdk', async () => {
+  const actual = await vi.importActual<typeof import('@ant-design/x-sdk')>('@ant-design/x-sdk');
+  return {
+    ...actual,
+    useXChat: mockUseXChat,
+    useXConversations: mockUseXConversations,
+  };
+});
 
 vi.mock('@ant-design/x-markdown', () => ({
   default: (props: any) => {
     mockXMarkdown(props);
     return <div data-testid="x-markdown">{props.content}</div>;
+  },
+}));
+
+vi.mock('../../../api/modules/ai', () => ({
+  aiApi: {
+    getSessions: vi.fn(async () => ({ data: [] })),
+    getScenePrompts: vi.fn(async () => ({ data: { prompts: [] } })),
+    getSession: vi.fn(async () => ({ data: { messages: [] } })),
+    getRunProjection: vi.fn(async () => ({ data: null })),
+    getRunContent: vi.fn(async () => ({ data: null })),
+    createSession: vi.fn(),
+    chatStream: vi.fn(),
   },
 }));
 
@@ -27,7 +51,140 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+    configurable: true,
+    get() {
+      return Number((this as HTMLElement).dataset.offsetTop || 0);
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      return Number((this as HTMLElement).dataset.offsetHeight || 0);
+    },
+  });
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class IntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+
 describe('AssistantReply', () => {
+  it('keeps streamed body visible until projection-backed content is ready, then swaps once', () => {
+    mockUseXConversations.mockReturnValue({
+      conversations: [{ key: 'sess-1', label: 'Session 1' }],
+      activeConversationKey: 'sess-1',
+      setActiveConversationKey: vi.fn(),
+      addConversation: vi.fn(),
+      setConversation: vi.fn(),
+      setConversations: vi.fn(),
+      getConversation: vi.fn(),
+    });
+
+    const firstMessageState = [
+      {
+        id: 'assistant-1',
+        status: 'updating',
+        message: {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'streamed body',
+          runtime: {
+            activities: [],
+            status: { kind: 'streaming', label: '持续生成中' },
+          },
+        },
+      },
+    ];
+    const projectionPendingState = [
+      {
+        id: 'assistant-1',
+        status: 'success',
+        message: {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: '回答内容不可恢复',
+          runtime: {
+            activities: [],
+            status: { kind: 'error', label: 'projection missing summary' },
+          },
+        },
+      },
+    ];
+    const projectionReadyState = [
+      {
+        id: 'assistant-1',
+        status: 'success',
+        message: {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'projection summary',
+          runtime: {
+            activities: [],
+            summary: { title: '结论' },
+            status: { kind: 'completed', label: 'completed' },
+          },
+        },
+      },
+    ];
+
+    mockUseXChat.mockReturnValue({
+      messages: firstMessageState,
+      onRequest: vi.fn(),
+      isRequesting: true,
+      queueRequest: vi.fn(),
+    });
+
+    const view = render(
+      <MemoryRouter initialEntries={['/services/payment-api']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('x-markdown')).toHaveTextContent('streamed body');
+
+    mockUseXChat.mockReturnValue({
+      messages: projectionPendingState,
+      onRequest: vi.fn(),
+      isRequesting: false,
+      queueRequest: vi.fn(),
+    });
+    view.rerender(
+      <MemoryRouter initialEntries={['/services/payment-api']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('x-markdown')).toHaveTextContent('streamed body');
+    expect(screen.queryByText('回答内容不可恢复')).not.toBeInTheDocument();
+
+    mockUseXChat.mockReturnValue({
+      messages: projectionReadyState,
+      onRequest: vi.fn(),
+      isRequesting: false,
+      queueRequest: vi.fn(),
+    });
+    view.rerender(
+      <MemoryRouter initialEntries={['/services/payment-api']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('x-markdown')).toHaveTextContent('projection summary');
+    expect(screen.queryByText('streamed body')).not.toBeInTheDocument();
+  });
+
   it('renders phase, inline tool activity, markdown body, and footer as one assistant reply', () => {
     render(
       <AssistantReply
