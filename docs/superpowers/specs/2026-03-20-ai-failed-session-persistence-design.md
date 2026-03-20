@@ -45,6 +45,12 @@
 - `projection` 应作为增强层存在，不能反过来阻塞失败记录落库
 - 只要当前轮已经进入聊天生命周期，就必须有历史可追溯对象
 
+补充决策：
+
+- 本轮创建外壳必须支持幂等，避免前端重试产生重复空壳
+- 错误说明默认不直接拼进 markdown 正文，而是作为独立错误态信息展示
+- 非终态 run 需要有超时回收机制，避免永久停留在 `running/streaming`
+
 ## 生命周期设计
 
 一次聊天的服务端生命周期调整为以下顺序：
@@ -56,6 +62,26 @@
 5. 发送 `meta` 并进入 AI router / runner 执行
 6. 按事件流持续积累已生成正文和结构化事件
 7. 在成功或失败时统一进入收尾逻辑
+
+### 幂等键要求
+
+由于前端可能因网络抖动、超时或用户重复提交而重试同一轮请求，本次要求引入请求级幂等键。
+
+建议字段：
+
+- `client_request_id`
+
+约束：
+
+- 同一用户、同一 session、同一 `client_request_id` 只能创建一组 `user message + assistant message + run`
+- 若后端收到重复请求，应返回已创建的外壳对象，而不是再次创建新记录
+- 幂等键作用域应覆盖“开始即创建外壳”的全过程
+
+推荐实现：
+
+- 前端每次发送新一轮消息时生成一个稳定 nonce
+- 后端在 `Chat` 入口先基于 `user_id + session_id + client_request_id` 做查重
+- 若发现已存在未完成或已完成的同轮记录，则直接复用
 
 ### 关键约束
 
@@ -86,6 +112,7 @@
 - 每轮会话开始即创建
 - 失败时必须记录终态状态与 `error_message`
 - 即使 projection 不存在，run 也必须存在
+- 长时间未收尾时必须支持被后台任务标记为超时终态
 
 ### 3. `ai_run_projections`
 
@@ -99,7 +126,7 @@
 
 ## 失败分类
 
-本次只保留两类失败语义，避免过度细分。
+本次保留三类失败/终止语义。
 
 ### 1. 启动前失败
 
@@ -145,6 +172,32 @@
 - 保留已有 event log，并补一条 `error` event
 - projection 以“已有内容 + error block”方式收尾
 
+### 3. 超时失活
+
+定义：
+
+- 已创建 session、message、run
+- 但由于进程崩溃、Pod 重启、连接永久中断等原因，正常 finalize/fail path 根本没有执行完成
+
+典型场景：
+
+- 后端 worker 崩溃
+- 节点重启导致 SSE 中断
+- run 长时间处于 `running` 且无新事件
+
+持久化规则：
+
+- `assistant message.status = error`
+- `assistant message.content` 保留已落库正文；若无正文则写入统一超时文案
+- `run.status = expired`
+- `run.error_message = 统一超时文案或内部诊断摘要`
+
+回收策略：
+
+- 后台 Job 周期性扫描超过阈值且仍为非终态的 run
+- 根据最近事件时间或创建时间判定是否失活
+- 一旦标记为 `expired`，同步更新 assistant message，避免历史会话长期显示 `streaming`
+
 ## 内容持久化规则
 
 ### 最终回复快照
@@ -157,18 +210,30 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 2. 执行中失败时，保存“已生成正文 + 错误说明”
 3. 启动前失败且无正文时，直接保存错误说明
 
-### 错误说明拼接策略
+### 错误说明展示策略
 
-建议采用稳定拼接形式：
+默认策略调整为“正文与错误信息分离展示”，而不是无条件把错误说明拼进 markdown 正文。
 
-- 若已有正文：`正文 + 分隔符 + 错误说明`
-- 若无正文：`错误说明`
+原因：
 
-目标不是追求精致文案，而是保证：
+- 流式中断可能发生在 Markdown 表格、列表、代码块中间
+- 直接拼接错误说明会破坏 Markdown 结构，导致渲染错乱
 
-- 用户能看到已成功生成的部分
-- 用户能明确知道本轮最终失败
-- 历史回复不会因为错误覆盖掉已生成内容
+规则：
+
+1. assistant message `content` 优先保存已成功生成的正文快照
+2. 错误说明作为独立错误态信息保存并展示
+3. 若前端当前组件仍必须依赖单字符串展示，可在兜底模式下拼接，但需要先做最小闭合修复
+
+推荐方向：
+
+- 前端将错误说明渲染为独立 Error Callout / footer 状态块
+- `runtime.status` 或专门错误字段负责承载失败说明
+- `message.content` 只承载正文，不强行混入错误说明
+
+兜底要求：
+
+- 若历史兼容路径必须拼接字符串，至少要对未闭合代码块等常见 Markdown 结构做简单修复
 
 ## 收尾逻辑设计
 
@@ -190,9 +255,10 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 - 尽可能补 `error` event
 - 尝试生成 projection；失败时允许降级
 - 更新 assistant message 为 `error`
-- 更新 assistant message.content 为最终失败快照
+- 更新 assistant message.content 为最终正文快照
 - 更新 run 为 `failed` 或 `failed_runtime`
 - 记录 `error_message`
+- 保存独立错误展示信息
 
 ### 降级原则
 
@@ -208,6 +274,61 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 - projection 构建失败，不能影响 message/run 留痕
 - event log 写入失败，也不应阻止 assistant message 从 `streaming` 收敛到 `error`
 
+### 事务边界
+
+建议采用“两阶段写入”而不是单一大事务：
+
+第一阶段，关键终态事务：
+
+- assistant message 状态与正文快照
+- run 终态状态与 `error_message`
+
+这一阶段必须放在同一事务中，避免出现：
+
+- message 已显示失败但 run 仍是成功
+- run 已失败但 message 仍是 `streaming`
+
+第二阶段，增强数据写入：
+
+- event log 补写
+- projection / content upsert
+
+这一阶段允许独立事务或非事务补偿执行。
+
+原则：
+
+- projection 写入失败不能回滚第一阶段
+- projection 缺失属于增强层缺失，不属于本轮失败留痕失败
+
+## 错误信息分层与脱敏
+
+本次明确区分两种错误信息：
+
+### 1. 内部错误信息
+
+写入：
+
+- `run.error_message`
+- 服务端日志
+
+要求：
+
+- 允许保留更完整的诊断信息
+- 但面向前端返回前必须经过脱敏转换
+
+### 2. 用户可见错误信息
+
+写入：
+
+- SSE `error` payload
+- assistant message 的错误展示字段或兜底文案
+
+要求：
+
+- 不直接暴露数据库地址、内部堆栈、SQL 语句、节点 IP 等敏感细节
+- 使用统一用户文案，例如“生成中断，请稍后重试”
+- 如需保留一定诊断价值，应使用脱敏后的摘要
+
 ## 前端状态设计
 
 前端本次不引入新视觉组件，只调整状态语义。
@@ -218,9 +339,10 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 
 - 收到 SSE `error` 事件后，当前 assistant 气泡必须立即进入错误终态
 - `error` 与 `done` 一样，都是本轮请求的终止信号
-- 若此前已有内容，则保留内容并附加错误说明
-- 若此前无内容，则直接展示错误文本
+- 若此前已有正文，则保留正文并在独立错误区域展示错误说明
+- 若此前无正文，则直接展示错误说明
 - 当前轮不能在收到 `error` 后继续维持 `loading/updating`
+- 若 SSE 连接异常断开且在超时阈值内未收到 `done/error`，前端也必须主动收敛为错误态
 
 ### 历史会话
 
@@ -231,6 +353,26 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 - 若存在 `run_id`，展开执行细节时再按需请求 projection
 - projection 请求失败只能影响执行过程展开，不能影响主消息显示
 
+### 重试交互
+
+失败消息应提供明确的“重新生成”入口。
+
+要求：
+
+- 重试视为新一轮请求，而不是覆盖旧 run
+- 前端可以带上原 session id，并生成新的 `client_request_id`
+- 旧失败 run 保留用于审计与历史查看
+
+### 断流感知
+
+前端需要有连接异常兜底逻辑。
+
+要求：
+
+- 若 fetch/SSE 异常结束且未收到终态事件，前端主动触发本地错误收尾
+- 本地错误文案与服务端脱敏文案保持一致
+- 后续刷新历史时以后端持久化状态为准
+
 ## API 与协议影响
 
 本次不新增新的 SSE 事件类型，但要求现有 `error` 事件承担明确终态语义。
@@ -240,6 +382,7 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 - `error` 事件必须能让前端判定“本轮已经结束且失败”
 - `error` payload 至少包含用户可展示的错误消息
 - 若已有 `run_id`，建议一并返回，便于当前轮与历史 run 绑定
+- 建议补充 `client_request_id`，便于前端将当前错误与本地请求关联
 
 ## 测试要求
 
@@ -251,16 +394,20 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 2. 执行中失败时，assistant message 保存部分正文和错误说明
 3. 运行时失败时，run.status 与 error_message 正确
 4. projection 构建失败时，message/run 仍成功收尾
-5. 成功路径不回归，现有 completed / completed_with_tool_errors 仍正确
+5. 同一 `client_request_id` 重试不会创建重复外壳
+6. 超时扫描会把长期 `running` 的 run 标记为 `expired`
+7. 成功路径不回归，现有 completed / completed_with_tool_errors 仍正确
 
 ### 前端
 
 至少覆盖以下场景：
 
 1. 收到 `error` 事件后，当前 assistant 气泡从 loading 收敛为 error
-2. 有部分正文时，错误说明会附加而非覆盖正文
+2. 有部分正文时，正文保留，错误说明以独立区域展示
 3. 历史 assistant message.status = error 时，渲染为错误态
 4. 历史消息即使 projection 拉取失败，也能展示 message.content
+5. SSE 未收到终态但连接中断时，前端会主动进入错误态
+6. 点击重试会生成新请求而不是覆盖旧失败记录
 
 ## 风险与权衡
 
@@ -288,15 +435,26 @@ assistant message 的 `content` 必须始终代表用户最终能看到的完整
 
 解决方式不是继续分散分支，而是把失败收尾统一到一个明确的 finalize/fail path。
 
+### 风险 4：幂等实现不完整会引入重复空壳
+
+这是必须优先规避的风险。
+
+要求：
+
+- 幂等键从设计阶段就纳入接口契约
+- 不能把“前端尽量别重试”当作解决方案
+
 ## 结论
 
 本次设计的核心不是新增更多状态，而是建立一个简单且稳定的失败原则：
 
 - 会话开始即创建外壳
+- 外壳创建必须幂等
 - 一旦失败，必须有记录
 - 已生成内容必须保留
 - `message/run` 是失败留痕的最低保底
 - `projection` 是增强层，不能阻塞失败可见性
+- 长时间未收尾的 run 必须可被回收为 `expired`
 
 这样可以同时解决两个问题：
 
