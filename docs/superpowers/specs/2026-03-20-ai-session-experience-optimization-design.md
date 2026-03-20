@@ -179,6 +179,13 @@
 
 这意味着 [CopilotSurface.tsx](/root/project/k8s-manage/web/src/components/AI/CopilotSurface.tsx) 中基于 `defaultMessages` 的隐式详情加载链路应被移除，改成由外层显式提供 active session 的消息数据。
 
+React 18 Strict Mode 注意事项：
+
+- 在开发环境下，副作用可能经历一次额外的 mount -> unmount -> mount
+- session 详情请求若通过 `useEffect` 发起，必须保证每次 effect 执行都生成新的 `AbortController` 与 `requestId`
+- cleanup 中的 `abort()` 只能取消当前 effect 对应的请求，不能复用上一次 render 的 controller 引用
+- 状态写入必须同时校验 session id 与 `requestId`，避免第一次 unmount 的取消操作误伤第二次真实请求
+
 ### Section 2: 历史消息 Steps 二级折叠
 
 #### 2.1 只作用于历史 assistant 消息
@@ -390,11 +397,19 @@ step 列表默认行为：
 - 历史消息执行过程层的折叠入口
 - step 标题列表和 step 内容展开
 - 局部 loading / retry UI
+- 历史详情渲染失败时的局部降级展示
 
 不负责：
 
 - session 列表或详情请求
 - 全局滚动逻辑
+
+局部容错要求：
+
+- 历史执行过程层外部应包裹局部 `ErrorBoundary`
+- 如果某条历史消息的 projection 结构异常或渲染期抛错，只降级该消息的详情区
+- fallback UI 应明确提示“该详情无法渲染”或等价语义
+- 任何单条历史消息的渲染失败都不得导致整个 `CopilotSurface` 抽屉白屏
 
 #### `historyProjection`
 
@@ -461,6 +476,27 @@ step 列表默认行为：
 - 历史消息展开与重试
 - 历史大块内容展开时的视口稳定性
 - 当前流式输出与手动滚动冲突场景
+- Strict Mode 下 session 详情请求不会被错误取消
+- 单条历史消息 runtime 渲染崩溃时，抽屉其余内容仍可正常使用
+
+## 实现注意事项
+
+### 1. 请求取消与 Strict Mode
+
+- 不要在组件外复用 `AbortController`
+- 不要让 cleanup 读取可被后续 render 覆盖的 controller 引用
+- 推荐把 controller 与 `requestId` 作为单次请求上下文一并创建和销毁
+
+### 2. 局部 Error Boundary
+
+- `AssistantReply` 的历史执行过程层应做消息级隔离
+- fallback UI 应尽量保留摘要层，避免用户完全失去该条回复的可读信息
+
+### 3. 微调滚动的触发时机
+
+- 若历史展开后需要做局部滚动微调，应在 DOM 完成实际布局后再执行
+- 推荐在 `requestAnimationFrame`、`useLayoutEffect` 或等价的布局后阶段触发
+- 除非是用户显式点击“回到底部”，否则不应对历史展开使用全局平滑滚动到底部
 
 ## 实施顺序
 
