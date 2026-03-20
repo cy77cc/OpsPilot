@@ -334,6 +334,9 @@ func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 	if err := db.Where("session_id = ? AND role = ?", "session-fatal", "assistant").First(&assistant).Error; err != nil {
 		t.Fatalf("load assistant message: %v", err)
 	}
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant content to stay empty, got %q", assistant.Content)
+	}
 	if assistant.Status != "error" {
 		t.Fatalf("expected assistant message status error, got %q", assistant.Status)
 	}

@@ -240,15 +240,11 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 				}
 				emit(projected.Event, projected.Data)
 				runUpdate := aidao.AIRunStatusUpdate{
-					Status:       "failed_runtime",
-					ErrorMessage: event.Err.Error(),
+					AssistantMessageID: assistantMessage.ID,
+					Status:             "failed_runtime",
+					ErrorMessage:       event.Err.Error(),
 				}
-				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, runUpdate)
-				_ = l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-					"content": assistantContent.String(),
-					"status":  "error",
-				})
-				_ = l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate.Status, assistantContent.String())
+				_ = l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate, assistantContent.String())
 				return nil
 			}
 		}
@@ -305,11 +301,6 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	// Step 7: 持久化结果
-	finalStatus := "done"
-	if streamError != nil {
-		finalStatus = "error"
-	}
-
 	// Step 8: 发送 done 事件前先刷新缓冲
 	if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
@@ -329,17 +320,9 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 	}
 
-	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-		"status": finalStatus,
-	}); err != nil {
-		return fmt.Errorf("update assistant message: %w", err)
-	}
-
-	// 更新 Run 状态
 	runStatus := aidao.AIRunStatusUpdate{
 		Status:             "completed",
 		AssistantMessageID: assistantMessage.ID,
-		ProgressSummary:    truncateString(assistantContent.String(), 500),
 	}
 	if streamError != nil {
 		runStatus.Status = "failed_runtime"
@@ -347,11 +330,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	} else if hasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
 	}
-	if err := l.RunDAO.UpdateRunStatus(ctx, run.ID, runStatus); err != nil {
-		return fmt.Errorf("update run status: %w", err)
-	}
-
-	if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runStatus.Status, assistantContent.String()); err != nil {
+	if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runStatus, assistantContent.String()); err != nil {
 		return fmt.Errorf("persist run artifacts: %w", err)
 	}
 
@@ -446,7 +425,7 @@ func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seq
 	})
 }
 
-func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assistantMessageID, status, assistantContent string) error {
+func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assistantMessageID string, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
 	if l.RunEventDAO == nil || l.RunProjectionDAO == nil || l.RunContentDAO == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
 		return nil
 	}
@@ -459,7 +438,7 @@ func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assis
 	if err != nil {
 		return err
 	}
-	projection.Status = status
+	projection.Status = runUpdate.Status
 	projectionJSON, err := json.Marshal(projection)
 	if err != nil {
 		return err
@@ -489,15 +468,13 @@ func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assis
 		}
 
 		if err := chatDAO.UpdateMessage(ctx, assistantMessageID, map[string]any{
-			"status": assistantStatusFromRunStatus(status),
+			"status": assistantStatusFromRunStatus(runUpdate.Status),
 		}); err != nil {
 			return err
 		}
 
-		return runDAO.UpdateRunStatus(ctx, runID, aidao.AIRunStatusUpdate{
-			Status:          status,
-			ProgressSummary: truncateString(assistantContent, 500),
-		})
+		runUpdate.ProgressSummary = truncateString(assistantContent, 500)
+		return runDAO.UpdateRunStatus(ctx, runID, runUpdate)
 	})
 }
 
