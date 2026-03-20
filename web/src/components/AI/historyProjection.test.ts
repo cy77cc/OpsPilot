@@ -36,8 +36,18 @@ describe('historyProjection', () => {
     expect(result?.body_text).toBe('hello');
   });
 
-  it('falls back to plain content when projection is missing', async () => {
-    (aiApi.getRunProjection as any).mockResolvedValue({ data: null });
+  it('hydrates assistant body from projection summary only', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        summary: { title: '结论', content_mode: 'inline', content: '已恢复' },
+        blocks: [],
+      },
+    });
+
     const hydrated = await hydrateAssistantHistoryFromProjection({
       id: 'msg-1',
       role: 'assistant',
@@ -45,8 +55,47 @@ describe('historyProjection', () => {
       run_id: 'run-1',
       timestamp: '',
     } as any);
-    expect(hydrated.content).toBe('历史回答');
-    expect(hydrated.runtime).toBeUndefined();
+
+    expect(hydrated.content).toBe('已恢复');
+    expect(hydrated.runtime).toEqual({
+      activities: [],
+      summary: {
+        title: '结论',
+      },
+      status: {
+        kind: 'completed',
+        label: 'completed',
+      },
+    });
+  });
+
+  it('returns an error placeholder when projection summary is missing', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        blocks: [],
+      },
+    });
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      content: '历史回答',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.content).toBe('回答内容不可恢复');
+    expect(hydrated.runtime).toEqual({
+      activities: [],
+      status: {
+        kind: 'error',
+        label: 'projection missing summary',
+      },
+    });
   });
 
   it('retries projection fetch after a transient failure', async () => {
@@ -78,6 +127,7 @@ describe('historyProjection', () => {
         run_id: 'run-1',
         session_id: 'sess-1',
         status: 'failed_runtime',
+        summary: { title: '结论', content_mode: 'inline', content: '已完成诊断' },
         blocks: [
           {
             id: 'handoff-1',
