@@ -172,6 +172,9 @@ func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestI
 		}
 
 		run.SessionID = sessionID
+		if strings.TrimSpace(clientRequestID) == "" {
+			run.ClientRequestID = ""
+		}
 		normalizeRunClientRequestID(run, clientRequestID)
 
 		userMessage.SessionID = sessionID
@@ -209,6 +212,9 @@ func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestI
 
 func (d *AIRunDAO) findByClientRequestIDWithRetry(ctx context.Context, sessionID, clientRequestID string) (*model.AIRun, error) {
 	for attempt := 0; attempt < 5; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		run, err := d.FindByClientRequestID(ctx, sessionID, clientRequestID)
 		if err != nil {
 			return nil, err
@@ -216,7 +222,13 @@ func (d *AIRunDAO) findByClientRequestIDWithRetry(ctx context.Context, sessionID
 		if run != nil {
 			return run, nil
 		}
-		time.Sleep(10 * time.Millisecond)
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	return nil, nil
 }
@@ -227,7 +239,7 @@ func normalizeRunClientRequestID(run *model.AIRun, clientRequestID string) {
 	}
 
 	normalizedClientRequestID := strings.TrimSpace(clientRequestID)
-	if normalizedClientRequestID == "" {
+	if normalizedClientRequestID == "" && strings.TrimSpace(run.ClientRequestID) != "" {
 		normalizedClientRequestID = strings.TrimSpace(run.ClientRequestID)
 	}
 	if normalizedClientRequestID == "" {

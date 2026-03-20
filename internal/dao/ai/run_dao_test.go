@@ -3,11 +3,13 @@ package ai
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -146,7 +148,7 @@ func TestAIRunDAO_FindByClientRequestID(t *testing.T) {
 }
 
 func TestAIRunDAO_CreateOrReuseRunShell(t *testing.T) {
-	db := newAIDAOTestDB(t)
+	db := newConcurrentAIDAOTestDB(t)
 	enableSQLiteBusyTimeout(t, db)
 
 	chatDAO := NewAIChatDAO(db)
@@ -272,6 +274,99 @@ func TestAIRunDAO_CreateOrReuseRunShell(t *testing.T) {
 	}
 }
 
+func TestAIRunDAO_CreateOrReuseRunShell_EmptyClientRequestIDIsNonIdempotent(t *testing.T) {
+	db := newAIDAOTestDB(t)
+	enableSQLiteBusyTimeout(t, db)
+
+	chatDAO := NewAIChatDAO(db)
+	dao := NewAIRunDAO(db)
+	ctx := context.Background()
+
+	session := &model.AIChatSession{
+		ID:     "session-empty",
+		UserID: 52,
+		Scene:  "ai",
+		Title:  "empty request id",
+	}
+	if err := chatDAO.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	firstRun, firstCreated, err := dao.CreateOrReuseRunShell(ctx, session.UserID, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+		return &model.AIRun{
+				ID:                 "run-empty-1",
+				SessionID:          session.ID,
+				UserMessageID:      "msg-empty-user-1",
+				AssistantMessageID: "msg-empty-assistant-1",
+				ClientRequestID:    "builder-reused-value",
+				Status:             "running",
+				TraceJSON:          "{}",
+			}, &model.AIChatMessage{
+				ID:        "msg-empty-user-1",
+				SessionID: session.ID,
+				Role:      "user",
+				Content:   "hello",
+				Status:    "done",
+			}, &model.AIChatMessage{
+				ID:        "msg-empty-assistant-1",
+				SessionID: session.ID,
+				Role:      "assistant",
+				Content:   "",
+				Status:    "streaming",
+			}
+	})
+	if err != nil {
+		t.Fatalf("create first non-idempotent shell: %v", err)
+	}
+	if !firstCreated {
+		t.Fatal("expected first empty request id shell to be created")
+	}
+
+	secondRun, secondCreated, err := dao.CreateOrReuseRunShell(ctx, session.UserID, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+		return &model.AIRun{
+				ID:                 "run-empty-2",
+				SessionID:          session.ID,
+				UserMessageID:      "msg-empty-user-2",
+				AssistantMessageID: "msg-empty-assistant-2",
+				ClientRequestID:    "builder-reused-value",
+				Status:             "running",
+				TraceJSON:          "{}",
+			}, &model.AIChatMessage{
+				ID:        "msg-empty-user-2",
+				SessionID: session.ID,
+				Role:      "user",
+				Content:   "world",
+				Status:    "done",
+			}, &model.AIChatMessage{
+				ID:        "msg-empty-assistant-2",
+				SessionID: session.ID,
+				Role:      "assistant",
+				Content:   "",
+				Status:    "streaming",
+			}
+	})
+	if err != nil {
+		t.Fatalf("create second non-idempotent shell: %v", err)
+	}
+	if !secondCreated {
+		t.Fatal("expected second empty request id shell to be created")
+	}
+	if firstRun.ID == secondRun.ID {
+		t.Fatalf("expected empty request ids to create distinct shells, got %q", firstRun.ID)
+	}
+
+	runs, err := dao.ListBySession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected two non-idempotent shells, got %d", len(runs))
+	}
+	if runs[0].ClientRequestID == runs[1].ClientRequestID {
+		t.Fatalf("expected empty request ids to normalize uniquely, got %#v", runs)
+	}
+}
+
 type createOrReuseRunShellResult struct {
 	run     *model.AIRun
 	created bool
@@ -288,5 +383,31 @@ func enableSQLiteBusyTimeout(t *testing.T, db *gorm.DB) {
 	if err != nil {
 		t.Fatalf("open sql db: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxOpenConns(8)
+	sqlDB.SetMaxIdleConns(8)
+}
+
+func newConcurrentAIDAOTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	dsn := filepath.Join(t.TempDir(), "ai_dao_concurrency.db")
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	if err := db.Exec("PRAGMA journal_mode = WAL").Error; err != nil {
+		t.Fatalf("enable sqlite wal mode: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&model.AIChatSession{},
+		&model.AIChatMessage{},
+		&model.AIRun{},
+		&model.AIRunEvent{},
+		&model.AIRunProjection{},
+		&model.AIRunContent{},
+		&model.AICheckpoint{},
+	); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+	return db
 }
