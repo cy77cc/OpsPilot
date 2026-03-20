@@ -73,6 +73,11 @@ func (p *Provider) Capabilities() cloud.ProviderCapabilities {
 		DynamicRegions: true,
 	}
 }
+
+// init 自注册到全局 Registry。
+func init() {
+	cloud.Register(New())
+}
 ```
 
 - [ ] **Step 2: 提交火山云适配器更新**
@@ -367,12 +372,14 @@ func DoWithRetry[T any](ctx context.Context, provider string, config RetryConfig
 			break
 		}
 
-		// 等待后重试
+		// 等待后重试（使用 time.NewTimer 避免内存泄露）
 		logrus.Debugf("云 API 请求失败，%s 后重试 (第 %d 次): %s", delay, i+1, op)
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return result, ctx.Err()
-		case <-time.After(delay):
+		case <-timer.C:
 		}
 
 		// 指数退避
@@ -1025,6 +1032,15 @@ func (p *Provider) wrapError(err error) error {
 
 	return fmt.Errorf("[阿里云] %w", err)
 }
+
+// init 自注册到全局 Registry。
+//
+// 注意：这是自注册模式，避免循环依赖。
+// cloud 包不能导入 alicloud 包，否则会形成循环：
+// cloud -> alicloud -> cloud
+func init() {
+	cloud.Register(New())
+}
 ```
 
 - [ ] **Step 2: 验证编译通过**
@@ -1218,6 +1234,17 @@ func TestGetPublicIP_VIP(t *testing.T) {
 	assert.Equal(t, "5.6.7.8", ip)
 }
 
+func TestGetPublicIP_EIP(t *testing.T) {
+	instance := &uhost.UHostInstanceSet{
+		IPSet: []uhost.UHostIPSet{
+			{Type: "EIP", IP: "9.10.11.12"},
+		},
+	}
+
+	ip := getPublicIP(instance)
+	assert.Equal(t, "9.10.11.12", ip)
+}
+
 func TestGetPublicIP_NoPublic(t *testing.T) {
 	instance := &uhost.UHostInstanceSet{
 		IPSet: []uhost.UHostIPSet{
@@ -1303,10 +1330,10 @@ func ConvertInstance(inst *uhost.UHostInstanceSet, region string) *cloud.CloudIn
 
 // getPublicIP 获取公网 IP 地址。
 //
-// 从 IPSet 数组中筛选 Type 为 VIP 或 BGP 的公网 IP。
+// 从 IPSet 数组中筛选 Type 为 VIP、BGP 或 EIP 的公网 IP。
 func getPublicIP(inst *uhost.UHostInstanceSet) string {
 	for _, ip := range inst.IPSet {
-		if ip.Type == "VIP" || ip.Type == "BGP" {
+		if ip.Type == "VIP" || ip.Type == "BGP" || ip.Type == "EIP" {
 			if ip.IP != "" {
 				return ip.IP
 			}
@@ -1570,6 +1597,13 @@ func (p *Provider) wrapError(err error) error {
 
 	return fmt.Errorf("[UCLOUD] %w", err)
 }
+
+// init 自注册到全局 Registry。
+//
+// 注意：这是自注册模式，避免循环依赖。
+func init() {
+	cloud.Register(New())
+}
 ```
 
 - [ ] **Step 2: 验证编译通过**
@@ -1591,37 +1625,80 @@ git commit -m "feat(cloud): implement ucloud CloudProvider with GetRegion API"
 
 ## Chunk 4: 注册与前端
 
-### Task 14: 注册所有云厂商适配器
+### Task 14: 更新云厂商注册入口
+
+**背景说明：**
+
+现有注册逻辑在 `internal/service/host/logic/cloud.go` 的 `init()` 函数中。需要采用"自注册"模式避免循环依赖：
+
+```
+❌ 错误模式（循环依赖）：
+cloud 包 -> 导入 alicloud 包 -> 导入 cloud 包 -> 循环！
+
+✅ 正确模式（自注册）：
+各 Provider 在自己的 init() 中调用 cloud.Register()
+cloud.go 使用匿名导入触发注册
+```
 
 **Files:**
-- Create: `internal/service/host/logic/cloud/init.go`
+- Modify: `internal/service/host/logic/cloud.go`
 
-- [ ] **Step 1: 创建初始化文件**
+- [ ] **Step 1: 更新 cloud.go 的 import 和 init 函数**
 
-创建 `internal/service/host/logic/cloud/init.go`：
+修改 `internal/service/host/logic/cloud.go`：
 
 ```go
-// Package cloud 提供云厂商主机导入的统一接口和适配器管理。
-package cloud
-
 import (
-	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/alicloud"
-	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud"
-	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/volcengine"
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
+	// 匿名导入触发各云厂商适配器的自注册 init()
+	_ "github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/alicloud"
+	_ "github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud"
+	_ "github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/volcengine"
+	"github.com/cy77cc/OpsPilot/internal/utils"
 )
 
+// ... 其他代码保持不变 ...
+
+// init 触发云厂商适配器注册。
+//
+// 注意：各 Provider 在自己的 init() 中调用 cloud.Register() 自注册。
+// 这里不需要手动注册，匿名导入已触发注册。
 func init() {
-	Register(volcengine.New())
-	Register(alicloud.New())
-	Register(ucloud.New())
+	// 自注册模式：各 Provider 在自己的 init() 中注册
+	// 匿名导入确保 Provider 的 init() 被执行
 }
 ```
 
-- [ ] **Step 2: 提交注册代码**
+- [ ] **Step 2: 删除旧的注册代码**
+
+删除 `cloud.go` 中旧的 `init()` 函数内容：
+```go
+// 删除以下代码：
+// cloud.Register(volcengine.New())
+// cloud.Register(cloud.NewMockProvider("alicloud", "阿里云"))
+// cloud.Register(cloud.NewMockProvider("tencent", "腾讯云"))
+```
+
+- [ ] **Step 3: 提交注册更新**
 
 ```bash
-git add internal/service/host/logic/cloud/init.go
-git commit -m "feat(cloud): register all cloud providers on init"
+git add internal/service/host/logic/cloud.go
+git commit -m "refactor(cloud): use self-registration pattern for providers
+
+- Remove direct registration calls in cloud.go
+- Use anonymous imports to trigger provider init()
+- Each provider registers itself in its own init()
+- Avoids circular dependency: cloud -> provider -> cloud"
 ```
 
 ---
@@ -1712,7 +1789,12 @@ Closes: multi-cloud provider extension design"
 ## 验收检查清单
 
 - [ ] MockProvider 实现 `Capabilities()` 方法
-- [ ] 火山云适配器实现 `Capabilities()` 方法
+- [ ] 火山云适配器实现 `Capabilities()` 和 `init()` 自注册
+- [ ] 阿里云适配器实现 `init()` 自注册
+- [ ] UCLOUD 适配器实现 `init()` 自注册
+- [ ] `cloud.go` 使用匿名导入触发注册（无循环依赖）
+- [ ] 重试机制使用 `time.NewTimer`（无内存泄露风险）
+- [ ] UCLOUD 公网 IP 检测包含 EIP 类型
 - [ ] 重试机制测试覆盖率 ≥ 80%
 - [ ] 阿里云转换器测试覆盖率 ≥ 80%
 - [ ] UCLOUD 转换器测试覆盖率 ≥ 80%
