@@ -263,6 +263,9 @@ func TestGetSession_AssistantMessageOmitsContentButKeepsRunID(t *testing.T) {
 	if len(response.Data.Messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(response.Data.Messages))
 	}
+	if response.Data.Messages[0]["content"] != "hello" {
+		t.Fatalf("expected user message to keep content, got %#v", response.Data.Messages[0])
+	}
 	if response.Data.Messages[1]["run_id"] != "run-20" {
 		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data.Messages[1])
 	}
@@ -330,6 +333,9 @@ func TestListSessions_AssistantMessagesOmitContentButKeepRunID(t *testing.T) {
 	}
 	if len(response.Data[0].Messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(response.Data[0].Messages))
+	}
+	if response.Data[0].Messages[0]["content"] != "hello" {
+		t.Fatalf("expected user message to keep content, got %#v", response.Data[0].Messages[0])
 	}
 	if response.Data[0].Messages[1]["run_id"] != "run-21" {
 		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data[0].Messages[1])
