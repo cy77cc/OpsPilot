@@ -26,6 +26,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
+	"gorm.io/gorm"
 )
 
 // EventEmitter 定义 SSE 事件发送接口。
@@ -52,8 +54,12 @@ type Logic struct {
 	RunDAO             *aidao.AIRunDAO
 	DiagnosisReportDAO *aidao.AIDiagnosisReportDAO
 	ApprovalDAO        *aidao.AIApprovalTaskDAO
+	RunEventDAO        *aidao.AIRunEventDAO
+	RunProjectionDAO   *aidao.AIRunProjectionDAO
+	RunContentDAO      *aidao.AIRunContentDAO
 	CheckpointStore    adk.CheckPointStore
 	AIRouter           adk.ResumableAgent
+	projectionGroup    singleflight.Group
 }
 
 // NewAILogic 创建 Logic 实例。
@@ -73,6 +79,9 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		RunDAO:             aidao.NewAIRunDAO(svcCtx.DB),
 		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(svcCtx.DB),
 		ApprovalDAO:        aidao.NewAIApprovalTaskDAO(svcCtx.DB),
+		RunEventDAO:        aidao.NewAIRunEventDAO(svcCtx.DB),
+		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(svcCtx.DB),
+		RunContentDAO:      aidao.NewAIRunContentDAO(svcCtx.DB),
 		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 	}
@@ -155,6 +164,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	// Step 4: 发送 A2UI meta 事件
 	meta := airuntime.NewMetaEvent(sessionID, run.ID, 1)
+	seqCounter := 0
+	if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, meta.Event, meta.Data); err != nil {
+		return fmt.Errorf("append meta event: %w", err)
+	}
 	emit(meta.Event, meta.Data)
 
 	// Step 5: 调用 AIRouter
@@ -205,7 +218,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		if event.Err != nil {
 			if toolErrorEvent, ok := recoverableToolErrorEvent(event); ok {
 				hasToolErrors = true
-				update := consumeProjectedEvents(projector.Consume(toolErrorEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &assistantContent)
+				if err != nil {
+					return fmt.Errorf("persist projected tool error event: %w", err)
+				}
 				if update.AssistantType != "" || update.IntentType != "" {
 					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 						IntentType:    update.IntentType,
@@ -215,25 +231,24 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 				continue
 			} else {
 				streamError = event.Err
-				flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
-				projected := projector.Fail(run.ID, event.Err)
-				emit(projected.Event, projected.Data)
-				runtimeJSON := ""
-				if persisted := projector.GetPersistedState(); shouldPersistRuntimeState(persisted) {
-					if data, err := json.Marshal(persisted); err == nil {
-						runtimeJSON = string(data)
-					}
+				if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+					return fmt.Errorf("flush projected events: %w", err)
 				}
-				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+				projected := projector.Fail(run.ID, event.Err)
+				if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, projected.Event, projected.Data); err != nil {
+					return fmt.Errorf("append fatal error event: %w", err)
+				}
+				emit(projected.Event, projected.Data)
+				runUpdate := aidao.AIRunStatusUpdate{
 					Status:       "failed_runtime",
 					ErrorMessage: event.Err.Error(),
-				})
-				// 更新消息状态为 error
+				}
+				_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, runUpdate)
 				_ = l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-					"content":      assistantContent.String(),
-					"status":       "error",
-					"runtime_json": runtimeJSON,
+					"content": assistantContent.String(),
+					"status":  "error",
 				})
+				_ = l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate.Status, assistantContent.String())
 				return nil
 			}
 		}
@@ -247,8 +262,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 				if err != nil {
 					streamError = err
 					stopConsuming = true
-					flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
+					if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+						return fmt.Errorf("flush projected events: %w", err)
+					}
 					projected := projector.Fail(run.ID, err)
+					if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, projected.Event, projected.Data); err != nil {
+						return fmt.Errorf("append stream error event: %w", err)
+					}
 					emit(projected.Event, projected.Data)
 					break
 				}
@@ -258,7 +278,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
-				update := consumeProjectedEvents(projector.Consume(chunkEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(chunkEvent), emit, &assistantContent)
+				if err != nil {
+					return fmt.Errorf("persist projected stream chunk: %w", err)
+				}
 				if update.AssistantType != "" || update.IntentType != "" {
 					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 						IntentType:    update.IntentType,
@@ -269,7 +292,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 			continue
 		}
 
-		update := consumeProjectedEvents(projector.Consume(event), emit, &assistantContent)
+		update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(event), emit, &assistantContent)
+		if err != nil {
+			return fmt.Errorf("persist projected event: %w", err)
+		}
 		if update.AssistantType != "" || update.IntentType != "" {
 			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
 				IntentType:    update.IntentType,
@@ -285,25 +311,27 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	// Step 8: 发送 done 事件前先刷新缓冲
-	flushProjectedEvents(projector.FlushBuffer(), emit, &assistantContent)
+	if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+		return fmt.Errorf("flush projected events: %w", err)
+	}
 
 	var done airuntime.PublicStreamEvent
 	if streamError == nil {
 		done = projector.Finish(run.ID)
-	}
-
-	// 提取持久化状态
-	runtimeJSON := ""
-	if persisted := projector.GetPersistedState(); shouldPersistRuntimeState(persisted) {
-		if data, err := json.Marshal(persisted); err == nil {
-			runtimeJSON = string(data)
+		if payload, ok := done.Data.(map[string]any); ok {
+			if strings.TrimSpace(stringValue(payload, "summary")) == "" {
+				payload["summary"] = assistantContent.String()
+			}
+			done.Data = payload
+		}
+		if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, done.Event, done.Data); err != nil {
+			return fmt.Errorf("append done event: %w", err)
 		}
 	}
 
 	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-		"content":      assistantContent.String(),
-		"status":       finalStatus,
-		"runtime_json": runtimeJSON,
+		"content": assistantContent.String(),
+		"status":  finalStatus,
 	}); err != nil {
 		return fmt.Errorf("update assistant message: %w", err)
 	}
@@ -324,6 +352,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("update run status: %w", err)
 	}
 
+	if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runStatus.Status, assistantContent.String()); err != nil {
+		return fmt.Errorf("persist run artifacts: %w", err)
+	}
+
 	if streamError == nil {
 		emit(done.Event, done.Data)
 	}
@@ -331,9 +363,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	return nil
 }
 
-func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) projectedRunUpdate {
+func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) (projectedRunUpdate, error) {
 	update := projectedRunUpdate{}
 	for _, projected := range events {
+		if err := l.appendRunEvent(ctx, runID, sessionID, seqCounter, projected.Event, projected.Data); err != nil {
+			return update, err
+		}
 		if projected.Event == "delta" {
 			if data, ok := projected.Data.(map[string]any); ok {
 				if content, ok := data["content"].(string); ok {
@@ -353,26 +388,28 @@ func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmit
 		}
 		emit(projected.Event, projected.Data)
 	}
+	return update, nil
+}
+
+func (l *Logic) flushProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) error {
+	if len(events) == 0 {
+		return nil
+	}
+	_, err := l.consumeProjectedEvents(ctx, runID, sessionID, seqCounter, events, emit, assistantContent)
+	return err
+}
+
+func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) projectedRunUpdate {
+	l := &Logic{}
+	seq := 0
+	update, _ := l.consumeProjectedEvents(context.Background(), "", "", &seq, events, emit, assistantContent)
 	return update
 }
 
 func flushProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) {
-	if len(events) == 0 {
-		return
-	}
-	consumeProjectedEvents(events, emit, assistantContent)
-}
-
-func shouldPersistRuntimeState(persisted *airuntime.PersistedRuntime) bool {
-	if persisted == nil {
-		return false
-	}
-	return len(persisted.Activities) > 0 ||
-		persisted.Plan != nil ||
-		persisted.Summary != nil ||
-		persisted.Status != nil ||
-		strings.TrimSpace(persisted.Phase) != "" ||
-		strings.TrimSpace(persisted.PhaseLabel) != ""
+	l := &Logic{}
+	seq := 0
+	_ = l.flushProjectedEvents(context.Background(), "", "", &seq, events, emit, assistantContent)
 }
 
 func isRecoverableToolErrorEvent(event *adk.AgentEvent) bool {
@@ -386,6 +423,229 @@ func isRecoverableToolErrorEvent(event *adk.AgentEvent) bool {
 	}
 
 	return message.Role == schema.Tool
+}
+
+func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seqCounter *int, eventName string, payload any) error {
+	if l.RunEventDAO == nil || seqCounter == nil {
+		return nil
+	}
+
+	eventType, raw, err := marshalProjectedEvent(eventName, payload)
+	if err != nil || eventType == "" {
+		return err
+	}
+	*seqCounter = *seqCounter + 1
+	return l.RunEventDAO.Create(ctx, &model.AIRunEvent{
+		ID:          uuid.NewString(),
+		RunID:       runID,
+		SessionID:   sessionID,
+		Seq:         *seqCounter,
+		EventType:   string(eventType),
+		AgentName:   eventAgentName(payload),
+		ToolCallID:  eventToolCallID(payload),
+		PayloadJSON: raw,
+	})
+}
+
+func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assistantMessageID, status, assistantContent string) error {
+	if l.RunEventDAO == nil || l.RunProjectionDAO == nil || l.RunContentDAO == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
+		return nil
+	}
+
+	events, err := l.RunEventDAO.ListByRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	projection, contents, err := airuntime.BuildProjection(events)
+	if err != nil {
+		return err
+	}
+	projection.Status = status
+	projectionJSON, err := json.Marshal(projection)
+	if err != nil {
+		return err
+	}
+
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		projectionDAO := aidao.NewAIRunProjectionDAO(tx)
+		contentDAO := aidao.NewAIRunContentDAO(tx)
+		chatDAO := aidao.NewAIChatDAO(tx)
+		runDAO := aidao.NewAIRunDAO(tx)
+
+		for _, content := range contents {
+			if err := contentDAO.Create(ctx, content); err != nil {
+				return err
+			}
+		}
+
+		if err := projectionDAO.Upsert(ctx, &model.AIRunProjection{
+			ID:             uuid.NewString(),
+			RunID:          runID,
+			SessionID:      sessionID,
+			Version:        projection.Version,
+			Status:         projection.Status,
+			ProjectionJSON: string(projectionJSON),
+		}); err != nil {
+			return err
+		}
+
+		if err := chatDAO.UpdateMessage(ctx, assistantMessageID, map[string]any{
+			"content": assistantContent,
+			"status":  assistantStatusFromRunStatus(status),
+		}); err != nil {
+			return err
+		}
+
+		return runDAO.UpdateRunStatus(ctx, runID, aidao.AIRunStatusUpdate{
+			Status:          status,
+			ProgressSummary: truncateString(assistantContent, 500),
+		})
+	})
+}
+
+func assistantStatusFromRunStatus(status string) string {
+	if status == "failed_runtime" {
+		return "error"
+	}
+	return "done"
+}
+
+func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, string, error) {
+	data, _ := payload.(map[string]any)
+	switch eventName {
+	case "meta":
+		return marshalTypedEvent(airuntime.EventTypeMeta, &airuntime.MetaPayload{
+			RunID:     stringValue(data, "run_id"),
+			SessionID: stringValue(data, "session_id"),
+			Turn:      intValue(data, "turn"),
+		})
+	case "agent_handoff":
+		return marshalTypedEvent(airuntime.EventTypeAgentHandoff, &airuntime.AgentHandoffPayload{
+			From:   stringValue(data, "from"),
+			To:     stringValue(data, "to"),
+			Intent: stringValue(data, "intent"),
+		})
+	case "plan":
+		return marshalTypedEvent(airuntime.EventTypePlan, &airuntime.PlanPayload{
+			Iteration: intValue(data, "iteration"),
+			Steps:     stringSliceValue(data, "steps"),
+		})
+	case "replan":
+		return marshalTypedEvent(airuntime.EventTypeReplan, &airuntime.ReplanPayload{
+			Iteration: intValue(data, "iteration"),
+			Completed: intValue(data, "completed"),
+			IsFinal:   boolValue(data, "is_final"),
+			Steps:     stringSliceValue(data, "steps"),
+		})
+	case "delta":
+		return marshalTypedEvent(airuntime.EventTypeDelta, &airuntime.DeltaPayload{
+			Agent:   stringValue(data, "agent"),
+			Content: stringValue(data, "content"),
+		})
+	case "tool_call":
+		return marshalTypedEvent(airuntime.EventTypeToolCall, &airuntime.ToolCallPayload{
+			Agent:     stringValue(data, "agent"),
+			CallID:    stringValue(data, "call_id"),
+			ToolName:  stringValue(data, "tool_name"),
+			Arguments: mapValue(data, "arguments"),
+		})
+	case "tool_result":
+		return marshalTypedEvent(airuntime.EventTypeToolResult, &airuntime.ToolResultPayload{
+			Agent:    stringValue(data, "agent"),
+			CallID:   stringValue(data, "call_id"),
+			ToolName: stringValue(data, "tool_name"),
+			Content:  stringValue(data, "content"),
+			Status:   stringValue(data, "status"),
+		})
+	case "done":
+		return marshalTypedEvent(airuntime.EventTypeDone, &airuntime.DonePayload{
+			RunID:      stringValue(data, "run_id"),
+			Status:     stringValue(data, "status"),
+			Summary:    stringValue(data, "summary"),
+			Iterations: intValue(data, "iterations"),
+		})
+	case "error":
+		return marshalTypedEvent(airuntime.EventTypeError, &airuntime.ErrorPayload{
+			RunID:   stringValue(data, "run_id"),
+			Message: stringValue(data, "message"),
+			Code:    stringValue(data, "code"),
+		})
+	default:
+		return "", "", nil
+	}
+}
+
+func marshalTypedEvent(eventType airuntime.EventType, payload any) (airuntime.EventType, string, error) {
+	raw, err := airuntime.MarshalEventPayload(eventType, payload)
+	return eventType, raw, err
+}
+
+func eventAgentName(payload any) string {
+	data, _ := payload.(map[string]any)
+	return stringValue(data, "agent")
+}
+
+func eventToolCallID(payload any) string {
+	data, _ := payload.(map[string]any)
+	return stringValue(data, "call_id")
+}
+
+func stringValue(data map[string]any, key string) string {
+	if data == nil {
+		return ""
+	}
+	value, _ := data[key].(string)
+	return value
+}
+
+func intValue(data map[string]any, key string) int {
+	if data == nil {
+		return 0
+	}
+	switch value := data[key].(type) {
+	case int:
+		return value
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func boolValue(data map[string]any, key string) bool {
+	if data == nil {
+		return false
+	}
+	value, _ := data[key].(bool)
+	return value
+}
+
+func stringSliceValue(data map[string]any, key string) []string {
+	if data == nil {
+		return nil
+	}
+	raw, ok := data[key].([]any)
+	if !ok {
+		if direct, ok := data[key].([]string); ok {
+			return direct
+		}
+		return nil
+	}
+	result := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if text, ok := item.(string); ok {
+			result = append(result, text)
+		}
+	}
+	return result
+}
+
+func mapValue(data map[string]any, key string) map[string]any {
+	if data == nil {
+		return nil
+	}
+	value, _ := data[key].(map[string]any)
+	return value
 }
 
 var (
@@ -587,6 +847,103 @@ func (l *Logic) GetRun(ctx context.Context, userID uint64, runID string) (*model
 	}
 
 	return run, report, nil
+}
+
+func (l *Logic) GetRunProjection(ctx context.Context, userID uint64, runID string) (*model.AIRunProjection, error) {
+	if l.RunProjectionDAO == nil || l.RunEventDAO == nil {
+		return nil, nil
+	}
+
+	run, _, err := l.GetRun(ctx, userID, runID)
+	if err != nil || run == nil {
+		return nil, err
+	}
+
+	projection, err := l.RunProjectionDAO.GetByRunID(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if projection != nil && isSteadyProjectionStatus(projection.Status) && strings.TrimSpace(projection.ProjectionJSON) != "" {
+		return projection, nil
+	}
+
+	events, err := l.RunEventDAO.ListByRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	built, contents, err := airuntime.BuildProjection(events)
+	if err != nil {
+		return nil, err
+	}
+	built.Status = run.Status
+	data, err := json.Marshal(built)
+	if err != nil {
+		return nil, err
+	}
+	rebuilt := &model.AIRunProjection{
+		ID:             uuid.NewString(),
+		RunID:          runID,
+		SessionID:      run.SessionID,
+		Version:        built.Version,
+		Status:         built.Status,
+		ProjectionJSON: string(data),
+	}
+	if l.svcCtx == nil || l.svcCtx.DB == nil {
+		return rebuilt, nil
+	}
+	value, err, _ := l.projectionGroup.Do(runID, func() (any, error) {
+		if err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			projectionDAO := aidao.NewAIRunProjectionDAO(tx)
+			contentDAO := aidao.NewAIRunContentDAO(tx)
+			for _, content := range contents {
+				if existing, err := contentDAO.Get(ctx, content.ID); err != nil {
+					return err
+				} else if existing == nil {
+					if err := contentDAO.Create(ctx, content); err != nil {
+						return err
+					}
+				}
+			}
+			return projectionDAO.Upsert(ctx, rebuilt)
+		}); err != nil {
+			return nil, err
+		}
+		return rebuilt, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value.(*model.AIRunProjection), nil
+}
+
+func (l *Logic) GetRunContent(ctx context.Context, userID uint64, contentID string) (*model.AIRunContent, error) {
+	if l.RunContentDAO == nil {
+		return nil, nil
+	}
+	content, err := l.RunContentDAO.Get(ctx, contentID)
+	if err != nil || content == nil {
+		return content, err
+	}
+	if l.ChatDAO == nil {
+		return content, nil
+	}
+	session, err := l.ChatDAO.GetSession(ctx, content.SessionID, userID, "")
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, nil
+	}
+	return content, nil
+}
+
+func isSteadyProjectionStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "completed", "completed_with_tool_errors", "failed_runtime", "interrupted":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetDiagnosisReport 获取诊断报告。

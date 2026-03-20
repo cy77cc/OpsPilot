@@ -5,6 +5,7 @@ import type { ApiResponse } from '../api';
 export interface AIMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
+  run_id?: string;
   turnId?: string;
   content: string;
   runtime?: Record<string, unknown>;
@@ -99,6 +100,65 @@ export interface AIRun {
     report_id: string;
     summary?: string;
   };
+}
+
+export interface AIRunProjectionSummary {
+  title?: string;
+  content_mode?: string;
+  content?: string;
+}
+
+export interface AIRunProjectionToolResult {
+  event_id?: string;
+  status?: string;
+  preview?: string;
+  result_content_id?: string;
+}
+
+export interface AIRunProjectionExecutorItem {
+  id: string;
+  type: 'content' | 'tool_call';
+  content_id?: string;
+  start_event_id?: string;
+  end_event_id?: string;
+  tool_call_id?: string;
+  tool_name?: string;
+  event_id?: string;
+  arguments_content_id?: string;
+  result?: AIRunProjectionToolResult;
+}
+
+export interface AIRunProjectionBlock {
+  id: string;
+  type: 'agent_handoff' | 'plan' | 'replan' | 'executor' | 'error';
+  title: string;
+  agent?: string;
+  event_ids?: string[];
+  steps?: string[];
+  data?: Record<string, unknown>;
+  items?: AIRunProjectionExecutorItem[];
+}
+
+export interface AIRunProjection {
+  version: number;
+  run_id: string;
+  session_id: string;
+  status: string;
+  summary?: AIRunProjectionSummary;
+  blocks: AIRunProjectionBlock[];
+}
+
+export interface AIRunContent {
+  id: string;
+  run_id: string;
+  session_id: string;
+  content_kind: string;
+  encoding: string;
+  summary_text?: string;
+  body_text?: string;
+  body_json?: string;
+  size_bytes?: number;
+  created_at?: string;
 }
 
 export interface AIDiagnosisReport {
@@ -620,20 +680,16 @@ export const aiApi = {
     return apiService.get(`/ai/sessions/${id}`);
   },
 
-  // 获取单条消息的 runtime 数据
-  async getMessageRuntime(
-    id: string,
-  ): Promise<
-    ApiResponse<{
-      message_id: string;
-      runtime: Record<string, unknown> | null;
-    }>
-  > {
-    return apiService.get(`/ai/messages/${id}/runtime`);
-  },
-
   async getRunStatus(runId: string): Promise<ApiResponse<AIRun>> {
     return apiService.get(`/ai/runs/${runId}`);
+  },
+
+  async getRunProjection(runId: string): Promise<ApiResponse<AIRunProjection>> {
+    return apiService.get(`/ai/runs/${runId}/projection`);
+  },
+
+  async getRunContent(id: string): Promise<ApiResponse<AIRunContent>> {
+    return apiService.get(`/ai/run-contents/${id}`);
   },
 
   async getDiagnosisReport(reportId: string): Promise<ApiResponse<AIDiagnosisReport>> {

@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"encoding/json"
+	"context"
 	"strings"
 	"time"
 
@@ -10,12 +10,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 )
-
-// MessageRuntimeResponse 消息 runtime 响应结构。
-type MessageRuntimeResponse struct {
-	MessageID string         `json:"message_id"`
-	Runtime   map[string]any `json:"runtime,omitempty"`
-}
 
 func (h *Handler) CreateSession(c *gin.Context) {
 	var req aiv1.CreateSessionRequest
@@ -41,20 +35,25 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
+	runBySessionAndAssistantMessageID := h.runBySessionAndAssistantMessageID(c.Request.Context(), sessions)
 	items := make([]gin.H, 0, len(sessions))
 	for _, session := range sessions {
 		summary := sessionSummaryFromModel(session)
 		if messages, ok := messagesBySession[session.ID]; ok {
 			messageItems := make([]gin.H, 0, len(messages))
 			for _, message := range messages {
-				messageItems = append(messageItems, gin.H{
+				item := gin.H{
 					"id":             message.ID,
 					"session_id_num": message.SessionIDNum,
 					"role":           message.Role,
 					"content":        message.Content,
 					"status":         message.Status,
 					"created_at":     formatTime(message.CreatedAt),
-				})
+				}
+				if runID := runBySessionAndAssistantMessageID[session.ID][message.ID]; runID != "" {
+					item["run_id"] = runID
+				}
+				messageItems = append(messageItems, item)
 			}
 			summary["messages"] = messageItems
 		}
@@ -73,17 +72,21 @@ func (h *Handler) GetSession(c *gin.Context) {
 		httpx.NotFound(c, "session not found")
 		return
 	}
+	runByAssistantMessageID := h.runByAssistantMessageID(c.Request.Context(), session.ID)
 	messageItems := make([]gin.H, 0, len(messages))
 	for _, message := range messages {
-		messageItems = append(messageItems, gin.H{
+		item := gin.H{
 			"id":             message.ID,
 			"session_id_num": message.SessionIDNum,
 			"role":           message.Role,
 			"content":        message.Content,
 			"status":         message.Status,
-			"has_runtime":    message.RuntimeJSON != "",
 			"created_at":     formatTime(message.CreatedAt),
-		})
+		}
+		if runID := runByAssistantMessageID[message.ID]; runID != "" {
+			item["run_id"] = runID
+		}
+		messageItems = append(messageItems, item)
 	}
 	httpx.OK(c, gin.H{
 		"id":         session.ID,
@@ -92,39 +95,6 @@ func (h *Handler) GetSession(c *gin.Context) {
 		"messages":   messageItems,
 		"created_at": formatTime(session.CreatedAt),
 		"updated_at": formatTime(session.UpdatedAt),
-	})
-}
-
-// GetMessageRuntime 获取单条消息的运行时状态。
-//
-// 权限验证：检查消息所属会话是否属于当前用户。
-func (h *Handler) GetMessageRuntime(c *gin.Context) {
-	messageID := c.Param("id")
-	userID := httpx.UIDFromCtx(c)
-
-	// 获取消息并验证权限
-	message, err := h.logic.GetMessageWithOwnership(c.Request.Context(), userID, messageID)
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if message == nil {
-		httpx.NotFound(c, "消息不存在或无权限访问")
-		return
-	}
-
-	// 解析 runtime JSON
-	var runtime map[string]any
-	if message.RuntimeJSON != "" {
-		if err := json.Unmarshal([]byte(message.RuntimeJSON), &runtime); err != nil {
-			// JSON 解析失败，返回 null
-			runtime = nil
-		}
-	}
-
-	httpx.OK(c, MessageRuntimeResponse{
-		MessageID: messageID,
-		Runtime:   runtime,
 	})
 }
 
@@ -156,4 +126,47 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339)
+}
+
+func (h *Handler) runByAssistantMessageID(ctx context.Context, sessionID string) map[string]string {
+	result := map[string]string{}
+	if h == nil || h.logic == nil || h.logic.RunDAO == nil {
+		return result
+	}
+	runs, err := h.logic.RunDAO.ListBySession(ctx, sessionID)
+	if err != nil {
+		return result
+	}
+	for _, run := range runs {
+		if strings.TrimSpace(run.AssistantMessageID) != "" {
+			result[run.AssistantMessageID] = run.ID
+		}
+	}
+	return result
+}
+
+func (h *Handler) runBySessionAndAssistantMessageID(ctx context.Context, sessions []model.AIChatSession) map[string]map[string]string {
+	result := map[string]map[string]string{}
+	if h == nil || h.logic == nil || h.logic.RunDAO == nil || len(sessions) == 0 {
+		return result
+	}
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		sessionIDs = append(sessionIDs, session.ID)
+		result[session.ID] = map[string]string{}
+	}
+	runs, err := h.logic.RunDAO.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return result
+	}
+	for _, run := range runs {
+		if strings.TrimSpace(run.AssistantMessageID) == "" {
+			continue
+		}
+		if _, ok := result[run.SessionID]; !ok {
+			result[run.SessionID] = map[string]string{}
+		}
+		result[run.SessionID][run.AssistantMessageID] = run.ID
+	}
+	return result
 }

@@ -41,11 +41,15 @@ func NewAIHandler(svcCtx *svc.ServiceContext) *Handler {
 // 生产环境请使用 NewAIHandler。
 func NewAIHandlerWithDB(db *gorm.DB) *Handler {
 	return &Handler{
+		svcCtx: &svc.ServiceContext{DB: db},
 		logic: &logic.Logic{
 			ChatDAO:            aidao.NewAIChatDAO(db),
 			RunDAO:             aidao.NewAIRunDAO(db),
 			DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
 			ApprovalDAO:        aidao.NewAIApprovalTaskDAO(db),
+			RunEventDAO:        aidao.NewAIRunEventDAO(db),
+			RunProjectionDAO:   aidao.NewAIRunProjectionDAO(db),
+			RunContentDAO:      aidao.NewAIRunContentDAO(db),
 			AIRouter:           &noopAgent{},
 		},
 	}
@@ -54,8 +58,8 @@ func NewAIHandlerWithDB(db *gorm.DB) *Handler {
 // noopAgent 是一个空操作的 Agent，用于测试。
 type noopAgent struct{}
 
-func (n *noopAgent) Name(_ context.Context) string                        { return "NoopAgent" }
-func (n *noopAgent) Description(_ context.Context) string                 { return "No-op agent for testing" }
+func (n *noopAgent) Name(_ context.Context) string        { return "NoopAgent" }
+func (n *noopAgent) Description(_ context.Context) string { return "No-op agent for testing" }
 func (n *noopAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 	gen.Close()

@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -104,6 +105,13 @@ func TestCreateMessage_TouchesSessionUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestChatDAO_DoesNotExposeLegacyRuntimeField(t *testing.T) {
+	legacyFieldName := "Runtime" + "JSON"
+	if _, ok := reflect.TypeOf(model.AIChatMessage{}).FieldByName(legacyFieldName); ok {
+		t.Fatal("did not expect legacy runtime snapshot field on AIChatMessage")
+	}
+}
+
 func newAIDAOTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -112,7 +120,15 @@ func newAIDAOTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AIChatSession{}, &model.AIChatMessage{}, &model.AIRun{}, &model.AICheckpoint{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.AIChatSession{},
+		&model.AIChatMessage{},
+		&model.AIRun{},
+		&model.AIRunEvent{},
+		&model.AIRunProjection{},
+		&model.AIRunContent{},
+		&model.AICheckpoint{},
+	); err != nil {
 		t.Fatalf("migrate tables: %v", err)
 	}
 	return db

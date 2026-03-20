@@ -26,7 +26,7 @@ func TestLoadSessionHistory_RecentOnlyReturnsFinalMessages(t *testing.T) {
 		UpdatedAt: time.Now(),
 	})
 	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m1", SessionID: "sess-1", SessionIDNum: 1, Role: "user", Content: "第一次提问", Status: "done"})
-	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m2", SessionID: "sess-1", SessionIDNum: 2, Role: "assistant", Content: "第一次最终回答", Status: "done", RuntimeJSON: `{"activities":[{"kind":"tool_call"}]}`})
+	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m2", SessionID: "sess-1", SessionIDNum: 2, Role: "assistant", Content: "第一次最终回答", Status: "done"})
 	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m3", SessionID: "sess-1", SessionIDNum: 3, Role: "assistant", Content: "", Status: "streaming"})
 	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m4", SessionID: "sess-1", SessionIDNum: 4, Role: "user", Content: "第二次提问", Status: "done"})
 	seedHistoryMessage(t, db, model.AIChatMessage{ID: "m5", SessionID: "sess-1", SessionIDNum: 5, Role: "assistant", Content: "第二次最终回答", Status: "done"})
@@ -49,7 +49,7 @@ func TestLoadSessionHistory_RecentOnlyReturnsFinalMessages(t *testing.T) {
 		}
 	}
 	if strings.Contains(result, `"activities"`) {
-		t.Fatalf("expected runtime_json to be excluded, got %s", result)
+		t.Fatalf("expected structured runtime details to be excluded, got %s", result)
 	}
 }
 
