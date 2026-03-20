@@ -248,8 +248,8 @@ func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
 	if err := db.Where("session_id = ? AND role = ?", "session-recoverable", "assistant").First(&assistant).Error; err != nil {
 		t.Fatalf("load assistant message: %v", err)
 	}
-	if assistant.Content == "" {
-		t.Fatal("expected assistant message content to be persisted")
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant message content to stay empty, got %q", assistant.Content)
 	}
 	projection, err := aidao.NewAIRunProjectionDAO(db).GetByRunID(context.Background(), runID)
 	if err != nil {
@@ -257,6 +257,9 @@ func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
 	}
 	if projection == nil || projection.Status != "completed_with_tool_errors" {
 		t.Fatalf("expected completed_with_tool_errors projection, got %#v", projection)
+	}
+	if summary := projectionSummaryContent(t, projection); summary == "" {
+		t.Fatalf("expected projection summary content, got %#v", projection)
 	}
 
 	if err := l.Chat(context.Background(), ChatInput{
@@ -331,6 +334,9 @@ func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 	if err := db.Where("session_id = ? AND role = ?", "session-fatal", "assistant").First(&assistant).Error; err != nil {
 		t.Fatalf("load assistant message: %v", err)
 	}
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant content to stay empty, got %q", assistant.Content)
+	}
 	if assistant.Status != "error" {
 		t.Fatalf("expected assistant message status error, got %q", assistant.Status)
 	}
@@ -349,6 +355,49 @@ func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 		UserID:    12,
 	}, func(string, any) {}); err != nil {
 		t.Fatalf("expected session to remain usable, got %v", err)
+	}
+}
+
+func TestChatMarksFatalRuntimeFailure_PropagatesPersistArtifactsError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-fatal-persist-error",
+		UserID: 18,
+		Scene:  "ai",
+		Title:  "Fatal Runtime Persist Error",
+	})
+	if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
+		t.Fatalf("drop projection table: %v", err)
+	}
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("starting run", nil), nil, schema.Assistant, ""),
+			{Err: errors.New("fatal agent failure")},
+		},
+	}
+
+	l := &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
+
+	err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-fatal-persist-error",
+		Message:   "run diagnosis",
+		Scene:     "ai",
+		UserID:    18,
+	}, func(string, any) {})
+	if err == nil {
+		t.Fatal("expected fatal runtime persist error to be returned")
+	}
+	if !strings.Contains(err.Error(), "persist run artifacts") {
+		t.Fatalf("expected persist run artifacts error, got %v", err)
 	}
 }
 
@@ -425,11 +474,15 @@ func TestChatStopsConsumingAfterStreamingMessageError(t *testing.T) {
 	if err := db.Where("session_id = ? AND role = ?", "session-stream-error", "assistant").First(&assistant).Error; err != nil {
 		t.Fatalf("load assistant message: %v", err)
 	}
-	if !strings.Contains(assistant.Content, "partial output") {
-		t.Fatalf("expected assistant content to include streamed prefix, got %q", assistant.Content)
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant content to stay empty, got %q", assistant.Content)
 	}
-	if strings.Contains(assistant.Content, "should not be emitted") {
-		t.Fatalf("expected assistant content to stop before later iterator events, got %q", assistant.Content)
+	projection, err := aidao.NewAIRunProjectionDAO(db).GetByRunID(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if projection == nil || projection.Status != "failed_runtime" {
+		t.Fatalf("expected failed_runtime projection, got %#v", projection)
 	}
 
 	for _, event := range emitted {
@@ -547,8 +600,18 @@ func TestChatKeepsRunAliveOnToolInvocationNodeError(t *testing.T) {
 	if err := db.Where("session_id = ? AND role = ?", "session-tool-node-error", "assistant").First(&assistant).Error; err != nil {
 		t.Fatalf("load assistant message: %v", err)
 	}
-	if !strings.Contains(assistant.Content, "fallback") {
-		t.Fatalf("expected assistant fallback content to be preserved, got %q", assistant.Content)
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant content to stay empty, got %q", assistant.Content)
+	}
+	projection, err := aidao.NewAIRunProjectionDAO(db).GetByRunID(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if projection == nil || projection.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected completed_with_tool_errors projection, got %#v", projection)
+	}
+	if summary := projectionSummaryContent(t, projection); !strings.Contains(summary, "fallback") {
+		t.Fatalf("expected projection summary to preserve fallback content, got %q", summary)
 	}
 }
 
@@ -614,6 +677,76 @@ func TestChatPersistsDoneSummaryInProjection(t *testing.T) {
 	}
 }
 
+func TestChat_PersistsProjectionSummaryWithoutAssistantMessageContent(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-summary-skeleton",
+		UserID: 17,
+		Scene:  "ai",
+		Title:  "Summary Skeleton",
+	})
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("final answer", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-summary-skeleton",
+		Message:   "summarize",
+		Scene:     "ai",
+		UserID:    17,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("chat returned error: %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("session_id = ? AND role = ?", "session-summary-skeleton", "assistant").First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Content != "" {
+		t.Fatalf("expected assistant session message content to stay empty, got %q", assistant.Content)
+	}
+
+	projection, err := aidao.NewAIRunProjectionDAO(db).GetByRunID(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if projection == nil {
+		t.Fatal("expected projection to exist")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(projection.ProjectionJSON), &payload); err != nil {
+		t.Fatalf("decode projection: %v", err)
+	}
+	summary, _ := payload["summary"].(map[string]any)
+	if summary == nil {
+		t.Fatalf("expected projection summary, got %#v", payload)
+	}
+	if summary["content"] == "" {
+		t.Fatalf("expected projection summary content, got %#v", summary)
+	}
+}
+
 func newLogicTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -656,6 +789,23 @@ func findEventField(t *testing.T, events []airuntime.PublicStreamEvent, wantEven
 		return value
 	}
 	return ""
+}
+
+func projectionSummaryContent(t *testing.T, projection *model.AIRunProjection) string {
+	t.Helper()
+	if projection == nil {
+		t.Fatal("expected projection to exist")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(projection.ProjectionJSON), &payload); err != nil {
+		t.Fatalf("decode projection: %v", err)
+	}
+	summary, _ := payload["summary"].(map[string]any)
+	if summary == nil {
+		t.Fatalf("expected projection summary, got %#v", payload)
+	}
+	content, _ := summary["content"].(string)
+	return content
 }
 
 type scriptedAgent struct {

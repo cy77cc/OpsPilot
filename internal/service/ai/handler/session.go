@@ -42,14 +42,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		if messages, ok := messagesBySession[session.ID]; ok {
 			messageItems := make([]gin.H, 0, len(messages))
 			for _, message := range messages {
-				item := gin.H{
-					"id":             message.ID,
-					"session_id_num": message.SessionIDNum,
-					"role":           message.Role,
-					"content":        message.Content,
-					"status":         message.Status,
-					"created_at":     formatTime(message.CreatedAt),
-				}
+				item := sessionMessageItem(message)
 				if runID := runBySessionAndAssistantMessageID[session.ID][message.ID]; runID != "" {
 					item["run_id"] = runID
 				}
@@ -75,14 +68,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 	runByAssistantMessageID := h.runByAssistantMessageID(c.Request.Context(), session.ID)
 	messageItems := make([]gin.H, 0, len(messages))
 	for _, message := range messages {
-		item := gin.H{
-			"id":             message.ID,
-			"session_id_num": message.SessionIDNum,
-			"role":           message.Role,
-			"content":        message.Content,
-			"status":         message.Status,
-			"created_at":     formatTime(message.CreatedAt),
-		}
+		item := sessionMessageItem(message)
 		if runID := runByAssistantMessageID[message.ID]; runID != "" {
 			item["run_id"] = runID
 		}
@@ -119,6 +105,20 @@ func sessionSummaryFromModel(session model.AIChatSession) gin.H {
 		"created_at": formatTime(session.CreatedAt),
 		"updated_at": formatTime(session.UpdatedAt),
 	}
+}
+
+func sessionMessageItem(message model.AIChatMessage) gin.H {
+	item := gin.H{
+		"id":             message.ID,
+		"session_id_num": message.SessionIDNum,
+		"role":           message.Role,
+		"status":         message.Status,
+		"created_at":     formatTime(message.CreatedAt),
+	}
+	if message.Role != "assistant" {
+		item["content"] = message.Content
+	}
+	return item
 }
 
 func formatTime(value time.Time) string {

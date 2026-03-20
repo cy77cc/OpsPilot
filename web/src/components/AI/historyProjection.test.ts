@@ -1,8 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   hydrateAssistantHistoryFromProjection,
+  isProjectionHydrationPending,
   loadRunContent,
   loadRunProjection,
+  PROJECTION_MISSING_SUMMARY_LABEL,
+  PROJECTION_UNRECOVERABLE_PLACEHOLDER,
   resetHistoryProjectionCache,
 } from './historyProjection';
 import { aiApi } from '../../api/modules/ai';
@@ -88,14 +91,42 @@ describe('historyProjection', () => {
       timestamp: '',
     } as any);
 
-    expect(hydrated.content).toBe('回答内容不可恢复');
+    expect(hydrated.content).toBe(PROJECTION_UNRECOVERABLE_PLACEHOLDER);
     expect(hydrated.runtime).toEqual({
       activities: [],
       status: {
         kind: 'error',
-        label: 'projection missing summary',
+        label: PROJECTION_MISSING_SUMMARY_LABEL,
       },
     });
+  });
+
+  it('recognizes the transient projection-missing hydration state', () => {
+    expect(isProjectionHydrationPending({
+      id: 'msg-1',
+      role: 'assistant',
+      content: PROJECTION_UNRECOVERABLE_PLACEHOLDER,
+      runtime: {
+        activities: [],
+        status: {
+          kind: 'error',
+          label: PROJECTION_MISSING_SUMMARY_LABEL,
+        },
+      },
+    })).toBe(true);
+
+    expect(isProjectionHydrationPending({
+      id: 'msg-1',
+      role: 'assistant',
+      content: '已恢复',
+      runtime: {
+        activities: [],
+        status: {
+          kind: 'completed',
+          label: 'completed',
+        },
+      },
+    })).toBe(false);
   });
 
   it('retries projection fetch after a transient failure', async () => {

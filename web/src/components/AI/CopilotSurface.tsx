@@ -20,7 +20,7 @@ import { createStyles } from 'antd-style';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
-import { hydrateAssistantHistoryFromProjection } from './historyProjection';
+import { hydrateAssistantHistoryFromProjection, isProjectionHydrationPending } from './historyProjection';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
 
@@ -386,9 +386,21 @@ export function buildAssistantErrorContent(
   return `${content}\n\n---\n\nError: ${error}`;
 }
 
+export async function copyAssistantReplyToClipboard(
+  finalMarkdownBody: string,
+  _runtime?: XChatMessage['runtime'],
+): Promise<void> {
+  const copyContent = (finalMarkdownBody || '').trim();
+  if (!copyContent || !navigator?.clipboard?.writeText) {
+    return;
+  }
+  await navigator.clipboard.writeText(copyContent);
+}
+
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const retainedAssistantBodiesRef = React.useRef(new Map<string, string>());
   const followStateRef = React.useRef<FollowState>('following');
   const programmaticScrollRef = React.useRef(false);
   const pendingInitialScrollRef = React.useRef(false);
@@ -495,10 +507,48 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   });
 
   const renderedMessages = React.useMemo(
-    () => messages.map((item, index) => ({
-      ...item,
-      renderKey: String(item.id || `${item.message.role}-${index}`),
-    })),
+    () => {
+      const retainedAssistantBodies = retainedAssistantBodiesRef.current;
+      const nextKeys = new Set<string>();
+      const nextMessages = messages.map((item, index) => {
+        const renderKey = String(item.id || `${item.message.role}-${index}`);
+        nextKeys.add(renderKey);
+
+        if (item.message.role !== 'assistant') {
+          return {
+            ...item,
+            renderKey,
+          };
+        }
+
+        const currentContent = item.message.content || '';
+        const retainedContent = retainedAssistantBodies.get(renderKey);
+        const displayContent = isProjectionHydrationPending(item.message) && retainedContent
+          ? retainedContent
+          : currentContent;
+
+        if (currentContent.trim()) {
+          retainedAssistantBodies.set(renderKey, displayContent);
+        }
+
+        return {
+          ...item,
+          message: {
+            ...item.message,
+            content: displayContent,
+          },
+          renderKey,
+        };
+      });
+
+      Array.from(retainedAssistantBodies.keys()).forEach((key) => {
+        if (!nextKeys.has(key)) {
+          retainedAssistantBodies.delete(key);
+        }
+      });
+
+      return nextMessages;
+    },
     [messages],
   );
 
@@ -634,7 +684,18 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
           return (
             <div style={{ display: 'flex', gap: 2 }}>
-              <Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回复" />
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                aria-label="复制回复"
+                onClick={() => {
+                  void copyAssistantReplyToClipboard(
+                    (item as any).message?.content || '',
+                    (item as any).message?.runtime,
+                  );
+                }}
+              />
               <Button type="text" size="small" icon={<LikeOutlined />} aria-label="点赞" />
               <Button type="text" size="small" icon={<DislikeOutlined />} aria-label="点踩" />
               <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="重新生成" />

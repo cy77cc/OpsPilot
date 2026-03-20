@@ -81,14 +81,18 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
   const { styles, cx } = useToolReferenceStyles();
   const [cardVisible, setCardVisible] = useState(false);
 
-  const { kind, status, label } = activity;
+  const { status, label, detail } = activity;
+  const normalizedDetail = detail || '';
+  const isLoading = status === 'active';
+  const isSuccess = status === 'done';
+  const isError = status === 'error';
+  const interruptedSuffix = normalizedDetail.includes('异常中断')
+    ? '（异常中断）'
+    : normalizedDetail.includes('未完成')
+      ? '（未完成）'
+      : '';
+  const accessibleLabel = `${label}${interruptedSuffix}`;
 
-  // 判断状态
-  const isLoading = kind === 'tool_call' && status === 'active';
-  const isSuccess = kind === 'tool_result' && status === 'done';
-  const isError = kind === 'tool_result' && status === 'error';
-
-  // 获取样式类名
   const stateClass = cx(
     styles.root,
     isLoading && styles.loading,
@@ -96,7 +100,6 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
     isError && styles.error,
   );
 
-  // 是否可点击
   const isClickable = isSuccess || isError;
 
   const handleClick = () => {
@@ -112,6 +115,7 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
         onClick={handleClick}
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
+        aria-label={isClickable ? accessibleLabel : undefined}
         onKeyDown={(e) => {
           if (isClickable && (e.key === 'Enter' || e.key === ' ')) {
             setCardVisible(true);
@@ -119,6 +123,7 @@ export default function ToolReference({ activity }: ToolReferenceProps) {
         }}
       >
         <span className={`tool-reference-label ${styles.label}`}>{label}</span>
+        {interruptedSuffix ? <span aria-hidden="true">{interruptedSuffix}</span> : null}
       </span>
       {cardVisible && (
         <ToolResultCard

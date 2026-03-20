@@ -4,6 +4,9 @@ import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRunt
 
 const projectionCache = new Map<string, AIRunProjection | null>();
 const contentCache = new Map<string, AIRunContent | null>();
+const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
+export const PROJECTION_MISSING_SUMMARY_LABEL = 'projection missing summary';
+export const PROJECTION_UNRECOVERABLE_PLACEHOLDER = '回答内容不可恢复';
 
 export function resetHistoryProjectionCache(): void {
   projectionCache.clear();
@@ -62,12 +65,12 @@ export async function hydrateAssistantHistoryFromProjection(
     return {
       id: message.id,
       role: 'assistant',
-      content: '回答内容不可恢复',
+      content: PROJECTION_UNRECOVERABLE_PLACEHOLDER,
       runtime: {
         activities: [],
         status: {
           kind: 'error',
-          label: 'projection missing summary',
+          label: PROJECTION_MISSING_SUMMARY_LABEL,
         },
       },
     };
@@ -78,12 +81,12 @@ export async function hydrateAssistantHistoryFromProjection(
     return {
       id: message.id,
       role: 'assistant',
-      content: '回答内容不可恢复',
+      content: PROJECTION_UNRECOVERABLE_PLACEHOLDER,
       runtime: {
         activities: [],
         status: {
           kind: 'error',
-          label: 'projection missing summary',
+          label: PROJECTION_MISSING_SUMMARY_LABEL,
         },
       },
     };
@@ -96,6 +99,13 @@ export async function hydrateAssistantHistoryFromProjection(
     content: summaryContent,
     runtime,
   };
+}
+
+export function isProjectionHydrationPending(message?: XChatMessage): boolean {
+  return message?.role === 'assistant'
+    && message.content === PROJECTION_UNRECOVERABLE_PLACEHOLDER
+    && message.runtime?.status?.kind === 'error'
+    && message.runtime.status.label === PROJECTION_MISSING_SUMMARY_LABEL;
 }
 
 async function projectionToRuntime(projection: AIRunProjection): Promise<AssistantReplyRuntime> {
@@ -174,25 +184,24 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
         }
       }
       if (item.type === 'tool_call' && item.tool_call_id && item.tool_name) {
+        const resultContent = item.result?.result_content_id
+          ? await loadRunContent(item.result.result_content_id)
+          : null;
+        const rawContent = resultContent?.body_text || item.result?.preview;
         activities.push({
           id: item.tool_call_id,
-          kind: 'tool_call',
+          kind: 'tool',
           label: item.tool_name,
-          status: item.result?.status === 'done' ? 'done' : 'active',
+          detail: item.result
+            ? item.result.preview
+            : INTERRUPTED_TOOL_MESSAGE,
+          rawContent,
+          status: item.result
+            ? item.result.status === 'done' ? 'done' : 'error'
+            : 'error',
           stepIndex: steps.length,
+          arguments: item.arguments,
         });
-        if (item.result) {
-          const resultContent = item.result.result_content_id ? await loadRunContent(item.result.result_content_id) : null;
-          activities.push({
-            id: `${item.tool_call_id}:result`,
-            kind: 'tool_result',
-            label: item.tool_name,
-            detail: item.result.preview,
-            rawContent: resultContent?.body_text || item.result.preview,
-            status: item.result.status === 'done' ? 'done' : 'error',
-            stepIndex: steps.length,
-          });
-        }
         segments.push({ type: 'tool_ref', callId: item.tool_call_id });
       }
     }

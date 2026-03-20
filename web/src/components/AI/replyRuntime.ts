@@ -9,6 +9,7 @@ import type {
 
 const PLACEHOLDER_CONTENT = '[准备中]';
 const SOFT_TIMEOUT_MESSAGE = '工具执行较慢，正在继续等待结果…';
+const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
 const MAX_ACTIVITIES = 50;
 
 function buildPlanStepId(index: number): string {
@@ -102,10 +103,6 @@ function upsertActivity(
   };
 }
 
-function buildToolResultActivityId(callId: string): string {
-  return `${callId}:result`;
-}
-
 function appendSegmentToActiveStep(
   runtime: AssistantReplyRuntime,
   segment: AssistantReplySegment,
@@ -179,7 +176,7 @@ export function applyToolCall(
     runtime,
     {
       id: payload.call_id,
-      kind: 'tool_call',
+      kind: 'tool',
       label: payload.tool_name,
       status: 'active',
       stepIndex: activeStepIndex,
@@ -314,22 +311,11 @@ export function applyToolResult(
   const detailContent = payload.content.length > 200
     ? payload.content.slice(0, 200)
     : payload.content;
-  const withCallUpdated = existing
-    ? upsertActivity(
-        runtime,
-        {
-          ...existing,
-          status: payload.status === 'error' ? 'error' : 'done',
-        },
-        (item) => item.id === payload.call_id,
-      )
-    : runtime;
-
   return upsertActivity(
-    withCallUpdated,
+    runtime,
     {
-      id: buildToolResultActivityId(payload.call_id),
-      kind: 'tool_result',
+      id: payload.call_id,
+      kind: 'tool',
       label: payload.tool_name,
       detail: detailContent,
       rawContent: payload.content,
@@ -337,13 +323,23 @@ export function applyToolResult(
       stepIndex: existing?.stepIndex ?? runtime.plan?.activeStepIndex,
       arguments: existing?.arguments,
     },
-    (item) => item.id === buildToolResultActivityId(payload.call_id),
+    (item) => item.id === payload.call_id,
   );
 }
 
 export function applyDone(runtime: AssistantReplyRuntime): AssistantReplyRuntime {
   return {
     ...runtime,
+    activities: runtime.activities.map((activity) => {
+      if (activity.kind === 'tool' && activity.status === 'active') {
+        return {
+          ...activity,
+          status: 'error',
+          detail: activity.detail || INTERRUPTED_TOOL_MESSAGE,
+        };
+      }
+      return activity;
+    }),
     plan: runtime.plan
       ? {
           ...runtime.plan,

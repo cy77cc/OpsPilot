@@ -26,9 +26,8 @@ export type AssistantReplyActivityKind =
   | 'agent_handoff'
   | 'plan'
   | 'replan'
-  | 'tool_call'
+  | 'tool'
   | 'tool_approval'
-  | 'tool_result'
   | 'hint'
   | 'error';
 

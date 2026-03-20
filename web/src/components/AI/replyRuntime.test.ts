@@ -67,9 +67,8 @@ describe('assistant reply runtime shape', () => {
           | 'agent_handoff'
           | 'plan'
           | 'replan'
-          | 'tool_call'
+          | 'tool'
           | 'tool_approval'
-          | 'tool_result'
           | 'hint'
           | 'error';
         label: string;
@@ -247,13 +246,13 @@ describe('assistant reply runtime shape', () => {
     expect(runtime.activities).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'call-1',
-        kind: 'tool_call',
+        kind: 'tool',
         label: 'os_get_net_stat',
       }),
     ]));
   });
 
-  it('keeps tool call activity and appends a separate tool result row', () => {
+  it('coalesces tool call and result into one done tool activity with raw content', () => {
     let runtime = applyToolCall(createEmptyAssistantRuntime(), {
       call_id: 'call-1',
       tool_name: 'kubectl_describe',
@@ -265,16 +264,11 @@ describe('assistant reply runtime shape', () => {
       content: 'node ok',
     });
 
-    expect(runtime.activities).toHaveLength(2);
+    expect(runtime.activities).toHaveLength(1);
     expect(runtime.activities[0]).toEqual(
       expect.objectContaining({
-        kind: 'tool_call',
-        status: 'done',
-      }),
-    );
-    expect(runtime.activities[1]).toEqual(
-      expect.objectContaining({
-        kind: 'tool_result',
+        id: 'call-1',
+        kind: 'tool',
         status: 'done',
         detail: 'node ok',
         rawContent: 'node ok',
@@ -282,13 +276,32 @@ describe('assistant reply runtime shape', () => {
     );
   });
 
+  it('marks orphaned tool refs as interrupted terminal errors when done arrives without a result', () => {
+    let runtime = applyToolCall(createEmptyAssistantRuntime(), {
+      call_id: 'call-1',
+      tool_name: 'kubectl_describe',
+      arguments: { node: 'node-1' },
+    });
+
+    runtime = applyDone(runtime);
+
+    expect(runtime.activities).toHaveLength(1);
+    expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        id: 'call-1',
+        kind: 'tool',
+        status: 'error',
+        detail: '执行未完成',
+        arguments: { node: 'node-1' },
+      }),
+    );
+  });
+
   it('marks completion on done', () => {
     const runtime = applyDone(createEmptyAssistantRuntime());
 
-    expect(runtime.status).toEqual({
-      kind: 'completed',
-      label: '已生成',
-    });
+    expect(runtime.status?.kind).toBe('completed');
+    expect(runtime.status?.label).toContain('已生成');
   });
 
   it('preserves content and appends terminal error state', () => {
@@ -317,7 +330,7 @@ describe('assistant reply runtime shape', () => {
     expect(runtime.activities[0]).toEqual(
       expect.objectContaining({
         id: 'call-1',
-        kind: 'tool_call',
+        kind: 'tool',
         label: 'host_get_metrics',
         arguments: { host_id: '123', metric: 'cpu' },
       }),
@@ -339,13 +352,7 @@ describe('assistant reply runtime shape', () => {
 
     expect(runtime.activities[0]).toEqual(
       expect.objectContaining({
-        kind: 'tool_call',
-        status: 'error',
-      }),
-    );
-    expect(runtime.activities[1]).toEqual(
-      expect.objectContaining({
-        kind: 'tool_result',
+        kind: 'tool',
         status: 'error',
         rawContent: '{"error": "timeout"}',
       }),
@@ -365,7 +372,7 @@ describe('assistant reply runtime shape', () => {
       content: longContent,
     });
 
-    expect(runtime.activities[1].detail).toBe('x'.repeat(200));
-    expect(runtime.activities[1].rawContent).toBe(longContent);
+    expect(runtime.activities[0].detail).toBe('x'.repeat(200));
+    expect(runtime.activities[0].rawContent).toBe(longContent);
   });
 });

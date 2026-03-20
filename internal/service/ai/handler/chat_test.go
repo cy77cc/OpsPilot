@@ -202,6 +202,49 @@ func TestChatStreamsRecoverableToolErrorAndDone(t *testing.T) {
 	}
 }
 
+func TestChatHandler_EmitsSSEErrorInsteadOfJSONEnvelopeOnLateFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
+		t.Fatalf("drop projection table: %v", err)
+	}
+	h := NewAIHandlerWithDB(db)
+	h.logic.AIRouter = &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("starting run", nil), nil, schema.Assistant, ""),
+			{Err: errors.New("fatal agent failure")},
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(106))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"trigger late failure"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+
+	sawError := false
+	for _, event := range events {
+		if event.Event == "error" {
+			sawError = true
+			break
+		}
+	}
+	if !sawError {
+		t.Fatalf("expected SSE error event, got %#v", events)
+	}
+	if strings.Contains(recorder.Body.String(), `"code":3000`) {
+		t.Fatalf("expected SSE stream without trailing JSON error envelope, got %q", recorder.Body.String())
+	}
+}
+
 func decodeSSEEvents(t *testing.T, body string) []chatEvent {
 	t.Helper()
 
