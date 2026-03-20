@@ -53,9 +53,10 @@ func (p *Provider) ValidateCredential(ctx context.Context, ak, sk, region string
 
 	// 通过查询实例验证凭证，限制返回 1 条
 	limit := 1
-	req := &uhost.DescribeUHostInstanceRequest{
-		Limit: &limit,
-	}
+	req := &uhost.DescribeUHostInstanceRequest{}
+	req.Region = &region
+	req.Limit = &limit
+
 	_, err = client.DescribeUHostInstance(ctx, req)
 	if err != nil {
 		return fmt.Errorf("UCLOUD 凭证验证失败: %w", p.wrapError(err))
@@ -72,9 +73,10 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 
 	// 构建查询参数
 	input := &uhost.DescribeUHostInstanceRequest{}
+	input.Region = &req.Region
 
-	// 可用区过滤
-	if req.Zone != "" {
+	// 可用区过滤（仅当 Zone 有效时才设置）
+	if req.Zone != "" && req.Zone != "undefined" {
 		input.Zone = &req.Zone
 	}
 

@@ -644,12 +644,16 @@ export const hostApi = {
   },
 
   async queryCloudInstances(payload: { provider: string; accountId: number; region?: string; zone?: string; keyword?: string }): Promise<ApiResponse<CloudInstance[]>> {
-    const res = await apiService.post<any>(`/hosts/cloud/providers/${payload.provider}/instances/query`, {
+    const body: Record<string, any> = {
       account_id: payload.accountId,
       region: payload.region || '',
-      zone: payload.zone || '',
       keyword: payload.keyword || '',
-    });
+    };
+    // 仅当 zone 有效时才发送
+    if (payload.zone) {
+      body.zone = payload.zone;
+    }
+    const res = await apiService.post<any>(`/hosts/cloud/providers/${payload.provider}/instances/query`, body);
     // 后端返回 { list: [...], total: N } 格式
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
