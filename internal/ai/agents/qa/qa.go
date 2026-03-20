@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/history"
 )
 
 // searchKnowledgeInput 是 search_knowledge 工具的输入参数。
@@ -86,13 +89,13 @@ func NewQAAgent(ctx context.Context) (adk.Agent, error) {
 		Description: "Knowledge base Q&A assistant for Kubernetes and platform operations",
 		Instruction: prompt.QA_SYSTEM,
 		Model:       model,
-		// ToolsConfig: adk.ToolsConfig{
-		// 	ToolsNodeConfig: compose.ToolsNodeConfig{
-		// 		Tools: []tool.BaseTool{
-		// 			searchTool,
-		// 		},
-		// 	},
-		// },
+		ToolsConfig: adk.ToolsConfig{
+			ToolsNodeConfig: compose.ToolsNodeConfig{
+				Tools: []tool.BaseTool{
+					history.LoadSessionHistory(ctx),
+				},
+			},
+		},
 		MaxIterations: 5,
 	})
 }

@@ -140,6 +140,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("create run: %w", err)
 	}
 	ctx = l.runtimeContext(ctx)
+	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
+		SessionID: sessionID,
+		RunID:     run.ID,
+		UserID:    input.UserID,
+		Scene:     scene,
+	})
 	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
 		SessionID: sessionID,
 		RunID:     run.ID,

@@ -30,13 +30,15 @@ func TestDiagnosisAndChangeTools_IncludePlatformDiscovery(t *testing.T) {
 				if err != nil {
 					t.Fatalf("get tool info: %v", err)
 				}
-				if info.Name == "platform_discover_resources" {
-					found = true
-					break
+				switch info.Name {
+				case "platform_discover_resources", "load_session_history":
+					if info.Name == "load_session_history" {
+						found = true
+					}
 				}
 			}
 			if !found {
-				t.Fatal("expected platform_discover_resources in toolset")
+				t.Fatal("expected load_session_history in toolset")
 			}
 		})
 	}

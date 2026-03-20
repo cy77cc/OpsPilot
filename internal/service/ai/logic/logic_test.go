@@ -85,6 +85,51 @@ func TestRuntimeContext_AttachesServiceContext(t *testing.T) {
 	}
 }
 
+func TestChatInjectsAIMetadataIntoRuntimeContext(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-meta",
+		UserID: 15,
+		Scene:  "cluster",
+		Title:  "Meta Session",
+	})
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("ok", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	l := &Logic{
+		svcCtx:   &svc.ServiceContext{DB: db},
+		ChatDAO:  aidao.NewAIChatDAO(db),
+		RunDAO:   aidao.NewAIRunDAO(db),
+		AIRouter: agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-meta",
+		Message:   "inspect this cluster",
+		Scene:     "cluster",
+		UserID:    15,
+	}, func(string, any) {}); err != nil {
+		t.Fatalf("chat returned error: %v", err)
+	}
+
+	if agent.capturedMeta.SessionID != "session-meta" {
+		t.Fatalf("expected session meta to be injected, got %#v", agent.capturedMeta)
+	}
+	if agent.capturedMeta.UserID != 15 {
+		t.Fatalf("expected user id 15 in meta, got %#v", agent.capturedMeta)
+	}
+	if agent.capturedMeta.Scene != "cluster" {
+		t.Fatalf("expected scene cluster in meta, got %#v", agent.capturedMeta)
+	}
+	if agent.capturedMeta.RunID == "" {
+		t.Fatalf("expected run id in meta, got %#v", agent.capturedMeta)
+	}
+}
+
 func TestConsumeProjectedEvents_AccumulatesAssistantContentAndHandoff(t *testing.T) {
 	t.Parallel()
 
@@ -509,13 +554,15 @@ func findEventField(t *testing.T, events []airuntime.PublicStreamEvent, wantEven
 }
 
 type scriptedAgent struct {
-	runEvents []*adk.AgentEvent
+	runEvents    []*adk.AgentEvent
+	capturedMeta runtimectx.AIMetadata
 }
 
 func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
 func (s *scriptedAgent) Description(context.Context) string { return "scripted agent for tests" }
 
-func (s *scriptedAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+func (s *scriptedAgent) Run(ctx context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	s.capturedMeta = runtimectx.AIMetadataFrom(ctx)
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 	go func() {
 		for _, event := range s.runEvents {

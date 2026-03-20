@@ -644,15 +644,17 @@ export const hostApi = {
   },
 
   async queryCloudInstances(payload: { provider: string; accountId: number; region?: string; zone?: string; keyword?: string }): Promise<ApiResponse<CloudInstance[]>> {
-    const res = await apiService.post<any[]>(`/hosts/cloud/providers/${payload.provider}/instances/query`, {
+    const res = await apiService.post<any>(`/hosts/cloud/providers/${payload.provider}/instances/query`, {
       account_id: payload.accountId,
       region: payload.region || '',
       zone: payload.zone || '',
       keyword: payload.keyword || '',
     });
+    // 后端返回 { list: [...], total: N } 格式
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
-      data: (res.data || []).map((x: any) => ({
+      data: rawList.map((x: any) => ({
         instanceId: x.instance_id,
         name: x.name,
         ip: x.ip,

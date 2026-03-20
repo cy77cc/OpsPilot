@@ -261,6 +261,14 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 
 	created := make([]model.Node, 0, len(req.Instances))
 	for _, ins := range req.Instances {
+		// 将 labels 转换为 JSON 格式
+		labelsJSON := "[]"
+		if len(req.Labels) > 0 {
+			if b, err := json.Marshal(req.Labels); err == nil {
+				labelsJSON = string(b)
+			}
+		}
+
 		node := model.Node{
 			Name:        ins.Name,
 			IP:          ins.IP,
@@ -268,7 +276,7 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			SSHUser:     "root",
 			Status:      "online",
 			Role:        req.Role,
-			Labels:      strings.Join(req.Labels, ","),
+			Labels:      labelsJSON,
 			OS:          ins.OS,
 			CpuCores:    ins.CPU,
 			MemoryMB:    ins.MemoryMB,

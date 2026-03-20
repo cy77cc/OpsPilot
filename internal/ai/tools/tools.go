@@ -14,11 +14,12 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/dynamictool/toolsearch"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/cicd"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/deployment"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/governance"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/history"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/host"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/infrastructure"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/kubernetes"
@@ -41,6 +42,7 @@ import (
 //   - 基础工具列表
 func NewCommonTools(ctx context.Context) []tool.BaseTool {
 	return []tool.BaseTool{
+		history.LoadSessionHistory(ctx),
 		platform.PlatformDiscoverResources(ctx), // 资源发现工具（优先级最高）
 		cicd.CICDPipelineList(ctx),
 		deployment.ClusterListInventory(ctx),
@@ -100,6 +102,7 @@ func GetAllTools(ctx context.Context) []tool.BaseTool {
 //   - ctx: 上下文（应携带 common.PlatformDeps）
 func NewDiagnosisTools(ctx context.Context) []tool.BaseTool {
 	platformTools := []tool.InvokableTool{
+		history.LoadSessionHistory(ctx),
 		platform.PlatformDiscoverResources(ctx),
 	}
 	// K8s 只读工具

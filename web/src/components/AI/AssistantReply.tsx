@@ -258,30 +258,23 @@ function StepContentRenderer({
     const activityMap = new Map<string, AssistantReplyActivity>();
     activities.forEach((a) => activityMap.set(a.id, a));
 
-    // 用于累积文本内容，最后一起渲染
-    let textBuffer = '';
     const elements: React.ReactNode[] = [];
 
     step.segments.forEach((segment, index) => {
       if (segment.type === 'text' && segment.text) {
-        textBuffer += segment.text;
+        const inlineText = shouldRenderInlineText(segment.text);
+        elements.push(inlineText ? (
+          <span key={`text-${index}`} className={styles.inlineText}>
+            {segment.text}
+          </span>
+        ) : (
+          <XMarkdown
+            key={`text-${index}`}
+            content={segment.text}
+            streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+          />
+        ));
       } else if (segment.type === 'tool_ref' && segment.callId) {
-        // 先渲染累积的文本
-        if (textBuffer) {
-          const inlineText = shouldRenderInlineText(textBuffer);
-          elements.push(inlineText ? (
-            <span key={`text-${index}`} className={styles.inlineText}>
-              {textBuffer}
-            </span>
-          ) : (
-            <XMarkdown
-              key={`text-${index}`}
-              content={textBuffer}
-              streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
-            />
-          ));
-          textBuffer = '';
-        }
         // 渲染工具引用
         const activity = activityMap.get(`${segment.callId}:result`) || activityMap.get(segment.callId);
         if (activity) {
@@ -289,22 +282,6 @@ function StepContentRenderer({
         }
       }
     });
-
-    // 渲染剩余的文本
-    if (textBuffer) {
-      const inlineText = shouldRenderInlineText(textBuffer);
-      elements.push(inlineText ? (
-        <span key="text-final" className={styles.inlineText}>
-          {textBuffer}
-        </span>
-      ) : (
-        <XMarkdown
-          key="text-final"
-          content={textBuffer}
-          streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
-        />
-      ));
-    }
 
     const hasOnlyTools = elements.length > 0 && elements.every((element) =>
       React.isValidElement(element) && typeof element.key === 'string' && String(element.key).startsWith('tool-'));
@@ -325,13 +302,6 @@ function StepContentRenderer({
             content={step.content}
             streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
           />
-        )}
-        {activities.length > 0 && (
-          <span>
-            {activities.map((tool) => (
-              <ToolReference key={tool.id} activity={tool} />
-            ))}
-          </span>
         )}
       </div>
     );
@@ -445,17 +415,7 @@ function AssistantReplyContent({
             ))}
           </div>
         </div>
-      ) : activeStepActivities.length > 0 ? (
-        /* 没有 plan 时，直接显示 activities 列表 */
-        <div className={styles.activities}>
-          {activeStepActivities.map((activity) => (
-            <div key={activity.id} className={styles.activity}>
-              <span>{activity.label}</span>
-              {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      ): null}
 
       {runtime?.summary ? (
         <div className={styles.summary}>

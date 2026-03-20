@@ -38,6 +38,12 @@ const HostCloudImportPage: React.FC = () => {
     try {
       const res = await Api.hosts.listCloudAccounts();
       setAccounts(res.data || []);
+    } catch (err: any) {
+      console.error('加载云账号失败:', err);
+      // 如果是认证错误，不显示错误消息（由全局拦截器处理）
+      if (err?.code !== 2003) {
+        message.error(err?.message || '加载云账号失败');
+      }
     } finally {
       setLoading(false);
     }
