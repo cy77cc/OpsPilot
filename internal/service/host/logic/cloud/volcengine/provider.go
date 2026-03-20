@@ -63,14 +63,21 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	// 构建查询参数
 	input := &ecs.DescribeInstancesInput{}
 
+	// 可用区过滤
+	if req.Zone != "" {
+		input.SetZoneId(req.Zone)
+	}
+
 	// 关键词过滤（支持实例名称）
 	if req.Keyword != "" {
 		input.SetInstanceName(req.Keyword)
 	}
 
-	// 分页参数
+	// 分页参数（默认返回 100 条）
 	if req.PageSize > 0 {
 		input.SetMaxResults(int32(req.PageSize))
+	} else {
+		input.SetMaxResults(100)
 	}
 
 	// 调用 API

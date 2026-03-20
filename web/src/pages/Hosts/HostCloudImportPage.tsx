@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Select, Space, Table, Tag, message, Popconfirm, Descriptions } from 'antd';
+import { Button, Card, Form, Input, Select, Space, Table, Tag, message, Popconfirm } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { CloudAccount, CloudInstance, CloudProviderInfo } from '../../api/modules/hosts';
@@ -11,6 +11,16 @@ const providerOptions = [
   { value: 'tencent', label: '腾讯云' },
 ];
 
+// 火山云可用区选项
+const volcengineZoneOptions = [
+  { value: '', label: '全部可用区' },
+  { value: 'cn-beijing-a', label: '华北2（北京）- 可用区A' },
+  { value: 'cn-beijing-b', label: '华北2（北京）- 可用区B' },
+  { value: 'cn-shanghai-a', label: '华东2（上海）- 可用区A' },
+  { value: 'cn-shanghai-b', label: '华东2（上海）- 可用区B' },
+  { value: 'cn-guangzhou-a', label: '华南1（广州）- 可用区A' },
+];
+
 const HostCloudImportPage: React.FC = () => {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [providers, setProviders] = useState<CloudProviderInfo[]>([]);
@@ -18,6 +28,7 @@ const HostCloudImportPage: React.FC = () => {
   const [selected, setSelected] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState(false);
   const [querying, setQuerying] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [accountForm] = Form.useForm();
   const [queryForm] = Form.useForm();
 
@@ -50,15 +61,28 @@ const HostCloudImportPage: React.FC = () => {
   // 创建云账号
   const createAccount = async () => {
     const values = await accountForm.validateFields();
-    await Api.hosts.createCloudAccount(values);
-    message.success('云账号创建成功');
-    accountForm.resetFields();
-    loadAccounts();
+    try {
+      await Api.hosts.createCloudAccount(values);
+      message.success('云账号创建成功');
+      accountForm.resetFields();
+      loadAccounts();
+    } catch (err: any) {
+      message.error(err?.message || '创建失败');
+    }
   };
 
-  // 删除云账号（TODO: 需要后端支持）
+  // 删除云账号
   const deleteAccount = async (accountId: string) => {
-    message.info('删除功能待实现');
+    setDeleting(accountId);
+    try {
+      await Api.hosts.deleteCloudAccount(accountId);
+      message.success('删除成功');
+      loadAccounts();
+    } catch (err: any) {
+      message.error(err?.message || '删除失败');
+    } finally {
+      setDeleting(null);
+    }
   };
 
   // 选择账号后自动填充 region
@@ -68,6 +92,7 @@ const HostCloudImportPage: React.FC = () => {
       queryForm.setFieldsValue({
         provider: acc.provider,
         region: acc.regionDefault || '',
+        zone: '',
       });
     }
   };
@@ -81,10 +106,16 @@ const HostCloudImportPage: React.FC = () => {
         provider: values.provider,
         accountId: Number(values.accountId),
         region: values.region || undefined,
+        zone: values.zone || undefined,
         keyword: values.keyword || undefined,
       });
       setInstances(res.data || []);
       setSelected([]);
+      if ((res.data || []).length === 0) {
+        message.info('未查询到实例，请检查地域/可用区是否正确');
+      }
+    } catch (err: any) {
+      message.error(err?.message || '查询失败');
     } finally {
       setQuerying(false);
     }
@@ -98,15 +129,19 @@ const HostCloudImportPage: React.FC = () => {
       message.warning('请选择要导入的实例');
       return;
     }
-    const res = await Api.hosts.importCloudInstances({
-      provider: values.provider,
-      accountId: Number(values.accountId),
-      instances: picked,
-      role: values.role || '',
-      labels: values.labels ? String(values.labels).split(',').map((x) => x.trim()).filter(Boolean) : [],
-    });
-    message.success(`导入成功，任务ID: ${res.data?.task?.id || '-'}`);
-    setSelected([]);
+    try {
+      const res = await Api.hosts.importCloudInstances({
+        provider: values.provider,
+        accountId: Number(values.accountId),
+        instances: picked,
+        role: values.role || '',
+        labels: values.labels ? String(values.labels).split(',').map((x) => x.trim()).filter(Boolean) : [],
+      });
+      message.success(`导入成功，任务ID: ${res.data?.task?.id || '-'}`);
+      setSelected([]);
+    } catch (err: any) {
+      message.error(err?.message || '导入失败');
+    }
   };
 
   // 获取云厂商显示名称
@@ -127,6 +162,9 @@ const HostCloudImportPage: React.FC = () => {
         value: a.id,
       })),
   })).filter((g) => g.options.length > 0);
+
+  // 获取当前选择的 provider
+  const currentProvider = Form.useWatch('provider', queryForm);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -186,9 +224,16 @@ const HostCloudImportPage: React.FC = () => {
                 render: (_, record) => (
                   <Popconfirm
                     title="确定删除该云账号？"
+                    description="删除后无法恢复"
                     onConfirm={() => deleteAccount(record.id)}
                   >
-                    <Button type="link" danger size="small" icon={<DeleteOutlined />} />
+                    <Button
+                      type="link"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      loading={deleting === record.id}
+                    />
                   </Popconfirm>
                 ),
               },
@@ -226,16 +271,26 @@ const HostCloudImportPage: React.FC = () => {
             <Input />
           </Form.Item>
           <Form.Item name="region">
-            <Input placeholder="地域（可选，留空用默认）" style={{ width: 180 }} />
+            <Input placeholder="地域（如 cn-beijing）" style={{ width: 150 }} />
           </Form.Item>
+          {currentProvider === 'volcengine' && (
+            <Form.Item name="zone">
+              <Select
+                style={{ width: 200 }}
+                placeholder="可用区（可选）"
+                options={volcengineZoneOptions}
+                allowClear
+              />
+            </Form.Item>
+          )}
           <Form.Item name="keyword">
-            <Input placeholder="关键词过滤" style={{ width: 140 }} />
+            <Input placeholder="关键词过滤" style={{ width: 120 }} />
           </Form.Item>
           <Form.Item name="role">
-            <Input placeholder="导入角色" style={{ width: 120 }} />
+            <Input placeholder="导入角色" style={{ width: 100 }} />
           </Form.Item>
           <Form.Item name="labels">
-            <Input placeholder="标签（逗号分隔）" style={{ width: 150 }} />
+            <Input placeholder="标签（逗号分隔）" style={{ width: 130 }} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" onClick={queryInstances} loading={querying}>查询实例</Button>

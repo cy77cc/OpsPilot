@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/service/host/logic"
@@ -38,6 +40,24 @@ func (h *Handler) CreateCloudAccount(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, item)
+}
+
+func (h *Handler) DeleteCloudAccount(c *gin.Context) {
+	accountID := c.Param("id")
+	if accountID == "" {
+		httpx.Fail(c, xcode.ParamError, "账号ID不能为空")
+		return
+	}
+	var id uint64
+	if _, err := fmt.Sscanf(accountID, "%d", &id); err != nil {
+		httpx.Fail(c, xcode.ParamError, "账号ID格式错误")
+		return
+	}
+	if err := h.hostService.DeleteCloudAccount(c.Request.Context(), id); err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, nil)
 }
 
 func (h *Handler) TestCloudAccount(c *gin.Context) {

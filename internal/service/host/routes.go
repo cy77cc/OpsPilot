@@ -32,6 +32,7 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/cloud/providers", h.ListCloudProviders)
 		g.GET("/cloud/accounts", h.ListCloudAccounts)
 		g.POST("/cloud/accounts", h.CreateCloudAccount)
+		g.DELETE("/cloud/accounts/:id", h.DeleteCloudAccount)
 		g.POST("/cloud/providers/:provider/accounts/test", h.TestCloudAccount)
 		g.POST("/cloud/providers/:provider/instances/query", h.QueryCloudInstances)
 		g.POST("/cloud/providers/:provider/instances/import", h.ImportCloudInstances)

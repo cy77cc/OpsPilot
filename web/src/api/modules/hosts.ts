@@ -643,10 +643,11 @@ export const hostApi = {
     };
   },
 
-  async queryCloudInstances(payload: { provider: string; accountId: number; region?: string; keyword?: string }): Promise<ApiResponse<CloudInstance[]>> {
+  async queryCloudInstances(payload: { provider: string; accountId: number; region?: string; zone?: string; keyword?: string }): Promise<ApiResponse<CloudInstance[]>> {
     const res = await apiService.post<any[]>(`/hosts/cloud/providers/${payload.provider}/instances/query`, {
       account_id: payload.accountId,
       region: payload.region || '',
+      zone: payload.zone || '',
       keyword: payload.keyword || '',
     });
     return {
@@ -663,6 +664,10 @@ export const hostApi = {
         diskGB: Number(x.disk_gb || 0),
       })),
     };
+  },
+
+  async deleteCloudAccount(accountId: string): Promise<ApiResponse<void>> {
+    return apiService.delete(`/hosts/cloud/accounts/${accountId}`);
   },
 
   async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[] }): Promise<ApiResponse<any>> {

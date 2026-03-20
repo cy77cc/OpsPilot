@@ -17,6 +17,11 @@ type ListInstancesRequest struct {
 	// 阿里云示例: "cn-hangzhou"、"cn-shanghai"
 	Region string
 
+	// Zone 可用区标识（可选）。
+	//
+	// 火山云示例: "cn-beijing-a"、"cn-beijing-b"
+	Zone string
+
 	// Keyword 过滤关键词。
 	//
 	// 用于按实例名称或 IP 地址过滤，适配器可自行实现模糊匹配逻辑。

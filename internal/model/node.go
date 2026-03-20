@@ -105,16 +105,16 @@ func (n *NodeEvent) TableName() string {
 // 表名: host_cloud_accounts
 // 用途: 支持从云厂商导入主机
 type HostCloudAccount struct {
-	ID                 uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`                           // 账户 ID
-	Provider           string    `gorm:"column:provider;type:varchar(32);not null;index" json:"provider"`        // 云厂商: aliyun/aws/tencent
-	AccountName        string    `gorm:"column:account_name;type:varchar(128);not null" json:"account_name"`     // 账户名称
-	AccessKeyID        string    `gorm:"column:access_key_id;type:varchar(256);not null" json:"access_key_id"`   // Access Key ID
-	AccessKeySecretEnc string    `gorm:"column:access_key_secret_enc;type:longtext;not null" json:"-"`          // Access Key Secret (加密存储)
-	RegionDefault      string    `gorm:"column:region_default;type:varchar(64)" json:"region_default"`           // 默认区域
-	Status             string    `gorm:"column:status;type:varchar(32);default:active" json:"status"`            // 状态: active/inactive
-	CreatedBy          uint64    `gorm:"column:created_by;index" json:"created_by"`                              // 创建人 ID
-	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                     // 创建时间
-	UpdatedAt          time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                     // 更新时间
+	ID                 uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`                                      // 账户 ID
+	Provider           string    `gorm:"column:provider;type:varchar(32);not null;index" json:"provider"`                   // 云厂商: volcengine/alicloud/tencent
+	AccountName        string    `gorm:"column:account_name;type:varchar(128);not null;uniqueIndex:idx_provider_account" json:"account_name"` // 账户名称（唯一索引）
+	AccessKeyID        string    `gorm:"column:access_key_id;type:varchar(256);not null;uniqueIndex:idx_provider_ak" json:"access_key_id"` // Access Key ID（唯一索引）
+	AccessKeySecretEnc string    `gorm:"column:access_key_secret_enc;type:longtext;not null" json:"-"`                     // Access Key Secret (加密存储)
+	RegionDefault      string    `gorm:"column:region_default;type:varchar(64)" json:"region_default"`                      // 默认区域
+	Status             string    `gorm:"column:status;type:varchar(32);default:active" json:"status"`                       // 状态: active/inactive
+	CreatedBy          uint64    `gorm:"column:created_by;index" json:"created_by"`                                         // 创建人 ID
+	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                // 创建时间
+	UpdatedAt          time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                // 更新时间
 }
 
 // TableName 返回云账户表名。

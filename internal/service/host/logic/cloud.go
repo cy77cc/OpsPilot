@@ -31,6 +31,7 @@ type CloudQueryReq struct {
 	Provider  string `json:"provider"`
 	AccountID uint64 `json:"account_id"`
 	Region    string `json:"region"`
+	Zone      string `json:"zone"`      // 可选，可用区
 	Keyword   string `json:"keyword"`
 }
 
@@ -202,6 +203,7 @@ func (s *HostService) QueryCloudInstances(ctx context.Context, req CloudQueryReq
 		AccessKeyID:     account.AccessKeyID,
 		AccessKeySecret: secret,
 		Region:          region,
+		Zone:            req.Zone,
 		Keyword:         req.Keyword,
 	})
 	if err != nil {
@@ -312,5 +314,25 @@ func (s *HostService) GetImportTask(ctx context.Context, taskID string) (*model.
 		return nil, err
 	}
 	return &task, nil
+}
+
+// DeleteCloudAccount 删除云账号。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - accountID: 账号 ID
+//
+// 返回:
+//   - 成功返回 nil
+//   - 失败返回错误
+func (s *HostService) DeleteCloudAccount(ctx context.Context, accountID uint64) error {
+	result := s.svcCtx.DB.WithContext(ctx).Delete(&model.HostCloudAccount{}, accountID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("云账号不存在")
+	}
+	return nil
 }
 
