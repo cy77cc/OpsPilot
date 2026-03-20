@@ -594,10 +594,12 @@ export const hostApi = {
   },
 
   async listCloudAccounts(provider?: string): Promise<ApiResponse<CloudAccount[]>> {
-    const res = await apiService.get<any[]>('/hosts/cloud/accounts', { params: { provider } });
+    const res = await apiService.get<any>('/hosts/cloud/accounts', { params: { provider } });
+    // 后端返回 { list: [...], total: N } 格式
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
-      data: (res.data || []).map((x: any) => ({
+      data: rawList.map((x: any) => ({
         id: String(x.id),
         provider: x.provider,
         accountName: x.account_name,
