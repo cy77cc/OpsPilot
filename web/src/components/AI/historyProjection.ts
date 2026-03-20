@@ -111,6 +111,34 @@ export function isProjectionHydrationPending(message?: XChatMessage): boolean {
 async function projectionToRuntime(projection: AIRunProjection): Promise<AssistantReplyRuntime> {
   const activities: AssistantReplyActivity[] = [];
   const steps: AssistantReplyPlanStep[] = [];
+  let nextExecutorStepIndex = 0;
+
+  const ensureStep = (index: number, title: string): AssistantReplyPlanStep => {
+    while (steps.length <= index) {
+      steps.push({
+        id: `history-step-${steps.length}`,
+        title: `步骤 ${steps.length + 1}`,
+        status: 'done',
+      });
+    }
+
+    const current = steps[index];
+    const nextTitle = title.trim() || current.title;
+    const nextStep: AssistantReplyPlanStep = {
+      ...current,
+      id: current.id || `history-step-${index}`,
+      title: nextTitle,
+      status: 'done',
+    };
+    steps[index] = nextStep;
+    return nextStep;
+  };
+
+  const syncPlanTitles = (titles: string[], completed: number) => {
+    titles.forEach((title, offset) => {
+      ensureStep(completed + offset, title);
+    });
+  };
 
   for (const block of projection.blocks) {
     if (block.type === 'agent_handoff') {
@@ -125,13 +153,8 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
     }
     if (block.type === 'plan') {
       if (block.steps?.length) {
-        block.steps.forEach((title, index) => {
-          steps.push({
-            id: `${block.id}-step-${index}`,
-            title,
-            status: 'done',
-          });
-        });
+        syncPlanTitles(block.steps, 0);
+        nextExecutorStepIndex = 0;
       }
       activities.push({
         id: block.id,
@@ -144,11 +167,9 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
     }
     if (block.type === 'replan') {
       if (block.steps?.length) {
-        steps.splice(0, steps.length, ...block.steps.map((title, index) => ({
-          id: `${block.id}-step-${index}`,
-          title,
-          status: 'done' as const,
-        })));
+        const completed = Number(block.data?.completed || 0);
+        syncPlanTitles(block.steps, completed);
+        nextExecutorStepIndex = completed;
       }
       activities.push({
         id: block.id,
@@ -174,6 +195,9 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
   for (const block of executorBlocks) {
     const segments: AssistantReplySegment[] = [];
     let stepContent = '';
+    const stepIndex = steps.length > nextExecutorStepIndex ? nextExecutorStepIndex : steps.length;
+    const step = ensureStep(stepIndex, steps[stepIndex]?.title || block.title);
+
     for (const item of block.items || []) {
       if (item.type === 'content' && item.content_id) {
         const content = await loadRunContent(item.content_id);
@@ -199,19 +223,21 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
           status: item.result
             ? item.result.status === 'done' ? 'done' : 'error'
             : 'error',
-          stepIndex: steps.length,
+          stepIndex,
           arguments: item.arguments,
         });
         segments.push({ type: 'tool_ref', callId: item.tool_call_id });
       }
     }
-    steps.push({
-      id: block.id,
-      title: block.title,
+
+    steps[stepIndex] = {
+      ...step,
+      id: step.id || block.id,
       status: 'done',
       content: stepContent || undefined,
       segments: segments.length > 0 ? segments : undefined,
-    });
+    };
+    nextExecutorStepIndex = stepIndex + 1;
   }
 
   return {

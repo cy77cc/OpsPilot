@@ -181,6 +181,38 @@ func TestConsumeProjectedEvents_AccumulatesAssistantContentAndHandoff(t *testing
 	}
 }
 
+func TestConsumeProjectedEvents_ExcludesExecutorDeltaFromAssistantContent(t *testing.T) {
+	t.Parallel()
+
+	var builder strings.Builder
+	l := &Logic{}
+	seq := 0
+
+	_, err := l.consumeProjectedEvents(context.Background(), "run-1", "sess-1", &seq, []airuntime.PublicStreamEvent{
+		{
+			Event: "delta",
+			Data: map[string]any{
+				"agent":   "executor",
+				"content": "executor trace ",
+			},
+		},
+		{
+			Event: "delta",
+			Data: map[string]any{
+				"agent":   "replanner",
+				"content": "final answer",
+			},
+		},
+	}, func(string, any) {}, &builder)
+	if err != nil {
+		t.Fatalf("consume projected events: %v", err)
+	}
+
+	if got := builder.String(); got != "final answer" {
+		t.Fatalf("expected assistant content to exclude executor delta, got %q", got)
+	}
+}
+
 func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
 	db := newLogicTestDB(t)
 	seedLogicTestSession(t, db, model.AIChatSession{

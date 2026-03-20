@@ -124,6 +124,7 @@ export interface AIRunProjectionExecutorItem {
   tool_call_id?: string;
   tool_name?: string;
   event_id?: string;
+  arguments?: Record<string, unknown>;
   arguments_content_id?: string;
   result?: AIRunProjectionToolResult;
 }

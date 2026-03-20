@@ -351,7 +351,8 @@ func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID str
 		}
 		if projected.Event == "delta" {
 			if data, ok := projected.Data.(map[string]any); ok {
-				if content, ok := data["content"].(string); ok {
+				agent := strings.TrimSpace(stringValue(data, "agent"))
+				if content, ok := data["content"].(string); ok && agent != "executor" {
 					assistantContent.WriteString(content)
 				}
 			}
