@@ -30,6 +30,8 @@ vi.mock('../../../api/modules/ai', () => ({
     getSessions: vi.fn(async () => ({ data: [] })),
     getScenePrompts: vi.fn(async () => ({ data: { prompts: [] } })),
     getSession: vi.fn(async () => ({ data: { messages: [] } })),
+    getRunProjection: vi.fn(async () => ({ data: null })),
+    getRunContent: vi.fn(async () => ({ data: null })),
     createSession: vi.fn(),
     chatStream: vi.fn(),
   },
@@ -176,7 +178,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     expect(screen.getAllByTestId('x-markdown').some((node) => node.textContent?.includes('hello'))).toBe(true);
   });
 
-  it('preserves persisted runtime in defaultMessages hydration', async () => {
+  it('hydrates assistant history from run projection', async () => {
     let capturedDefaultMessages: ((args: { conversationKey?: string }) => Promise<any[]>) | undefined;
     mockUseXChat.mockImplementation((config: any) => {
       capturedDefaultMessages = config.defaultMessages;
@@ -192,17 +194,23 @@ describe('CopilotSurface XMarkdown streaming', () => {
       data: {
         messages: [
           {
+            id: 'msg-1',
             role: 'assistant',
             content: '历史回答',
             status: 'done',
-            runtime: {
-              phase: 'completed',
-              phaseLabel: '已完成诊断',
-              activities: [],
-              status: { kind: 'completed', label: '已生成' },
-            },
+            run_id: 'run-1',
           },
         ],
+      },
+    } as any);
+    vi.mocked(aiApi.getRunProjection).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        summary: { title: '结论', content_mode: 'inline', content: '已完成诊断' },
+        blocks: [],
       },
     } as any);
 
@@ -213,10 +221,10 @@ describe('CopilotSurface XMarkdown streaming', () => {
     );
 
     const hydrated = await capturedDefaultMessages?.({ conversationKey: 'sess-1' });
-    expect(hydrated?.[0]?.message?.runtime?.phaseLabel).toBe('已完成诊断');
+    expect(hydrated?.[0]?.message?.runtime?.summary?.title).toBe('结论');
     expect(hydrated?.[0]?.message?.runtime?.status).toEqual({
       kind: 'completed',
-      label: '已生成',
+      label: 'completed',
     });
   });
 

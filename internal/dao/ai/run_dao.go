@@ -81,3 +81,24 @@ func (d *AIRunDAO) GetRun(ctx context.Context, runID string) (*model.AIRun, erro
 	}
 	return &run, nil
 }
+
+func (d *AIRunDAO) ListBySession(ctx context.Context, sessionID string) ([]model.AIRun, error) {
+	var runs []model.AIRun
+	err := d.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at ASC, id ASC").
+		Find(&runs).Error
+	return runs, err
+}
+
+func (d *AIRunDAO) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]model.AIRun, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	var runs []model.AIRun
+	err := d.db.WithContext(ctx).
+		Where("session_id IN ?", sessionIDs).
+		Order("created_at ASC, id ASC").
+		Find(&runs).Error
+	return runs, err
+}

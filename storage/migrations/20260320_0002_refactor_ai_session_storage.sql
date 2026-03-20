@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS ai_run_contents (
   INDEX idx_ai_run_contents_kind (content_kind)
 );
 
-ALTER TABLE ai_chat_messages DROP COLUMN runtime_json;
+ALTER TABLE ai_chat_messages DROP COLUMN IF EXISTS runtime_json;
 
 -- +migrate Down
-ALTER TABLE ai_chat_messages ADD COLUMN runtime_json LONGTEXT NULL AFTER status;
+ALTER TABLE ai_chat_messages ADD COLUMN IF NOT EXISTS runtime_json LONGTEXT NULL AFTER status;
 DROP TABLE IF EXISTS ai_run_contents;
 DROP TABLE IF EXISTS ai_run_projections;
 DROP TABLE IF EXISTS ai_run_events;

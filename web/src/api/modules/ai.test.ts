@@ -115,9 +115,13 @@ describe('aiApi phase 1 endpoints', () => {
     const getMock = vi.spyOn(apiService, 'get').mockResolvedValue({ success: true, data: {} });
 
     await aiApi.getRunStatus('run-1');
+    await aiApi.getRunProjection('run-1');
+    await aiApi.getRunContent('content-1');
     await aiApi.getDiagnosisReport('report-1');
 
     expect(getMock).toHaveBeenNthCalledWith(1, '/ai/runs/run-1');
-    expect(getMock).toHaveBeenNthCalledWith(2, '/ai/diagnosis/report-1');
+    expect(getMock).toHaveBeenNthCalledWith(2, '/ai/runs/run-1/projection');
+    expect(getMock).toHaveBeenNthCalledWith(3, '/ai/run-contents/content-1');
+    expect(getMock).toHaveBeenNthCalledWith(4, '/ai/diagnosis/report-1');
   });
 });

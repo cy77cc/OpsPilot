@@ -20,7 +20,7 @@ import { createStyles } from 'antd-style';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
-import { hydrateAssistantHistoryMessage } from './historyRuntime';
+import { hydrateAssistantHistoryFromProjection } from './historyProjection';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
 
@@ -464,10 +464,10 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       const response = await aiApi.getSession(conversationKey);
       const session = response?.data;
       const messages = Array.isArray(session?.messages) ? session.messages : [];
-      return messages.map((message) => ({
-        message: hydrateAssistantHistoryMessage(message as any),
+      return Promise.all(messages.map(async (message) => ({
+        message: await hydrateAssistantHistoryFromProjection(message as any),
         status: mapHistoryMessageStatus(message.status),
-      }));
+      })));
     },
     [],
   );

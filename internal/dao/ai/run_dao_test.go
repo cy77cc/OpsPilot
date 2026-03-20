@@ -76,3 +76,30 @@ func TestUpdateRunStatus_DoesNotBlankExistingFieldsOnPartialUpdate(t *testing.T)
 		t.Fatalf("expected partial fields to be updated, got %#v", refreshed)
 	}
 }
+
+func TestListBySessionIDs_ReturnsRunsAcrossSessions(t *testing.T) {
+	db := newAIDAOTestDB(t)
+	dao := NewAIRunDAO(db)
+	ctx := context.Background()
+
+	for _, run := range []*model.AIRun{
+		{ID: "run-a", SessionID: "session-a", UserMessageID: "msg-a", Status: "completed", TraceJSON: "{}"},
+		{ID: "run-b", SessionID: "session-b", UserMessageID: "msg-b", Status: "completed", TraceJSON: "{}"},
+		{ID: "run-c", SessionID: "session-c", UserMessageID: "msg-c", Status: "completed", TraceJSON: "{}"},
+	} {
+		if err := dao.CreateRun(ctx, run); err != nil {
+			t.Fatalf("create run %s: %v", run.ID, err)
+		}
+	}
+
+	runs, err := dao.ListBySessionIDs(ctx, []string{"session-a", "session-c"})
+	if err != nil {
+		t.Fatalf("list runs by session ids: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(runs))
+	}
+	if runs[0].SessionID != "session-a" || runs[1].SessionID != "session-c" {
+		t.Fatalf("unexpected runs returned: %#v", runs)
+	}
+}

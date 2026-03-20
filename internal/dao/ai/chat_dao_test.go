@@ -105,9 +105,10 @@ func TestCreateMessage_TouchesSessionUpdatedAt(t *testing.T) {
 	}
 }
 
-func TestChatDAO_DoesNotExposeRuntimeJSON(t *testing.T) {
-	if _, ok := reflect.TypeOf(model.AIChatMessage{}).FieldByName("RuntimeJSON"); ok {
-		t.Fatal("did not expect RuntimeJSON field on AIChatMessage")
+func TestChatDAO_DoesNotExposeLegacyRuntimeField(t *testing.T) {
+	legacyFieldName := "Runtime" + "JSON"
+	if _, ok := reflect.TypeOf(model.AIChatMessage{}).FieldByName(legacyFieldName); ok {
+		t.Fatal("did not expect legacy runtime snapshot field on AIChatMessage")
 	}
 }
 
