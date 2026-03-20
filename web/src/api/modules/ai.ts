@@ -7,7 +7,7 @@ export interface AIMessage {
   role: 'user' | 'assistant' | 'system';
   run_id?: string;
   turnId?: string;
-  content: string;
+  content?: string;
   runtime?: Record<string, unknown>;
   thinking?: string;
   rawEvidence?: string[];

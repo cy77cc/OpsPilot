@@ -39,11 +39,12 @@ export async function loadRunContent(contentId: string): Promise<AIRunContent | 
 export async function hydrateAssistantHistoryFromProjection(
   message: AIMessage,
 ): Promise<XChatMessage> {
+  const fallbackContent = message.content || '';
   if (message.role !== 'assistant') {
     return {
       id: message.id,
       role: 'user',
-      content: message.content || '',
+      content: fallbackContent,
     };
   }
 
@@ -52,7 +53,7 @@ export async function hydrateAssistantHistoryFromProjection(
     return {
       id: message.id,
       role: 'assistant',
-      content: message.content || '',
+      content: fallbackContent,
     };
   }
 
@@ -61,7 +62,30 @@ export async function hydrateAssistantHistoryFromProjection(
     return {
       id: message.id,
       role: 'assistant',
-      content: message.content || '',
+      content: '回答内容不可恢复',
+      runtime: {
+        activities: [],
+        status: {
+          kind: 'error',
+          label: 'projection missing summary',
+        },
+      },
+    };
+  }
+
+  const summaryContent = projection.summary?.content?.trim() || '';
+  if (!summaryContent) {
+    return {
+      id: message.id,
+      role: 'assistant',
+      content: '回答内容不可恢复',
+      runtime: {
+        activities: [],
+        status: {
+          kind: 'error',
+          label: 'projection missing summary',
+        },
+      },
     };
   }
 
@@ -69,7 +93,7 @@ export async function hydrateAssistantHistoryFromProjection(
   return {
     id: message.id,
     role: 'assistant',
-    content: message.content || projection.summary?.content || '',
+    content: summaryContent,
     runtime,
   };
 }
@@ -184,11 +208,8 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
   return {
     activities,
     plan: steps.length > 0 ? { steps } : undefined,
-    summary: projection.summary?.content ? {
+    summary: projection.summary?.title ? {
       title: projection.summary.title,
-      items: [
-        { label: '结论', value: projection.summary.content },
-      ],
     } : undefined,
     status: {
       kind: projection.status === 'failed_runtime' ? 'error' : 'completed',
