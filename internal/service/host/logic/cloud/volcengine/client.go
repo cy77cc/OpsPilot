@@ -6,6 +6,7 @@ package volcengine
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/volcengine/volcengine-go-sdk/service/ecs"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
@@ -17,7 +18,6 @@ import (
 //
 // 封装火山云 SDK 的 ECS 服务客户端，提供简化的实例查询接口。
 type Client struct {
-	// ecs ECS 服务客户端实例。
 	ecs *ecs.ECS
 }
 
@@ -32,13 +32,25 @@ type Client struct {
 //   - 成功返回客户端实例
 //   - 失败返回错误（如凭证格式错误）
 func NewClient(ak, sk, region string) (*Client, error) {
+	if ak == "" || sk == "" {
+		return nil, fmt.Errorf("火山云 AccessKey ID 和 Secret 不能为空")
+	}
+	if region == "" {
+		return nil, fmt.Errorf("火山云地域不能为空，如 cn-beijing、cn-shanghai")
+	}
+
+	// 构建配置
+	// 火山云 ECS 是区域服务，Endpoint 格式: ecs.<region>.volcengineapi.com
+	endpoint := fmt.Sprintf("ecs.%s.volcengineapi.com", region)
+
 	config := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
-		WithRegion(region)
+		WithRegion(region).
+		WithEndpoint(endpoint)
 
 	sess, err := session.NewSession(config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建火山云会话失败: %w", err)
 	}
 
 	return &Client{

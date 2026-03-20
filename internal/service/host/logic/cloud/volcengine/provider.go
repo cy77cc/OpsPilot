@@ -3,10 +3,13 @@ package volcengine
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/volcengine/volcengine-go-sdk/service/ecs"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
+	"github.com/volcengine/volcengine-go-sdk/volcengine/volcengineerr"
 
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
 )
@@ -34,16 +37,6 @@ func (p *Provider) DisplayName() string {
 // ValidateCredential 验证火山云凭证是否有效。
 //
 // 通过调用 DescribeInstances API（限制返回 1 条）验证凭证有效性。
-//
-// 参数:
-//   - ctx: 请求上下文
-//   - ak: AccessKey ID
-//   - sk: AccessKey Secret
-//   - region: 地域标识
-//
-// 返回:
-//   - 验证成功返回 nil
-//   - 验证失败返回具体错误
 func (p *Provider) ValidateCredential(ctx context.Context, ak, sk, region string) error {
 	client, err := NewClient(ak, sk, region)
 	if err != nil {
@@ -54,18 +47,13 @@ func (p *Provider) ValidateCredential(ctx context.Context, ak, sk, region string
 	_, err = client.DescribeInstances(ctx, &ecs.DescribeInstancesInput{
 		MaxResults: volcengine.Int32(1),
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("火山云凭证验证失败: %w", p.wrapError(err))
+	}
+	return nil
 }
 
 // ListInstances 查询火山云 ECS 实例列表。
-//
-// 参数:
-//   - ctx: 请求上下文
-//   - req: 查询请求参数
-//
-// 返回:
-//   - 成功返回实例列表
-//   - 失败返回具体错误
 func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesRequest) ([]cloud.CloudInstance, error) {
 	client, err := NewClient(req.AccessKeyID, req.AccessKeySecret, req.Region)
 	if err != nil {
@@ -88,7 +76,7 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	// 调用 API
 	output, err := client.DescribeInstances(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("查询火山云实例失败: %w", p.wrapError(err))
 	}
 
 	// 转换实例数据
@@ -112,4 +100,31 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	}
 
 	return instances, nil
+}
+
+// wrapError 包装火山云错误，提供更友好的错误信息。
+func (p *Provider) wrapError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// 尝试解析火山云错误
+	var be volcengineerr.Error
+	if errors.As(err, &be) {
+		switch be.Code() {
+		case "InvalidAccessKey":
+			return fmt.Errorf("AccessKey 无效，请检查 AccessKey ID 和 Secret 是否正确")
+		case "SignatureDoesNotMatch":
+			return fmt.Errorf("签名验证失败，请检查 AccessKey Secret 是否正确")
+		case "InvalidRegion":
+			return fmt.Errorf("地域无效，请使用正确的地域标识如 cn-beijing、cn-shanghai")
+		case "UnauthorizedOperation":
+			return fmt.Errorf("无权限执行此操作，请检查 AccessKey 是否有 ECS 权限")
+		case "MissingParameter":
+			return fmt.Errorf("缺少必要参数: %s", be.Message())
+		}
+		return fmt.Errorf("[%s] %s", be.Code(), be.Message())
+	}
+
+	return err
 }
