@@ -203,6 +203,9 @@ func projectAssistantMessage(agentName string, message *schema.Message, state *a
 	}
 
 	for _, toolCall := range message.ToolCalls {
+		if !shouldProjectToolCall(toolCall.ID, toolCall.Function.Name, toolCall.Function.Arguments) {
+			continue
+		}
 		projected = append(projected, StreamEvent{
 			Event: "tool_call",
 			Data: map[string]any{

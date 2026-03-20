@@ -200,6 +200,38 @@ func TestNormalizeAgentEvent_AssistantWithToolCalls(t *testing.T) {
 			wantKinds: []NormalizedKind{NormalizedKindMessage},
 			wantLen:   1,
 		},
+		{
+			name: "assistant ignores transfer handoff tool_call",
+			event: &adk.AgentEvent{
+				AgentName: "OpsPilotAgent",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role: schema.Assistant,
+						ToolCalls: []schema.ToolCall{
+							{ID: "call-1", Function: schema.FunctionCall{Name: "transfer_to_agent", Arguments: `{"agent_name":"QAAgent"}`}},
+						},
+					}},
+				},
+			},
+			wantKinds: nil,
+			wantLen:   0,
+		},
+		{
+			name: "assistant ignores incomplete tool_call",
+			event: &adk.AgentEvent{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{Message: &schema.Message{
+						Role: schema.Assistant,
+						ToolCalls: []schema.ToolCall{
+							{ID: "", Function: schema.FunctionCall{Name: ""}},
+						},
+					}},
+				},
+			},
+			wantKinds: nil,
+			wantLen:   0,
+		},
 	}
 
 	for _, tt := range tests {

@@ -543,6 +543,9 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 			Content: stringValue(data, "content"),
 		})
 	case "tool_call":
+		if strings.TrimSpace(stringValue(data, "call_id")) == "" || strings.TrimSpace(stringValue(data, "tool_name")) == "" {
+			return "", "", nil
+		}
 		return marshalTypedEvent(airuntime.EventTypeToolCall, &airuntime.ToolCallPayload{
 			Agent:     stringValue(data, "agent"),
 			CallID:    stringValue(data, "call_id"),
