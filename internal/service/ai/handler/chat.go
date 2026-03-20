@@ -29,7 +29,9 @@ func (h *Handler) Chat(c *gin.Context) {
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)
 	}); err != nil {
-		httpx.ServerErr(c, err)
+		writeChatEvent(writer, c, "error", gin.H{
+			"message": err.Error(),
+		})
 		return
 	}
 }
