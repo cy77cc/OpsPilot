@@ -7,14 +7,56 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 )
+
+func TestChatHandler_PassesClientRequestIDIntoLogic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var req struct {
+		Message         string `json:"message"`
+		ClientRequestID string `json:"client_request_id"`
+	}
+	if err := json.Unmarshal([]byte(`{"message":"hi","client_request_id":"req-1"}`), &req); err != nil {
+		t.Fatalf("unmarshal request: %v", err)
+	}
+	if req.ClientRequestID != "req-1" {
+		t.Fatalf("expected client_request_id to be preserved, got %q", req.ClientRequestID)
+	}
+
+	reqType := reflect.TypeOf(aiv1.ChatRequest{})
+	field, ok := reqType.FieldByName("ClientRequestID")
+	if !ok {
+		t.Fatalf("expected ChatRequest to expose ClientRequestID field")
+	}
+	if tag := field.Tag.Get("json"); tag != "client_request_id,omitempty" {
+		t.Fatalf("expected client_request_id json tag, got %q", tag)
+	}
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hi","client_request_id":"req-1"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+}
 
 func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)

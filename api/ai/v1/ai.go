@@ -2,10 +2,11 @@ package v1
 
 // ChatRequest defines the request body for AI chat.
 type ChatRequest struct {
-	SessionID string `json:"session_id,omitempty"`
-	Message   string `json:"message"`
-	Scene     string `json:"scene,omitempty"`
-	Context   any    `json:"context,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	ClientRequestID string `json:"client_request_id,omitempty"`
+	Message         string `json:"message"`
+	Scene           string `json:"scene,omitempty"`
+	Context         any    `json:"context,omitempty"`
 }
 
 // ChatResponse defines the response body for AI chat acceptance.

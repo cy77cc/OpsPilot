@@ -393,6 +393,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       {
         message: params.message,
         sessionId: params.sessionId,
+        clientRequestId: params.clientRequestId,
         scene: params.scene,
         context: params.context,
       },

@@ -9,6 +9,7 @@ export interface SceneContext {
 export interface ChatRequest {
   message: string;
   sessionId?: string;
+  clientRequestId?: string;
   scene?: string;
   context?: SceneContext;
 }

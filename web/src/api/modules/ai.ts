@@ -85,6 +85,7 @@ export interface AIKnowledgeFeedbackPayload {
 export interface AIChatParams {
   sessionId?: string;
   session_id?: string;
+  clientRequestId?: string;
   message: string;
   scene?: string;
   context?: any;

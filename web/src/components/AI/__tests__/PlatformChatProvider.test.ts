@@ -9,6 +9,19 @@ vi.mock('../../../api/modules/ai', () => ({
 }));
 
 describe('PlatformChatProvider', () => {
+  it('passes clientRequestId to aiApi.chatStream', async () => {
+    const request = new PlatformChatRequest();
+    vi.mocked(aiApi.chatStream).mockImplementation(async () => undefined);
+    request.run({ message: 'hi', scene: 'ai', clientRequestId: 'req-1' });
+    await request.asyncHandler;
+
+    expect(aiApi.chatStream).toHaveBeenCalledWith(
+      expect.objectContaining({ clientRequestId: 'req-1' }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('merges scene, session, and context into request params', () => {
     const provider = new PlatformChatProvider({
       scene: 'cluster',
