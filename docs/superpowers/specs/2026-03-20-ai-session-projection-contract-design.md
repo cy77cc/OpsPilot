@@ -117,6 +117,20 @@ assistant 回复统一拆成三层：
 - `AssistantReply` 只保留一个最终正文 markdown 槽位
 - 不再把完整结论文本放进 `runtime.summary`
 
+### 内存态与历史态切换规则
+
+流式阶段与历史阶段的底层数据源不同，但 UI 不应出现闪烁或跳变。
+
+规则如下：
+
+- 流式阶段允许前端继续使用内存中的 `message.content` 追加 delta
+- 收到 run 完成信号后，前端不立刻清空当前正文，也不先进入错误态
+- 前端应静默拉取或重取 `run projection`
+- projection 可用后，用 `projection.summary.content` 无闪烁接管正文数据源
+- 接管只替换底层数据，不改变当前消息气泡位置与滚动锚点
+
+如果 projection 在短时间窗口内尚未可读，前端应保持流式结束时的内存态正文，而不是立刻显示“Projection 缺失”错误。
+
 ### Summary 区域规则
 
 `runtime.summary` 不再承载完整结论正文。
@@ -166,6 +180,18 @@ projection 到前端 runtime 的映射不再生成两条独立 activity：
 - 遇到 `tool_ref` 时渲染一个工具引用组件
 - 工具完成后在原位置更新状态并允许展开查看参数与结果
 - 不再在步骤下方额外追加 `tool_result` 行
+
+### 工具异常兜底状态
+
+工具引用不能永久停留在“执行中”状态。
+
+如果只看到 `tool_call`，但没有对应的完成结果，应根据上下文解析为明确的终态：
+
+- 当前流式会话中超过超时阈值且 run 已结束：显示“未完成”
+- 历史 projection 中存在孤立工具引用且 run 状态不是 streaming：显示“异常中断”
+- run 整体失败时：工具引用显示失败态，而不是继续 loading
+
+这类状态允许展开查看已知参数，但结果区域应显示“无结果”或错误提示。
 
 ## 组件与模块调整
 
@@ -227,13 +253,22 @@ projection 到前端 runtime 的映射不再生成两条独立 activity：
 
 1. 流式阶段前端仍可在内存中使用 `message.content` 追加 delta
 2. run 完成后，持久化结果以 projection 为准
-3. 历史重载时不再依赖 session 保存的 assistant 正文
+3. 前端在收到完成信号后静默拉取 projection，并以其接管最终正文来源
+4. projection 未可用的短窗口内，继续保留内存态正文，不立即切换错误态
+5. 历史重载时不再依赖 session 保存的 assistant 正文
 
 ## 错误处理
 
 ### Projection 缺失
 
-如果 assistant message 有 `run_id` 但 projection 缺失，应显示明确错误态，而不是回退旧的 assistant `content`。
+如果 assistant message 有 `run_id` 但 projection 缺失，需要区分“短暂未就绪”和“真实缺失”。
+
+处理原则：
+
+- 当前会话刚结束后的短窗口内：保持内存态正文，重试拉取 projection
+- 超过重试窗口仍不可用：显示明确错误态
+- 历史重载首次拉取即缺失：允许后端基于 event log 重建 projection；若仍失败，再显示错误态
+- 不回退到 session assistant `content`
 
 ### Summary 缺失
 
@@ -252,6 +287,32 @@ projection 到前端 runtime 的映射不再生成两条独立 activity：
 - 展示 preview 或错误态
 - 不影响最终正文显示
 
+## 发布与切换策略
+
+这是一次前后端契约切换，不能假设双端完全同时发布。
+
+发布原则如下：
+
+1. 后端先发布，确保 session / projection / content 接口同时满足新契约
+2. 前端后发布，再切换到“assistant 正文仅来自 projection”的读取逻辑
+3. 发布窗口内允许保留极短期上线保护逻辑，但该逻辑只用于发版切换，不作为长期兼容方案
+
+如果选择保留上线保护逻辑，限制如下：
+
+- 优先读取 projection
+- 仅在发布窗口内且 projection 暂不可用时，才允许短暂保留内存态正文
+- 不新增面向旧历史数据的长期 `session.content` 回退契约
+
+## 后端一致性要求
+
+当前实现虽然在读取 projection 时支持基于 event log 重建，但设计上仍应尽量缩短“run 完成”与“projection 可读”之间的窗口。
+
+要求如下：
+
+- run 完成后的 projection 持久化应作为结束链路的一部分，而不是异步旁路任务
+- `GetRunProjection` 必须保留基于 event log 的重建能力，避免短暂落库延迟直接暴露给前端
+- 前端应把 projection 缺失视为“待重试或需重建”的信号，而不是第一时间渲染最终失败态
+
 ## 测试策略
 
 ### 后端
@@ -268,15 +329,20 @@ projection 到前端 runtime 的映射不再生成两条独立 activity：
 3. `runtime.summary` 不再重复包含完整结论文本
 4. 单个 tool 引用在步骤中只占一个位置
 5. `applyToolCall` 与 `applyToolResult` 会收敛到同一个工具引用对象
+6. 流式结束后切换到 projection 不得引起正文闪烁或滚动锚点跳动
+7. 孤立 tool 引用会落到“未完成”或“异常中断”态，而不是永久 loading
 
 ## 实施步骤
 
 1. 收紧后端 session message 输出契约，移除 assistant `content`
-2. 调整历史 hydrate 逻辑，正文只取 `projection.summary.content`
-3. 删除 `runtime.summary` 中对完整结论文本的组装
-4. 调整 `AssistantReply`，移除结论卡片型重复展示
-5. 收敛 tool 引用模型，取消 `tool_call` / `tool_result` 双占位
-6. 更新后端与前端测试覆盖新契约
+2. 确认 run 完成链路中 projection 持久化与 `GetRunProjection` 重建兜底都可用
+3. 调整历史 hydrate 逻辑，正文只取 `projection.summary.content`
+4. 删除 `runtime.summary` 中对完整结论文本的组装
+5. 调整 `AssistantReply`，移除结论卡片型重复展示
+6. 收敛 tool 引用模型，取消 `tool_call` / `tool_result` 双占位，并补齐异常终态
+7. 增加流式结束到 projection 接管的平滑切换逻辑
+8. 按“后端先、前端后”的顺序发布
+9. 更新后端与前端测试覆盖新契约与切换窗口
 
 ## 风险与权衡
 
@@ -299,3 +365,6 @@ projection 到前端 runtime 的映射不再生成两条独立 activity：
 3. session assistant message 不再返回正文 `content`
 4. 工具执行在步骤正文中只显示一个内联引用位置
 5. 工具完成后在原位置更新，而不是新增第二条结果记录
+6. 流式结束切换到 projection 时，UI 不出现明显闪烁或滚动跳动
+7. projection 短暂未就绪时，前端不会立刻进入误报错误态
+8. 孤立工具引用会显示明确终态，不会永久转圈
