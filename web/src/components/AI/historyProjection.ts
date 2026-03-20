@@ -1,5 +1,6 @@
 import type { AIMessage, AIRunContent, AIRunProjection } from '../../api/modules/ai';
 import { aiApi } from '../../api/modules/ai';
+import { normalizeMarkdownContent } from './markdownContent';
 import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRuntime, AssistantReplySegment, XChatMessage } from './types';
 
 const projectionCache = new Map<string, AIRunProjection | null>();
@@ -76,7 +77,7 @@ export async function hydrateAssistantHistoryFromProjection(
     };
   }
 
-  const summaryContent = projection.summary?.content?.trim() || '';
+  const summaryContent = normalizeMarkdownContent(projection.summary?.content || '').trim();
   if (!summaryContent) {
     return {
       id: message.id,
@@ -201,7 +202,7 @@ async function projectionToRuntime(projection: AIRunProjection): Promise<Assista
     for (const item of block.items || []) {
       if (item.type === 'content' && item.content_id) {
         const content = await loadRunContent(item.content_id);
-        const text = content?.body_text || '';
+        const text = normalizeMarkdownContent(content?.body_text || '');
         if (text) {
           segments.push({ type: 'text', text });
           stepContent += text;

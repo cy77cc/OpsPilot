@@ -72,6 +72,29 @@ describe('historyProjection', () => {
     });
   });
 
+  it('normalizes escaped line breaks in projection summary content', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        summary: { title: '结论', content_mode: 'inline', content: '## 标题\\n\\n正文' },
+        blocks: [],
+      },
+    });
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      content: '历史回答',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.content).toBe('## 标题\n\n正文');
+  });
+
   it('returns an error placeholder when projection summary is missing', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {

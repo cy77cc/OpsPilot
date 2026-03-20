@@ -323,6 +323,32 @@ describe('PlatformChatProvider', () => {
     );
   });
 
+  it('falls back to normalized final markdown when replanner emits escaped content chunks', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    const onSuccess = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess,
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onPlan?.({ steps: ['检查集群'], iteration: 0 });
+      handlers.onReplan?.({ steps: [], completed: 1, iteration: 1, is_final: true });
+      handlers.onDelta?.({ agent: 'replanner', content: '## Local 集群概览\\n\\n共有 21 个 Pod' });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'cluster' });
+    await request.asyncHandler;
+
+    expect(onSuccess).toHaveBeenCalledWith(
+      [expect.objectContaining({ content: '## Local 集群概览\n\n共有 21 个 Pod', mode: 'replace' })],
+      expect.any(Headers),
+    );
+  });
+
   it('routes executor delta text into the active step instead of the final markdown body', async () => {
     const request = new PlatformChatRequest();
     const onUpdate = vi.fn();

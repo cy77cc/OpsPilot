@@ -20,6 +20,7 @@ import {
   applyToolResult,
   createEmptyAssistantRuntime,
 } from '../replyRuntime';
+import { normalizeMarkdownContent } from '../markdownContent';
 import type { ChatRequest, PlatformStreamChunk, SceneContext, XChatMessage } from '../types';
 
 type MetaHandler = (payload: { session_id: string; run_id: string; turn: number }) => void;
@@ -103,6 +104,13 @@ function parsePlannerEnvelope(raw: string): { steps?: string[]; response?: strin
     return null;
   }
   return null;
+}
+
+function shouldBufferPlannerEnvelope(existing: string | undefined, incoming: string): boolean {
+  if (existing) {
+    return true;
+  }
+  return incoming.trimStart().startsWith('{');
 }
 
 interface PlatformChatRequestConfig {
@@ -249,65 +257,78 @@ export class PlatformChatRequest extends AbstractXRequestClass<
       onDelta: (payload) => {
         const agent = normalizeAgentName(payload.agent);
         if (agent === 'planner' || agent === 'replanner') {
-          // 当计划已完成（activeStepIndex 为 undefined），直接显示 replanner 的内容
-          // 不再尝试解析 JSON envelope
-          if (runtime.plan?.activeStepIndex === undefined && agent === 'replanner') {
-            const next = applyDelta({ content, runtime }, { content: payload.content || '' });
-            content = next.content;
-            runtime = next.runtime || runtime;
-            emitVisibleChunk(payload.content || '');
-            return;
-          }
-
-          const nextBuffered = `${plannerBuffers[agent] || ''}${payload.content || ''}`;
+          const incoming = payload.content || '';
+          const nextBuffered = `${plannerBuffers[agent] || ''}${incoming}`;
           const envelope = parsePlannerEnvelope(nextBuffered);
           if (!envelope) {
-            plannerBuffers[agent] = nextBuffered;
-            return;
-          }
+            if (shouldBufferPlannerEnvelope(plannerBuffers[agent], incoming)) {
+              plannerBuffers[agent] = nextBuffered;
+              return;
+            }
+          } else {
+            plannerBuffers[agent] = '';
 
-          plannerBuffers[agent] = '';
+            if (envelope.steps) {
+              if (agent === 'planner') {
+                runtime = applyPlan(runtime, { steps: envelope.steps, iteration: 0 });
+              } else {
+                runtime = applyReplan(runtime, {
+                  steps: envelope.steps,
+                  completed: runtime.plan?.steps.length
+                    ? Math.max(0, runtime.plan.steps.length - envelope.steps.length)
+                    : 0,
+                  iteration: 0,
+                  is_final: false,
+                });
+              }
+              if (hasVisibleContent) {
+                emitRuntimeOnlyUpdate();
+              } else {
+                emitStatus('planning', '[正在规划处理方式]');
+              }
+              return;
+            }
 
-          if (envelope.steps) {
-            if (agent === 'planner') {
-              runtime = applyPlan(runtime, { steps: envelope.steps, iteration: 0 });
-            } else {
+            if (envelope.response) {
               runtime = applyReplan(runtime, {
-                steps: envelope.steps,
-                completed: runtime.plan?.steps.length
-                  ? Math.max(0, runtime.plan.steps.length - envelope.steps.length)
-                  : 0,
+                steps: [],
+                completed: runtime.plan?.steps.length || 0,
                 iteration: 0,
-                is_final: false,
+                is_final: true,
               });
+              const normalizedResponse = normalizeMarkdownContent(envelope.response);
+              const next = applyDelta(
+                {
+                  content,
+                  runtime,
+                },
+                { content: normalizedResponse },
+              );
+              content = next.content;
+              runtime = next.runtime || runtime;
+              emitVisibleChunk(normalizedResponse);
+              return;
             }
-            if (hasVisibleContent) {
-              emitRuntimeOnlyUpdate();
-            } else {
-              emitStatus('planning', '[正在规划处理方式]');
-            }
+          }
+
+          const normalizedContent = normalizeMarkdownContent(incoming);
+          if (runtime.plan?.activeStepIndex !== undefined) {
+            runtime = applyStepDelta(runtime, { content: normalizedContent });
+            emitRuntimeOnlyUpdate();
             return;
           }
 
-          if (envelope.response) {
-            runtime = applyReplan(runtime, {
-              steps: [],
-              completed: runtime.plan?.steps.length || 0,
-              iteration: 0,
-              is_final: true,
-            });
-            const next = applyDelta(
-              {
-                content,
-                runtime,
-              },
-              { content: envelope.response },
-            );
-            content = next.content;
-            runtime = next.runtime || runtime;
-            emitVisibleChunk(envelope.response);
-            return;
-          }
+          const next = applyDelta(
+            {
+              content,
+              runtime,
+            },
+            { content: normalizedContent },
+          );
+          content = next.content;
+          runtime = next.runtime || runtime;
+          emitVisibleChunk(normalizedContent);
+          return;
         }
 
         if (runtime.plan?.activeStepIndex !== undefined) {

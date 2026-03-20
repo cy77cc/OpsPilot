@@ -207,6 +207,21 @@ describe('AssistantReply', () => {
     expect(screen.getByTestId('x-markdown')).toHaveTextContent('发现 2 个异常节点');
   });
 
+  it('normalizes escaped line breaks before rendering markdown body', () => {
+    render(
+      <AssistantReply
+        content={'## Local 集群概览\\n\\n共有 21 个 Pod'}
+        status="success"
+      />,
+    );
+
+    expect(mockXMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '## Local 集群概览\n\n共有 21 个 Pod',
+      }),
+    );
+  });
+
   it('does not render a summary card when projection-backed content already provides the final body', () => {
     render(
       <AssistantReply
@@ -609,5 +624,18 @@ describe('AssistantReply', () => {
     );
 
     expect(writeText).toHaveBeenCalledWith('最终结论：处理 node-2 的磁盘压力。');
+  });
+
+  it('normalizes escaped line breaks before copying markdown body', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText,
+      },
+    });
+
+    await copyAssistantReplyToClipboard('## Local 集群概览\\n\\n共有 21 个 Pod');
+
+    expect(writeText).toHaveBeenCalledWith('## Local 集群概览\n\n共有 21 个 Pod');
   });
 });

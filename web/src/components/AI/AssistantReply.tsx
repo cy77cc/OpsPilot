@@ -3,6 +3,7 @@ import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
+import { normalizeMarkdownContent } from './markdownContent';
 import type { AssistantReplyActivity, AssistantReplyRuntime, AssistantReplySegment } from './types';
 import ToolReference from './ToolReference';
 
@@ -218,10 +219,11 @@ function SimpleMarkdownContent({
   styles: Record<string, string>;
   isStreaming?: boolean;
 }) {
-  if (!content) return null;
+  const normalizedContent = normalizeMarkdownContent(content);
+  if (!normalizedContent) return null;
   return (
     <div className={styles.markdown}>
-      <XMarkdown content={content} streaming={{ hasNextChunk: isStreaming, enableAnimation: true }} />
+      <XMarkdown content={normalizedContent} streaming={{ hasNextChunk: isStreaming, enableAnimation: true }} />
     </div>
   );
 }
@@ -264,12 +266,12 @@ function StepContentRenderer({
         const inlineText = shouldRenderInlineText(segment.text);
         elements.push(inlineText ? (
           <span key={`text-${index}`} className={styles.inlineText}>
-            {segment.text}
+            {normalizeMarkdownContent(segment.text)}
           </span>
         ) : (
           <XMarkdown
             key={`text-${index}`}
-            content={segment.text}
+            content={normalizeMarkdownContent(segment.text)}
             streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
           />
         ));
@@ -297,7 +299,7 @@ function StepContentRenderer({
       <div className={styles.stepMarkdown}>
         {step.content && (
           <XMarkdown
-            content={step.content}
+            content={normalizeMarkdownContent(step.content)}
             streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
           />
         )}
@@ -446,7 +448,7 @@ function AssistantReplyContent({
       {content ? (
         <div className={styles.markdown}>
           <XMarkdown
-            content={content}
+            content={normalizeMarkdownContent(content)}
             streaming={{
               hasNextChunk: isStreaming,
               enableAnimation: true,

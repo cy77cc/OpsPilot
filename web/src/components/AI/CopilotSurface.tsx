@@ -21,6 +21,7 @@ import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
 import { hydrateAssistantHistoryFromProjection, isProjectionHydrationPending } from './historyProjection';
+import { normalizeMarkdownContent } from './markdownContent';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
 
@@ -390,7 +391,7 @@ export async function copyAssistantReplyToClipboard(
   finalMarkdownBody: string,
   _runtime?: XChatMessage['runtime'],
 ): Promise<void> {
-  const copyContent = (finalMarkdownBody || '').trim();
+  const copyContent = normalizeMarkdownContent(finalMarkdownBody || '').trim();
   if (!copyContent || !navigator?.clipboard?.writeText) {
     return;
   }
