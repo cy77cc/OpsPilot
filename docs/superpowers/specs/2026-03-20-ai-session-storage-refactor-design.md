@@ -112,6 +112,7 @@
 3. 长内容不内嵌到 projection 中，结论类内容可直接内联
 4. 一个 `run` 是一次执行和一次投影的主边界
 5. `executor` 的文本与工具调用顺序必须被显式建模，不能只合并成单个字符串
+6. projection 不是唯一读取前提，缺失或不完整时必须允许从 event log 现场补偿重建
 
 ## 新数据模型
 
@@ -394,6 +395,66 @@
 - `ai_run_contents`
 - assistant message 简要内容
 
+### 并发与幂等要求
+
+`ai_run_events.seq` 必须是同一个 `run_id` 内严格递增且不重复的稳定顺序号。
+
+本设计要求：
+
+1. `seq` 由事件写入侧统一分配，不依赖前端生成
+2. 同一 `run_id` 下使用单写入源顺序追加事件
+3. `uk_ai_run_events_run_seq (run_id, seq)` 作为最终一致性兜底
+4. 如果同一事件发生重复写入，必须能够通过 `run_id + seq` 或额外的幂等键安全拒绝重复落库
+5. projection 构建只能依赖已持久化的事件顺序，不允许依赖到达时的内存顺序假设
+
+### Projection 生成时机
+
+主路径仍然是在 run 结束时生成并持久化 `ai_run_projections`。
+
+但必须承认以下失败场景：
+
+- 进程崩溃
+- 宿主机宕机
+- OOM
+- run 被异常中断，导致 projection 尚未写入
+
+因此 projection 不是“只会在结束时生成一次”的静态产物，而是“优先在结束时生成，必要时可从事件日志重建”的可补偿读模型。
+
+## Projection 补偿与重建机制
+
+### 触发条件
+
+读取 run projection 时，出现以下任一情况，都必须触发补偿逻辑：
+
+1. `ai_run_projections` 不存在
+2. projection 状态不是稳态
+3. projection 版本落后于当前协议版本
+4. projection 内容损坏或 JSON 解析失败
+
+### 读取降级策略
+
+新读取链路必须支持：
+
+1. 先读取 `ai_run_projections`
+2. 如果 projection 可用，则直接返回
+3. 如果 projection 不可用，则从 `ai_run_events` 拉取该 run 全量事件
+4. 在内存中重建 projection
+5. 将重建结果返回前端
+6. 异步回写新的 `ai_run_projections`
+
+这条链路是新模型的必备能力，不是可选优化。
+
+### 稳态定义
+
+建议将以下状态视为稳态：
+
+- `completed`
+- `completed_with_tool_errors`
+- `failed_runtime`
+- `interrupted`
+
+非稳态 projection 不应被视为可信最终结果。
+
 ### 事件类型映射
 
 原始事件最少保留：
@@ -439,8 +500,9 @@
 1. 获取 session 列表
 2. 获取 session 下的 run 摘要
 3. 获取 run projection
-4. 首屏直接渲染 projection 中的 `summary`、`plan`、`executor item` 索引
-5. 遇到 `content_id` 时，按需请求内容接口
+4. 如果 projection 缺失或不完整，则即时从 `ai_run_events` 重建 projection
+5. 首屏直接渲染 projection 中的 `summary`、`plan`、`executor item` 索引
+6. 遇到 `content_id` 时，按需请求内容接口
 
 ### 当前会话读取
 
@@ -450,6 +512,24 @@
 
 - 当前态和历史态共享同一套块模型
 - 只是数据来源不同
+
+### 旧数据前端兜底策略
+
+本次重构不对旧脏数据做强兼容，但用户侧必须有基础可读兜底。
+
+如果读取到旧数据且满足以下任一情况：
+
+- 没有 event log
+- 没有 projection
+- 无法可靠恢复结构化块
+
+前端必须退化为最基础的纯文本模式：
+
+1. 只渲染 assistant 外层 `content`
+2. 隐藏 `steps` UI
+3. 隐藏 `tools` UI
+4. 隐藏结构化 runtime 组件
+5. 保证页面不白屏、不抛错，至少可读结论
 
 ### 需要删除的旧读取接口
 
@@ -513,6 +593,59 @@
 
 - 旧 `runtime_json` 本身已经不可靠
 - 继续兼容旧脏结构会把新系统再次拖回双轨状态
+
+## 数据膨胀与生命周期管理
+
+### 事件增长风险
+
+`ai_run_events` 会记录高频 `delta`、plan、tool_call、tool_result 等事件，天然会快速增长。
+
+这是事件日志模型的成本，必须提前纳入设计，而不能等单表膨胀后再补救。
+
+### 存储治理要求
+
+1. `ai_run_events` 和 `ai_run_contents` 必须预留按时间归档或分区的能力
+2. 需要定义明确的数据保留周期
+3. 冷数据应允许下沉到归档存储，而不是永久保留在热表
+
+### 建议策略
+
+建议采用两层策略：
+
+1. 热数据保留完整 `event log + projection + contents`
+2. 超过设定周期的冷数据，允许只保留精简版 projection 和外层 message，清理原始 events 与大内容
+
+文档当前不强绑定具体数据库分区实现，但要求后续实现计划中明确：
+
+- 是否采用按月分表或分区
+- 归档保留周期
+- 冷热数据切换规则
+- 清理任务的执行方式
+
+## 搜索能力边界
+
+重构后，会话文本分散在：
+
+- `ai_chat_messages.content`
+- `ai_run_projections.projection_json`
+- `ai_run_contents`
+
+因此必须明确搜索边界，避免后续继续依赖跨表 `LIKE` 模糊查询。
+
+### 当前要求
+
+1. 不把跨表全文检索作为本次重构的默认内建能力
+2. 默认只保证外层 message 摘要和 projection 元信息可被基础查询使用
+3. 如果业务需要完整聊天记录全文检索，应通过专门的搜索索引实现，而不是直接依赖关系库跨表扫描
+
+### 后续扩展方向
+
+如需完整搜索，建议单独建设搜索索引层，将以下内容统一投递：
+
+- message 摘要
+- projection 标题与步骤
+- executor 文本内容
+- tool_result 可搜索摘要
 
 ## 风险与权衡
 
