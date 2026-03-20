@@ -21,11 +21,12 @@ func (h *Handler) Chat(c *gin.Context) {
 	writer := NewSSEWriter(c.Writer)
 
 	if err := h.logic.Chat(c.Request.Context(), logic.ChatInput{
-		SessionID: req.SessionID,
-		Message:   req.Message,
-		Scene:     req.Scene,
-		Context:   mapFromAny(req.Context),
-		UserID:    httpx.UIDFromCtx(c),
+		SessionID:       req.SessionID,
+		ClientRequestID: req.ClientRequestID,
+		Message:         req.Message,
+		Scene:           req.Scene,
+		Context:         mapFromAny(req.Context),
+		UserID:          httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)
 	}); err != nil {

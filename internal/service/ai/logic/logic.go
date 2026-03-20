@@ -35,11 +35,12 @@ type EventEmitter func(event string, data any)
 
 // ChatInput 是 Chat 方法的输入参数。
 type ChatInput struct {
-	SessionID string
-	Message   string
-	Scene     string
-	Context   map[string]any
-	UserID    uint64
+	SessionID       string
+	ClientRequestID string
+	Message         string
+	Scene           string
+	Context         map[string]any
+	UserID          uint64
 }
 
 type projectedRunUpdate struct {
@@ -149,6 +150,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return fmt.Errorf("create run: %w", err)
 	}
 	ctx = l.runtimeContext(ctx)
+	ctx, runtime := runtimectx.Ensure(ctx)
+	if requestID := strings.TrimSpace(input.ClientRequestID); requestID != "" {
+		runtime.RequestID = requestID
+	}
 	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
 		SessionID: sessionID,
 		RunID:     run.ID,

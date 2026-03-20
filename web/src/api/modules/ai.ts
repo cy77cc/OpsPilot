@@ -623,6 +623,7 @@ export const aiApi = {
       body: JSON.stringify({
         ...params,
         ...(params.sessionId && !params.session_id ? { session_id: params.sessionId } : {}),
+        ...(params.clientRequestId ? { client_request_id: params.clientRequestId } : {}),
       }),
     });
 
