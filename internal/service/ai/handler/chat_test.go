@@ -37,6 +37,9 @@ func TestChatHandler_PassesClientRequestIDIntoLogic(t *testing.T) {
 
 	h.Chat(c)
 
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected accepted SSE response status %d, got %d", http.StatusOK, recorder.Code)
+	}
 	if agent.capturedRequestID != "req-1" {
 		t.Fatalf("expected runtime request id req-1, got %q", agent.capturedRequestID)
 	}
