@@ -330,8 +330,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 
 	if err := l.ChatDAO.UpdateMessage(ctx, assistantMessage.ID, map[string]any{
-		"content": assistantContent.String(),
-		"status":  finalStatus,
+		"status": finalStatus,
 	}); err != nil {
 		return fmt.Errorf("update assistant message: %w", err)
 	}
@@ -490,8 +489,7 @@ func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assis
 		}
 
 		if err := chatDAO.UpdateMessage(ctx, assistantMessageID, map[string]any{
-			"content": assistantContent,
-			"status":  assistantStatusFromRunStatus(status),
+			"status": assistantStatusFromRunStatus(status),
 		}); err != nil {
 			return err
 		}
