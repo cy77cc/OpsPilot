@@ -672,6 +672,34 @@ export const hostApi = {
     return apiService.delete(`/hosts/cloud/accounts/${accountId}`);
   },
 
+  async listCloudRegions(provider: string, accountId: string): Promise<ApiResponse<{ regionId: string; localName: string }[]>> {
+    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/regions`, {
+      params: { account_id: accountId },
+    });
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+    return {
+      ...res,
+      data: rawList.map((x: any) => ({
+        regionId: x.region_id || x.regionId,
+        localName: x.local_name || x.localName,
+      })),
+    };
+  },
+
+  async listCloudZones(provider: string, accountId: string, region: string): Promise<ApiResponse<{ zoneId: string; localName: string }[]>> {
+    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/zones`, {
+      params: { account_id: accountId, region },
+    });
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+    return {
+      ...res,
+      data: rawList.map((x: any) => ({
+        zoneId: x.zone_id || x.zoneId,
+        localName: x.local_name || x.localName,
+      })),
+    };
+  },
+
   async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[] }): Promise<ApiResponse<any>> {
     return apiService.post(`/hosts/cloud/providers/${payload.provider}/instances/import`, {
       account_id: payload.accountId,

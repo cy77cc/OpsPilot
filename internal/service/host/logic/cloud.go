@@ -344,3 +344,68 @@ func (s *HostService) DeleteCloudAccount(ctx context.Context, accountID uint64) 
 	return nil
 }
 
+// ListCloudRegions 查询云厂商支持的地域列表。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - providerName: 云厂商标识
+//   - accountID: 云账号 ID
+//
+// 返回:
+//   - 成功返回地域列表
+//   - 失败返回错误
+func (s *HostService) ListCloudRegions(ctx context.Context, providerName string, accountID uint64) ([]cloud.Region, error) {
+	// 获取云账号信息
+	var account model.HostCloudAccount
+	if err := s.svcCtx.DB.WithContext(ctx).First(&account, accountID).Error; err != nil {
+		return nil, err
+	}
+
+	// 获取云厂商适配器
+	provider, err := cloud.GetProvider(providerName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解密 Secret
+	secret, err := utils.DecryptText(account.AccessKeySecretEnc, config.CFG.Security.EncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider.ListRegions(ctx, account.AccessKeyID, secret)
+}
+
+// ListCloudZones 查询云厂商指定地域的可用区列表。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - providerName: 云厂商标识
+//   - accountID: 云账号 ID
+//   - region: 地域标识
+//
+// 返回:
+//   - 成功返回可用区列表
+//   - 失败返回错误
+func (s *HostService) ListCloudZones(ctx context.Context, providerName string, accountID uint64, region string) ([]cloud.Zone, error) {
+	// 获取云账号信息
+	var account model.HostCloudAccount
+	if err := s.svcCtx.DB.WithContext(ctx).First(&account, accountID).Error; err != nil {
+		return nil, err
+	}
+
+	// 获取云厂商适配器
+	provider, err := cloud.GetProvider(providerName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解密 Secret
+	secret, err := utils.DecryptText(account.AccessKeySecretEnc, config.CFG.Security.EncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider.ListZones(ctx, account.AccessKeyID, secret, region)
+}
+

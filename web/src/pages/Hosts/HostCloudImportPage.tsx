@@ -11,15 +11,16 @@ const providerOptions = [
   { value: 'tencent', label: '腾讯云' },
 ];
 
-// 火山云可用区选项
-const volcengineZoneOptions = [
-  { value: '', label: '全部可用区' },
-  { value: 'cn-beijing-a', label: '华北2（北京）- 可用区A' },
-  { value: 'cn-beijing-b', label: '华北2（北京）- 可用区B' },
-  { value: 'cn-shanghai-a', label: '华东2（上海）- 可用区A' },
-  { value: 'cn-shanghai-b', label: '华东2（上海）- 可用区B' },
-  { value: 'cn-guangzhou-a', label: '华南1（广州）- 可用区A' },
-];
+// 地域和可用区类型
+interface RegionInfo {
+  regionId: string;
+  localName: string;
+}
+
+interface ZoneInfo {
+  zoneId: string;
+  localName: string;
+}
 
 const HostCloudImportPage: React.FC = () => {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
@@ -29,6 +30,10 @@ const HostCloudImportPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [querying, setQuerying] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [regions, setRegions] = useState<RegionInfo[]>([]);
+  const [zones, setZones] = useState<ZoneInfo[]>([]);
+  const [loadingRegions, setLoadingRegions] = useState(false);
+  const [loadingZones, setLoadingZones] = useState(false);
   const [accountForm] = Form.useForm();
   const [queryForm] = Form.useForm();
 
@@ -91,15 +96,50 @@ const HostCloudImportPage: React.FC = () => {
     }
   };
 
-  // 选择账号后自动填充 region
-  const handleAccountChange = (accountId: string) => {
+  // 选择账号后加载地域列表
+  const handleAccountChange = async (accountId: string) => {
     const acc = accounts.find((a) => a.id === accountId);
     if (acc) {
       queryForm.setFieldsValue({
         provider: acc.provider,
-        region: acc.regionDefault || '',
-        zone: '',
+        region: undefined,
+        zone: undefined,
       });
+      setRegions([]);
+      setZones([]);
+
+      // 加载地域列表
+      setLoadingRegions(true);
+      try {
+        const res = await Api.hosts.listCloudRegions(acc.provider, accountId);
+        const list = Array.isArray(res.data) ? res.data : (res.data as any)?.list || [];
+        setRegions(list);
+      } catch (err: any) {
+        console.error('加载地域失败:', err);
+      } finally {
+        setLoadingRegions(false);
+      }
+    }
+  };
+
+  // 选择地域后加载可用区列表
+  const handleRegionChange = async (region: string) => {
+    const provider = queryForm.getFieldValue('provider');
+    const accountId = queryForm.getFieldValue('accountId');
+    queryForm.setFieldsValue({ zone: undefined });
+    setZones([]);
+
+    if (!region || !accountId) return;
+
+    setLoadingZones(true);
+    try {
+      const res = await Api.hosts.listCloudZones(provider, accountId, region);
+      const list = Array.isArray(res.data) ? res.data : (res.data as any)?.list || [];
+      setZones(list);
+    } catch (err: any) {
+      console.error('加载可用区失败:', err);
+    } finally {
+      setLoadingZones(false);
     }
   };
 
@@ -168,9 +208,6 @@ const HostCloudImportPage: React.FC = () => {
         value: a.id,
       })),
   })).filter((g) => g.options.length > 0);
-
-  // 获取当前选择的 provider
-  const currentProvider = Form.useWatch('provider', queryForm);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -276,19 +313,26 @@ const HostCloudImportPage: React.FC = () => {
           <Form.Item name="provider" hidden>
             <Input />
           </Form.Item>
-          <Form.Item name="region">
-            <Input placeholder="地域（如 cn-beijing）" style={{ width: 150 }} />
+          <Form.Item name="region" rules={[{ required: true, message: '请选择地域' }]}>
+            <Select
+              style={{ width: 180 }}
+              placeholder="选择地域"
+              loading={loadingRegions}
+              options={regions.map((r) => ({ value: r.regionId, label: r.localName || r.regionId }))}
+              onChange={handleRegionChange}
+              showSearch
+              optionFilterProp="label"
+            />
           </Form.Item>
-          {currentProvider === 'volcengine' && (
-            <Form.Item name="zone">
-              <Select
-                style={{ width: 200 }}
-                placeholder="可用区（可选）"
-                options={volcengineZoneOptions}
-                allowClear
-              />
-            </Form.Item>
-          )}
+          <Form.Item name="zone">
+            <Select
+              style={{ width: 200 }}
+              placeholder="可用区（可选）"
+              loading={loadingZones}
+              options={zones.map((z) => ({ value: z.zoneId, label: z.localName || z.zoneId }))}
+              allowClear
+            />
+          </Form.Item>
           <Form.Item name="keyword">
             <Input placeholder="关键词过滤" style={{ width: 120 }} />
           </Form.Item>

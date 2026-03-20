@@ -116,3 +116,55 @@ func (h *Handler) GetCloudImportTask(c *gin.Context) {
 	}
 	httpx.OK(c, task)
 }
+
+// ListCloudRegions 列出云厂商支持的地域。
+//
+// GET /api/v1/hosts/cloud/providers/:provider/regions
+func (h *Handler) ListCloudRegions(c *gin.Context) {
+	provider := c.Param("provider")
+	accountID := c.Query("account_id")
+	if accountID == "" {
+		httpx.Fail(c, xcode.ParamError, "account_id is required")
+		return
+	}
+
+	var id uint64
+	if _, err := fmt.Sscanf(accountID, "%d", &id); err != nil {
+		httpx.Fail(c, xcode.ParamError, "account_id format error")
+		return
+	}
+
+	regions, err := h.hostService.ListCloudRegions(c.Request.Context(), provider, id)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, regions)
+}
+
+// ListCloudZones 列出云厂商指定地域的可用区。
+//
+// GET /api/v1/hosts/cloud/providers/:provider/zones
+func (h *Handler) ListCloudZones(c *gin.Context) {
+	provider := c.Param("provider")
+	accountID := c.Query("account_id")
+	region := c.Query("region")
+
+	if accountID == "" {
+		httpx.Fail(c, xcode.ParamError, "account_id is required")
+		return
+	}
+
+	var id uint64
+	if _, err := fmt.Sscanf(accountID, "%d", &id); err != nil {
+		httpx.Fail(c, xcode.ParamError, "account_id format error")
+		return
+	}
+
+	zones, err := h.hostService.ListCloudZones(c.Request.Context(), provider, id, region)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, zones)
+}

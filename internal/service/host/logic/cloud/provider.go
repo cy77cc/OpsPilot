@@ -56,4 +56,29 @@ type CloudProvider interface {
 	//   - 实例列表（统一格式的 CloudInstance）
 	//   - 查询失败返回具体错误
 	ListInstances(ctx context.Context, req ListInstancesRequest) ([]CloudInstance, error)
+
+	// ListRegions 查询云厂商支持的地域列表。
+	//
+	// 参数:
+	//   - ctx: 请求上下文
+	//   - ak: AccessKey ID
+	//   - sk: AccessKey Secret
+	//
+	// 返回:
+	//   - 地域列表
+	//   - 查询失败返回具体错误
+	ListRegions(ctx context.Context, ak, sk string) ([]Region, error)
+
+	// ListZones 查询云厂商指定地域的可用区列表。
+	//
+	// 参数:
+	//   - ctx: 请求上下文
+	//   - ak: AccessKey ID
+	//   - sk: AccessKey Secret
+	//   - region: 地域标识
+	//
+	// 返回:
+	//   - 可用区列表
+	//   - 查询失败返回具体错误
+	ListZones(ctx context.Context, ak, sk, region string) ([]Zone, error)
 }

@@ -109,6 +109,89 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	return instances, nil
 }
 
+// regionNames 地域中文名称映射。
+var regionNames = map[string]string{
+	"cn-beijing":  "华北2（北京）",
+	"cn-shanghai": "华东2（上海）",
+	"cn-guangzhou": "华南1（广州）",
+	"cn-nanjing":  "华东1（南京）",
+}
+
+// zoneNames 可用区中文名称映射（根据地域动态生成）。
+func getZoneName(zoneId string) string {
+	// 从可用区 ID 提取后缀（如 "cn-beijing-a" -> "可用区A"）
+	parts := strings.Split(zoneId, "-")
+	if len(parts) >= 3 {
+		suffix := parts[len(parts)-1]
+		switch suffix {
+		case "a":
+			return "可用区A"
+		case "b":
+			return "可用区B"
+		case "c":
+			return "可用区C"
+		case "d":
+			return "可用区D"
+		}
+	}
+	return zoneId
+}
+
+// ListRegions 查询火山云支持的地域列表。
+func (p *Provider) ListRegions(ctx context.Context, ak, sk string) ([]cloud.Region, error) {
+	// 火山云 DescribeRegions 不需要指定 region，使用默认值
+	client, err := NewClient(ak, sk, "cn-beijing")
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := client.DescribeRegions(ctx, &ecs.DescribeRegionsInput{})
+	if err != nil {
+		return nil, fmt.Errorf("查询火山云地域失败: %w", p.wrapError(err))
+	}
+
+	regions := make([]cloud.Region, 0, len(output.Regions))
+	for _, r := range output.Regions {
+		regionId := volcengine.StringValue(r.RegionId)
+		localName := regionNames[regionId]
+		if localName == "" {
+			localName = regionId
+		}
+		regions = append(regions, cloud.Region{
+			RegionId:  regionId,
+			LocalName: localName,
+		})
+	}
+	return regions, nil
+}
+
+// ListZones 查询火山云指定地域的可用区列表。
+func (p *Provider) ListZones(ctx context.Context, ak, sk, region string) ([]cloud.Zone, error) {
+	if region == "" {
+		return nil, fmt.Errorf("地域不能为空")
+	}
+
+	client, err := NewClient(ak, sk, region)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := client.DescribeZones(ctx, &ecs.DescribeZonesInput{})
+	if err != nil {
+		return nil, fmt.Errorf("查询火山云可用区失败: %w", p.wrapError(err))
+	}
+
+	zones := make([]cloud.Zone, 0, len(output.Zones))
+	for _, z := range output.Zones {
+		zoneId := volcengine.StringValue(z.ZoneId)
+		zones = append(zones, cloud.Zone{
+			ZoneId:    zoneId,
+			LocalName: getZoneName(zoneId),
+		})
+	}
+	return zones, nil
+}
+
 // wrapError 包装火山云错误，提供更友好的错误信息。
 func (p *Provider) wrapError(err error) error {
 	if err == nil {

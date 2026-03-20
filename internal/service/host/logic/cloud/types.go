@@ -97,3 +97,29 @@ type ProviderInfo struct {
 	// 如 "火山云"、"阿里云"、"腾讯云"
 	DisplayName string `json:"display_name"`
 }
+
+// Region 云地域信息。
+type Region struct {
+	// RegionId 地域标识。
+	//
+	// 如 "cn-beijing"、"cn-shanghai"
+	RegionId string `json:"region_id"`
+
+	// LocalName 地域中文名称。
+	//
+	// 如 "华北2（北京）"、"华东2（上海）"
+	LocalName string `json:"local_name"`
+}
+
+// Zone 云可用区信息。
+type Zone struct {
+	// ZoneId 可用区标识。
+	//
+	// 如 "cn-beijing-a"、"cn-beijing-b"
+	ZoneId string `json:"zone_id"`
+
+	// LocalName 可用区中文名称。
+	//
+	// 如 "华北2（北京）- 可用区A"
+	LocalName string `json:"local_name"`
+}

@@ -102,3 +102,20 @@ func (p *MockProvider) ListInstances(ctx context.Context, req ListInstancesReque
 
 	return instances, nil
 }
+
+// ListRegions 查询地域列表（Mock 实现）。
+func (p *MockProvider) ListRegions(ctx context.Context, ak, sk string) ([]Region, error) {
+	return []Region{
+		{RegionId: "cn-hangzhou", LocalName: "华东1（杭州）"},
+		{RegionId: "cn-shanghai", LocalName: "华东2（上海）"},
+		{RegionId: "cn-beijing", LocalName: "华北2（北京）"},
+	}, nil
+}
+
+// ListZones 查询可用区列表（Mock 实现）。
+func (p *MockProvider) ListZones(ctx context.Context, ak, sk, region string) ([]Zone, error) {
+	return []Zone{
+		{ZoneId: region + "-a", LocalName: "可用区A"},
+		{ZoneId: region + "-b", LocalName: "可用区B"},
+	}, nil
+}

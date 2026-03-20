@@ -70,3 +70,29 @@ func NewClient(ak, sk, region string) (*Client, error) {
 func (c *Client) DescribeInstances(ctx context.Context, input *ecs.DescribeInstancesInput) (*ecs.DescribeInstancesOutput, error) {
 	return c.ecs.DescribeInstancesWithContext(ctx, input)
 }
+
+// DescribeRegions 查询地域列表。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - input: 查询参数
+//
+// 返回:
+//   - 成功返回地域列表
+//   - 失败返回错误
+func (c *Client) DescribeRegions(ctx context.Context, input *ecs.DescribeRegionsInput) (*ecs.DescribeRegionsOutput, error) {
+	return c.ecs.DescribeRegionsWithContext(ctx, input)
+}
+
+// DescribeZones 查询可用区列表。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - input: 查询参数
+//
+// 返回:
+//   - 成功返回可用区列表
+//   - 失败返回错误
+func (c *Client) DescribeZones(ctx context.Context, input *ecs.DescribeZonesInput) (*ecs.DescribeZonesOutput, error) {
+	return c.ecs.DescribeZonesWithContext(ctx, input)
+}
