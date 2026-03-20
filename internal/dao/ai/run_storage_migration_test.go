@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/storage/migration"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -16,6 +17,19 @@ func TestAIRunStorageTablesExist(t *testing.T) {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("expected %s table", table)
 		}
+	}
+}
+
+func TestRunMigration_AddsClientRequestIDAndExpiryFields(t *testing.T) {
+	db := newRunStorageMigrationTestDB(t)
+
+	for _, column := range []string{"client_request_id", "last_event_at"} {
+		if !db.Migrator().HasColumn(&model.AIRun{}, column) {
+			t.Fatalf("expected ai_runs.%s column", column)
+		}
+	}
+	if !db.Migrator().HasIndex(&model.AIRun{}, "uk_ai_runs_session_request") {
+		t.Fatal("expected ai_runs unique index uk_ai_runs_session_request")
 	}
 }
 

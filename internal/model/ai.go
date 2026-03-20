@@ -38,7 +38,8 @@ func (AIChatMessage) TableName() string { return "ai_chat_messages" }
 // Status uses: running, completed, completed_with_tool_errors, failed_runtime, cancelled.
 type AIRun struct {
 	ID                 string         `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`
-	SessionID          string         `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_runs_session_id" json:"session_id"`
+	SessionID          string         `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_runs_session_id;uniqueIndex:uk_ai_runs_session_request,priority:1" json:"session_id"`
+	ClientRequestID    string         `gorm:"column:client_request_id;type:varchar(64);not null;default:'';uniqueIndex:uk_ai_runs_session_request,priority:2" json:"client_request_id"`
 	UserMessageID      string         `gorm:"column:user_message_id;type:varchar(64);not null;index:idx_ai_runs_user_message_id" json:"user_message_id"`
 	AssistantMessageID string         `gorm:"column:assistant_message_id;type:varchar(64);index:idx_ai_runs_assistant_message_id" json:"assistant_message_id"`
 	Status             string         `gorm:"column:status;type:varchar(16);not null;default:'running';index:idx_ai_runs_status_created,priority:1" json:"status"`
@@ -50,6 +51,7 @@ type AIRun struct {
 	ErrorMessage       string         `gorm:"column:error_message;type:text" json:"error_message"`
 	TraceJSON          string         `gorm:"column:trace_json;type:longtext;not null" json:"trace_json"`
 	StartedAt          time.Time      `gorm:"column:started_at;autoCreateTime" json:"started_at"`
+	LastEventAt        *time.Time     `gorm:"column:last_event_at" json:"last_event_at"`
 	FinishedAt         *time.Time     `gorm:"column:finished_at" json:"finished_at"`
 	CreatedAt          time.Time      `gorm:"column:created_at;autoCreateTime;index:idx_ai_runs_status_created,priority:2,sort:desc" json:"created_at"`
 	UpdatedAt          time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
