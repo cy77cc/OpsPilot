@@ -10,6 +10,7 @@ package logic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -46,6 +47,15 @@ type ChatInput struct {
 type projectedRunUpdate struct {
 	AssistantType string
 	IntentType    string
+}
+
+type chatShell struct {
+	SessionID        string
+	Scene            string
+	Run              *model.AIRun
+	UserMessage      *model.AIChatMessage
+	AssistantMessage *model.AIChatMessage
+	Reused           bool
 }
 
 // Logic 封装 AI 模块的核心业务逻辑。
@@ -104,79 +114,45 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		return nil
 	}
 
-	// Step 1: 创建或复用 Session，新对话就创建，旧对话前端带上了
-	sessionID := input.SessionID
-	if sessionID == "" {
-		sessionID = uuid.NewString()
-	}
-
-	session, err := l.ChatDAO.GetSession(ctx, sessionID, input.UserID, input.Scene)
+	shell, err := l.ensureChatShell(ctx, input)
 	if err != nil {
-		return fmt.Errorf("get session: %w", err)
-	}
-	scene := resolveChatScene(input.Scene, session)
-	if session == nil {
-		if err := l.ChatDAO.CreateSession(ctx, &model.AIChatSession{
-			ID:     sessionID,
-			UserID: input.UserID,
-			Scene:  scene,
-			Title:  buildSessionTitle(input.Message),
-		}); err != nil {
-			return fmt.Errorf("create session: %w", err)
-		}
+		emit("error", map[string]any{"message": sanitizeUserFacingError(err)})
+		return nil
 	}
 
-	// Step 2: 创建 User Message
-	userMessage := &model.AIChatMessage{
-		ID:        uuid.NewString(),
-		SessionID: sessionID,
-		Role:      "user",
-		Content:   input.Message,
-		Status:    "done",
-	}
-	if err := l.ChatDAO.CreateMessage(ctx, userMessage); err != nil {
-		return fmt.Errorf("create user message: %w", err)
-	}
-
-	// Step 3: 创建 Run 记录
-	run := &model.AIRun{
-		ID:            uuid.NewString(),
-		SessionID:     sessionID,
-		UserMessageID: userMessage.ID,
-		Status:        "running",
-		TraceJSON:     "{}",
-	}
-	if err := l.RunDAO.CreateRun(ctx, run); err != nil {
-		return fmt.Errorf("create run: %w", err)
-	}
 	ctx = l.runtimeContext(ctx)
 	ctx, runtime := runtimectx.Ensure(ctx)
 	if requestID := strings.TrimSpace(input.ClientRequestID); requestID != "" {
 		runtime.RequestID = requestID
 	}
 	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
-		SessionID: sessionID,
-		RunID:     run.ID,
+		SessionID: shell.SessionID,
+		RunID:     shell.Run.ID,
 		UserID:    input.UserID,
-		Scene:     scene,
+		Scene:     shell.Scene,
 	})
 	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
-		SessionID: sessionID,
-		RunID:     run.ID,
+		SessionID: shell.SessionID,
+		RunID:     shell.Run.ID,
 		UserID:    input.UserID,
-		Scene:     scene,
+		Scene:     shell.Scene,
 	})
 
 	// Step 4: 发送 A2UI meta 事件
-	meta := airuntime.NewMetaEvent(sessionID, run.ID, 1)
+	meta := airuntime.NewMetaEvent(shell.SessionID, shell.Run.ID, 1)
 	seqCounter := 0
-	if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, meta.Event, meta.Data); err != nil {
-		return fmt.Errorf("append meta event: %w", err)
+	if !shell.Reused {
+		if err := l.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, &seqCounter, meta.Event, meta.Data); err != nil {
+			return fmt.Errorf("append meta event: %w", err)
+		}
 	}
 	emit(meta.Event, meta.Data)
+	if shell.Reused {
+		l.emitExistingShellTerminal(shell, emit)
+		return nil
+	}
 
 	// Step 5: 调用 AIRouter
-	//
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           l.AIRouter,
 		EnableStreaming: true,
@@ -184,37 +160,19 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	})
 
 	agentInput := []*schema.Message{
-		schema.UserMessage(l.buildAugmentedMessage(ctx, scene, input.Context, input.Message)),
+		schema.UserMessage(l.buildAugmentedMessage(ctx, shell.Scene, input.Context, input.Message)),
 	}
 
 	iterator := runner.Run(ctx, agentInput)
 
 	// Step 6: 消费事件
 	var (
-		assistantMessage *model.AIChatMessage
 		assistantContent strings.Builder
 		projector        = airuntime.NewStreamProjector()
-		streamError      error
 		hasToolErrors    bool
-		stopConsuming    bool
 	)
 
-	// 创建 assistant message 占位
-	assistantMessage = &model.AIChatMessage{
-		ID:        uuid.NewString(),
-		SessionID: sessionID,
-		Role:      "assistant",
-		Status:    "streaming",
-	}
-	if err := l.ChatDAO.CreateMessage(ctx, assistantMessage); err != nil {
-		return fmt.Errorf("create assistant message: %w", err)
-	}
-
 	for {
-		if stopConsuming {
-			break
-		}
-
 		event, ok := iterator.Next()
 		if !ok {
 			break
@@ -223,37 +181,26 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		if event.Err != nil {
 			if toolErrorEvent, ok := recoverableToolErrorEvent(event); ok {
 				hasToolErrors = true
-				update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &assistantContent)
 				if err != nil {
 					return fmt.Errorf("persist projected tool error event: %w", err)
 				}
 				if update.AssistantType != "" || update.IntentType != "" {
-					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+					_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
 						IntentType:    update.IntentType,
 						AssistantType: update.AssistantType,
 					})
 				}
 				continue
-			} else {
-				streamError = event.Err
-				if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
-					return fmt.Errorf("flush projected events: %w", err)
-				}
-				projected := projector.Fail(run.ID, event.Err)
-				if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, projected.Event, projected.Data); err != nil {
-					return fmt.Errorf("append fatal error event: %w", err)
-				}
-				emit(projected.Event, projected.Data)
-				runUpdate := aidao.AIRunStatusUpdate{
-					AssistantMessageID: assistantMessage.ID,
-					Status:             "failed_runtime",
-					ErrorMessage:       event.Err.Error(),
-				}
-				if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate, assistantContent.String()); err != nil {
-					return fmt.Errorf("persist run artifacts: %w", err)
-				}
-				return nil
 			}
+
+			if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+				return fmt.Errorf("flush projected events: %w", err)
+			}
+			if err := l.emitTerminalFailure(ctx, shell, &seqCounter, event.Err, assistantContent.String(), emit); err != nil {
+				return fmt.Errorf("finalize fatal error: %w", err)
+			}
+			return nil
 		}
 
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
@@ -263,17 +210,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
-					streamError = err
-					stopConsuming = true
-					if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
 						return fmt.Errorf("flush projected events: %w", err)
 					}
-					projected := projector.Fail(run.ID, err)
-					if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, projected.Event, projected.Data); err != nil {
-						return fmt.Errorf("append stream error event: %w", err)
+					if err := l.emitTerminalFailure(ctx, shell, &seqCounter, err, assistantContent.String(), emit); err != nil {
+						return fmt.Errorf("finalize stream error: %w", err)
 					}
-					emit(projected.Event, projected.Data)
-					break
+					return nil
 				}
 				if msg == nil {
 					continue
@@ -281,12 +224,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
-				update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(chunkEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(chunkEvent), emit, &assistantContent)
 				if err != nil {
 					return fmt.Errorf("persist projected stream chunk: %w", err)
 				}
 				if update.AssistantType != "" || update.IntentType != "" {
-					_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+					_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
 						IntentType:    update.IntentType,
 						AssistantType: update.AssistantType,
 					})
@@ -295,57 +238,241 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 			continue
 		}
 
-		update, err := l.consumeProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.Consume(event), emit, &assistantContent)
+		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(event), emit, &assistantContent)
 		if err != nil {
 			return fmt.Errorf("persist projected event: %w", err)
 		}
 		if update.AssistantType != "" || update.IntentType != "" {
-			_ = l.RunDAO.UpdateRunStatus(ctx, run.ID, aidao.AIRunStatusUpdate{
+			_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
 				IntentType:    update.IntentType,
 				AssistantType: update.AssistantType,
 			})
 		}
 	}
 
-	// Step 7: 持久化结果
-	// Step 8: 发送 done 事件前先刷新缓冲
-	if err := l.flushProjectedEvents(ctx, run.ID, sessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
 	}
 
-	var done airuntime.PublicStreamEvent
-	if streamError == nil {
-		done = projector.Finish(run.ID)
-		if payload, ok := done.Data.(map[string]any); ok {
-			if strings.TrimSpace(stringValue(payload, "summary")) == "" {
-				payload["summary"] = assistantContent.String()
-			}
-			done.Data = payload
+	done := projector.Finish(shell.Run.ID)
+	if payload, ok := done.Data.(map[string]any); ok {
+		if strings.TrimSpace(stringValue(payload, "summary")) == "" {
+			payload["summary"] = assistantContent.String()
 		}
-		if err := l.appendRunEvent(ctx, run.ID, sessionID, &seqCounter, done.Event, done.Data); err != nil {
-			return fmt.Errorf("append done event: %w", err)
-		}
+		done.Data = payload
 	}
-
+	if err := l.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, &seqCounter, done.Event, done.Data); err != nil {
+		return fmt.Errorf("append meta event: %w", err)
+	}
 	runStatus := aidao.AIRunStatusUpdate{
 		Status:             "completed",
-		AssistantMessageID: assistantMessage.ID,
+		AssistantMessageID: shell.AssistantMessage.ID,
 	}
-	if streamError != nil {
-		runStatus.Status = "failed_runtime"
-		runStatus.ErrorMessage = streamError.Error()
-	} else if hasToolErrors {
+	if hasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
 	}
-	if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runStatus, assistantContent.String()); err != nil {
-		return fmt.Errorf("persist run artifacts: %w", err)
+	if err := l.finalizeRunCritical(ctx, shell, runStatus, assistantContent.String()); err != nil {
+		return fmt.Errorf("finalize run critical: %w", err)
 	}
+	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, assistantContent.String())
 
-	if streamError == nil {
-		emit(done.Event, done.Data)
-	}
+	emit(done.Event, done.Data)
 
 	return nil
+}
+
+func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (chatShell, error) {
+	shell := chatShell{}
+	sessionID := strings.TrimSpace(input.SessionID)
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
+
+	session, err := l.ChatDAO.GetSession(ctx, sessionID, input.UserID, input.Scene)
+	if err != nil {
+		return shell, fmt.Errorf("get session: %w", err)
+	}
+	scene := resolveChatScene(input.Scene, session)
+	if session == nil {
+		session = &model.AIChatSession{
+			ID:     sessionID,
+			UserID: input.UserID,
+			Scene:  scene,
+			Title:  buildSessionTitle(input.Message),
+		}
+		if err := l.ChatDAO.CreateSession(ctx, session); err != nil {
+			return shell, fmt.Errorf("create session: %w", err)
+		}
+	}
+
+	var (
+		createdUser      *model.AIChatMessage
+		createdAssistant *model.AIChatMessage
+	)
+	run, created, err := l.RunDAO.CreateOrReuseRunShell(ctx, input.UserID, sessionID, input.ClientRequestID, func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+		userMessageID := uuid.NewString()
+		assistantMessageID := uuid.NewString()
+		createdUser = &model.AIChatMessage{
+			ID:        userMessageID,
+			SessionID: sessionID,
+			Role:      "user",
+			Content:   input.Message,
+			Status:    "done",
+		}
+		createdAssistant = &model.AIChatMessage{
+			ID:        assistantMessageID,
+			SessionID: sessionID,
+			Role:      "assistant",
+			Content:   "",
+			Status:    "streaming",
+		}
+		return &model.AIRun{
+			ID:                 uuid.NewString(),
+			SessionID:          sessionID,
+			ClientRequestID:    strings.TrimSpace(input.ClientRequestID),
+			UserMessageID:      userMessageID,
+			AssistantMessageID: assistantMessageID,
+			Status:             "running",
+			TraceJSON:          "{}",
+		}, createdUser, createdAssistant
+	})
+	if err != nil {
+		return shell, fmt.Errorf("create run shell: %w", err)
+	}
+
+	shell = chatShell{
+		SessionID: sessionID,
+		Scene:     scene,
+		Run:       run,
+		Reused:    !created,
+	}
+	if created {
+		shell.UserMessage = createdUser
+		shell.AssistantMessage = createdAssistant
+		return shell, nil
+	}
+
+	userMessage, err := l.ChatDAO.GetMessage(ctx, run.UserMessageID)
+	if err != nil {
+		return shell, fmt.Errorf("load user message shell: %w", err)
+	}
+	assistantMessage, err := l.ChatDAO.GetMessage(ctx, run.AssistantMessageID)
+	if err != nil {
+		return shell, fmt.Errorf("load assistant message shell: %w", err)
+	}
+	if userMessage == nil || assistantMessage == nil {
+		return shell, fmt.Errorf("load reused shell messages")
+	}
+	shell.UserMessage = userMessage
+	shell.AssistantMessage = assistantMessage
+	return shell, nil
+}
+
+func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCounter *int, internalErr error, assistantBody string, emit EventEmitter) error {
+	publicError := sanitizeUserFacingError(internalErr)
+	projected := airuntime.NewErrorEvent(shell.Run.ID, errors.New(publicError))
+	if err := l.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, seqCounter, projected.Event, projected.Data); err != nil {
+		return err
+	}
+	emit(projected.Event, projected.Data)
+
+	runUpdate := aidao.AIRunStatusUpdate{
+		AssistantMessageID: shell.AssistantMessage.ID,
+		Status:             "failed_runtime",
+		ErrorMessage:       internalErr.Error(),
+	}
+	assistantSnapshot := buildAssistantFailureSnapshot(assistantBody, publicError)
+	if err := l.finalizeRunCritical(ctx, shell, runUpdate, assistantSnapshot); err != nil {
+		return err
+	}
+	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runUpdate.Status, assistantSnapshot)
+	return nil
+}
+
+func (l *Logic) emitExistingShellTerminal(shell chatShell, emit EventEmitter) {
+	switch shell.Run.Status {
+	case "failed", "failed_runtime":
+		emit("error", map[string]any{
+			"run_id":  shell.Run.ID,
+			"message": sanitizeUserFacingError(errors.New(shell.Run.ErrorMessage)),
+		})
+	case "completed", "completed_with_tool_errors":
+		emit("done", map[string]any{
+			"run_id":  shell.Run.ID,
+			"status":  shell.Run.Status,
+			"summary": shell.AssistantMessage.Content,
+		})
+	}
+}
+
+func (l *Logic) finalizeRunCritical(ctx context.Context, shell chatShell, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
+	if l.svcCtx == nil || l.svcCtx.DB == nil {
+		return nil
+	}
+
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		chatDAO := aidao.NewAIChatDAO(tx)
+		runDAO := aidao.NewAIRunDAO(tx)
+		if err := chatDAO.UpdateMessage(ctx, shell.AssistantMessage.ID, map[string]any{
+			"content": assistantContent,
+			"status":  assistantStatusFromRunStatus(runUpdate.Status),
+		}); err != nil {
+			return err
+		}
+
+		runUpdate.AssistantMessageID = shell.AssistantMessage.ID
+		runUpdate.ProgressSummary = truncateString(assistantContent, 500)
+		return runDAO.UpdateRunStatus(ctx, shell.Run.ID, runUpdate)
+	})
+}
+
+func (l *Logic) persistRunEnhancementsBestEffort(ctx context.Context, runID, sessionID, status, _ string) error {
+	if l.RunEventDAO == nil || l.RunProjectionDAO == nil || l.RunContentDAO == nil {
+		return nil
+	}
+
+	events, err := l.RunEventDAO.ListByRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	projection, contents, err := airuntime.BuildProjection(events)
+	if err != nil {
+		return err
+	}
+	projection.Status = status
+	projectionJSON, err := json.Marshal(projection)
+	if err != nil {
+		return err
+	}
+
+	for _, content := range contents {
+		if err := l.RunContentDAO.Create(ctx, content); err != nil {
+			return err
+		}
+	}
+
+	return l.RunProjectionDAO.Upsert(ctx, &model.AIRunProjection{
+		ID:             uuid.NewString(),
+		RunID:          runID,
+		SessionID:      sessionID,
+		Version:        projection.Version,
+		Status:         projection.Status,
+		ProjectionJSON: string(projectionJSON),
+	})
+}
+
+func buildAssistantFailureSnapshot(assistantBody, publicError string) string {
+	if strings.TrimSpace(assistantBody) != "" {
+		return assistantBody
+	}
+	return publicError
+}
+
+func sanitizeUserFacingError(err error) string {
+	if err == nil {
+		return "生成中断，请稍后重试。"
+	}
+	return "生成中断，请稍后重试。"
 }
 
 func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) (projectedRunUpdate, error) {
@@ -430,59 +557,6 @@ func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seq
 		AgentName:   eventAgentName(payload),
 		ToolCallID:  eventToolCallID(payload),
 		PayloadJSON: raw,
-	})
-}
-
-func (l *Logic) persistRunArtifacts(ctx context.Context, runID, sessionID, assistantMessageID string, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
-	if l.RunEventDAO == nil || l.RunProjectionDAO == nil || l.RunContentDAO == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
-		return nil
-	}
-
-	events, err := l.RunEventDAO.ListByRun(ctx, runID)
-	if err != nil {
-		return err
-	}
-	projection, contents, err := airuntime.BuildProjection(events)
-	if err != nil {
-		return err
-	}
-	projection.Status = runUpdate.Status
-	projectionJSON, err := json.Marshal(projection)
-	if err != nil {
-		return err
-	}
-
-	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		projectionDAO := aidao.NewAIRunProjectionDAO(tx)
-		contentDAO := aidao.NewAIRunContentDAO(tx)
-		chatDAO := aidao.NewAIChatDAO(tx)
-		runDAO := aidao.NewAIRunDAO(tx)
-
-		for _, content := range contents {
-			if err := contentDAO.Create(ctx, content); err != nil {
-				return err
-			}
-		}
-
-		if err := projectionDAO.Upsert(ctx, &model.AIRunProjection{
-			ID:             uuid.NewString(),
-			RunID:          runID,
-			SessionID:      sessionID,
-			Version:        projection.Version,
-			Status:         projection.Status,
-			ProjectionJSON: string(projectionJSON),
-		}); err != nil {
-			return err
-		}
-
-		if err := chatDAO.UpdateMessage(ctx, assistantMessageID, map[string]any{
-			"status": assistantStatusFromRunStatus(runUpdate.Status),
-		}); err != nil {
-			return err
-		}
-
-		runUpdate.ProgressSummary = truncateString(assistantContent, 500)
-		return runDAO.UpdateRunStatus(ctx, runID, runUpdate)
 	})
 }
 
