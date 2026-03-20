@@ -358,6 +358,49 @@ func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 	}
 }
 
+func TestChatMarksFatalRuntimeFailure_PropagatesPersistArtifactsError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-fatal-persist-error",
+		UserID: 18,
+		Scene:  "ai",
+		Title:  "Fatal Runtime Persist Error",
+	})
+	if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
+		t.Fatalf("drop projection table: %v", err)
+	}
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("starting run", nil), nil, schema.Assistant, ""),
+			{Err: errors.New("fatal agent failure")},
+		},
+	}
+
+	l := &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
+
+	err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-fatal-persist-error",
+		Message:   "run diagnosis",
+		Scene:     "ai",
+		UserID:    18,
+	}, func(string, any) {})
+	if err == nil {
+		t.Fatal("expected fatal runtime persist error to be returned")
+	}
+	if !strings.Contains(err.Error(), "persist run artifacts") {
+		t.Fatalf("expected persist run artifacts error, got %v", err)
+	}
+}
+
 func TestChatStopsConsumingAfterStreamingMessageError(t *testing.T) {
 	db := newLogicTestDB(t)
 	seedLogicTestSession(t, db, model.AIChatSession{

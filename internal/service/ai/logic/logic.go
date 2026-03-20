@@ -244,7 +244,9 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					Status:             "failed_runtime",
 					ErrorMessage:       event.Err.Error(),
 				}
-				_ = l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate, assistantContent.String())
+				if err := l.persistRunArtifacts(ctx, run.ID, sessionID, assistantMessage.ID, runUpdate, assistantContent.String()); err != nil {
+					return fmt.Errorf("persist run artifacts: %w", err)
+				}
 				return nil
 			}
 		}
