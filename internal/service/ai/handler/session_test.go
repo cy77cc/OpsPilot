@@ -205,7 +205,7 @@ func TestGetSession_RespectsSceneFilter(t *testing.T) {
 	}
 }
 
-func TestGetSession_InjectsAssistantRunID(t *testing.T) {
+func TestGetSession_AssistantMessageOmitsContentButKeepsRunID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
@@ -265,6 +265,77 @@ func TestGetSession_InjectsAssistantRunID(t *testing.T) {
 	}
 	if response.Data.Messages[1]["run_id"] != "run-20" {
 		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data.Messages[1])
+	}
+	if _, ok := response.Data.Messages[1]["content"]; ok {
+		t.Fatalf("expected assistant message to omit content, got %#v", response.Data.Messages[1])
+	}
+}
+
+func TestListSessions_AssistantMessagesOmitContentButKeepRunID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+	now := time.Now()
+
+	seedSession(t, db, model.AIChatSession{ID: "sess-list-run", UserID: 21, Title: "With Run", Scene: "ai", CreatedAt: now, UpdatedAt: now})
+	if err := db.Create(&model.AIChatMessage{
+		ID:           "msg-user-list",
+		SessionID:    "sess-list-run",
+		SessionIDNum: 1,
+		Role:         "user",
+		Content:      "hello",
+		Status:       "done",
+	}).Error; err != nil {
+		t.Fatalf("seed user message: %v", err)
+	}
+	if err := db.Create(&model.AIChatMessage{
+		ID:           "msg-assistant-list",
+		SessionID:    "sess-list-run",
+		SessionIDNum: 2,
+		Role:         "assistant",
+		Content:      "world",
+		Status:       "done",
+	}).Error; err != nil {
+		t.Fatalf("seed assistant message: %v", err)
+	}
+	if err := aidao.NewAIRunDAO(db).CreateRun(context.Background(), &model.AIRun{
+		ID:                 "run-21",
+		SessionID:          "sess-list-run",
+		UserMessageID:      "msg-user-list",
+		AssistantMessageID: "msg-assistant-list",
+		Status:             "completed",
+		TraceJSON:          "{}",
+	}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(21))
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions", nil)
+
+	h.ListSessions(c)
+
+	var response struct {
+		Data []struct {
+			Messages []map[string]any `json:"messages"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Data) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(response.Data))
+	}
+	if len(response.Data[0].Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(response.Data[0].Messages))
+	}
+	if response.Data[0].Messages[1]["run_id"] != "run-21" {
+		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data[0].Messages[1])
+	}
+	if _, ok := response.Data[0].Messages[1]["content"]; ok {
+		t.Fatalf("expected assistant message to omit content, got %#v", response.Data[0].Messages[1])
 	}
 }
 
