@@ -82,7 +82,7 @@ func init() {
 //   - req: 创建请求参数
 //
 // 返回:
-//   - 成功返回创建的云账号
+//   - 成功返回创建的云账号（AccessKeyID 已掩码）
 //   - 失败返回错误
 func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req CloudAccountReq) (*model.HostCloudAccount, error) {
 	if strings.TrimSpace(config.CFG.Security.EncryptionKey) == "" {
@@ -110,6 +110,10 @@ func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req Cl
 	if err := s.svcCtx.DB.WithContext(ctx).Create(acc).Error; err != nil {
 		return nil, err
 	}
+
+	// 返回前对 AccessKeyID 进行掩码处理
+	acc.AccessKeyID = utils.MaskAccessKey(acc.AccessKeyID)
+
 	return acc, nil
 }
 
@@ -120,7 +124,7 @@ func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req Cl
 //   - provider: 云厂商过滤（可选）
 //
 // 返回:
-//   - 成功返回云账号列表
+//   - 成功返回云账号列表（AccessKeyID 已掩码）
 //   - 失败返回错误
 func (s *HostService) ListCloudAccounts(ctx context.Context, provider string) ([]model.HostCloudAccount, error) {
 	query := s.svcCtx.DB.WithContext(ctx).Model(&model.HostCloudAccount{}).
@@ -133,6 +137,12 @@ func (s *HostService) ListCloudAccounts(ctx context.Context, provider string) ([
 	if err := query.Order("id desc").Find(&list).Error; err != nil {
 		return nil, err
 	}
+
+	// 对 AccessKeyID 进行掩码处理
+	for i := range list {
+		list[i].AccessKeyID = utils.MaskAccessKey(list[i].AccessKeyID)
+	}
+
 	return list, nil
 }
 

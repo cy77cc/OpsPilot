@@ -133,16 +133,16 @@ func (p *Provider) ListRegions(ctx context.Context, ak, sk string) ([]cloud.Regi
 	}
 
 	// UCLOUD 返回的 Regions 包含重复地域（每个可用区一条记录），需要去重
-	regionMap := make(map[string]string)
+	regionSet := make(map[string]bool)
 	for _, r := range output.Regions {
-		regionMap[r.Region] = r.RegionName
+		regionSet[r.Region] = true
 	}
 
-	regions := make([]cloud.Region, 0, len(regionMap))
-	for regionId, regionName := range regionMap {
+	regions := make([]cloud.Region, 0, len(regionSet))
+	for regionId := range regionSet {
 		regions = append(regions, cloud.Region{
 			RegionId:  regionId,
-			LocalName: regionName,
+			LocalName: getRegionLocalName(regionId),
 		})
 	}
 	return regions, nil
@@ -166,18 +166,18 @@ func (p *Provider) ListZones(ctx context.Context, ak, sk, region string) ([]clou
 	}
 
 	// UCLOUD 返回每个可用区一条记录，筛选指定地域的可用区
-	zoneMap := make(map[string]string)
+	zoneSet := make(map[string]bool)
 	for _, r := range output.Regions {
 		if r.Region == region {
-			zoneMap[r.Zone] = r.Zone // 使用 Zone 作为名称
+			zoneSet[r.Zone] = true
 		}
 	}
 
-	zones := make([]cloud.Zone, 0, len(zoneMap))
-	for zoneId, zoneName := range zoneMap {
+	zones := make([]cloud.Zone, 0, len(zoneSet))
+	for zoneId := range zoneSet {
 		zones = append(zones, cloud.Zone{
 			ZoneId:    zoneId,
-			LocalName: zoneName,
+			LocalName: getZoneLocalName(zoneId),
 		})
 	}
 	return zones, nil

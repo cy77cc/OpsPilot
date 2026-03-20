@@ -78,3 +78,27 @@ func normalizeKey(key string) []byte {
 	sum := sha256.Sum256([]byte(key))
 	return sum[:]
 }
+
+// MaskAccessKey 对 AccessKey ID 进行掩码处理。
+//
+// 掩码规则:
+//   - 长度 <= 8: 显示前2位 + **** + 后2位 (如 "ABCDEF12" -> "AB****12")
+//   - 长度 > 8: 显示前4位 + **** + 后4位 (如 "LTAI4xK7mNpQ3wXy" -> "LTAI****3wXy")
+//
+// 参数:
+//   - ak: 原始 AccessKey ID
+//
+// 返回掩码后的字符串。
+func MaskAccessKey(ak string) string {
+	if ak == "" {
+		return ""
+	}
+	n := len(ak)
+	if n <= 8 {
+		if n <= 4 {
+			return ak[:2] + "****"
+		}
+		return ak[:2] + "****" + ak[n-2:]
+	}
+	return ak[:4] + "****" + ak[n-4:]
+}
