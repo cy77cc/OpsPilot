@@ -116,6 +116,9 @@ func normalizeMessageOutput(event *adk.AgentEvent) []NormalizedEvent {
 
 		// 提取 ToolCalls
 		for _, toolCall := range message.ToolCalls {
+			if !shouldProjectToolCall(toolCall.ID, toolCall.Function.Name, toolCall.Function.Arguments) {
+				continue
+			}
 			events = append(events, NormalizedEvent{
 				Kind:      NormalizedKindToolCall,
 				AgentName: event.AgentName,
@@ -146,6 +149,13 @@ func normalizeMessageOutput(event *adk.AgentEvent) []NormalizedEvent {
 	default:
 		return nil
 	}
+}
+
+func shouldProjectToolCall(callID, toolName, rawArguments string) bool {
+	if strings.TrimSpace(toolName) == "transfer_to_agent" {
+		return false
+	}
+	return strings.TrimSpace(callID) != "" || strings.TrimSpace(toolName) != "" || strings.TrimSpace(rawArguments) != ""
 }
 
 func normalizeToolResultPhase(err error, content string) string {
