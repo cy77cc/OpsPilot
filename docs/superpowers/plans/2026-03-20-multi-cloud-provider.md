@@ -57,32 +57,7 @@ git commit -m "feat(cloud): add ProviderCapabilities and NextToken to types"
 
 ---
 
-### Task 2: 扩展 CloudProvider 接口
-
-**Files:**
-- Modify: `internal/service/host/logic/cloud/provider.go`
-
-- [ ] **Step 1: 在 CloudProvider 接口中添加 Capabilities 方法**
-
-在 `provider.go` 的 `CloudProvider` 接口中，在 `DisplayName()` 方法后添加：
-
-```go
-// Capabilities 返回云厂商能力标识。
-//
-// 用于查询厂商支持的功能特性，如是否支持动态查询地域。
-Capabilities() ProviderCapabilities
-```
-
-- [ ] **Step 2: 提交接口扩展**
-
-```bash
-git add internal/service/host/logic/cloud/provider.go
-git commit -m "feat(cloud): add Capabilities method to CloudProvider interface"
-```
-
----
-
-### Task 3: 更新火山云适配器实现 Capabilities
+### Task 2: 更新火山云适配器实现 Capabilities
 
 **Files:**
 - Modify: `internal/service/host/logic/cloud/volcengine/provider.go`
@@ -109,7 +84,67 @@ git commit -m "feat(cloud): implement Capabilities for volcengine provider"
 
 ---
 
-### Task 4: 实现通用重试机制
+### Task 3: 更新 MockProvider 实现 Capabilities
+
+**Files:**
+- Modify: `internal/service/host/logic/cloud/mock_provider.go`
+
+- [ ] **Step 1: 在 MockProvider 中实现 Capabilities 方法**
+
+在 `mock_provider.go` 的 `MockProvider` 结构体方法区域添加：
+
+```go
+// Capabilities 返回 Mock 能力标识。
+func (m *MockProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{
+		DynamicRegions: true,
+	}
+}
+```
+
+- [ ] **Step 2: 提交 MockProvider 更新**
+
+```bash
+git add internal/service/host/logic/cloud/mock_provider.go
+git commit -m "feat(cloud): implement Capabilities for MockProvider"
+```
+
+---
+
+### Task 4: 扩展 CloudProvider 接口
+
+**Files:**
+- Modify: `internal/service/host/logic/cloud/provider.go`
+
+- [ ] **Step 1: 在 CloudProvider 接口中添加 Capabilities 方法**
+
+在 `provider.go` 的 `CloudProvider` 接口中，在 `DisplayName()` 方法后添加：
+
+```go
+// Capabilities 返回云厂商能力标识。
+//
+// 用于查询厂商支持的功能特性，如是否支持动态查询地域。
+Capabilities() ProviderCapabilities
+```
+
+- [ ] **Step 2: 验证编译通过**
+
+```bash
+go build ./internal/service/host/logic/cloud/...
+```
+
+Expected: 编译成功（所有实现已就位）
+
+- [ ] **Step 3: 提交接口扩展**
+
+```bash
+git add internal/service/host/logic/cloud/provider.go
+git commit -m "feat(cloud): add Capabilities method to CloudProvider interface"
+```
+
+---
+
+### Task 5: 实现通用重试机制
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/retry.go`
@@ -145,7 +180,6 @@ func TestDoWithRetry_Success(t *testing.T) {
 
 func TestDoWithRetry_RetryableError(t *testing.T) {
 	callCount := 0
-	attempts := []string{}
 
 	result, err := DoWithRetry(context.Background(), "alicloud", RetryConfig{
 		MaxRetries:   2,
@@ -154,7 +188,6 @@ func TestDoWithRetry_RetryableError(t *testing.T) {
 		Multiplier:   2.0,
 	}, "test", func() (string, error) {
 		callCount++
-		attempts = append(attempts, "attempt")
 		if callCount < 3 {
 			return "", errors.New("Throttling: rate exceeded")
 		}
@@ -224,7 +257,7 @@ func TestIsRetryableError(t *testing.T) {
 		{"alicloud", errors.New("InternalError"), true},
 		{"alicloud", errors.New("InvalidAccessKeyId"), false},
 		{"volcengine", errors.New("RequestLimitExceeded"), true},
-		{"ucloud", errors.New("RetCode: 172"), false}, // "172" not in error string
+		{"ucloud", errors.New("RetCode: 172"), false},
 		{"ucloud", errors.New("error code 172"), true},
 		{"unknown", errors.New("Throttling"), false},
 	}
@@ -392,7 +425,7 @@ git commit -m "feat(cloud): add generic retry mechanism with exponential backoff
 
 ## Chunk 2: 阿里云适配器
 
-### Task 5: 添加阿里云 SDK 依赖
+### Task 6: 添加阿里云 SDK 依赖
 
 - [ ] **Step 1: 安装阿里云 ECS SDK v9**
 
@@ -411,7 +444,7 @@ Expected: 显示 `github.com/alibabacloud-go/ecs-20140526 v9.x.x`
 
 ---
 
-### Task 6: 实现阿里云客户端封装
+### Task 7: 实现阿里云客户端封装
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/alicloud/client.go`
@@ -511,7 +544,7 @@ Expected: 无错误
 
 ---
 
-### Task 7: 实现阿里云数据转换器
+### Task 8: 实现阿里云数据转换器
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/alicloud/converter.go`
@@ -777,7 +810,7 @@ git commit -m "feat(cloud): add alicloud converter with EIP priority"
 
 ---
 
-### Task 8: 实现阿里云 Provider
+### Task 9: 实现阿里云 Provider
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/alicloud/provider.go`
@@ -794,6 +827,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	ecs "github.com/alibabacloud-go/ecs-20140526/v9/client"
 	"github.com/alibabacloud-go/tea/tea"
@@ -890,7 +924,7 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 
 		// 关键词过滤
 		if req.Keyword != "" {
-			if !p.matchKeyword(converted, req.Keyword) {
+			if !matchKeyword(converted, req.Keyword) {
 				continue
 			}
 		}
@@ -953,29 +987,12 @@ func (p *Provider) ListZones(ctx context.Context, ak, sk, region string) ([]clou
 }
 
 // matchKeyword 检查实例是否匹配关键词。
-func (p *Provider) matchKeyword(inst *cloud.CloudInstance, keyword string) bool {
-	kw := keyword
-	return contains(inst.Name, kw) ||
-		contains(inst.InstanceID, kw) ||
-		contains(inst.IP, kw) ||
-		contains(inst.PrivateIP, kw)
-}
-
-// contains 检查字符串是否包含子串（大小写不敏感）。
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 &&
-		(s == substr || len(s) >= len(substr) &&
-			(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-				findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+func matchKeyword(inst *cloud.CloudInstance, keyword string) bool {
+	kw := strings.ToLower(keyword)
+	return strings.Contains(strings.ToLower(inst.Name), kw) ||
+		strings.Contains(strings.ToLower(inst.InstanceID), kw) ||
+		strings.Contains(inst.IP, kw) ||
+		strings.Contains(inst.PrivateIP, kw)
 }
 
 // wrapError 包装阿里云错误，提供更友好的错误信息。
@@ -1029,7 +1046,7 @@ git commit -m "feat(cloud): implement alicloud CloudProvider with all interface 
 
 ## Chunk 3: UCLOUD 适配器
 
-### Task 9: 添加 UCLOUD SDK 依赖
+### Task 10: 添加 UCLOUD SDK 依赖
 
 - [ ] **Step 1: 安装 UCLOUD SDK**
 
@@ -1048,7 +1065,7 @@ Expected: 显示 `github.com/ucloud/ucloud-sdk-go v0.x.x`
 
 ---
 
-### Task 10: 实现 UCLOUD 客户端封装
+### Task 11: 实现 UCLOUD 客户端封装
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/ucloud/client.go`
@@ -1066,6 +1083,7 @@ package ucloud
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ucloud/ucloud-sdk-go/services/uhost"
 	"github.com/ucloud/ucloud-sdk-go/ucloud"
@@ -1113,21 +1131,17 @@ func (c *Client) GetRegion(ctx context.Context, req *uhost.GetRegionRequest) (*u
 }
 ```
 
-需要添加 fmt 导入：
+- [ ] **Step 2: 验证编译通过**
 
-```go
-import (
-	"context"
-	"fmt"
-
-	"github.com/ucloud/ucloud-sdk-go/services/uhost"
-	// ...
-)
+```bash
+go build ./internal/service/host/logic/cloud/ucloud/...
 ```
+
+Expected: 无错误
 
 ---
 
-### Task 11: 实现 UCLOUD 数据转换器
+### Task 12: 实现 UCLOUD 数据转换器
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/ucloud/converter.go`
@@ -1353,7 +1367,7 @@ git commit -m "feat(cloud): add ucloud converter with IPSet filtering"
 
 ---
 
-### Task 12: 实现 UCLOUD Provider
+### Task 13: 实现 UCLOUD Provider
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/ucloud/provider.go`
@@ -1577,7 +1591,7 @@ git commit -m "feat(cloud): implement ucloud CloudProvider with GetRegion API"
 
 ## Chunk 4: 注册与前端
 
-### Task 13: 注册所有云厂商适配器
+### Task 14: 注册所有云厂商适配器
 
 **Files:**
 - Create: `internal/service/host/logic/cloud/init.go`
@@ -1612,7 +1626,7 @@ git commit -m "feat(cloud): register all cloud providers on init"
 
 ---
 
-### Task 14: 更新前端云厂商选项
+### Task 15: 更新前端云厂商选项
 
 **Files:**
 - Modify: `web/src/pages/Hosts/HostCloudImportPage.tsx`
@@ -1639,7 +1653,7 @@ git commit -m "feat(web): add alicloud and ucloud to provider options"
 
 ---
 
-### Task 15: 集成测试
+### Task 16: 集成测试
 
 - [ ] **Step 1: 运行完整测试套件**
 
@@ -1669,7 +1683,7 @@ make dev-backend
 
 ---
 
-### Task 16: 最终提交
+### Task 17: 最终提交
 
 - [ ] **Step 1: 运行 go mod tidy**
 
@@ -1697,6 +1711,7 @@ Closes: multi-cloud provider extension design"
 
 ## 验收检查清单
 
+- [ ] MockProvider 实现 `Capabilities()` 方法
 - [ ] 火山云适配器实现 `Capabilities()` 方法
 - [ ] 重试机制测试覆盖率 ≥ 80%
 - [ ] 阿里云转换器测试覆盖率 ≥ 80%
