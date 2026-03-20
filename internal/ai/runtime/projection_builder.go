@@ -76,6 +76,7 @@ func BuildProjection(events []model.AIRunEvent) (*RunProjection, []*model.AIRunC
 	var textBuffer strings.Builder
 	var textStartID string
 	var textEndID string
+	var planningBlockIndex = -1
 
 	flushText := func() {
 		if currentExecutor == nil || textBuffer.Len() == 0 {
@@ -104,6 +105,15 @@ func BuildProjection(events []model.AIRunEvent) (*RunProjection, []*model.AIRunC
 		textBuffer.Reset()
 		textStartID = ""
 		textEndID = ""
+	}
+
+	upsertPlanningBlock := func(block ProjectionBlock) {
+		if planningBlockIndex >= 0 && planningBlockIndex < len(projection.Blocks) {
+			projection.Blocks[planningBlockIndex] = block
+			return
+		}
+		projection.Blocks = append(projection.Blocks, block)
+		planningBlockIndex = len(projection.Blocks) - 1
 	}
 
 	for _, event := range events {
@@ -135,7 +145,7 @@ func BuildProjection(events []model.AIRunEvent) (*RunProjection, []*model.AIRunC
 				return nil, nil, err
 			}
 			plan := payload.(*PlanPayload)
-			projection.Blocks = append(projection.Blocks, ProjectionBlock{
+			upsertPlanningBlock(ProjectionBlock{
 				ID:       blockID("plan", len(projection.Blocks)+1),
 				Type:     "plan",
 				Title:    "处理计划",
@@ -150,7 +160,7 @@ func BuildProjection(events []model.AIRunEvent) (*RunProjection, []*model.AIRunC
 				return nil, nil, err
 			}
 			replan := payload.(*ReplanPayload)
-			projection.Blocks = append(projection.Blocks, ProjectionBlock{
+			upsertPlanningBlock(ProjectionBlock{
 				ID:       blockID("replan", len(projection.Blocks)+1),
 				Type:     "replan",
 				Title:    "重新规划",

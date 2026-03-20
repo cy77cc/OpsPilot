@@ -90,14 +90,36 @@ func TestBuildProjection_ProjectsReplanBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build projection: %v", err)
 	}
-	if len(projection.Blocks) != 2 {
-		t.Fatalf("expected 2 blocks, got %d", len(projection.Blocks))
+	if len(projection.Blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(projection.Blocks))
 	}
-	if projection.Blocks[1].Type != "replan" {
-		t.Fatalf("expected second block to be replan, got %#v", projection.Blocks[1])
+	if projection.Blocks[0].Type != "replan" {
+		t.Fatalf("expected final planning block to be replan, got %#v", projection.Blocks[0])
 	}
-	if len(projection.Blocks[1].Steps) != 2 {
-		t.Fatalf("expected replanned steps to be preserved, got %#v", projection.Blocks[1].Steps)
+	if len(projection.Blocks[0].Steps) != 2 {
+		t.Fatalf("expected replanned steps to be preserved, got %#v", projection.Blocks[0].Steps)
+	}
+}
+
+func TestBuildProjection_KeepsOnlyLatestReplanSteps(t *testing.T) {
+	events := buildProjectionTestEvents(t, []eventFixture{
+		{id: "evt-1", eventType: EventTypePlan, payload: &PlanPayload{Iteration: 0, Steps: []string{"inspect pods", "collect events"}}},
+		{id: "evt-2", eventType: EventTypeReplan, payload: &ReplanPayload{Iteration: 1, Completed: 0, Steps: []string{"inspect nodes", "collect logs"}}},
+		{id: "evt-3", eventType: EventTypeReplan, payload: &ReplanPayload{Iteration: 2, Completed: 1, Steps: []string{"describe pending pods"}}},
+	})
+
+	projection, _, err := BuildProjection(events)
+	if err != nil {
+		t.Fatalf("build projection: %v", err)
+	}
+	if len(projection.Blocks) != 1 {
+		t.Fatalf("expected only the latest planning block to remain, got %d blocks", len(projection.Blocks))
+	}
+	if projection.Blocks[0].Type != "replan" {
+		t.Fatalf("expected latest planning block to be replan, got %#v", projection.Blocks[0])
+	}
+	if len(projection.Blocks[0].Steps) != 1 || projection.Blocks[0].Steps[0] != "describe pending pods" {
+		t.Fatalf("expected only latest replanned steps, got %#v", projection.Blocks[0].Steps)
 	}
 }
 

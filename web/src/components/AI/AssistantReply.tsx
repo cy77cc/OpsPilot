@@ -11,7 +11,7 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
   root: css`
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0px;
     width: 100%;
   `,
   phase: css`
@@ -58,6 +58,57 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     max-width: 100%;
     line-height: 1.65;
     word-break: break-word;
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin: 1.1em 0 0.45em;
+      color: ${token.colorText};
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    h4,
+    h5,
+    h6 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 0.85em;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 0.85em;
+      padding-left: 1.4em;
+    }
+
+    li {
+      margin: 0.2em 0;
+    }
+
+    blockquote {
+      margin: 0 0 0.85em;
+      padding-left: 12px;
+      border-left: 3px solid ${token.colorBorder};
+      color: ${token.colorTextSecondary};
+    }
   `,
   completedStepsCollapse: css`
     .ant-collapse-header {
@@ -141,6 +192,57 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     line-height: 1.65;
     word-break: break-word;
 
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin: 1.1em 0 0.45em;
+      color: ${token.colorText};
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    h4,
+    h5,
+    h6 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 0.9em;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 0.9em;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin: 0.25em 0;
+    }
+
+    blockquote {
+      margin: 0 0 0.9em;
+      padding: 0 0 0 12px;
+      border-left: 3px solid ${token.colorBorder};
+      color: ${token.colorTextSecondary};
+    }
+
     pre {
       overflow-x: auto;
       padding: 12px;
@@ -152,6 +254,7 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     table {
       width: 100%;
       border-collapse: collapse;
+      margin: 0 0 0.9em;
     }
 
     th,
