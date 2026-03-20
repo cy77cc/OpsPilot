@@ -44,10 +44,40 @@ CREATE TABLE IF NOT EXISTS ai_run_contents (
   INDEX idx_ai_run_contents_kind (content_kind)
 );
 
-ALTER TABLE ai_chat_messages DROP COLUMN IF EXISTS runtime_json;
+SET @drop_runtime_json_sql = (
+  SELECT IF(
+    EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'ai_chat_messages'
+        AND column_name = 'runtime_json'
+    ),
+    'ALTER TABLE ai_chat_messages DROP COLUMN runtime_json',
+    'SELECT 1'
+  )
+);
+PREPARE drop_runtime_json_stmt FROM @drop_runtime_json_sql;
+EXECUTE drop_runtime_json_stmt;
+DEALLOCATE PREPARE drop_runtime_json_stmt;
 
 -- +migrate Down
-ALTER TABLE ai_chat_messages ADD COLUMN IF NOT EXISTS runtime_json LONGTEXT NULL AFTER status;
+SET @add_runtime_json_sql = (
+  SELECT IF(
+    EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'ai_chat_messages'
+        AND column_name = 'runtime_json'
+    ),
+    'SELECT 1',
+    'ALTER TABLE ai_chat_messages ADD COLUMN runtime_json LONGTEXT NULL AFTER status'
+  )
+);
+PREPARE add_runtime_json_stmt FROM @add_runtime_json_sql;
+EXECUTE add_runtime_json_stmt;
+DEALLOCATE PREPARE add_runtime_json_stmt;
 DROP TABLE IF EXISTS ai_run_contents;
 DROP TABLE IF EXISTS ai_run_projections;
 DROP TABLE IF EXISTS ai_run_events;
