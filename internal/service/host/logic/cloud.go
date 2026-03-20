@@ -13,6 +13,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
+	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/alicloud"
+	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/volcengine"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 )
@@ -62,8 +64,13 @@ func init() {
 	// 注册火山云适配器
 	cloud.Register(volcengine.New())
 
-	// 注册 Mock 适配器（阿里云、腾讯云）
-	cloud.Register(cloud.NewMockProvider("alicloud", "阿里云"))
+	// 注册阿里云适配器
+	cloud.Register(alicloud.New())
+
+	// 注册 UCLOUD 适配器
+	cloud.Register(ucloud.New())
+
+	// 注册 Mock 适配器（腾讯云，待实现）
 	cloud.Register(cloud.NewMockProvider("tencent", "腾讯云"))
 }
 

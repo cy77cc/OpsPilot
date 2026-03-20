@@ -40,6 +40,13 @@ func (p *MockProvider) DisplayName() string {
 	return p.displayName
 }
 
+// Capabilities 返回云厂商能力标识。
+func (p *MockProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{
+		DynamicRegions: true,
+	}
+}
+
 // ValidateCredential 验证凭证（Mock 实现）。
 //
 // Mock 实现始终返回成功，仅验证参数非空。

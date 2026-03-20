@@ -8,6 +8,7 @@ import type { CloudAccount, CloudInstance, CloudProviderInfo } from '../../api/m
 const providerOptions = [
   { value: 'volcengine', label: '火山云' },
   { value: 'alicloud', label: '阿里云' },
+  { value: 'ucloud', label: 'UCLOUD' },
   { value: 'tencent', label: '腾讯云' },
 ];
 

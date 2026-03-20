@@ -32,6 +32,13 @@ type ListInstancesRequest struct {
 
 	// PageSize 每页数量。
 	PageSize int
+
+	// NextToken 分页令牌（可选）。
+	//
+	// 用于大数据量遍历，支持游标分页。
+	// 阿里云 V9 SDK 推荐使用 NextToken 替代 PageNumber。
+	// 如果提供 NextToken，优先使用游标分页。
+	NextToken string
 }
 
 // CloudInstance 统一的云实例模型。
@@ -122,4 +129,14 @@ type Zone struct {
 	//
 	// 如 "华北2（北京）- 可用区A"
 	LocalName string `json:"local_name"`
+}
+
+// ProviderCapabilities 云厂商能力标识。
+//
+// 用于标识各云厂商支持的功能差异，前端可根据能力调整交互逻辑。
+type ProviderCapabilities struct {
+	// DynamicRegions 是否支持动态查询地域。
+	//
+	// 所有厂商均支持动态查询，此字段保留用于未来扩展。
+	DynamicRegions bool `json:"dynamic_regions"`
 }

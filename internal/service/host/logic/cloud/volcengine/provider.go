@@ -34,6 +34,13 @@ func (p *Provider) DisplayName() string {
 	return "火山云"
 }
 
+// Capabilities 返回火山云能力标识。
+func (p *Provider) Capabilities() cloud.ProviderCapabilities {
+	return cloud.ProviderCapabilities{
+		DynamicRegions: true,
+	}
+}
+
 // ValidateCredential 验证火山云凭证是否有效。
 //
 // 通过调用 DescribeInstances API（限制返回 1 条）验证凭证有效性。

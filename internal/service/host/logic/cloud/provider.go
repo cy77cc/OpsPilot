@@ -33,6 +33,13 @@ type CloudProvider interface {
 	//   - 用于前端下拉选项展示
 	DisplayName() string
 
+	// Capabilities 返回云厂商能力标识。
+	//
+	// 返回值:
+	//   - 云厂商支持的能力集合，如是否支持批量导入、是否支持标签同步等
+	//   - 用于前端能力判断和功能开关
+	Capabilities() ProviderCapabilities
+
 	// ValidateCredential 验证云账号凭证是否有效。
 	//
 	// 参数:

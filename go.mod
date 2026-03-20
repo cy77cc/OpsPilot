@@ -3,6 +3,9 @@ module github.com/cy77cc/OpsPilot
 go 1.26.1
 
 require (
+	github.com/alibabacloud-go/ecs-20140526 v1.2.0
+	github.com/alibabacloud-go/tea v1.3.13
+	github.com/alibabacloud-go/tea-rpc v1.1.8
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/cloudwego/eino v0.8.3
 	github.com/cloudwego/eino-ext/components/model/ollama v0.1.8
@@ -17,9 +20,11 @@ require (
 	github.com/pkg/sftp v1.13.10
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.17.2
+	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/subosito/gotenv v1.6.0
+	github.com/ucloud/ucloud-sdk-go v0.22.60
 	github.com/volcengine/volcengine-go-sdk v1.2.21
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.47.0
@@ -39,6 +44,11 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
+	github.com/alibabacloud-go/tea-rpc-utils v1.1.2 // indirect
+	github.com/alibabacloud-go/tea-utils v1.3.6 // indirect
+	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
@@ -118,7 +128,6 @@ require (
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.54.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
@@ -147,6 +156,7 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
