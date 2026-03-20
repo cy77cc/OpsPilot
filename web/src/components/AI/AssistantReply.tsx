@@ -254,7 +254,6 @@ function StepContentRenderer({
 }) {
   // 如果有 segments，按顺序渲染
   if (step.segments && step.segments.length > 0) {
-    // 构建 activity map，方便查找
     const activityMap = new Map<string, AssistantReplyActivity>();
     activities.forEach((a) => activityMap.set(a.id, a));
 
@@ -275,8 +274,7 @@ function StepContentRenderer({
           />
         ));
       } else if (segment.type === 'tool_ref' && segment.callId) {
-        // 渲染工具引用
-        const activity = activityMap.get(`${segment.callId}:result`) || activityMap.get(segment.callId);
+        const activity = activityMap.get(segment.callId);
         if (activity) {
           elements.push(<ToolReference key={`tool-${segment.callId}`} activity={activity} />);
         }
@@ -339,27 +337,24 @@ function AssistantReplyContent({
   // 是否有 plan 结构
   const isPlanBased = hasPlan && activeStepIndex !== undefined && activeStepIndex >= 0;
 
-  // 当前步骤的工具 activities（tool_call 和 tool_result）
-  // 仅在有 plan 时过滤，否则保留在 activities 列表中
   const toolActivities = isPlanBased
     ? runtime?.activities?.filter(
         (activity) => activity.stepIndex === activeStepIndex &&
-          (activity.kind === 'tool_call' || activity.kind === 'tool_result')
+          activity.kind === 'tool'
       ) || []
     : [];
 
-  // 当前步骤的其他 activities（排除 tool_call 和 tool_result）
-  // 只有完全没有 plan 时，才回退为显示全部 activities。
-  // 对于“plan 已结束但 activeStepIndex 为空”的情况，不再把历史 tool 活动整体挂到最终正文前面。
   const activeStepActivities = isPlanBased
     ? runtime?.activities?.filter(
         (activity) => activity.stepIndex === activeStepIndex &&
-          activity.kind !== 'tool_call' &&
-          activity.kind !== 'tool_result'
+          activity.kind !== 'tool'
       ) || []
     : hasPlan
       ? []
       : runtime?.activities || [];
+
+  const standaloneActivities = !hasPlan ? runtime?.activities || [] : [];
+  const shouldRenderSummary = Boolean(runtime?.summary?.items?.length);
 
   const isStreaming = status === 'loading' || status === 'updating';
 
@@ -417,7 +412,22 @@ function AssistantReplyContent({
         </div>
       ): null}
 
-      {runtime?.summary ? (
+      {standaloneActivities.length > 0 ? (
+        <div className={styles.activities}>
+          {standaloneActivities.map((activity) => (
+            activity.kind === 'tool' ? (
+              <ToolReference key={activity.id} activity={activity} />
+            ) : (
+              <div key={activity.id} className={styles.activity}>
+                <span>{activity.label}</span>
+                {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+              </div>
+            )
+          ))}
+        </div>
+      ) : null}
+
+      {shouldRenderSummary ? (
         <div className={styles.summary}>
           {runtime.summary.title ? <div className={styles.summaryTitle}>{runtime.summary.title}</div> : null}
           {runtime.summary.items?.length ? (

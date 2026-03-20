@@ -386,6 +386,17 @@ export function buildAssistantErrorContent(
   return `${content}\n\n---\n\nError: ${error}`;
 }
 
+export async function copyAssistantReplyToClipboard(
+  finalMarkdownBody: string,
+  _runtime?: XChatMessage['runtime'],
+): Promise<void> {
+  const copyContent = (finalMarkdownBody || '').trim();
+  if (!copyContent || !navigator?.clipboard?.writeText) {
+    return;
+  }
+  await navigator.clipboard.writeText(copyContent);
+}
+
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -634,7 +645,18 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
           return (
             <div style={{ display: 'flex', gap: 2 }}>
-              <Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回复" />
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                aria-label="复制回复"
+                onClick={() => {
+                  void copyAssistantReplyToClipboard(
+                    (item as any).message?.content || '',
+                    (item as any).message?.runtime,
+                  );
+                }}
+              />
               <Button type="text" size="small" icon={<LikeOutlined />} aria-label="点赞" />
               <Button type="text" size="small" icon={<DislikeOutlined />} aria-label="点踩" />
               <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="重新生成" />
