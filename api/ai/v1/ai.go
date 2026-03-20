@@ -33,11 +33,12 @@ type CreateSessionResponse struct {
 
 // ChatMessageResponse defines one message item in a session.
 type ChatMessageResponse struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Status    string `json:"status,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID           string `json:"id"`
+	Role         string `json:"role"`
+	Content      string `json:"content"`
+	Status       string `json:"status,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
 }
 
 // SessionResponse defines one AI session with messages.
@@ -86,11 +87,12 @@ type SessionSummary struct {
 
 // MessageSummary defines concise message information.
 type MessageSummary struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Status    string `json:"status,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID           string `json:"id"`
+	Role         string `json:"role"`
+	Content      string `json:"content"`
+	Status       string `json:"status,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
 }
 
 // SessionDetail defines detailed session information with messages.

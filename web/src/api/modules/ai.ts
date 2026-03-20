@@ -16,6 +16,7 @@ export interface AIMessage {
   thoughtChain?: Array<Record<string, any>>;
   traceId?: string;
   status?: string;
+  error_message?: string;
   timestamp: string;
 }
 
