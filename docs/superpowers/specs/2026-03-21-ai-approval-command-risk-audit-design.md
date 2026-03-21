@@ -62,6 +62,7 @@ Fields:
 - `tool_name` (required)
 - `scene` (nullable)
 - `command_class` (nullable)
+- `argument_rules` (json/jsonb, nullable; argument-sensitive policy match rules)
 - `approval_required` (bool)
 - `risk_level` (`low|medium|high|critical`)
 - `priority` (int; higher wins for overlaps)
@@ -73,7 +74,9 @@ Matching semantics:
 - Filter by `enabled=true`.
 - Exact `tool_name` match required.
 - `scene`/`command_class` are exact if present, wildcard when null.
+- `argument_rules` (when present) must match request arguments (exact match and/or regex strategy defined by policy engine contract).
 - Highest `priority` wins.
+- For same priority, prefer the more specific rule (argument-aware > command_class > scene-only > tool-only).
 
 ### 3.2 Approval Task Snapshot (existing table extension)
 
@@ -82,6 +85,9 @@ Matching semantics:
 - `policy_version`
 - `risk_level`
 - `decision_source` (e.g. `db_policy`)
+- `expires_at` (approval TTL boundary)
+- `locked_at` (state-machine lock timestamp once decision is accepted for processing)
+- `lock_owner` (worker id or logical consumer id)
 
 This ensures resumed execution remains tied to the policy that triggered approval, even if policy rows change later.
 
@@ -121,22 +127,25 @@ Idempotency key:
 1. Frontend submits approve/reject via `SubmitApproval`.
 2. Service validates ownership and task state.
 3. Service updates task status (`approved/rejected/expired`) idempotently.
-4. Service appends outbox event `approval_decided`.
+4. Transition to `approved` must atomically set lock fields (`locked_at`, `lock_owner`) so later user mutations are rejected.
+5. Once locked for resume processing, task becomes immutable to further user decisions.
+6. Service appends outbox event `approval_decided`.
 
 ### 4.3 Asynchronous Resume
 
 1. `ResumeWorker` consumes `approval_decided`.
 2. Service checks `CanResume`.
-3. If `approved`:
+3. Worker checks task TTL. If `now() > expires_at`, transition to `expired` and do not resume.
+4. If `approved`:
 - append `resume_started`,
 - build resume params from persisted decision,
 - execute `ResumeWithParams`,
 - persist projected events and final convergence,
 - append `resume_finished`.
-4. If `rejected/expired`:
+5. If `rejected/expired`:
 - mark non-resumable terminal outcome,
 - no resume call.
-5. On retryable failures:
+6. On retryable failures:
 - append `resume_failed`,
 - increase retry counter and schedule backoff.
 
@@ -146,6 +155,7 @@ Approval task states:
 - `pending` -> `approved`
 - `pending` -> `rejected`
 - `pending` -> `expired`
+- `approved` -> `approved_locked` (internal processing lock before resume execution)
 - terminal: `approved|rejected|expired`
 
 Run statuses (approval-related subset):
@@ -160,14 +170,18 @@ Invariants:
 - Resume params are derived from persisted task decision only.
 - Ownership validation applies on both decision write and worker resume processing.
 - `waiting_approval` runs must not be finalized as `completed` before resume outcome.
+- Once approval task is locked for worker processing, user-facing decision mutation is forbidden.
+- Expired approval tasks must never be resumed, even if previously marked approved.
 
 ## 6. Error Handling And Recovery
 
 - Policy read failure: safe fallback to approval required for sensitive tool paths.
 - Duplicate decisions: return current task status; no hard failure.
+- Double-submit race: decision transition and lock acquisition must be atomic; second writer receives immutable-state response.
 - Resume execution failures: retriable with bounded backoff, terminally visible as `resume_failed_retryable`.
 - Stream transport failures: do not lose durable progress; event persistence remains source of truth.
 - Policy drift after task creation: task snapshot governs resume behavior.
+- Stale approval context: worker expires tasks beyond `expires_at` instead of attempting resume.
 
 ## 7. Testing Strategy (Minimum Viable Coverage)
 
