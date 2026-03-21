@@ -22,9 +22,32 @@
 **Files:**
 - Modify: `web/src/components/AI/types.ts`
 
-- [ ] **Step 1: 更新 AssistantReplyPlanStep 类型**
+- [ ] **Step 1: 添加 SlimExecutorBlock 类型**
 
-在 `web/src/components/AI/types.ts` 中，为 `AssistantReplyPlanStep` 添加 `loaded` 字段：
+在 `web/src/components/AI/types.ts` 中，添加瘦身后的 executor block 类型：
+
+```typescript
+// 瘦身后的 executor block（减少内存占用，只保留懒加载必须字段）
+export interface SlimExecutorBlock {
+  id: string;
+  items: Array<{
+    type: string;
+    content_id?: string;
+    tool_call_id?: string;
+    tool_name?: string;
+    arguments?: Record<string, unknown>;
+    result?: {
+      status?: string;
+      preview?: string;
+      result_content_id?: string;
+    };
+  }>;
+}
+```
+
+- [ ] **Step 2: 更新 AssistantReplyPlanStep 类型**
+
+为 `AssistantReplyPlanStep` 添加 `loaded` 字段：
 
 ```typescript
 export interface AssistantReplyPlanStep {
@@ -37,13 +60,11 @@ export interface AssistantReplyPlanStep {
 }
 ```
 
-- [ ] **Step 2: 更新 AssistantReplyRuntime 类型**
+- [ ] **Step 3: 更新 AssistantReplyRuntime 类型**
 
-在同一文件中，为 `AssistantReplyRuntime` 添加 `_executorBlocks` 字段：
+为 `AssistantReplyRuntime` 添加 `_executorBlocks` 字段：
 
 ```typescript
-import type { AIRunProjectionBlock } from '../../api/modules/ai';
-
 export interface AssistantReplyRuntime {
   phase?: AssistantReplyPhase;
   phaseLabel?: string;
@@ -51,25 +72,20 @@ export interface AssistantReplyRuntime {
   plan?: AssistantReplyPlan;
   summary?: AssistantReplySummary;
   status?: AssistantReplyRuntimeStatus;
-  _executorBlocks?: AIRunProjectionBlock[];  // 新增：存储 executor blocks 引用
+  _executorBlocks?: SlimExecutorBlock[];  // 新增：存储瘦身后的 executor blocks 引用
 }
 ```
 
-需要在文件顶部添加 import：
-```typescript
-import type { AIRunProjectionBlock } from '../../api/modules/ai';
-```
-
-- [ ] **Step 3: 运行类型检查**
+- [ ] **Step 4: 运行类型检查**
 
 Run: `cd web && npm run type-check 2>&1 | head -50`
 Expected: 可能有类型错误（因为 `_executorBlocks` 未使用），确保无语法错误
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
 git add web/src/components/AI/types.ts
-git commit -m "feat(ai): add lazy loading fields to types"
+git commit -m "feat(ai): add lazy loading types with SlimExecutorBlock"
 ```
 
 ---
@@ -81,13 +97,15 @@ git commit -m "feat(ai): add lazy loading fields to types"
 
 - [ ] **Step 1: 添加 projectionToLazyRuntime 函数**
 
-在 `web/src/components/AI/historyProjection.ts` 中，在 `projectionToRuntime` 函数之前添加新函数：
+在 `web/src/components/AI/historyProjection.ts` 中，添加新函数。注意：对 executor blocks 进行瘦身处理，减少内存占用：
 
 ```typescript
+import type { SlimExecutorBlock } from './types';
+
 /**
  * projectionToLazyRuntime 将 projection 转换为轻量级 runtime。
  * 只提取 steps 标题和 summary，不加载 executor 内容。
- * 用于历史消息的懒加载场景。
+ * executor blocks 进行瘦身存储，只保留懒加载必须的字段。
  */
 function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
   const steps: AssistantReplyPlanStep[] = [];
@@ -106,8 +124,24 @@ function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRun
     }
   }
 
-  // executor blocks 存储，供后续懒加载
-  const executorBlocks = projection.blocks.filter(b => b.type === 'executor');
+  // executor blocks 瘦身存储，只保留懒加载必须的字段
+  const executorBlocks: SlimExecutorBlock[] = projection.blocks
+    .filter(b => b.type === 'executor')
+    .map(block => ({
+      id: block.id,
+      items: (block.items || []).map(item => ({
+        type: item.type,
+        content_id: item.content_id,
+        tool_call_id: item.tool_call_id,
+        tool_name: item.tool_name,
+        arguments: item.arguments,
+        result: item.result ? {
+          status: item.result.status,
+          preview: item.result.preview,
+          result_content_id: item.result.result_content_id,
+        } : undefined,
+      })),
+    }));
 
   return {
     activities: [],
@@ -131,7 +165,7 @@ Expected: 类型检查通过
 
 ```bash
 git add web/src/components/AI/historyProjection.ts
-git commit -m "feat(ai): add projectionToLazyRuntime for lazy loading"
+git commit -m "feat(ai): add projectionToLazyRuntime with slimmed executor blocks"
 ```
 
 ---
@@ -366,11 +400,14 @@ interface AssistantReplyProps {
 }
 ```
 
-- [ ] **Step 2: 添加 step 展开状态**
+- [ ] **Step 2: 添加完整的状态机管理**
 
-在 `AssistantReplyContent` 组件中添加状态管理：
+在 `AssistantReplyContent` 组件中添加状态管理。采用局部状态合并方案确保 React 响应性：
 
 ```typescript
+// Step 加载状态：完整的状态机
+type StepLoadState = 'idle' | 'loading' | 'success' | 'error';
+
 function AssistantReplyContent({
   content,
   runtime,
@@ -384,29 +421,38 @@ function AssistantReplyContent({
   styles: Record<string, string>;
   onLoadStepContent?: AssistantReplyProps['onLoadStepContent'];
 }) {
-  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
-  const [loadingSteps, setLoadingSteps] = useState<Record<string, boolean>>({});
-  const [stepContents, setStepContents] = useState<Record<string, {
+  // 展开状态
+  const [stepExpandStates, setStepExpandStates] = useState<Record<string, boolean>>({});
+  // 加载状态：状态机
+  const [stepLoadStates, setStepLoadStates] = useState<Record<string, StepLoadState>>({});
+  // 内容缓存：异步加载的数据存储于此
+  const [stepContentCache, setStepContentCache] = useState<Record<string, {
     content: string;
     segments: AssistantReplySegment[];
     activities: AssistantReplyActivity[];
-  }>>({});
+  } | null>>({});
 
   // ... 其余代码
 }
 ```
 
-- [ ] **Step 3: 添加 handleStepExpand 处理函数**
+- [ ] **Step 3: 添加 handleStepExpand 处理函数（含竞态条件处理）**
 
 ```typescript
 const handleStepExpand = async (stepId: string, stepIndex: number) => {
-  if (expandedSteps[stepId] || loadingSteps[stepId]) {
+  // 1. 状态检查：防止重复请求（竞态条件处理）
+  const currentState = stepLoadStates[stepId] || 'idle';
+  if (currentState === 'loading' || currentState === 'success') {
+    // 已在加载或已成功，直接展开
+    if (currentState === 'success') {
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+    }
     return;
   }
 
-  // 检查是否已加载
-  if (stepContents[stepId]) {
-    setExpandedSteps((prev) => ({ ...prev, [stepId]: true }));
+  // 2. 检查是否已有缓存
+  if (stepContentCache[stepId]) {
+    setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
     return;
   }
 
@@ -414,17 +460,31 @@ const handleStepExpand = async (stepId: string, stepIndex: number) => {
     return;
   }
 
-  setLoadingSteps((prev) => ({ ...prev, [stepId]: true }));
+  // 3. 设置 loading 状态
+  setStepLoadStates(prev => ({ ...prev, [stepId]: 'loading' }));
 
   try {
     const result = await onLoadStepContent(stepId, stepIndex);
     if (result) {
-      setStepContents((prev) => ({ ...prev, [stepId]: result }));
-      setExpandedSteps((prev) => ({ ...prev, [stepId]: true }));
+      // 4. 成功：存储内容并标记成功
+      setStepContentCache(prev => ({ ...prev, [stepId]: result }));
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'success' }));
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+    } else {
+      // 5. 返回 null：标记错误
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
     }
-  } finally {
-    setLoadingSteps((prev) => ({ ...prev, [stepId]: false }));
+  } catch (error) {
+    // 6. 异常：标记错误
+    setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
   }
+};
+
+// 重试函数
+const handleRetry = (stepId: string, stepIndex: number) => {
+  // 重置状态后重新触发加载
+  setStepLoadStates(prev => ({ ...prev, [stepId]: 'idle' }));
+  handleStepExpand(stepId, stepIndex);
 };
 ```
 
@@ -437,19 +497,19 @@ Expected: 类型检查通过
 
 ```bash
 git add web/src/components/AI/AssistantReply.tsx
-git commit -m "feat(ai): add step expand state management"
+git commit -m "feat(ai): add step state machine with error handling"
 ```
 
 ---
 
-### Task 6: 改造已完成步骤的渲染
+### Task 6: 改造已完成步骤的渲染（含错误处理）
 
 **Files:**
 - Modify: `web/src/components/AI/AssistantReply.tsx`
 
 - [ ] **Step 1: 修改 completedSteps 的渲染方式**
 
-将现有的 `Collapse` 组件改为每个 step 独立的折叠：
+将现有的 `Collapse` 组件改为每个 step 独立的折叠，包含错误状态处理：
 
 找到这段代码：
 ```typescript
@@ -486,11 +546,11 @@ git commit -m "feat(ai): add step expand state management"
           className={styles.completedStepsCollapse}
           ghost
           items={completedSteps.map((step, index) => {
-            const isExpanded = expandedSteps[step.id];
-            const isLoading = loadingSteps[step.id];
-            const stepContent = stepContents[step.id];
-            const displayStep = stepContent
-              ? { ...step, content: stepContent.content, segments: stepContent.segments, loaded: true }
+            const loadState = stepLoadStates[step.id] || 'idle';
+            const isExpanded = stepExpandStates[step.id];
+            const cachedContent = stepContentCache[step.id];
+            const displayStep = cachedContent
+              ? { ...step, content: cachedContent.content, segments: cachedContent.segments, loaded: true }
               : step;
 
             return {
@@ -501,24 +561,35 @@ git commit -m "feat(ai): add step expand state management"
                   <span>{step.title}</span>
                 </div>
               ),
-              children: isLoading ? (
+              children: loadState === 'loading' ? (
                 <div className={styles.loadingContainer}>
                   <Skeleton active paragraph={{ rows: 2 }} />
+                </div>
+              ) : loadState === 'error' ? (
+                <div className={styles.errorContainer}>
+                  <span style={{ color: token.colorError }}>加载失败</span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => handleRetry(step.id, index)}
+                  >
+                    重试
+                  </Button>
                 </div>
               ) : (
                 <StepContentRenderer
                   step={displayStep}
-                  activities={stepContent?.activities || []}
+                  activities={cachedContent?.activities || []}
                   isStreaming={false}
                   styles={styles}
                 />
               ),
             };
           })}
-          activeKey={Object.keys(expandedSteps).filter((k) => expandedSteps[k])}
+          activeKey={Object.keys(stepExpandStates).filter((k) => stepExpandStates[k])}
           onChange={(keys) => {
             const newExpanded = Array.isArray(keys) ? keys : [keys];
-            const prevExpanded = Object.keys(expandedSteps).filter((k) => expandedSteps[k]);
+            const prevExpanded = Object.keys(stepExpandStates).filter((k) => stepExpandStates[k]);
 
             // 找到新展开的 step
             const newlyExpanded = newExpanded.filter((k) => !prevExpanded.includes(k));
@@ -532,6 +603,8 @@ git commit -m "feat(ai): add step expand state management"
         />
       ) : null}
 ```
+
+注意：需要从 `antd-style` 的 `useStyles` 中获取 `token` 用于错误提示的颜色。
 
 - [ ] **Step 2: 运行类型检查**
 
@@ -733,59 +806,56 @@ git commit -m "refactor(ai): remove anchor positioning logic"
 
 ---
 
-### Task 9: 简化滚动跟踪
+### Task 9: 使用 ResizeObserver 简化滚动跟踪
 
 **Files:**
 - Modify: `web/src/components/AI/CopilotSurface.tsx`
 
-- [ ] **Step 1: 简化流式响应滚动逻辑**
+- [ ] **Step 1: 使用 ResizeObserver 处理动态内容滚动**
 
-找到初始滚动 useEffect：
+流式输出过程中，Markdown 中的图片、代码块等异步加载会导致 DOM 高度变化。使用 ResizeObserver 确保滚动跟随：
 
-```typescript
-React.useEffect(() => {
-  if (!open || !pendingInitialScrollRef.current || renderedMessages.length === 0) {
-    return;
-  }
-
-  const frame = requestAnimationFrame(() => {
-    const el = contentRef.current;
-    if (!el) {
-      return;
-    }
-    pendingInitialScrollRef.current = false;
-    withProgrammaticScroll(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
-    });
-  });
-
-  return () => cancelAnimationFrame(frame);
-}, [open, renderedMessages.length, withProgrammaticScroll]);
-```
-
-替换为合并后的简化版本：
+找到初始滚动 useEffect，替换为 ResizeObserver 版本：
 
 ```typescript
-// 初始化滚动 + 流式响应滚动
+// 初始化滚动 + 流式响应滚动（使用 ResizeObserver）
 React.useEffect(() => {
-  if (!open || followStateRef.current !== 'following') return;
+  if (!open) return;
 
   const el = contentRef.current;
   if (!el) return;
 
-  // 初始化或流式响应时滚动到底部
-  const shouldScroll = pendingInitialScrollRef.current || isRequesting;
-  if (!shouldScroll) return;
-
-  pendingInitialScrollRef.current = false;
-
-  requestAnimationFrame(() => {
+  // 滚动到底部的辅助函数
+  const scrollToBottom = () => {
+    if (followStateRef.current !== 'following') return;
     withProgrammaticScroll(() => {
       el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
     });
+  };
+
+  // 创建 ResizeObserver 监听内容区域高度变化
+  const resizeObserver = new ResizeObserver(() => {
+    if (followStateRef.current === 'following') {
+      scrollToBottom();
+    }
   });
-}, [open, isRequesting, renderedMessages.length, withProgrammaticScroll]);
+
+  // 观察内容容器
+  resizeObserver.observe(el);
+
+  // 初始滚动
+  scrollToBottom();
+
+  return () => {
+    resizeObserver.disconnect();
+  };
+}, [open, withProgrammaticScroll]);
 ```
+
+**优点：**
+- 自动处理图片加载、代码块渲染等导致的布局变化
+- 流式输出时平滑跟随
+- 用户上滑后停止跟随（通过 `followStateRef` 控制）
 
 - [ ] **Step 2: 移除 withProgrammaticScroll（如果不再需要）**
 
@@ -804,7 +874,7 @@ Expected: 类型检查通过
 
 ```bash
 git add web/src/components/AI/CopilotSurface.tsx
-git commit -m "refactor(ai): simplify scroll tracking logic"
+git commit -m "refactor(ai): use ResizeObserver for scroll tracking"
 ```
 
 ---
