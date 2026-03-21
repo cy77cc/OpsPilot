@@ -59,17 +59,79 @@ func (d *AIApprovalTaskDAO) GetByCheckpointID(ctx context.Context, checkpointID 
 // UpdateStatus 更新审批状态。
 func (d *AIApprovalTaskDAO) UpdateStatus(ctx context.Context, approvalID string, status string, approvedBy uint64, reason, comment string) error {
 	updates := map[string]any{
-		"status":             status,
-		"approved_by":        approvedBy,
-		"disapprove_reason":  reason,
-		"comment":            comment,
-		"decided_at":         time.Now(),
-		"updated_at":         time.Now(),
+		"status":            status,
+		"approved_by":       approvedBy,
+		"disapprove_reason": reason,
+		"comment":           comment,
+		"decided_at":        time.Now(),
+		"updated_at":        time.Now(),
 	}
 	return d.db.WithContext(ctx).
 		Model(&model.AIApprovalTask{}).
 		Where("approval_id = ? AND status = ?", approvalID, "pending").
 		Updates(updates).Error
+}
+
+// ApproveWithLease transitions a pending approval to approved and installs a resume lease atomically.
+func (d *AIApprovalTaskDAO) ApproveWithLease(ctx context.Context, approvalID string, approvedBy uint64, comment string, leaseExpiresAt time.Time) (bool, error) {
+	now := time.Now()
+	lease := leaseExpiresAt
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "pending").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"status":            "approved",
+			"approved_by":       approvedBy,
+			"disapprove_reason": "",
+			"comment":           comment,
+			"decided_at":        now,
+			"lock_expires_at":   &lease,
+			"updated_at":        now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// RejectPending rejects a pending approval only when no active processing lease exists.
+func (d *AIApprovalTaskDAO) RejectPending(ctx context.Context, approvalID string, approvedBy uint64, reason, comment string) (bool, error) {
+	now := time.Now()
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "pending").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"status":            "rejected",
+			"approved_by":       approvedBy,
+			"disapprove_reason": reason,
+			"comment":           comment,
+			"decided_at":        now,
+			"updated_at":        now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// AcquireOrStealLease acquires a lease for an approved task or steals it once the previous lease expires.
+func (d *AIApprovalTaskDAO) AcquireOrStealLease(ctx context.Context, approvalID string, leaseExpiresAt time.Time) (bool, error) {
+	now := time.Now()
+	lease := leaseExpiresAt
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "approved").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"lock_expires_at": &lease,
+			"updated_at":      now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // ListPendingByUserID 列出用户的待处理审批任务。
