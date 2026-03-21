@@ -45,6 +45,8 @@ ALTER TABLE ai_approval_tasks
 CREATE INDEX idx_ai_tool_risk_policies_tool_enabled ON ai_tool_risk_policies(tool_name, enabled);
 ```
 
+Note: keep new approval-lock/policy snapshot columns nullable (or with safe defaults) to avoid breaking existing rows during rollout.
+
 - [ ] **Step 4: Update model structs minimally**
 
 ```go
@@ -143,6 +145,8 @@ func (d *AIApprovalOutboxDAO) ClaimPending(...)
 func (d *AIApprovalOutboxDAO) MarkDone(...)
 func (d *AIApprovalOutboxDAO) MarkRetry(...)
 ```
+
+Note: `RetryCount` is for retry/backoff observability only; the DB UNIQUE INDEX must remain exactly `(approval_id, event_type)`.
 
 - [ ] **Step 4: Re-run DAO tests**
 
@@ -271,6 +275,8 @@ Expected: FAIL
 // ResumeApproval endpoint: optional removal or keep as admin/debug-only path
 // Worker: claim outbox -> acquire/steal lease -> set run resuming -> ResumeWithParams -> finalize
 ```
+
+Note: worker must mark outbox event `done` only after resume execution + run convergence persistence succeeds; failures should transition to retryable state instead of dropping the event.
 
 - [ ] **Step 4: Update handler behavior for SSE-safe errors**
 
