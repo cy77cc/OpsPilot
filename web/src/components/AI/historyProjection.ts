@@ -15,53 +15,23 @@ function reconcileHistoricalPlan(
   completed: number,
   isFinal: boolean,
 ): { steps: AssistantReplyPlanStep[]; activeStepIndex?: number } {
-  const total = completed + steps.length;
   const nextSteps: AssistantReplyPlanStep[] = [];
-  let visibleCompleted = 0;
-  let hiddenCompleted = 0;
+  const preserveCompletedPrefix = previous.length > 0 && completed > 0;
 
-  const hasRealTitle = (title?: string): title is string => {
-    const value = (title || '').trim();
-    if (!value) return false;
-    return !/^步骤\s+\d+$/.test(value);
-  };
-
-  for (let index = 0; index < completed; index += 1) {
-    const previousStep = previous[index];
-    if (!hasRealTitle(previousStep?.title)) {
-      hiddenCompleted += 1;
-      continue;
-    }
-    nextSteps.push({
-      id: previousStep?.id || `historical-step-${index}`,
-      title: previousStep.title,
-      status: 'done',
-      loaded: false,
-      sourceBlockIndex: previousStep?.sourceBlockIndex,
-      sourceStepIndex: previousStep?.sourceStepIndex ?? index,
-      unresolved: previousStep?.unresolved,
-    });
-    visibleCompleted += 1;
-  }
-
-  if (visibleCompleted === 0 && hiddenCompleted > 0) {
-    for (let index = 0; index < completed; index += 1) {
+  if (preserveCompletedPrefix) {
+    for (let index = 0; index < completed && index < previous.length; index += 1) {
       const previousStep = previous[index];
       nextSteps.push({
-        id: previousStep?.id || `historical-step-${index}`,
-        title: previousStep?.title || `步骤 ${index + 1}`,
-        status: 'done',
+        ...previousStep,
+        id: previousStep.id || `historical-step-${index}`,
         loaded: false,
-        sourceBlockIndex: previousStep?.sourceBlockIndex,
-        sourceStepIndex: previousStep?.sourceStepIndex ?? index,
-        unresolved: previousStep?.unresolved ?? previousStep?.sourceBlockIndex === undefined,
+        sourceStepIndex: previousStep.sourceStepIndex ?? index,
       });
     }
-    visibleCompleted = completed;
   }
 
   steps.forEach((title, index) => {
-    const nextIndex = index + completed;
+    const nextIndex = preserveCompletedPrefix ? index + completed : index;
     const previousStep = previous[nextIndex];
     nextSteps.push({
       id: previousStep?.id || `historical-step-${nextIndex}`,
@@ -74,19 +44,9 @@ function reconcileHistoricalPlan(
     });
   });
 
-  if (isFinal && previous.length > total) {
-    previous.slice(total).forEach((step, index) => {
-      nextSteps.push({
-        ...step,
-        id: step.id || `historical-step-${total + index}`,
-        loaded: false,
-      });
-    });
-  }
-
   return {
     steps: nextSteps,
-    activeStepIndex: isFinal ? undefined : visibleCompleted,
+    activeStepIndex: undefined,
   };
 }
 
@@ -128,14 +88,13 @@ export async function loadRunContent(contentId: string): Promise<AIRunContent | 
  */
 function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
   let steps: AssistantReplyPlanStep[] = [];
-  let activeStepIndex: number | undefined;
   let executorIndex = 0;
+  let executorStepIndex = 0;
 
   for (const block of projection.blocks) {
     if (block.type === 'plan') {
       const next = reconcileHistoricalPlan([], block.steps || [], 0, false);
       steps = next.steps;
-      activeStepIndex = next.activeStepIndex;
       continue;
     }
 
@@ -144,17 +103,17 @@ function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRun
       const isFinal = Boolean(block.data?.is_final);
       const next = reconcileHistoricalPlan(steps, block.steps || [], completed, isFinal);
       steps = next.steps;
-      activeStepIndex = next.activeStepIndex;
       continue;
     }
 
     if (block.type === 'executor') {
-      if (activeStepIndex !== undefined && steps[activeStepIndex] && steps[activeStepIndex].sourceBlockIndex === undefined) {
-        steps[activeStepIndex] = {
-          ...steps[activeStepIndex],
+      if (steps[executorStepIndex] && steps[executorStepIndex].sourceBlockIndex === undefined) {
+        steps[executorStepIndex] = {
+          ...steps[executorStepIndex],
           sourceBlockIndex: executorIndex,
           unresolved: false,
         };
+        executorStepIndex += 1;
       }
       executorIndex += 1;
     }

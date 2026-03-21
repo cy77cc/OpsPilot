@@ -359,13 +359,13 @@ describe('historyProjection', () => {
     } as any);
 
     expect(hydrated.runtime?.plan?.steps).toEqual([
-      expect.objectContaining({ title: '收集上下文', sourceBlockIndex: undefined }),
-      expect.objectContaining({ title: '执行检查', loaded: false, sourceBlockIndex: 0 }),
+      expect.objectContaining({ title: '收集上下文', sourceBlockIndex: 0 }),
+      expect.objectContaining({ title: '执行检查', loaded: false, sourceBlockIndex: undefined }),
       expect.objectContaining({ title: '汇总结果', loaded: false }),
     ]);
   });
 
-  it('falls back to placeholder step titles when historical completed titles cannot be recovered', async () => {
+  it('renders only the real step titles returned by the latest historical replan block', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -404,11 +404,8 @@ describe('historyProjection', () => {
       timestamp: '',
     } as any);
 
-    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['步骤 1', '步骤 2', '执行检查', '汇总结果']);
-    expect(hydrated.runtime?.plan?.steps.slice(0, 2)).toEqual([
-      expect.objectContaining({ unresolved: true }),
-      expect.objectContaining({ unresolved: true }),
-    ]);
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['执行检查', '汇总结果']);
+    expect(hydrated.runtime?.plan?.activeStepIndex).toBeUndefined();
   });
 
   it('loads step content on demand from a slim executor block', async () => {
