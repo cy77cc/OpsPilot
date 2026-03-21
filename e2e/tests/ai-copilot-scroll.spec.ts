@@ -90,6 +90,18 @@ test('sending from detached scroll position snaps AI copilot back to bottom', as
     });
   });
 
+  await page.route('**/api/v1/ai/sessions', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 1000,
+        msg: 'ok',
+        data: [{ id: 'sess-1', title: 'Session 1', scene: 'ai' }],
+      }),
+    });
+  });
+
   await page.route('**/api/v1/ai/sessions?**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -142,6 +154,7 @@ test('sending from detached scroll position snaps AI copilot back to bottom', as
 
   const scrollContainer = page.getByTestId('copilot-scroll-container');
   await expect(scrollContainer).toBeVisible();
+  await page.getByRole('button', { name: '查看历史会话' }).click();
   await page.getByText('Session 1').click();
   await expect(page.getByText('问题 0')).toBeVisible();
   await expect.poll(async () => {
