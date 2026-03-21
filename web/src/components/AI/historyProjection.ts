@@ -1,7 +1,7 @@
 import type { AIMessage, AIRunContent, AIRunProjection } from '../../api/modules/ai';
 import { aiApi } from '../../api/modules/ai';
 import { normalizeMarkdownContent } from './markdownContent';
-import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRuntime, AssistantReplySegment, XChatMessage } from './types';
+import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRuntime, AssistantReplySegment, SlimExecutorBlock, XChatMessage } from './types';
 
 const projectionCache = new Map<string, AIRunProjection | null>();
 const contentCache = new Map<string, AIRunContent | null>();
@@ -38,6 +38,59 @@ export async function loadRunContent(contentId: string): Promise<AIRunContent | 
   } catch {
     return null;
   }
+}
+
+/**
+ * projectionToLazyRuntime 将 projection 转换为轻量级 runtime。
+ * 只提取 steps 标题和 summary，不加载 executor 内容。
+ * executor blocks 进行瘦身存储，只保留懒加载必须的字段。
+ */
+function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
+  const steps: AssistantReplyPlanStep[] = [];
+
+  // 从 plan/replan blocks 提取步骤标题
+  for (const block of projection.blocks) {
+    if (block.type === 'plan' || block.type === 'replan') {
+      block.steps?.forEach((title) => {
+        steps.push({
+          id: `step-${steps.length}`,
+          title,
+          status: 'done',
+          loaded: false,
+        });
+      });
+    }
+  }
+
+  // executor blocks 瘦身存储，只保留懒加载必须的字段
+  const executorBlocks: SlimExecutorBlock[] = projection.blocks
+    .filter(b => b.type === 'executor')
+    .map(block => ({
+      id: block.id,
+      items: (block.items || []).map(item => ({
+        type: item.type,
+        content_id: item.content_id,
+        tool_call_id: item.tool_call_id,
+        tool_name: item.tool_name,
+        arguments: item.arguments,
+        result: item.result ? {
+          status: item.result.status,
+          preview: item.result.preview,
+          result_content_id: item.result.result_content_id,
+        } : undefined,
+      })),
+    }));
+
+  return {
+    activities: [],
+    plan: steps.length > 0 ? { steps } : undefined,
+    summary: projection.summary?.title ? { title: projection.summary.title } : undefined,
+    status: {
+      kind: projection.status === 'failed_runtime' ? 'error' : 'completed',
+      label: projection.status,
+    },
+    _executorBlocks: executorBlocks,
+  };
 }
 
 export async function hydrateAssistantHistoryFromProjection(
