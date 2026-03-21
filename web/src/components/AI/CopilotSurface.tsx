@@ -28,7 +28,6 @@ import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } fro
 const { Text } = Typography;
 
 const NEW_SESSION_KEY = '__new__';
-const FOLLOW_BOTTOM_SAFE_GAP = 72;
 const SCROLL_BUTTON_RECOVERY_THRESHOLD = 24;
 const SCROLL_BUTTON_VISIBILITY_THRESHOLD = 120;
 
@@ -590,14 +589,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     });
   }, []);
 
-  const getMessageAnchor = React.useCallback((messageId?: string) => {
-    const el = contentRef.current;
-    if (!el || !messageId) {
-      return null;
-    }
-    return el.querySelector<HTMLElement>(`[data-message-anchor="${messageId}"]`);
-  }, []);
-
   React.useEffect(() => {
     followStateRef.current = 'following';
     pendingInitialScrollRef.current = true;
@@ -621,37 +612,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
     return () => cancelAnimationFrame(frame);
   }, [open, renderedMessages.length, withProgrammaticScroll]);
-
-  React.useEffect(() => {
-    if (!open || !currentAssistantMessage?.renderKey || followStateRef.current !== 'following') {
-      return;
-    }
-
-    const frame = requestAnimationFrame(() => {
-      const el = contentRef.current;
-      const anchor = getMessageAnchor(currentAssistantMessage.renderKey);
-      if (!el || !anchor) {
-        return;
-      }
-      const nextTop = Math.max(
-        0,
-        anchor.offsetTop + anchor.offsetHeight - el.clientHeight + FOLLOW_BOTTOM_SAFE_GAP,
-      );
-      withProgrammaticScroll(() => {
-        el.scrollTo({ top: nextTop, behavior: 'auto' });
-      });
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, [
-    currentAssistantMessage?.renderKey,
-    currentAssistantMessage?.message.content,
-    currentAssistantMessage?.message.runtime,
-    currentAssistantMessage?.status,
-    getMessageAnchor,
-    open,
-    withProgrammaticScroll,
-  ]);
 
   React.useEffect(() => {
     const el = contentRef.current;
