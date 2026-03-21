@@ -837,6 +837,9 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         return;
       }
 
+      // 用户发送消息时，自动回到底部开始跟随
+      followStateRef.current = 'following';
+
       const targetKey = await ensureSession(message);
       if (targetKey !== activeConversationKey) {
         queueRequest(targetKey, {
