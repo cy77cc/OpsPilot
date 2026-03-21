@@ -17,18 +17,29 @@ function reconcileHistoricalPlan(
 ): { steps: AssistantReplyPlanStep[]; activeStepIndex?: number } {
   const total = completed + steps.length;
   const nextSteps: AssistantReplyPlanStep[] = [];
+  let visibleCompleted = 0;
+
+  const hasRealTitle = (title?: string): title is string => {
+    const value = (title || '').trim();
+    if (!value) return false;
+    return !/^步骤\s+\d+$/.test(value);
+  };
 
   for (let index = 0; index < completed; index += 1) {
     const previousStep = previous[index];
+    if (!hasRealTitle(previousStep?.title)) {
+      continue;
+    }
     nextSteps.push({
       id: previousStep?.id || `historical-step-${index}`,
-      title: previousStep?.title || `步骤 ${index + 1}`,
+      title: previousStep.title,
       status: 'done',
       loaded: false,
       sourceBlockIndex: previousStep?.sourceBlockIndex,
       sourceStepIndex: previousStep?.sourceStepIndex ?? index,
       unresolved: previousStep?.unresolved,
     });
+    visibleCompleted += 1;
   }
 
   steps.forEach((title, index) => {
@@ -57,7 +68,7 @@ function reconcileHistoricalPlan(
 
   return {
     steps: nextSteps,
-    activeStepIndex: isFinal ? undefined : completed,
+    activeStepIndex: isFinal ? undefined : visibleCompleted,
   };
 }
 

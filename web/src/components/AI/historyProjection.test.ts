@@ -365,6 +365,50 @@ describe('historyProjection', () => {
     ]);
   });
 
+  it('does not synthesize placeholder step titles when only latest replan survives', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        summary: { title: '结论', content_mode: 'inline', content: '最终结论' },
+        blocks: [
+          {
+            id: 'replan-1',
+            type: 'replan',
+            title: '重新规划',
+            steps: ['执行检查', '汇总结果'],
+            data: { completed: 2, iteration: 1, is_final: true },
+          },
+          {
+            id: 'executor-1',
+            type: 'executor',
+            title: '执行过程',
+            items: [
+              {
+                id: 'content-1',
+                type: 'content',
+                content_id: 'executor-content-1',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['执行检查', '汇总结果']);
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).not.toContain('步骤 1');
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).not.toContain('步骤 2');
+  });
+
   it('loads step content on demand from a slim executor block', async () => {
     (aiApi.getRunContent as any)
       .mockResolvedValueOnce({

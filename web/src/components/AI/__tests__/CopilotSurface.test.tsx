@@ -322,4 +322,81 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
   });
 
+  it('loads step content from the owning assistant message runtime', async () => {
+    vi.mocked(aiApi.getRunContent).mockResolvedValue({
+      data: {
+        id: 'content-first',
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        content_kind: 'executor_content',
+        encoding: 'text',
+        body_text: 'first body',
+      },
+    } as any);
+
+    mockUseXChat.mockReturnValue({
+      messages: [
+        {
+          id: 'a1',
+          status: 'success',
+          message: {
+            role: 'assistant',
+            content: 'first reply',
+            runtime: {
+              activities: [],
+              plan: {
+                steps: [
+                  { id: 'step-1', title: 'first-step', status: 'done', loaded: false, sourceBlockIndex: 0 },
+                ],
+              },
+              _executorBlocks: [
+                {
+                  id: 'block-1',
+                  items: [{ type: 'content', content_id: 'content-first' }],
+                },
+              ],
+            },
+          },
+        },
+        {
+          id: 'a2',
+          status: 'success',
+          message: {
+            role: 'assistant',
+            content: 'second reply',
+            runtime: {
+              activities: [],
+              plan: {
+                steps: [
+                  { id: 'step-2', title: 'second-step', status: 'done', loaded: false, sourceBlockIndex: 0 },
+                ],
+              },
+              _executorBlocks: [
+                {
+                  id: 'block-2',
+                  items: [{ type: 'content', content_id: 'content-second' }],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      onRequest: vi.fn(),
+      isRequesting: false,
+      queueRequest: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    screen.getByRole('button', { name: /first-step/ }).click();
+
+    await waitFor(() => {
+      expect(aiApi.getRunContent).toHaveBeenCalledWith('content-first');
+    });
+  });
+
 });

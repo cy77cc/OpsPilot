@@ -553,21 +553,13 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     [messages],
   );
 
-  const currentAssistantMessage = React.useMemo(
-    () => [...renderedMessages].reverse().find((item) => item.message.role === 'assistant'),
-    [renderedMessages],
-  );
-
-  // 懒加载 step 内容的回调
-  const handleLoadStepContent = React.useCallback(
-    async (stepId: string, stepIndex: number) => {
-      // 从当前 assistant 消息获取 runtime
-      const currentMsg = currentAssistantMessage?.message;
-      if (!currentMsg?.runtime?._executorBlocks) {
+  const buildStepContentLoader = React.useCallback(
+    (runtime?: XChatMessage['runtime']) => async (_stepId: string, stepIndex: number) => {
+      if (!runtime?._executorBlocks) {
         return null;
       }
 
-      const executorBlocks = currentMsg.runtime._executorBlocks;
+      const executorBlocks = runtime._executorBlocks;
       if (stepIndex < 0 || stepIndex >= executorBlocks.length) {
         return null;
       }
@@ -579,7 +571,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
       return loadStepContent(block, stepIndex);
     },
-    [currentAssistantMessage],
+    [],
   );
 
   const withProgrammaticScroll = React.useCallback((callback: () => void) => {
@@ -737,7 +729,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
               content={content}
               runtime={(info as any).extraInfo?.runtime}
               status={info.status}
-              onLoadStepContent={handleLoadStepContent}
+              onLoadStepContent={buildStepContentLoader((info as any).extraInfo?.runtime)}
             />
           </div>
         ),
@@ -753,7 +745,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         },
       },
     }),
-    [handleLoadStepContent],
+    [buildStepContentLoader],
   );
 
   React.useEffect(() => {
