@@ -589,6 +589,7 @@ function AssistantReplyContent({
                   <span>{step.title}</span>
                 </div>
               ),
+              collapsible: step.unresolved ? 'disabled' as const : undefined,
               children: loadState === 'loading' ? (
                 <div className={styles.loadingContainer}>
                   <Skeleton active paragraph={{ rows: 2 }} />

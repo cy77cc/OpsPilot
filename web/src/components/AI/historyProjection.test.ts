@@ -365,7 +365,7 @@ describe('historyProjection', () => {
     ]);
   });
 
-  it('does not synthesize placeholder step titles when only latest replan survives', async () => {
+  it('falls back to placeholder step titles when historical completed titles cannot be recovered', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -404,9 +404,11 @@ describe('historyProjection', () => {
       timestamp: '',
     } as any);
 
-    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['执行检查', '汇总结果']);
-    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).not.toContain('步骤 1');
-    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).not.toContain('步骤 2');
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['步骤 1', '步骤 2', '执行检查', '汇总结果']);
+    expect(hydrated.runtime?.plan?.steps.slice(0, 2)).toEqual([
+      expect.objectContaining({ unresolved: true }),
+      expect.objectContaining({ unresolved: true }),
+    ]);
   });
 
   it('loads step content on demand from a slim executor block', async () => {
