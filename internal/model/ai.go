@@ -214,6 +214,24 @@ type AICheckpoint struct {
 
 func (AICheckpoint) TableName() string { return "ai_checkpoints" }
 
+// AIToolRiskPolicy stores DB-driven approval policy for a tool.
+type AIToolRiskPolicy struct {
+	ID                uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ToolName          string    `gorm:"column:tool_name;type:varchar(64);not null;index:idx_ai_tool_risk_policies_tool_enabled,priority:1" json:"tool_name"`
+	Scene             *string   `gorm:"column:scene;type:varchar(32)" json:"scene"`
+	CommandClass      *string   `gorm:"column:command_class;type:varchar(32)" json:"command_class"`
+	ArgumentRulesJSON *string   `gorm:"column:argument_rules;type:longtext" json:"argument_rules"`
+	ApprovalRequired  bool      `gorm:"column:approval_required;not null;default:false" json:"approval_required"`
+	RiskLevel         string    `gorm:"column:risk_level;type:varchar(16);not null;default:'medium'" json:"risk_level"`
+	Priority          int       `gorm:"column:priority;not null;default:0" json:"priority"`
+	Enabled           bool      `gorm:"column:enabled;not null;default:true;index:idx_ai_tool_risk_policies_tool_enabled,priority:2" json:"enabled"`
+	PolicyVersion     string    `gorm:"column:policy_version;type:varchar(64);not null;default:''" json:"policy_version"`
+	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+}
+
+func (AIToolRiskPolicy) TableName() string { return "ai_tool_risk_policies" }
+
 // AIApprovalTask 存储工具审批任务，用于 Human-in-the-Loop 工作流。
 //
 // 当高风险工具需要人工审批时，系统会创建审批任务记录，
@@ -235,6 +253,10 @@ type AIApprovalTask struct {
 	Comment          string         `gorm:"column:comment;type:text" json:"comment"`
 	TimeoutSeconds   int            `gorm:"column:timeout_seconds;not null;default:300" json:"timeout_seconds"`
 	ExpiresAt        *time.Time     `gorm:"column:expires_at;index" json:"expires_at"`
+	LockExpiresAt    *time.Time     `gorm:"column:lock_expires_at;index" json:"lock_expires_at"`
+	MatchedRuleID    *uint64        `gorm:"column:matched_rule_id;index" json:"matched_rule_id"`
+	PolicyVersion    *string        `gorm:"column:policy_version;type:varchar(64)" json:"policy_version"`
+	DecisionSource   *string        `gorm:"column:decision_source;type:varchar(32)" json:"decision_source"`
 	DecidedAt        *time.Time     `gorm:"column:decided_at" json:"decided_at"`
 	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
