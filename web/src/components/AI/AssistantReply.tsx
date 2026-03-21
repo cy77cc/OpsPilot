@@ -285,6 +285,13 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     background: ${token.colorFillQuaternary};
     border-radius: 8px;
   `,
+  errorContainer: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+  `,
   inlineToolFlow: css`
     display: inline;
     white-space: normal;
@@ -310,6 +317,14 @@ interface AssistantReplyProps {
   messageId?: string;
   hasRuntime?: boolean;
   onLoadRuntime?: (messageId: string) => Promise<AssistantReplyRuntime | null>;
+  onLoadStepContent?: (
+    stepId: string,
+    stepIndex: number,
+  ) => Promise<{
+    content: string;
+    segments: AssistantReplySegment[];
+    activities: AssistantReplyActivity[];
+  } | null>;
 }
 
 // SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
@@ -413,18 +428,34 @@ function StepContentRenderer({
   return null;
 }
 
+// Step 加载状态：完整的状态机
+type StepLoadState = 'idle' | 'loading' | 'success' | 'error';
+
 // AssistantReplyContent 渲染完整的 runtime 内容
 function AssistantReplyContent({
   content,
   runtime,
   status,
   styles,
+  onLoadStepContent,
 }: {
   content: string;
   runtime: AssistantReplyRuntime;
   status?: string;
   styles: Record<string, string>;
+  onLoadStepContent?: AssistantReplyProps['onLoadStepContent'];
 }) {
+  // 展开状态
+  const [stepExpandStates, setStepExpandStates] = useState<Record<string, boolean>>({});
+  // 加载状态：状态机
+  const [stepLoadStates, setStepLoadStates] = useState<Record<string, StepLoadState>>({});
+  // 内容缓存：异步加载的数据存储于此
+  const [stepContentCache, setStepContentCache] = useState<Record<string, {
+    content: string;
+    segments: AssistantReplySegment[];
+    activities: AssistantReplyActivity[];
+  } | null>>({});
+
   const activeStepIndex = runtime?.plan?.activeStepIndex;
   const allSteps = runtime?.plan?.steps || [];
   const hasPlan = runtime?.plan && allSteps.length > 0;
@@ -462,6 +493,55 @@ function AssistantReplyContent({
   const shouldRenderSummary = Boolean(runtime?.summary?.items?.length);
 
   const isStreaming = status === 'loading' || status === 'updating';
+
+  // 处理 step 展开，触发懒加载
+  const handleStepExpand = async (stepId: string, stepIndex: number) => {
+    // 1. 状态检查：防止重复请求（竞态条件处理）
+    const currentState = stepLoadStates[stepId] || 'idle';
+    if (currentState === 'loading' || currentState === 'success') {
+      // 已在加载或已成功，直接展开
+      if (currentState === 'success') {
+        setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      }
+      return;
+    }
+
+    // 2. 检查是否已有缓存
+    if (stepContentCache[stepId]) {
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      return;
+    }
+
+    if (!onLoadStepContent) {
+      return;
+    }
+
+    // 3. 设置 loading 状态
+    setStepLoadStates(prev => ({ ...prev, [stepId]: 'loading' }));
+
+    try {
+      const result = await onLoadStepContent(stepId, stepIndex);
+      if (result) {
+        // 4. 成功：存储内容并标记成功
+        setStepContentCache(prev => ({ ...prev, [stepId]: result }));
+        setStepLoadStates(prev => ({ ...prev, [stepId]: 'success' }));
+        setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      } else {
+        // 5. 返回 null：标记错误
+        setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+      }
+    } catch {
+      // 6. 异常：标记错误
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+    }
+  };
+
+  // 重试函数
+  const handleRetry = (stepId: string, stepIndex: number) => {
+    // 重置状态后重新触发加载
+    setStepLoadStates(prev => ({ ...prev, [stepId]: 'idle' }));
+    handleStepExpand(stepId, stepIndex);
+  };
 
   return (
     <>
