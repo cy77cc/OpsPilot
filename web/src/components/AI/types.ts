@@ -34,6 +34,23 @@ export type AssistantReplyActivityKind =
 
 export type AssistantReplyActivityStatus = 'pending' | 'active' | 'done' | 'error';
 
+// 瘦身后的 executor block（减少内存占用，只保留懒加载必须字段）
+export interface SlimExecutorBlock {
+  id: string;
+  items: Array<{
+    type: string;
+    content_id?: string;
+    tool_call_id?: string;
+    tool_name?: string;
+    arguments?: Record<string, unknown>;
+    result?: {
+      status?: string;
+      preview?: string;
+      result_content_id?: string;
+    };
+  }>;
+}
+
 export interface AssistantReplyActivity {
   id: string;
   kind: AssistantReplyActivityKind;
@@ -52,6 +69,7 @@ export interface AssistantReplyPlanStep {
   status: 'pending' | 'active' | 'done';
   content?: string;
   segments?: AssistantReplySegment[];
+  loaded?: boolean;  // 标记内容是否已加载
 }
 
 export interface AssistantReplySegment {
@@ -95,6 +113,7 @@ export interface AssistantReplyRuntime {
   plan?: AssistantReplyPlan;
   summary?: AssistantReplySummary;
   status?: AssistantReplyRuntimeStatus;
+  _executorBlocks?: SlimExecutorBlock[];  // 存储瘦身后的 executor blocks 引用
 }
 
 export interface XChatMessage {
