@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { CodeHighlighter } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
+import type { ComponentProps } from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
@@ -245,10 +247,10 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
 
     pre {
       overflow-x: auto;
-      padding: 12px;
+      padding: 0;
       border-radius: 10px;
-      background: #111827;
-      color: #f9fafb;
+      background: transparent;
+      color: inherit;
     }
 
     table {
@@ -327,6 +329,21 @@ interface AssistantReplyProps {
   } | null>;
 }
 
+const MarkdownCode: React.FC<ComponentProps> = (props) => {
+  const { className, children } = props;
+  const lang = className?.match(/language-(\w+)/)?.[1] || '';
+
+  if (typeof children !== 'string') {
+    return null;
+  }
+
+  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+};
+
+const markdownComponents = {
+  code: MarkdownCode,
+};
+
 // SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
 function SimpleMarkdownContent({
   content,
@@ -341,7 +358,11 @@ function SimpleMarkdownContent({
   if (!normalizedContent) return null;
   return (
     <div className={styles.markdown}>
-      <XMarkdown content={normalizedContent} streaming={{ hasNextChunk: isStreaming, enableAnimation: true }} />
+      <XMarkdown
+        content={normalizedContent}
+        components={markdownComponents}
+        streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+      />
     </div>
   );
 }
@@ -390,6 +411,7 @@ function StepContentRenderer({
           <XMarkdown
             key={`text-${index}`}
             content={normalizeMarkdownContent(segment.text)}
+            components={markdownComponents}
             streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
           />
         ));
@@ -418,6 +440,7 @@ function StepContentRenderer({
         {step.content && (
           <XMarkdown
             content={normalizeMarkdownContent(step.content)}
+            components={markdownComponents}
             streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
           />
         )}
@@ -697,6 +720,7 @@ function AssistantReplyContent({
         <div className={styles.markdown}>
           <XMarkdown
             content={normalizeMarkdownContent(content)}
+            components={markdownComponents}
             streaming={{
               hasNextChunk: isStreaming,
               enableAnimation: true,

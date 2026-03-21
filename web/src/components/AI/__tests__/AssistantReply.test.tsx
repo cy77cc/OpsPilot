@@ -222,6 +222,23 @@ describe('AssistantReply', () => {
     );
   });
 
+  it('passes code renderer to XMarkdown for fenced code highlighting', () => {
+    render(
+      <AssistantReply
+        content={'```python\nprint("hello")\n```'}
+        status="success"
+      />,
+    );
+
+    expect(mockXMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: expect.objectContaining({
+          code: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
   it('does not render a summary card when projection-backed content already provides the final body', () => {
     render(
       <AssistantReply
