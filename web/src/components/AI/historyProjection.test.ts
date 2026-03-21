@@ -97,7 +97,7 @@ describe('historyProjection', () => {
     expect(hydrated.content).toBe('## 标题\n\n正文');
   });
 
-  it('returns an error placeholder when projection summary is missing', async () => {
+  it('falls back to persisted assistant body when projection summary is missing', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -116,14 +116,14 @@ describe('historyProjection', () => {
       timestamp: '',
     } as any);
 
-    expect(hydrated.content).toBe(PROJECTION_UNRECOVERABLE_PLACEHOLDER);
-    expect(hydrated.runtime).toEqual({
+    expect(hydrated.content).toBe('历史回答');
+    expect(hydrated.runtime).toEqual(expect.objectContaining({
       activities: [],
       status: {
-        kind: 'error',
-        label: PROJECTION_MISSING_SUMMARY_LABEL,
+        kind: 'completed',
+        label: 'completed',
       },
-    });
+    }));
   });
 
   it('falls back to persisted assistant body when projection is missing for failed run', async () => {
@@ -406,6 +406,63 @@ describe('historyProjection', () => {
 
     expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['执行检查', '汇总结果']);
     expect(hydrated.runtime?.plan?.activeStepIndex).toBeUndefined();
+  });
+
+  it('keeps real historical steps visible even when failed projection has no summary', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'failed_runtime',
+        blocks: [
+          {
+            id: 'replan-1',
+            type: 'replan',
+            title: '重新规划',
+            steps: ['检查内存指标', '分析高占用进程', '输出诊断结论'],
+            data: { completed: 1, iteration: 1, is_final: false },
+          },
+          {
+            id: 'executor-1',
+            type: 'executor',
+            title: '执行过程',
+            items: [
+              {
+                id: 'content-1',
+                type: 'content',
+                content_id: 'executor-content-1',
+              },
+            ],
+          },
+          {
+            id: 'error-1',
+            type: 'error',
+            title: '执行错误',
+            data: { message: '生成中断，请稍后重试', code: 'EXECUTION_FAILED' },
+          },
+        ],
+      },
+    });
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      content: '生成中断，请稍后重试。',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.content).toBe('生成中断，请稍后重试。');
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual([
+      '检查内存指标',
+      '分析高占用进程',
+      '输出诊断结论',
+    ]);
+    expect(hydrated.runtime?.status).toEqual({
+      kind: 'error',
+      label: 'failed_runtime',
+    });
   });
 
   it('loads step content on demand from a slim executor block', async () => {
