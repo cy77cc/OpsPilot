@@ -29,6 +29,23 @@
 **types.ts**
 
 ```typescript
+// 瘦身后的 executor block（减少内存占用，只保留懒加载必须字段）
+export interface SlimExecutorBlock {
+  id: string;
+  items: Array<{
+    type: string;
+    content_id?: string;
+    tool_call_id?: string;
+    tool_name?: string;
+    arguments?: Record<string, unknown>;
+    result?: {
+      status?: string;
+      preview?: string;
+      result_content_id?: string;
+    };
+  }>;
+}
+
 export interface AssistantReplyPlanStep {
   id: string;
   title: string;
@@ -40,7 +57,7 @@ export interface AssistantReplyPlanStep {
 
 export interface AssistantReplyRuntime {
   // ... 现有字段
-  _executorBlocks?: AIRunProjectionBlock[];  // 新增：存储 executor blocks 引用，供懒加载使用
+  _executorBlocks?: SlimExecutorBlock[];  // 新增：存储瘦身后的 executor blocks 引用
 }
 ```
 
@@ -143,18 +160,85 @@ export async function hydrateAssistantHistoryFromProjection(
 ```typescript
 const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
 
+// 瘦身后的 executor block 引用（减少内存占用）
+interface SlimExecutorBlock {
+  id: string;
+  items: Array<{
+    type: string;
+    content_id?: string;
+    tool_call_id?: string;
+    tool_name?: string;
+    arguments?: Record<string, unknown>;
+    result?: {
+      status?: string;
+      preview?: string;
+      result_content_id?: string;
+    };
+  }>;
+}
+
+/**
+ * projectionToLazyRuntime 将 projection 转换为轻量级 runtime。
+ * 只提取 steps 标题和 summary，不加载 executor 内容。
+ * 用于历史消息的懒加载场景。
+ */
+function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
+  const steps: AssistantReplyPlanStep[] = [];
+
+  // 从 plan/replan blocks 提取步骤标题
+  for (const block of projection.blocks) {
+    if (block.type === 'plan' || block.type === 'replan') {
+      block.steps?.forEach((title) => {
+        steps.push({
+          id: `step-${steps.length}`,
+          title,
+          status: 'done',
+          loaded: false,
+        });
+      });
+    }
+  }
+
+  // executor blocks 瘦身存储，只保留懒加载必须的字段
+  const executorBlocks = projection.blocks
+    .filter(b => b.type === 'executor')
+    .map(block => ({
+      id: block.id,
+      items: (block.items || []).map(item => ({
+        type: item.type,
+        content_id: item.content_id,
+        tool_call_id: item.tool_call_id,
+        tool_name: item.tool_name,
+        arguments: item.arguments,
+        result: item.result ? {
+          status: item.result.status,
+          preview: item.result.preview,
+          result_content_id: item.result.result_content_id,
+        } : undefined,
+      })),
+    }));
+
+  return {
+    activities: [],
+    plan: steps.length > 0 ? { steps } : undefined,
+    summary: projection.summary?.title ? { title: projection.summary.title } : undefined,
+    status: { kind: 'completed', label: projection.status },
+    _executorBlocks: executorBlocks,
+  };
+}
+
 /**
  * loadStepContent 加载单个 step 的内容。
  * 根据 executor block 的 items 加载文本内容和工具调用信息。
- * 同时构建该 step 对应的 activities（用于 ToolReference 渲染）。
+ * 同时构建该 step 对应的 activities。
  */
 export async function loadStepContent(
-  block: AIRunProjectionBlock,
+  block: SlimExecutorBlock,
   stepIndex: number,
 ): Promise<{
   content: string;
   segments: AssistantReplySegment[];
-  activities: AssistantReplyActivity[]
+  activities: AssistantReplyActivity[];
 }> {
   const segments: AssistantReplySegment[] = [];
   const activities: AssistantReplyActivity[] = [];
@@ -170,20 +254,20 @@ export async function loadStepContent(
       }
     }
     if (item.type === 'tool_call' && item.tool_call_id && item.tool_name) {
-      // 加载工具结果内容
       const resultContent = item.result?.result_content_id
         ? await loadRunContent(item.result.result_content_id)
         : null;
       const rawContent = resultContent?.body_text || item.result?.preview;
 
-      // 构建 activity
       activities.push({
         id: item.tool_call_id,
         kind: 'tool',
         label: item.tool_name,
         detail: item.result ? item.result.preview : INTERRUPTED_TOOL_MESSAGE,
         rawContent,
-        status: item.result ? (item.result.status === 'done' ? 'done' : 'error') : 'error',
+        status: item.result
+          ? item.result.status === 'done' ? 'done' : 'error'
+          : 'error',
         stepIndex,
         arguments: item.arguments,
       });
@@ -200,16 +284,125 @@ export async function loadStepContent(
 
 **改造 AssistantReply.tsx**
 
-新增状态管理：
+#### 2.1 状态管理（响应性问题）
+
+由于 `runtime` 作为 props 从上层传入，直接修改其属性不会触发 React 重渲染。采用**局部状态合并**方案：
 
 ```typescript
-interface StepExpandState {
-  [stepId: string]: boolean;
+// Step 加载状态：完整的状态机
+type StepLoadState = 'idle' | 'loading' | 'success' | 'error';
+
+interface StepLoadStates {
+  [stepId: string]: StepLoadState;
 }
 
-interface StepLoadingState {
+// Step 内容缓存：异步加载的数据存储于此
+interface StepContentCache {
+  [stepId: string]: {
+    content: string;
+    segments: AssistantReplySegment[];
+    activities: AssistantReplyActivity[];
+  } | null;
+}
+
+// Step 展开状态
+interface StepExpandStates {
   [stepId: string]: boolean;
 }
+```
+
+#### 2.2 错误处理与竞态条件
+
+```typescript
+const handleStepExpand = async (stepId: string, stepIndex: number) => {
+  // 1. 状态检查：防止重复请求
+  const currentState = stepLoadStates[stepId];
+  if (currentState === 'loading' || currentState === 'success') {
+    // 已在加载或已成功，直接展开
+    if (currentState === 'success') {
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+    }
+    return;
+  }
+
+  // 2. 检查是否已有缓存
+  if (stepContentCache[stepId]) {
+    setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+    return;
+  }
+
+  if (!onLoadStepContent) {
+    return;
+  }
+
+  // 3. 设置 loading 状态
+  setStepLoadStates(prev => ({ ...prev, [stepId]: 'loading' }));
+
+  try {
+    const result = await onLoadStepContent(stepId, stepIndex);
+    if (result) {
+      // 4. 成功：存储内容并标记成功
+      setStepContentCache(prev => ({ ...prev, [stepId]: result }));
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'success' }));
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+    } else {
+      // 5. 返回 null：标记错误
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+    }
+  } catch (error) {
+    // 6. 异常：标记错误
+    setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+  }
+};
+
+// 重试函数
+const handleRetry = (stepId: string, stepIndex: number) => {
+  // 重置状态后重新触发加载
+  setStepLoadStates(prev => ({ ...prev, [stepId]: 'idle' }));
+  handleStepExpand(stepId, stepIndex);
+};
+```
+
+#### 2.3 渲染逻辑
+
+```typescript
+const renderCompletedStep = (step: AssistantReplyPlanStep, index: number) => {
+  const loadState = stepLoadStates[step.id] || 'idle';
+  const isExpanded = stepExpandStates[step.id];
+  const cachedContent = stepContentCache[step.id];
+
+  // 合并 props.runtime 和局部缓存
+  const displayStep = cachedContent
+    ? { ...step, content: cachedContent.content, segments: cachedContent.segments, loaded: true }
+    : step;
+
+  return {
+    key: step.id,
+    label: (
+      <div className={styles.completedStepTitle}>
+        <span>✓</span>
+        <span>{step.title}</span>
+      </div>
+    ),
+    children: loadState === 'loading' ? (
+      <div className={styles.loadingContainer}>
+        <Skeleton active paragraph={{ rows: 2 }} />
+      </div>
+    ) : loadState === 'error' ? (
+      <div className={styles.errorContainer}>
+        <span>加载失败</span>
+        <Button type="link" onClick={() => handleRetry(step.id, index)}>重试</Button>
+      </div>
+    ) : (
+      <StepContentRenderer
+        step={displayStep}
+        activities={cachedContent?.activities || []}
+        isStreaming={false}
+        styles={styles}
+      />
+    ),
+  };
+};
 ```
 
 修改 AssistantReplyProps：
@@ -233,18 +426,11 @@ interface AssistantReplyProps {
 }
 ```
 
-组件改造要点：
-
-1. 每个 step 使用独立的 Collapse 控制展开状态
-2. 展开时检查 `step.loaded`，如果未加载则调用 `onLoadStepContent`
-3. 加载中显示 Skeleton
-4. 加载完成后更新 step 的 content 和 segments
-
 ### 3. 固定显示最新响应
 
 **改造 CopilotSurface.tsx**
 
-移除以下代码：
+#### 3.1 移除锚点定位逻辑
 
 ```typescript
 // 删除
@@ -259,25 +445,55 @@ React.useEffect(() => {
   }
   // ... 锚点定位逻辑
 }, [currentAssistantMessage?.renderKey, ...]);
+
+// 删除
+const FOLLOW_BOTTOM_SAFE_GAP = 72;
 ```
 
-简化滚动跟踪：
+#### 3.2 使用 ResizeObserver 处理动态内容
+
+流式输出过程中，Markdown 中的图片、代码块等异步加载会导致 DOM 高度变化。使用 ResizeObserver 确保滚动跟随：
 
 ```typescript
-// 简化：流式响应时滚动到底部
 React.useEffect(() => {
-  if (!open || followStateRef.current !== 'following') return;
+  if (!open) return;
 
   const el = contentRef.current;
-  if (!el || !isRequesting) return;
+  if (!el) return;
 
-  requestAnimationFrame(() => {
-    el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+  // 滚动到底部的辅助函数
+  const scrollToBottom = () => {
+    if (followStateRef.current !== 'following') return;
+    withProgrammaticScroll(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+    });
+  };
+
+  // 创建 ResizeObserver 监听内容区域高度变化
+  const resizeObserver = new ResizeObserver(() => {
+    if (followStateRef.current === 'following') {
+      scrollToBottom();
+    }
   });
-}, [messages, isRequesting, open]);
+
+  // 观察内容容器
+  resizeObserver.observe(el);
+
+  // 初始滚动
+  scrollToBottom();
+
+  return () => {
+    resizeObserver.disconnect();
+  };
+}, [open, withProgrammaticScroll]);
 ```
 
-保留的滚动相关逻辑：
+**优点：**
+- 自动处理图片加载、代码块渲染等导致的布局变化
+- 流式输出时平滑跟随
+- 用户上滑后停止跟随（通过 `followStateRef` 控制）
+
+#### 3.3 保留的滚动相关逻辑
 
 - `followStateRef` - 'following' | 'detached' 状态
 - `showScrollBottomBtn` - 滚动按钮显示状态
