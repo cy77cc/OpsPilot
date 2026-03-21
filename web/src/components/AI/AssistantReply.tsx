@@ -547,29 +547,66 @@ function AssistantReplyContent({
     <>
       {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
 
-      {/* 已完成的步骤（折叠，可展开） */}
+      {/* 已完成的步骤（每个 step 独立折叠，支持懒加载） */}
       {completedSteps.length > 0 ? (
         <Collapse
           className={styles.completedStepsCollapse}
           ghost
-          items={[{
-            key: 'completed',
-            label: `已完成 ${completedSteps.length} 个步骤`,
-            children: completedSteps.map((step) => (
-              <div key={step.id} className={styles.completedStepItem}>
+          items={completedSteps.map((step, index) => {
+            const loadState = stepLoadStates[step.id] || 'idle';
+            const isExpanded = stepExpandStates[step.id];
+            const cachedContent = stepContentCache[step.id];
+            const displayStep = cachedContent
+              ? { ...step, content: cachedContent.content, segments: cachedContent.segments, loaded: true }
+              : step;
+
+            return {
+              key: step.id,
+              label: (
                 <div className={styles.completedStepTitle}>
                   <span>✓</span>
                   <span>{step.title}</span>
                 </div>
+              ),
+              children: loadState === 'loading' ? (
+                <div className={styles.loadingContainer}>
+                  <Skeleton active paragraph={{ rows: 2 }} />
+                </div>
+              ) : loadState === 'error' ? (
+                <div className={styles.errorContainer}>
+                  <span style={{ color: '#ff4d4f' }}>加载失败</span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => handleRetry(step.id, index)}
+                  >
+                    重试
+                  </Button>
+                </div>
+              ) : (
                 <StepContentRenderer
-                  step={step}
-                  activities={runtime?.activities || []}
+                  step={displayStep}
+                  activities={cachedContent?.activities || []}
                   isStreaming={false}
                   styles={styles}
                 />
-              </div>
-            )),
-          }]}
+              ),
+            };
+          })}
+          activeKey={Object.keys(stepExpandStates).filter((k) => stepExpandStates[k])}
+          onChange={(keys) => {
+            const newExpanded = Array.isArray(keys) ? keys : [keys];
+            const prevExpanded = Object.keys(stepExpandStates).filter((k) => stepExpandStates[k]);
+
+            // 找到新展开的 step
+            const newlyExpanded = newExpanded.filter((k) => !prevExpanded.includes(k));
+            newlyExpanded.forEach((stepId) => {
+              const stepIndex = completedSteps.findIndex((s) => s.id === stepId);
+              if (stepIndex >= 0) {
+                handleStepExpand(stepId, stepIndex);
+              }
+            });
+          }}
         />
       ) : null}
 
@@ -652,6 +689,7 @@ export function AssistantReply({
   messageId,
   hasRuntime,
   onLoadRuntime,
+  onLoadStepContent,
 }: AssistantReplyProps) {
   const { styles } = useAssistantReplyStyles();
   const [localRuntime, setLocalRuntime] = useState<AssistantReplyRuntime | null>(null);
@@ -671,6 +709,7 @@ export function AssistantReply({
           runtime={displayRuntime}
           status={status}
           styles={styles}
+          onLoadStepContent={onLoadStepContent}
         />
       </div>
     );
