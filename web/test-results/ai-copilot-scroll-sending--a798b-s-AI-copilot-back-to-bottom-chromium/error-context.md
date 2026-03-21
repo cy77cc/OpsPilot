@@ -1,0 +1,583 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - generic [ref=e8]:
+          - img "cloud" [ref=e10]:
+            - img [ref=e11]
+          - generic [ref=e13]: OpsPilot
+        - menu [ref=e15]:
+          - menuitem "dashboard 主控台" [ref=e16] [cursor=pointer]:
+            - img "dashboard" [ref=e17]:
+              - img [ref=e18]
+            - generic [ref=e20]: 主控台
+          - menuitem "cloud-server 服务管理" [ref=e21] [cursor=pointer]:
+            - img "cloud-server" [ref=e22]:
+              - img [ref=e23]
+            - generic [ref=e27]: 服务管理
+          - menuitem "cloud-server CMDB" [ref=e28] [cursor=pointer]:
+            - img "cloud-server" [ref=e29]:
+              - img [ref=e30]
+            - generic [ref=e34]: CMDB
+          - menuitem "tool 自动化" [ref=e35] [cursor=pointer]:
+            - img "tool" [ref=e36]:
+              - img [ref=e37]
+            - generic [ref=e39]: 自动化
+          - menuitem "tool CI/CD" [ref=e40] [cursor=pointer]:
+            - img "tool" [ref=e41]:
+              - img [ref=e42]
+            - generic [ref=e44]: CI/CD
+          - menuitem "file-text 帮助中心" [ref=e45] [cursor=pointer]:
+            - img "file-text" [ref=e46]:
+              - img [ref=e47]
+            - generic [ref=e49]: 帮助中心
+          - menuitem "setting 配置中心" [ref=e50] [cursor=pointer]:
+            - img "setting" [ref=e51]:
+              - img [ref=e52]
+            - generic [ref=e54]: 配置中心
+          - menuitem "clock-circle 任务调度" [ref=e55] [cursor=pointer]:
+            - img "clock-circle" [ref=e56]:
+              - img [ref=e57]
+            - generic [ref=e60]: 任务调度
+          - menuitem "cloud 部署管理" [ref=e61] [cursor=pointer]:
+            - img "cloud" [ref=e62]:
+              - img [ref=e63]
+            - generic [ref=e65]: 部署管理
+          - menuitem "alert 监控告警" [ref=e66] [cursor=pointer]:
+            - img "alert" [ref=e67]:
+              - img [ref=e68]
+            - generic [ref=e70]: 监控告警
+          - menuitem "tool 工具集成" [ref=e71] [cursor=pointer]:
+            - img "tool" [ref=e72]:
+              - img [ref=e73]
+            - generic [ref=e75]: 工具集成
+          - menuitem "user 访问治理" [ref=e76] [cursor=pointer]:
+            - img "user" [ref=e77]:
+              - img [ref=e78]
+            - generic [ref=e80]: 访问治理
+        - button "menu-fold" [ref=e82] [cursor=pointer]:
+          - img "menu-fold" [ref=e84]:
+            - img [ref=e85]
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - navigation [ref=e90]:
+          - list [ref=e91]:
+            - listitem [ref=e92]:
+              - generic [ref=e94] [cursor=pointer]: 首页
+            - listitem [ref=e95]: /
+            - listitem [ref=e96]:
+              - generic [ref=e97]: 帮助中心
+        - generic [ref=e98]:
+          - generic [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]:
+              - generic: 选择项目组
+              - combobox [ref=e101]
+            - img "down" [ref=e103]:
+              - img [ref=e104]
+          - combobox [ref=e106]:
+            - option "中文" [selected]
+            - option "English"
+          - generic [ref=e107]:
+            - img "search" [ref=e109]:
+              - img [ref=e110]
+            - textbox "搜索..." [ref=e112]
+          - button "question-circle" [ref=e113] [cursor=pointer]:
+            - img "question-circle" [ref=e115]:
+              - img [ref=e116]
+          - button "bell" [ref=e119] [cursor=pointer]:
+            - img "bell" [ref=e121]:
+              - img [ref=e122]
+          - button "robot AI Assistant" [ref=e124] [cursor=pointer]:
+            - img "robot" [ref=e126]:
+              - img [ref=e127]
+            - generic [ref=e129]: AI Assistant
+          - img "user" [ref=e131] [cursor=pointer]:
+            - img [ref=e132]
+      - main [ref=e134]:
+        - generic [ref=e137]:
+          - generic [ref=e141]:
+            - generic [ref=e143]:
+              - img "book" [ref=e145]:
+                - img [ref=e146]
+              - heading "帮助中心" [level=4] [ref=e149]
+            - generic [ref=e150]: 面向运维工程师 / SRE 的操作手册、FAQ 与 AI 提问模板。
+          - generic [ref=e152]:
+            - generic [ref=e154]:
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - img "search" [ref=e160]:
+                    - img [ref=e161]
+                  - textbox "搜索功能、操作步骤、排障关键词" [ref=e163]
+                - separator [ref=e165]
+                - generic [ref=e166]:
+                  - generic [ref=e168]: 快速上手
+                  - generic [ref=e170]: 主机管理
+                  - generic [ref=e172]: 监控告警
+                  - generic [ref=e174]: 服务管理
+                  - generic [ref=e176]: 配置中心
+                  - generic [ref=e178]: 任务管理
+                  - generic [ref=e180]: 权限与安全
+                  - generic [ref=e182]: AI 助手
+                  - generic [ref=e184]: 值班处置
+              - generic [ref=e186]:
+                - generic [ref=e189]: 快速帮助卡片
+                - generic [ref=e191]:
+                  - generic [ref=e193]:
+                    - generic [ref=e194]:
+                      - strong [ref=e197]: 5 分钟快速上手平台
+                      - generic [ref=e199]: 快速上手
+                      - generic [ref=e201]: 新手
+                    - generic [ref=e202]: 1. 登录平台后先切换项目。 2. 在「监控」页确认系统健康度与关键告警。 3. 在「主机」页核查主机在线状态。 4. 在「服务」页查看服务运行状态与版本。 5. 遇到问题可打开右侧 AI 助手进行诊断。
+                    - generic [ref=e203]:
+                      - generic [ref=e205]: 入门
+                      - generic [ref=e207]: 总览
+                      - generic [ref=e209]: 新手
+                    - separator [ref=e210]
+                  - generic [ref=e212]:
+                    - generic [ref=e213]:
+                      - strong [ref=e216]: 如何添加并纳管新主机？
+                      - generic [ref=e218]: 主机管理
+                      - generic [ref=e220]: 新手
+                    - generic [ref=e221]: 1. 进入「主机管理」->「主机纳管」。 2. 填写主机 IP、端口与凭据，先执行连通性探测。 3. 探测通过后提交纳管。 4. 在主机列表确认状态为在线。
+                    - generic [ref=e222]:
+                      - generic [ref=e224]: 主机
+                      - generic [ref=e226]: 纳管
+                      - generic [ref=e228]: SSH
+                    - separator [ref=e229]
+                  - generic [ref=e231]:
+                    - generic [ref=e232]:
+                      - strong [ref=e235]: 主机探测失败怎么排查？
+                      - generic [ref=e237]: 主机管理
+                      - generic [ref=e239]: 中级
+                    - generic [ref=e240]: 优先检查 3 项： 1. 网络连通（安全组/防火墙/端口）。 2. 认证方式（密码或密钥是否匹配）。 3. 账号权限（是否允许执行诊断命令）。 可在主机详情页查看最近探测日志。
+                    - generic [ref=e241]:
+                      - generic [ref=e243]: 故障排查
+                      - generic [ref=e245]: 探测
+                      - generic [ref=e247]: 认证
+                    - separator [ref=e248]
+                  - generic [ref=e250]:
+                    - generic [ref=e251]:
+                      - strong [ref=e254]: 如何处理高优先级告警？
+                      - generic [ref=e256]: 监控告警
+                      - generic [ref=e258]: 中级
+                    - generic [ref=e259]: 1. 在监控页按严重级别筛选 critical。 2. 打开告警详情查看触发指标、时间窗与关联对象。 3. 结合 AI 助手执行只读诊断（CPU/内存/磁盘/日志）。 4. 处理后记录结果并关闭或恢复告警。
+                    - generic [ref=e260]:
+                      - generic [ref=e262]: 告警
+                      - generic [ref=e264]: SRE
+                      - generic [ref=e266]: 值班
+                    - separator [ref=e267]
+                  - generic [ref=e269]:
+                    - generic [ref=e270]:
+                      - strong [ref=e273]: 服务发布标准流程
+                      - generic [ref=e275]: 服务管理
+                      - generic [ref=e277]: 中级
+                    - generic [ref=e278]: 1. 在「服务管理」选择目标服务。 2. 先执行发布预览，确认配置、镜像版本与变更范围。 3. 生产环境变更需二次确认。 4. 发布后观察健康指标与错误率，必要时执行回滚。
+                    - generic [ref=e279]:
+                      - generic [ref=e281]: 发布
+                      - generic [ref=e283]: 回滚
+                      - generic [ref=e285]: 变更
+                    - separator [ref=e286]
+                  - generic [ref=e288]:
+                    - generic [ref=e289]:
+                      - strong [ref=e292]: 配置中心发布与回滚
+                      - generic [ref=e294]: 配置中心
+                      - generic [ref=e296]: 中级
+                    - generic [ref=e297]: 1. 在配置中心编辑配置并保存草稿。 2. 通过 Diff 对比确认变更内容。 3. 发布到目标环境后观察应用状态。 4. 异常时使用历史版本一键回滚。
+                    - generic [ref=e298]:
+                      - generic [ref=e300]: 配置
+                      - generic [ref=e302]: diff
+                      - generic [ref=e304]: 回滚
+                    - separator [ref=e305]
+                  - generic [ref=e307]:
+                    - generic [ref=e308]:
+                      - strong [ref=e311]: 如何创建定时任务？
+                      - generic [ref=e313]: 任务管理
+                      - generic [ref=e315]: 新手
+                    - generic [ref=e316]: 1. 进入「任务管理」->「创建任务」。 2. 填写执行目标、命令和调度表达式。 3. 先在测试环境验证，再启用生产调度。 4. 在执行历史中检查输出与耗时。
+                    - generic [ref=e317]:
+                      - generic [ref=e319]: 定时任务
+                      - generic [ref=e321]: 执行历史
+                      - generic [ref=e323]: 自动化
+                    - separator [ref=e324]
+                  - generic [ref=e326]:
+                    - generic [ref=e327]:
+                      - strong [ref=e330]: 权限模型与最小权限实践
+                      - generic [ref=e332]: 权限与安全
+                      - generic [ref=e334]: 高级
+                    - generic [ref=e335]: 1. 先创建角色，再绑定用户。 2. 默认只授予读取权限，按需追加写入权限。 3. 对生产环境操作建议使用审批与审计。 4. 定期复核高权限账号。
+                    - generic [ref=e336]:
+                      - generic [ref=e338]: RBAC
+                      - generic [ref=e340]: 权限
+                      - generic [ref=e342]: 安全
+                    - separator [ref=e343]
+                  - generic [ref=e345]:
+                    - generic [ref=e346]:
+                      - strong [ref=e349]: 如何高效使用 AI 助手？
+                      - generic [ref=e351]: AI 助手
+                      - generic [ref=e353]: 新手
+                    - generic [ref=e354]: 推荐提问模板： - 诊断类："帮我排查 <对象> 的 <现象>，先给只读检查步骤"。 - 变更类："请先给预览，再说明风险和回滚方案"。 - 汇总类："基于当前告警给我一个 10 分钟内可执行计划"。
+                    - generic [ref=e355]:
+                      - generic [ref=e357]: AI
+                      - generic [ref=e359]: 提问模板
+                      - generic [ref=e361]: 效率
+                    - separator [ref=e362]
+                  - generic [ref=e364]:
+                    - generic [ref=e365]:
+                      - strong [ref=e368]: AI 执行安全与审批机制
+                      - generic [ref=e370]: AI 助手
+                      - generic [ref=e372]: 高级
+                    - generic [ref=e373]: 1. 默认只读工具可直接执行。 2. 变更类操作必须审批确认。 3. 审批超时或参数缺失会被拒绝执行。 4. 所有执行均可在审计链路中追踪。
+                    - generic [ref=e374]:
+                      - generic [ref=e376]: 审批
+                      - generic [ref=e378]: 安全
+                      - generic [ref=e380]: 审计
+                    - separator [ref=e381]
+                  - generic [ref=e383]:
+                    - generic [ref=e384]:
+                      - strong [ref=e387]: 线上事故 15 分钟处置建议
+                      - generic [ref=e389]: 值班处置
+                      - generic [ref=e391]: 高级
+                    - generic [ref=e392]: 0-5 分钟：确认影响范围并冻结高风险变更。 5-10 分钟：拉取关键指标、日志和事件，定位最可能故障点。 10-15 分钟：执行回滚/降级/限流，恢复核心路径后再深挖根因。
+                    - generic [ref=e393]:
+                      - generic [ref=e395]: 事故
+                      - generic [ref=e397]: 应急
+                      - generic [ref=e399]: playbook
+                    - separator [ref=e400]
+              - generic [ref=e402]:
+                - generic [ref=e406]:
+                  - img "question-circle" [ref=e408]:
+                    - img [ref=e409]
+                  - strong [ref=e414]: 帮助中心
+                - generic [ref=e416]:
+                  - generic [ref=e418]:
+                    - searchbox "搜索帮助文档" [ref=e420]
+                    - button "search" [ref=e422] [cursor=pointer]:
+                      - img "search" [ref=e423]:
+                        - img [ref=e424]
+                  - generic [ref=e427]:
+                    - generic [ref=e429]: 全部
+                    - generic [ref=e431]: 快速上手
+                    - generic [ref=e433]: 主机管理
+                    - generic [ref=e435]: 监控告警
+                    - generic [ref=e437]: 服务管理
+                    - generic [ref=e439]: 配置中心
+                    - generic [ref=e441]: 任务管理
+                    - generic [ref=e443]: 权限与安全
+                    - generic [ref=e445]: AI 助手
+                    - generic [ref=e447]: 值班处置
+                  - generic [ref=e449]:
+                    - button "collapsed 5 分钟快速上手平台 新手 快速上手" [ref=e451] [cursor=pointer]:
+                      - img "collapsed" [ref=e453]:
+                        - img [ref=e454]
+                      - generic [ref=e457]:
+                        - strong [ref=e460]: 5 分钟快速上手平台
+                        - generic [ref=e462]:
+                          - generic [ref=e464]: 新手
+                          - generic [ref=e466]: 快速上手
+                    - button "collapsed 如何添加并纳管新主机？ 新手 主机管理" [ref=e468] [cursor=pointer]:
+                      - img "collapsed" [ref=e470]:
+                        - img [ref=e471]
+                      - generic [ref=e474]:
+                        - strong [ref=e477]: 如何添加并纳管新主机？
+                        - generic [ref=e479]:
+                          - generic [ref=e481]: 新手
+                          - generic [ref=e483]: 主机管理
+                    - button "collapsed 主机探测失败怎么排查？ 中级 主机管理" [ref=e485] [cursor=pointer]:
+                      - img "collapsed" [ref=e487]:
+                        - img [ref=e488]
+                      - generic [ref=e491]:
+                        - strong [ref=e494]: 主机探测失败怎么排查？
+                        - generic [ref=e496]:
+                          - generic [ref=e498]: 中级
+                          - generic [ref=e500]: 主机管理
+                    - button "collapsed 如何处理高优先级告警？ 中级 监控告警" [ref=e502] [cursor=pointer]:
+                      - img "collapsed" [ref=e504]:
+                        - img [ref=e505]
+                      - generic [ref=e508]:
+                        - strong [ref=e511]: 如何处理高优先级告警？
+                        - generic [ref=e513]:
+                          - generic [ref=e515]: 中级
+                          - generic [ref=e517]: 监控告警
+                    - button "collapsed 服务发布标准流程 中级 服务管理" [ref=e519] [cursor=pointer]:
+                      - img "collapsed" [ref=e521]:
+                        - img [ref=e522]
+                      - generic [ref=e525]:
+                        - strong [ref=e528]: 服务发布标准流程
+                        - generic [ref=e530]:
+                          - generic [ref=e532]: 中级
+                          - generic [ref=e534]: 服务管理
+                    - button "collapsed 配置中心发布与回滚 中级 配置中心" [ref=e536] [cursor=pointer]:
+                      - img "collapsed" [ref=e538]:
+                        - img [ref=e539]
+                      - generic [ref=e542]:
+                        - strong [ref=e545]: 配置中心发布与回滚
+                        - generic [ref=e547]:
+                          - generic [ref=e549]: 中级
+                          - generic [ref=e551]: 配置中心
+                    - button "collapsed 如何创建定时任务？ 新手 任务管理" [ref=e553] [cursor=pointer]:
+                      - img "collapsed" [ref=e555]:
+                        - img [ref=e556]
+                      - generic [ref=e559]:
+                        - strong [ref=e562]: 如何创建定时任务？
+                        - generic [ref=e564]:
+                          - generic [ref=e566]: 新手
+                          - generic [ref=e568]: 任务管理
+                    - button "collapsed 权限模型与最小权限实践 高级 权限与安全" [ref=e570] [cursor=pointer]:
+                      - img "collapsed" [ref=e572]:
+                        - img [ref=e573]
+                      - generic [ref=e576]:
+                        - strong [ref=e579]: 权限模型与最小权限实践
+                        - generic [ref=e581]:
+                          - generic [ref=e583]: 高级
+                          - generic [ref=e585]: 权限与安全
+                    - button "collapsed 如何高效使用 AI 助手？ 新手 AI 助手" [ref=e587] [cursor=pointer]:
+                      - img "collapsed" [ref=e589]:
+                        - img [ref=e590]
+                      - generic [ref=e593]:
+                        - strong [ref=e596]: 如何高效使用 AI 助手？
+                        - generic [ref=e598]:
+                          - generic [ref=e600]: 新手
+                          - generic [ref=e602]: AI 助手
+                    - button "collapsed AI 执行安全与审批机制 高级 AI 助手" [ref=e604] [cursor=pointer]:
+                      - img "collapsed" [ref=e606]:
+                        - img [ref=e607]
+                      - generic [ref=e610]:
+                        - strong [ref=e613]: AI 执行安全与审批机制
+                        - generic [ref=e615]:
+                          - generic [ref=e617]: 高级
+                          - generic [ref=e619]: AI 助手
+                    - button "collapsed 线上事故 15 分钟处置建议 高级 值班处置" [ref=e621] [cursor=pointer]:
+                      - img "collapsed" [ref=e623]:
+                        - img [ref=e624]
+                      - generic [ref=e627]:
+                        - strong [ref=e630]: 线上事故 15 分钟处置建议
+                        - generic [ref=e632]:
+                          - generic [ref=e634]: 高级
+                          - generic [ref=e636]: 值班处置
+                  - generic [ref=e638]:
+                    - button "message 咨询AI助手" [ref=e640] [cursor=pointer]:
+                      - img "message" [ref=e642]:
+                        - img [ref=e643]
+                      - generic [ref=e645]: 咨询AI助手
+                    - button "book 查看完整文档" [ref=e647] [cursor=pointer]:
+                      - img "book" [ref=e649]:
+                        - img [ref=e650]
+                      - generic [ref=e652]: 查看完整文档
+            - generic [ref=e654]:
+              - generic [ref=e657]: 文档目录
+              - generic [ref=e658]:
+                - generic [ref=e662]:
+                  - link "5 分钟快速上手平台" [ref=e664] [cursor=pointer]:
+                    - /url: "#help-quick-start-login"
+                  - link "如何添加并纳管新主机？" [ref=e666] [cursor=pointer]:
+                    - /url: "#help-host-onboard"
+                  - link "主机探测失败怎么排查？" [ref=e668] [cursor=pointer]:
+                    - /url: "#help-host-troubleshooting"
+                  - link "如何处理高优先级告警？" [ref=e670] [cursor=pointer]:
+                    - /url: "#help-monitor-alert"
+                  - link "服务发布标准流程" [ref=e672] [cursor=pointer]:
+                    - /url: "#help-service-release"
+                  - link "配置中心发布与回滚" [ref=e674] [cursor=pointer]:
+                    - /url: "#help-service-config"
+                  - link "如何创建定时任务？" [ref=e676] [cursor=pointer]:
+                    - /url: "#help-job-schedule"
+                  - link "权限模型与最小权限实践" [ref=e678] [cursor=pointer]:
+                    - /url: "#help-rbac-guide"
+                  - link "如何高效使用 AI 助手？" [ref=e680] [cursor=pointer]:
+                    - /url: "#help-ai-assistant"
+                  - link "AI 执行安全与审批机制" [ref=e682] [cursor=pointer]:
+                    - /url: "#help-ai-safety"
+                  - link "线上事故 15 分钟处置建议" [ref=e684] [cursor=pointer]:
+                    - /url: "#help-incident-playbook"
+                - separator [ref=e685]
+                - generic [ref=e686]:
+                  - link "完整帮助文档" [ref=e688] [cursor=pointer]:
+                    - /url: /docs/user/help-center-manual.md
+                  - link "运维值班 FAQ 100 题" [ref=e690] [cursor=pointer]:
+                    - /url: /docs/user/ops-faq-100.md
+                  - link "AI 帮助知识库" [ref=e692] [cursor=pointer]:
+                    - /url: /docs/ai/help-knowledge-base.md
+  - dialog "robot AI 助手 ai" [ref=e694]:
+    - generic [ref=e695]:
+      - generic [ref=e696]:
+        - button "Close" [ref=e697] [cursor=pointer]:
+          - img "close" [ref=e698]:
+            - img [ref=e699]
+        - generic [ref=e704]:
+          - img "robot" [ref=e706]:
+            - img [ref=e707]
+          - strong [ref=e711]: AI 助手
+          - generic [ref=e713]: ai
+      - generic [ref=e715]:
+        - button "新建会话" [ref=e717] [cursor=pointer]:
+          - img "plus" [ref=e719]:
+            - img [ref=e720]
+        - button "查看历史会话" [ref=e724] [cursor=pointer]:
+          - img "comment" [ref=e726]:
+            - img [ref=e727]
+    - generic [ref=e733]:
+      - generic [ref=e738]:
+        - generic [ref=e742]: 问题 0 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e744]:
+          - paragraph [ref=e750]: 回答 1 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e752]:
+            - button "复制回复" [ref=e753] [cursor=pointer]:
+              - img "copy" [ref=e755]:
+                - img [ref=e756]
+            - button "点赞" [ref=e758] [cursor=pointer]:
+              - img "like" [ref=e760]:
+                - img [ref=e761]
+            - button "点踩" [ref=e763] [cursor=pointer]:
+              - img "dislike" [ref=e765]:
+                - img [ref=e766]
+            - button "重新生成" [ref=e768] [cursor=pointer]:
+              - img "reload" [ref=e770]:
+                - img [ref=e771]
+        - generic [ref=e776]: 问题 2 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e778]:
+          - paragraph [ref=e784]: 回答 3 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e786]:
+            - button "复制回复" [ref=e787] [cursor=pointer]:
+              - img "copy" [ref=e789]:
+                - img [ref=e790]
+            - button "点赞" [ref=e792] [cursor=pointer]:
+              - img "like" [ref=e794]:
+                - img [ref=e795]
+            - button "点踩" [ref=e797] [cursor=pointer]:
+              - img "dislike" [ref=e799]:
+                - img [ref=e800]
+            - button "重新生成" [ref=e802] [cursor=pointer]:
+              - img "reload" [ref=e804]:
+                - img [ref=e805]
+        - generic [ref=e810]: 问题 4 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e812]:
+          - paragraph [ref=e818]: 回答 5 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e820]:
+            - button "复制回复" [ref=e821] [cursor=pointer]:
+              - img "copy" [ref=e823]:
+                - img [ref=e824]
+            - button "点赞" [ref=e826] [cursor=pointer]:
+              - img "like" [ref=e828]:
+                - img [ref=e829]
+            - button "点踩" [ref=e831] [cursor=pointer]:
+              - img "dislike" [ref=e833]:
+                - img [ref=e834]
+            - button "重新生成" [ref=e836] [cursor=pointer]:
+              - img "reload" [ref=e838]:
+                - img [ref=e839]
+        - generic [ref=e844]: 问题 6 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e846]:
+          - paragraph [ref=e852]: 回答 7 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e854]:
+            - button "复制回复" [ref=e855] [cursor=pointer]:
+              - img "copy" [ref=e857]:
+                - img [ref=e858]
+            - button "点赞" [ref=e860] [cursor=pointer]:
+              - img "like" [ref=e862]:
+                - img [ref=e863]
+            - button "点踩" [ref=e865] [cursor=pointer]:
+              - img "dislike" [ref=e867]:
+                - img [ref=e868]
+            - button "重新生成" [ref=e870] [cursor=pointer]:
+              - img "reload" [ref=e872]:
+                - img [ref=e873]
+        - generic [ref=e878]: 问题 8 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e880]:
+          - paragraph [ref=e886]: 回答 9 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e888]:
+            - button "复制回复" [ref=e889] [cursor=pointer]:
+              - img "copy" [ref=e891]:
+                - img [ref=e892]
+            - button "点赞" [ref=e894] [cursor=pointer]:
+              - img "like" [ref=e896]:
+                - img [ref=e897]
+            - button "点踩" [ref=e899] [cursor=pointer]:
+              - img "dislike" [ref=e901]:
+                - img [ref=e902]
+            - button "重新生成" [ref=e904] [cursor=pointer]:
+              - img "reload" [ref=e906]:
+                - img [ref=e907]
+        - generic [ref=e912]: 问题 10 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e914]:
+          - paragraph [ref=e920]: 回答 11 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e922]:
+            - button "复制回复" [ref=e923] [cursor=pointer]:
+              - img "copy" [ref=e925]:
+                - img [ref=e926]
+            - button "点赞" [ref=e928] [cursor=pointer]:
+              - img "like" [ref=e930]:
+                - img [ref=e931]
+            - button "点踩" [ref=e933] [cursor=pointer]:
+              - img "dislike" [ref=e935]:
+                - img [ref=e936]
+            - button "重新生成" [ref=e938] [cursor=pointer]:
+              - img "reload" [ref=e940]:
+                - img [ref=e941]
+        - generic [ref=e946]: 问题 12 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e948]:
+          - paragraph [ref=e954]: 回答 13 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e956]:
+            - button "复制回复" [ref=e957] [cursor=pointer]:
+              - img "copy" [ref=e959]:
+                - img [ref=e960]
+            - button "点赞" [ref=e962] [cursor=pointer]:
+              - img "like" [ref=e964]:
+                - img [ref=e965]
+            - button "点踩" [ref=e967] [cursor=pointer]:
+              - img "dislike" [ref=e969]:
+                - img [ref=e970]
+            - button "重新生成" [ref=e972] [cursor=pointer]:
+              - img "reload" [ref=e974]:
+                - img [ref=e975]
+        - generic [ref=e980]: 问题 14 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e982]:
+          - paragraph [ref=e988]: 回答 15 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e990]:
+            - button "复制回复" [ref=e991] [cursor=pointer]:
+              - img "copy" [ref=e993]:
+                - img [ref=e994]
+            - button "点赞" [ref=e996] [cursor=pointer]:
+              - img "like" [ref=e998]:
+                - img [ref=e999]
+            - button "点踩" [ref=e1001] [cursor=pointer]:
+              - img "dislike" [ref=e1003]:
+                - img [ref=e1004]
+            - button "重新生成" [ref=e1006] [cursor=pointer]:
+              - img "reload" [ref=e1008]:
+                - img [ref=e1009]
+        - generic [ref=e1014]: 问题 16 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+        - generic [ref=e1016]:
+          - paragraph [ref=e1022]: 回答 17 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容 更多内容
+          - generic [ref=e1024]:
+            - button "复制回复" [ref=e1025] [cursor=pointer]:
+              - img "copy" [ref=e1027]:
+                - img [ref=e1028]
+            - button "点赞" [ref=e1030] [cursor=pointer]:
+              - img "like" [ref=e1032]:
+                - img [ref=e1033]
+            - button "点踩" [ref=e1035] [cursor=pointer]:
+              - img "dislike" [ref=e1037]:
+                - img [ref=e1038]
+            - button "重新生成" [ref=e1040] [cursor=pointer]:
+              - img "reload" [ref=e1042]:
+                - img [ref=e1043]
+      - button "快速回到底部" [ref=e1045] [cursor=pointer]:
+        - img "vertical-align-bottom" [ref=e1047]:
+          - img [ref=e1048]
+      - generic [ref=e1054]:
+        - button "paper-clip" [ref=e1056] [cursor=pointer]:
+          - img "paper-clip" [ref=e1058]:
+            - img [ref=e1059]
+        - textbox "提问或输入 / 使用技能" [ref=e1061]
+        - generic [ref=e1063]:
+          - button "audio" [ref=e1064] [cursor=pointer]:
+            - img "audio" [ref=e1066]:
+              - img [ref=e1067]
+          - button "arrow-up" [disabled] [ref=e1069]:
+            - generic:
+              - img "arrow-up":
+                - img
+```

@@ -404,6 +404,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const followStateRef = React.useRef<FollowState>('following');
   const programmaticScrollRef = React.useRef(false);
   const pendingInitialScrollRef = React.useRef(false);
+  const pendingSendScrollRef = React.useRef(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = React.useState(false);
   const location = useLocation();
   const { scene, context } = React.useMemo(
@@ -589,10 +590,37 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     });
   }, []);
 
-  React.useEffect(() => {
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
+    const el = contentRef.current;
+    if (!el || followStateRef.current !== 'following') {
+      return;
+    }
+    withProgrammaticScroll(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    });
+  }, [withProgrammaticScroll]);
+
+  React.useLayoutEffect(() => {
     followStateRef.current = 'following';
     pendingInitialScrollRef.current = true;
   }, [activeConversationKey, open]);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    if (!pendingInitialScrollRef.current && !pendingSendScrollRef.current) {
+      return;
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      if (pendingInitialScrollRef.current || pendingSendScrollRef.current) {
+        scrollToBottom('auto');
+      }
+      pendingInitialScrollRef.current = false;
+      pendingSendScrollRef.current = false;
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [open, activeConversationKey, renderedMessages.length, scrollToBottom]);
 
   // 初始化滚动 + 流式响应滚动（使用 ResizeObserver）
   React.useEffect(() => {
@@ -601,31 +629,20 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     const el = contentRef.current;
     if (!el) return;
 
-    // 滚动到底部的辅助函数
-    const scrollToBottom = () => {
-      if (followStateRef.current !== 'following') return;
-      withProgrammaticScroll(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
-      });
-    };
-
     // 创建 ResizeObserver 监听内容区域高度变化
     const resizeObserver = new ResizeObserver(() => {
       if (followStateRef.current === 'following') {
-        scrollToBottom();
+        scrollToBottom('auto');
       }
     });
 
     // 观察内容容器
     resizeObserver.observe(el);
 
-    // 初始滚动
-    scrollToBottom();
-
     return () => {
       resizeObserver.disconnect();
     };
-  }, [open, withProgrammaticScroll]);
+  }, [open, scrollToBottom]);
 
   React.useEffect(() => {
     const el = contentRef.current;
@@ -654,15 +671,9 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   }, [messages.length, open]);
 
   const handleScrollToBottom = React.useCallback(() => {
-    const el = contentRef.current;
-    if (!el) {
-      return;
-    }
     followStateRef.current = 'following';
-    withProgrammaticScroll(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    });
-  }, [withProgrammaticScroll]);
+    scrollToBottom('smooth');
+  }, [scrollToBottom]);
 
   const bubbleRole = React.useMemo<BubbleListProps['role']>(
     () => ({
@@ -839,6 +850,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
       // 用户发送消息时，自动回到底部开始跟随
       followStateRef.current = 'following';
+      pendingSendScrollRef.current = true;
 
       const targetKey = await ensureSession(message);
       if (targetKey !== activeConversationKey) {
@@ -866,6 +878,10 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       }
       setInputValue('');
       setAttachedFiles([]);
+
+      requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
     },
     [
       activeConversationKey,
@@ -876,6 +892,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       onRequest,
       queueRequest,
       scene,
+      scrollToBottom,
       setConversation,
     ],
   );

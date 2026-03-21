@@ -70,6 +70,9 @@ export interface AssistantReplyPlanStep {
   content?: string;
   segments?: AssistantReplySegment[];
   loaded?: boolean;  // 标记内容是否已加载
+  sourceBlockIndex?: number;
+  sourceStepIndex?: number;
+  unresolved?: boolean;
 }
 
 export interface AssistantReplySegment {

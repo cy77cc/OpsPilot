@@ -301,7 +301,7 @@ describe('AssistantReply', () => {
 
     expect(screen.getByText('host_exec')).toBeInTheDocument();
     expect(screen.getByText('批量执行健康检查')).toBeInTheDocument();
-    expect(screen.getByText(/已完成 1 个步骤/)).toBeInTheDocument();
+    expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
     expect(screen.queryByText('汇总检查结果')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('x-markdown').at(-1)).toHaveTextContent('## 最终报告');
   });
@@ -533,7 +533,7 @@ describe('AssistantReply', () => {
     );
 
     expect(screen.queryByText('已找到 5 台服务器')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText(/已完成 1 个步骤/));
+    fireEvent.click(screen.getByRole('button', { name: /获取服务器列表/ }));
     expect(screen.getByText('已找到 5 台服务器')).toBeInTheDocument();
     expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
   });
@@ -560,9 +560,78 @@ describe('AssistantReply', () => {
       />,
     );
 
-    expect(screen.getByText(/已完成 3 个步骤/)).toBeInTheDocument();
+    expect(screen.getByText('获取服务器列表')).toBeInTheDocument();
+    expect(screen.getByText('批量执行健康检查')).toBeInTheDocument();
+    expect(screen.getByText('汇总检查结果')).toBeInTheDocument();
     expect(screen.queryByText('◐')).not.toBeInTheDocument();
     expect(screen.getByText('最终报告内容')).toBeInTheDocument();
+  });
+
+  it('loads historical step content using stable mapping metadata', async () => {
+    const onLoadStepContent = vi.fn().mockResolvedValue({
+      content: '执行完成',
+      segments: [{ type: 'text', text: '执行完成' }],
+      activities: [],
+    });
+
+    render(
+      <AssistantReply
+        content="历史总结"
+        status="success"
+        runtime={{
+          activities: [],
+          plan: {
+            steps: [
+              { id: 'historical-step-1', title: '执行检查', status: 'done', loaded: false, sourceBlockIndex: 4 } as any,
+            ],
+          },
+          status: { kind: 'completed', label: '已完成' },
+        }}
+        onLoadStepContent={onLoadStepContent}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /执行检查/ }));
+
+    expect(onLoadStepContent).toHaveBeenCalledWith('historical-step-1', 4);
+  });
+
+  it('keeps historical step load failure local and recovers on retry', async () => {
+    const onLoadStepContent = vi.fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({
+        content: '恢复后的内容',
+        segments: [{ type: 'text', text: '恢复后的内容' }],
+        activities: [],
+      });
+
+    render(
+      <AssistantReply
+        content="历史总结"
+        status="success"
+        runtime={{
+          activities: [],
+          summary: { title: '结论' },
+          plan: {
+            steps: [
+              { id: 'historical-step-1', title: '执行检查', status: 'done', loaded: false } as any,
+            ],
+          },
+          status: { kind: 'completed', label: '已完成' },
+        }}
+        onLoadStepContent={onLoadStepContent}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /执行检查/ }));
+
+    expect(await screen.findByText('加载失败')).toBeInTheDocument();
+    expect(screen.getByText('历史总结')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('重试'));
+
+    expect(onLoadStepContent).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('恢复后的内容')).toBeInTheDocument();
   });
 
   it('does not re-list historical tool activities above the final markdown when plan is finished', () => {
