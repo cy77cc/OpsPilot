@@ -42,6 +42,21 @@ type ResponseExtractState struct {
 	ReplanSent    bool   // 是否已发送 replan 事件
 }
 
+func currentPlanTitles(state *ProjectionState) []string {
+	if state == nil || state.Persisted == nil || state.Persisted.Plan == nil || len(state.Persisted.Plan.Steps) == 0 {
+		return []string{}
+	}
+	steps := make([]string, 0, len(state.Persisted.Plan.Steps))
+	for _, step := range state.Persisted.Plan.Steps {
+		title := strings.TrimSpace(step.Title)
+		if title == "" {
+			continue
+		}
+		steps = append(steps, title)
+	}
+	return steps
+}
+
 // ResponseBufferConfig 缓冲配置
 const (
 	ResponseMinChunkSize = 50  // 最小累积字符数
@@ -478,7 +493,7 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, a
 		events = append(events, PublicStreamEvent{
 			Event: "replan",
 			Data: map[string]any{
-				"steps":     []string{},
+				"steps":     currentPlanTitles(state),
 				"completed": state.TotalPlanSteps,
 				"iteration": state.ReplanIteration,
 				"is_final":  true,

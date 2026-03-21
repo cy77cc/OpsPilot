@@ -29,6 +29,14 @@ func TestStreamProjector_ConsumeTracksPlanAndReplanIterations(t *testing.T) {
 	if len(second) != 2 || second[0].Event != "replan" || second[1].Event != "delta" {
 		t.Fatalf("expected final replan output, got %#v", second)
 	}
+	replanData, ok := second[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected replan data map, got %T", second[0].Data)
+	}
+	steps, ok := replanData["steps"].([]string)
+	if !ok || len(steps) != 2 || steps[0] != "inspect pods" || steps[1] != "check events" {
+		t.Fatalf("expected final replan to preserve plan steps, got %#v", replanData["steps"])
+	}
 }
 
 func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
@@ -69,6 +77,14 @@ func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
 	if len(third) != 1 || third[0].Event != "replan" {
 		t.Fatalf("expected first replanner chunk to emit only replan (content buffered), got %#v", third)
 	}
+	thirdDataMap, ok := third[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected replan data map, got %T", third[0].Data)
+	}
+	thirdSteps, ok := thirdDataMap["steps"].([]string)
+	if !ok || len(thirdSteps) != 2 || thirdSteps[0] != "inspect pods" || thirdSteps[1] != "check events" {
+		t.Fatalf("expected buffered final replan to preserve plan steps, got %#v", thirdDataMap["steps"])
+	}
 
 	// 第二个 replanner chunk：引号关闭，刷新缓冲区，发送 delta
 	if len(fourth) != 1 || fourth[0].Event != "delta" {
@@ -106,6 +122,14 @@ func TestStreamProjector_ReplannerBufferFlushOnLargeContent(t *testing.T) {
 	// 因为内容超过 50 字符，应该立即发送 replan + delta
 	if len(third) != 2 || third[0].Event != "replan" || third[1].Event != "delta" {
 		t.Fatalf("expected replan+delta for large content, got %#v", third)
+	}
+	replanData, ok := third[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected replan data map, got %T", third[0].Data)
+	}
+	replanSteps, ok := replanData["steps"].([]string)
+	if !ok || len(replanSteps) != 1 || replanSteps[0] != "step1" {
+		t.Fatalf("expected large final replan to preserve plan steps, got %#v", replanData["steps"])
 	}
 
 	dataMap, ok := third[1].Data.(map[string]any)

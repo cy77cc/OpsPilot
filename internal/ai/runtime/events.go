@@ -18,6 +18,7 @@ type EventEnvelope struct {
 type a2uiProjectionState struct {
 	totalPlanSteps int
 	lastIterations int
+	currentSteps   []string
 }
 
 func NewRunStateEvent(status string, payload map[string]any) PublicStreamEvent {

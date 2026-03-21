@@ -140,6 +140,7 @@ func projectAssistantMessage(agentName string, message *schema.Message, state *a
 		if steps, ok := decodeStepsEnvelope(trimmedContent); ok {
 			state.totalPlanSteps = len(steps)
 			state.lastIterations = 0
+			state.currentSteps = append([]string(nil), steps...)
 			return []StreamEvent{{
 				Event: "plan",
 				Data: map[string]any{
@@ -157,7 +158,7 @@ func projectAssistantMessage(agentName string, message *schema.Message, state *a
 				{
 					Event: "replan",
 					Data: map[string]any{
-						"steps":     []string{},
+						"steps":     append([]string(nil), state.currentSteps...),
 						"completed": state.totalPlanSteps,
 						"iteration": state.lastIterations,
 						"is_final":  true,
@@ -174,6 +175,7 @@ func projectAssistantMessage(agentName string, message *schema.Message, state *a
 		}
 
 		if steps, ok := decodeStepsEnvelope(trimmedContent); ok {
+			state.currentSteps = append([]string(nil), steps...)
 			state.lastIterations++
 			completed := state.totalPlanSteps - len(steps)
 			if completed < 0 {
