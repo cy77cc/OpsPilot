@@ -264,3 +264,20 @@ type AIApprovalTask struct {
 }
 
 func (AIApprovalTask) TableName() string { return "ai_approval_tasks" }
+
+// AIApprovalOutboxEvent stores durable approval-related outbox events.
+type AIApprovalOutboxEvent struct {
+	ID          uint64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ApprovalID  string     `gorm:"column:approval_id;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:1" json:"approval_id"`
+	EventType   string     `gorm:"column:event_type;type:varchar(32);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:2" json:"event_type"`
+	RunID       string     `gorm:"column:run_id;type:varchar(64);not null;index:idx_ai_approval_outbox_events_run_id" json:"run_id"`
+	SessionID   string     `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_approval_outbox_events_session_id" json:"session_id"`
+	PayloadJSON string     `gorm:"column:payload_json;type:longtext;not null" json:"payload_json"`
+	Status      string     `gorm:"column:status;type:varchar(16);not null;default:'pending';index:idx_ai_approval_outbox_events_queue,priority:1" json:"status"`
+	RetryCount  int        `gorm:"column:retry_count;not null;default:0" json:"retry_count"`
+	NextRetryAt *time.Time `gorm:"column:next_retry_at;index:idx_ai_approval_outbox_events_queue,priority:2" json:"next_retry_at"`
+	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime;index:idx_ai_approval_outbox_events_queue,priority:3" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+}
+
+func (AIApprovalOutboxEvent) TableName() string { return "ai_approval_outbox_events" }

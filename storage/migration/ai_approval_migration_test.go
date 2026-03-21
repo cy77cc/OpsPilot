@@ -28,6 +28,7 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 	tempRoot := t.TempDir()
 	copyMigrationFixture(t, tempRoot, "../migrations/20260317_0003_create_ai_approval_tasks.sql")
 	copyMigrationFixture(t, tempRoot, "../migrations/20260321_0005_add_ai_tool_risk_policy_and_approval_locking.sql")
+	copyMigrationFixture(t, tempRoot, "../migrations/20260321_0006_create_ai_approval_outbox_events.sql")
 
 	oldwd, err := os.Getwd()
 	if err != nil {
@@ -64,22 +65,46 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 			t.Fatalf("expected ai_approval_tasks.%s index", indexName)
 		}
 	}
+	if !db.Migrator().HasTable(&model.AIApprovalOutboxEvent{}) {
+		t.Fatal("expected ai_approval_outbox_events table")
+	}
+	for _, indexName := range []string{
+		"uk_ai_approval_outbox_events_approval_event",
+		"idx_ai_approval_outbox_events_queue",
+		"idx_ai_approval_outbox_events_run_id",
+		"idx_ai_approval_outbox_events_session_id",
+	} {
+		if !db.Migrator().HasIndex(&model.AIApprovalOutboxEvent{}, indexName) {
+			t.Fatalf("expected ai_approval_outbox_events.%s index", indexName)
+		}
+	}
 
 	if err := Migrate(db, DirectionDown, 1); err != nil {
 		t.Fatalf("rollback one migration: %v", err)
 	}
 
+	if db.Migrator().HasTable(&model.AIApprovalOutboxEvent{}) {
+		t.Fatal("expected ai_approval_outbox_events table to be removed after first rollback")
+	}
+	if !db.Migrator().HasTable(&model.AIToolRiskPolicy{}) {
+		t.Fatal("expected ai_tool_risk_policies table to remain after first rollback")
+	}
+
+	if err := Migrate(db, DirectionDown, 1); err != nil {
+		t.Fatalf("rollback second migration: %v", err)
+	}
+
 	if db.Migrator().HasTable(&model.AIToolRiskPolicy{}) {
-		t.Fatal("expected ai_tool_risk_policies table to be removed after rollback")
+		t.Fatal("expected ai_tool_risk_policies table to be removed after second rollback")
 	}
 	for _, column := range []string{"lock_expires_at", "matched_rule_id", "policy_version", "decision_source"} {
 		if db.Migrator().HasColumn(&model.AIApprovalTask{}, column) {
-			t.Fatalf("expected ai_approval_tasks.%s column to be removed after rollback", column)
+			t.Fatalf("expected ai_approval_tasks.%s column to be removed after second rollback", column)
 		}
 	}
 	for _, indexName := range []string{"idx_ai_approval_tasks_lock_expires_at", "idx_ai_approval_tasks_matched_rule_id"} {
 		if db.Migrator().HasIndex(&model.AIApprovalTask{}, indexName) {
-			t.Fatalf("expected ai_approval_tasks.%s index to be removed after rollback", indexName)
+			t.Fatalf("expected ai_approval_tasks.%s index to be removed after second rollback", indexName)
 		}
 	}
 	if !db.Migrator().HasTable(&model.AIApprovalTask{}) {

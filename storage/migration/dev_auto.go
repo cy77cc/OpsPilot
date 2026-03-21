@@ -79,6 +79,7 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&model.AIUsageLog{},
 		&model.AICheckpoint{},
 		&model.AIApprovalTask{},
+		&model.AIApprovalOutboxEvent{},
 		&model.AuditLog{},
 		&model.Policy{},
 	)
