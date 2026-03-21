@@ -34,8 +34,8 @@ func TestStreamProjector_ConsumeTracksPlanAndReplanIterations(t *testing.T) {
 		t.Fatalf("expected replan data map, got %T", second[0].Data)
 	}
 	steps, ok := replanData["steps"].([]string)
-	if !ok || len(steps) != 2 || steps[0] != "inspect pods" || steps[1] != "check events" {
-		t.Fatalf("expected final replan to preserve plan steps, got %#v", replanData["steps"])
+	if !ok || len(steps) != 1 || steps[0] != "inspect pods" {
+		t.Fatalf("expected final replan to keep only first phase step, got %#v", replanData["steps"])
 	}
 }
 
@@ -82,8 +82,8 @@ func TestStreamProjector_BuffersStreamingPlannerAndReplannerJSON(t *testing.T) {
 		t.Fatalf("expected replan data map, got %T", third[0].Data)
 	}
 	thirdSteps, ok := thirdDataMap["steps"].([]string)
-	if !ok || len(thirdSteps) != 2 || thirdSteps[0] != "inspect pods" || thirdSteps[1] != "check events" {
-		t.Fatalf("expected buffered final replan to preserve plan steps, got %#v", thirdDataMap["steps"])
+	if !ok || len(thirdSteps) != 1 || thirdSteps[0] != "inspect pods" {
+		t.Fatalf("expected buffered final replan to keep only first phase step, got %#v", thirdDataMap["steps"])
 	}
 
 	// 第二个 replanner chunk：引号关闭，刷新缓冲区，发送 delta

@@ -41,6 +41,73 @@ func TestProjectNormalizedEvent_PlannerSteps(t *testing.T) {
 	}
 }
 
+func TestProjectNormalizedEvent_PersistedPlanStoresPlannerFirstStepOnly(t *testing.T) {
+	t.Parallel()
+
+	state := &ProjectionState{}
+	projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindMessage,
+		AgentName: "planner",
+		Message: &NormalizedMessage{
+			Role:    "assistant",
+			Content: `{"steps":["inspect pods","check events"]}`,
+		},
+	}, state)
+
+	if state.Persisted == nil || state.Persisted.Plan == nil {
+		t.Fatalf("expected persisted plan to be initialized")
+	}
+	if len(state.Persisted.Plan.Steps) != 1 {
+		t.Fatalf("expected persisted plan to keep only first planner step, got %#v", state.Persisted.Plan.Steps)
+	}
+	if state.Persisted.Plan.Steps[0].Title != "inspect pods" {
+		t.Fatalf("expected first planner step title to be stored, got %#v", state.Persisted.Plan.Steps[0].Title)
+	}
+}
+
+func TestProjectNormalizedEvent_PersistedPlanAppendsReplannerFirstStep(t *testing.T) {
+	t.Parallel()
+
+	state := &ProjectionState{}
+	projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindMessage,
+		AgentName: "planner",
+		Message: &NormalizedMessage{
+			Role:    "assistant",
+			Content: `{"steps":["inspect pods","check events"]}`,
+		},
+	}, state)
+	projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindMessage,
+		AgentName: "replanner",
+		Message: &NormalizedMessage{
+			Role:    "assistant",
+			Content: `{"steps":["verify node pressure","recheck pod status"]}`,
+		},
+	}, state)
+	projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindMessage,
+		AgentName: "replanner",
+		Message: &NormalizedMessage{
+			Role:    "assistant",
+			Content: `{"response":"done"}`,
+		},
+	}, state)
+
+	if state.Persisted == nil || state.Persisted.Plan == nil {
+		t.Fatalf("expected persisted plan to be initialized")
+	}
+	if len(state.Persisted.Plan.Steps) != 2 {
+		t.Fatalf("expected planner first step + replanner first step, got %#v", state.Persisted.Plan.Steps)
+	}
+	if state.Persisted.Plan.Steps[0].Title != "inspect pods" {
+		t.Fatalf("unexpected planner step title: %#v", state.Persisted.Plan.Steps[0].Title)
+	}
+	if state.Persisted.Plan.Steps[1].Title != "verify node pressure" {
+		t.Fatalf("unexpected replanner appended step title: %#v", state.Persisted.Plan.Steps[1].Title)
+	}
+}
+
 func TestProjectNormalizedEvent_ApprovalEmitsToolApprovalAndRunState(t *testing.T) {
 	t.Parallel()
 

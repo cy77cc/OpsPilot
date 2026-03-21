@@ -250,7 +250,7 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 			state.ReplanIteration = 0
 			state.RunPhase = "planning"
 			// 更新持久化状态
-			state.Persisted.Plan = buildPersistedPlanFromSteps(steps, 0)
+			state.Persisted.Plan = buildPersistedPlanWithFirstStep(steps)
 			state.Persisted.Phase = "planning"
 			state.Persisted.PhaseLabel = "正在规划处理方式"
 			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
@@ -309,7 +309,7 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 			}
 			state.RunPhase = "planning"
 			// 更新持久化状态
-			state.Persisted.Plan = buildPersistedPlanFromSteps(steps, completed)
+			state.Persisted.Plan = appendPersistedPlanFirstStep(state.Persisted.Plan, steps)
 			state.Persisted.Phase = "planning"
 			state.Persisted.PhaseLabel = "正在调整处理计划"
 			state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
@@ -362,6 +362,34 @@ func projectNormalizedMessage(event NormalizedEvent, state *ProjectionState) []P
 		})
 	}
 	return projected
+}
+
+func buildPersistedPlanWithFirstStep(steps []string) *PersistedPlan {
+	plan := &PersistedPlan{}
+	return appendPersistedPlanFirstStep(plan, steps)
+}
+
+func appendPersistedPlanFirstStep(plan *PersistedPlan, steps []string) *PersistedPlan {
+	if len(steps) == 0 {
+		return plan
+	}
+	first := strings.TrimSpace(steps[0])
+	if first == "" {
+		return plan
+	}
+	if plan == nil {
+		plan = &PersistedPlan{}
+	}
+	if plan.ActiveStepIndex >= 0 && plan.ActiveStepIndex < len(plan.Steps) {
+		plan.Steps[plan.ActiveStepIndex].Status = "done"
+	}
+	plan.Steps = append(plan.Steps, PersistedStep{
+		ID:     fmt.Sprintf("plan-step-%d", len(plan.Steps)),
+		Title:  first,
+		Status: "active",
+	})
+	plan.ActiveStepIndex = len(plan.Steps) - 1
+	return plan
 }
 
 // FlushReplannerBuffer 刷新 replanner response 缓冲区
