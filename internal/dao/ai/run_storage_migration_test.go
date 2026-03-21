@@ -51,6 +51,22 @@ func TestRunMigration_AddsClientRequestIDAndExpiryFields(t *testing.T) {
 	}
 }
 
+func TestRunMigration_FixesAIRunContentsCharset(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../../../storage/migrations/20260321_0004_fix_ai_run_contents_utf8mb4.sql")
+	if err != nil {
+		t.Fatalf("read migration script: %v", err)
+	}
+	script := string(scriptBytes)
+	for _, fragment := range []string{
+		"ALTER TABLE ai_run_contents CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+		"table_name = 'ai_run_contents'",
+	} {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("expected migration script to contain %q", fragment)
+		}
+	}
+}
+
 func newRunStorageMigrationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
