@@ -51,14 +51,18 @@ type MonitorAlertInput struct {
 type MonitorMetricQueryInput struct {
 	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
 	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
-	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
+	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default auto-calculated based on time_range"`
+	HostID    int    `json:"host_id,omitempty" jsonschema_description:"optional host id filter"`
+	HostName  string `json:"host_name,omitempty" jsonschema_description:"optional host name filter"`
 }
 
 // MonitorMetricInput 指标数据查询输入。
 type MonitorMetricInput struct {
 	Query     string `json:"query" jsonschema_description:"required,metric query or metric name"`
 	TimeRange string `json:"time_range,omitempty" jsonschema_description:"time range,default=1h"`
-	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default=60"`
+	Step      int    `json:"step,omitempty" jsonschema_description:"step seconds,default auto-calculated based on time_range"`
+	HostID    int    `json:"host_id,omitempty" jsonschema_description:"optional host id filter"`
+	HostName  string `json:"host_name,omitempty" jsonschema_description:"optional host name filter"`
 }
 
 // NewMonitorTools 创建所有监控工具。
@@ -242,7 +246,7 @@ type MonitorMetricOutput struct {
 func MonitorMetric(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric",
-		"Query time-series metric data from the monitoring system. query is required and specifies the metric name or PromQL expression. Optional parameters: time_range sets the query duration (default 1h, accepts values like 5m, 1h, 24h), step sets the data point interval in seconds (default 60). Returns metric points with timestamps and values. Example: {\"query\":\"host_cpu_load\",\"time_range\":\"1h\",\"step\":60}.",
+		"Query time-series metric data from the monitoring system with optional host filtering. query is required and specifies the metric name or PromQL expression. Optional parameters: time_range sets the query duration (default 1h, accepts values like 5m, 1h, 24h), step sets the data point interval in seconds (auto-calculated if not specified to limit data to ~500 points), host_id and host_name filter results to specific hosts. Returns metric points with timestamps and values. Example: {\"query\":\"host_cpu_load\",\"time_range\":\"24h\",\"host_id\":123}.",
 		func(ctx context.Context, input *MonitorMetricInput, opts ...tool.Option) (*MonitorMetricOutput, error) {
 			svcCtx := depsFromContextOrFallback(ctx)
 			if svcCtx == nil || svcCtx.Prometheus == nil {
@@ -253,10 +257,21 @@ func MonitorMetric(ctx context.Context) tool.InvokableTool {
 				return nil, fmt.Errorf("query is required")
 			}
 			rangeDuration := parseTimeRange(strings.TrimSpace(input.TimeRange), time.Hour)
-			step := input.Step
-			if step <= 0 {
-				step = 60
+			step := autoCalculateStep(rangeDuration, input.Step)
+
+			// 应用主机过滤
+			hostFilter := buildHostFilter(input.HostID, input.HostName)
+			if hostFilter != "" {
+				// 如果 query 已经是一个完整的 PromQL 表达式，包含大括号，需要插入过滤条件
+				if strings.Contains(queryName, "{") {
+					// 在 { 后面插入主机过滤条件
+					queryName = strings.Replace(queryName, "{", "{"+hostFilter+",", 1)
+				} else {
+					// 纯指标名称，添加过滤条件
+					queryName = queryName + "{" + hostFilter + "}"
+				}
 			}
+
 			start := time.Now().Add(-rangeDuration)
 			end := time.Now()
 
@@ -309,7 +324,7 @@ type MonitorMetricQueryOutput struct {
 func MonitorMetricQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric_query",
-		"Query metric data points over a time range for analysis and visualization. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (default 60). Returns an array of metric points with timestamps. Example: {\"query\":\"host_memory_usage_percent\",\"time_range\":\"30m\"}.",
+		"Query metric data points over a time range for analysis and visualization with optional host filtering. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (auto-calculated if not specified to limit data to ~500 points), host_id and host_name filter results to specific hosts. Returns an array of metric points with timestamps. Example: {\"query\":\"host_memory_usage_percent\",\"time_range\":\"24h\",\"host_name\":\"prod-server-01\"}.",
 		func(ctx context.Context, input *MonitorMetricQueryInput, opts ...tool.Option) (*MonitorMetricQueryOutput, error) {
 			svcCtx := depsFromContextOrFallback(ctx)
 			if svcCtx == nil || svcCtx.Prometheus == nil {
@@ -320,10 +335,21 @@ func MonitorMetricQuery(ctx context.Context) tool.InvokableTool {
 				return nil, fmt.Errorf("query is required")
 			}
 			rangeDuration := parseTimeRange(strings.TrimSpace(input.TimeRange), time.Hour)
-			step := input.Step
-			if step <= 0 {
-				step = 60
+			step := autoCalculateStep(rangeDuration, input.Step)
+
+			// 应用主机过滤
+			hostFilter := buildHostFilter(input.HostID, input.HostName)
+			if hostFilter != "" {
+				// 如果 query 已经是一个完整的 PromQL 表达式，包含大括号，需要插入过滤条件
+				if strings.Contains(queryName, "{") {
+					// 在 { 后面插入主机过滤条件
+					queryName = strings.Replace(queryName, "{", "{"+hostFilter+",", 1)
+				} else {
+					// 纯指标名称，添加过滤条件
+					queryName = queryName + "{" + hostFilter + "}"
+				}
 			}
+
 			start := time.Now().Add(-rangeDuration)
 			end := time.Now()
 
@@ -406,4 +432,70 @@ func parseTimeRange(raw string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// autoCalculateStep 根据时间范围自动计算合适的步长（秒）。
+// 目标：保持返回的数据点数在 500 以内，避免数据量过大。
+//
+// 参数:
+//   - rangeDuration: 查询时间范围
+//   - userStep: 用户指定的步长（0 表示未指定）
+//
+// 返回: 计算后的步长（秒）
+func autoCalculateStep(rangeDuration time.Duration, userStep int) int {
+	if userStep > 0 {
+		return userStep // 用户指定了步长，直接使用
+	}
+
+	// 自动计算步长，保持数据点数在 500 左右
+	targetPoints := 500
+	totalSeconds := int(rangeDuration.Seconds())
+	calculatedStep := totalSeconds / targetPoints
+	if calculatedStep < 1 {
+		calculatedStep = 1
+	}
+	// 将步长向上舍入到合理的值（1s, 5s, 10s, 30s, 60s, 5m, 10m, 15m, 30m, 1h）
+	switch {
+	case calculatedStep <= 1:
+		return 1
+	case calculatedStep <= 5:
+		return 5
+	case calculatedStep <= 10:
+		return 10
+	case calculatedStep <= 30:
+		return 30
+	case calculatedStep <= 60:
+		return 60
+	case calculatedStep <= 300: // 5m
+		return 300
+	case calculatedStep <= 600: // 10m
+		return 600
+	case calculatedStep <= 900: // 15m
+		return 900
+	case calculatedStep <= 1800: // 30m
+		return 1800
+	default:
+		return 3600 // 1h
+	}
+}
+
+// buildHostFilter 构建主机过滤的 PromQL 条件。
+//
+// 参数:
+//   - hostID: 主机 ID（0 表示未指定）
+//   - hostName: 主机名（空表示未指定）
+//
+// 返回: PromQL 过滤条件字符串（如 {instance=~"host1|host2"} 或空字符串）
+func buildHostFilter(hostID int, hostName string) string {
+	var filters []string
+	if hostID > 0 {
+		filters = append(filters, fmt.Sprintf("host_id=\"%d\"", hostID))
+	}
+	if hostName != "" {
+		filters = append(filters, fmt.Sprintf("hostname=\"%s\"", hostName))
+	}
+	if len(filters) == 0 {
+		return ""
+	}
+	return strings.Join(filters, ",")
 }

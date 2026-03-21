@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 )
@@ -120,6 +121,17 @@ func TestBuildProjection_KeepsOnlyLatestReplanSteps(t *testing.T) {
 	}
 	if len(projection.Blocks[0].Steps) != 1 || projection.Blocks[0].Steps[0] != "describe pending pods" {
 		t.Fatalf("expected only latest replanned steps, got %#v", projection.Blocks[0].Steps)
+	}
+}
+
+func TestTruncate_KeepsUTF8Integrity(t *testing.T) {
+	input := "火山云服务器实时内存使用数据"
+	got := truncate(input, 7)
+	if !utf8.ValidString(got) {
+		t.Fatalf("expected valid utf8, got %q", got)
+	}
+	if got != "火山云服务器实" {
+		t.Fatalf("unexpected truncate result: %q", got)
 	}
 }
 

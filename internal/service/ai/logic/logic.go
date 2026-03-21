@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -1037,10 +1038,7 @@ func buildSessionTitle(message string) string {
 	if trimmed == "" {
 		return "New AI session"
 	}
-	if len(trimmed) > 48 {
-		return trimmed[:48]
-	}
-	return trimmed
+	return truncateString(trimmed, 48)
 }
 
 func normalizeScene(scene string) string {
@@ -1180,10 +1178,13 @@ func compactJSONString(value string) string {
 
 // truncateString 截断字符串到指定长度。
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string([]rune(s)[:maxLen])
 }
 
 // =============================================================================

@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+)
 
 func TestProjectNormalizedEvent_Handoff(t *testing.T) {
 	t.Parallel()
@@ -198,5 +201,16 @@ func TestProjectNormalizedEvent_ToolCall_NilTool(t *testing.T) {
 
 	if len(got) != 0 {
 		t.Fatalf("expected 0 events for nil tool, got %d", len(got))
+	}
+}
+
+func TestTruncateString_KeepsUTF8Integrity(t *testing.T) {
+	input := "内存使用详情"
+	got := truncateString(input, 5)
+	if !utf8.ValidString(got) {
+		t.Fatalf("expected valid utf8, got %q", got)
+	}
+	if got != "内存使用详" {
+		t.Fatalf("unexpected truncate result: %q", got)
 	}
 }

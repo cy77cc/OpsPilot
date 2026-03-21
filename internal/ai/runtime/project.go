@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ProjectionState 跟踪流式投影状态。
@@ -504,10 +505,13 @@ func extractResponseStreaming(state *ProjectionState, raw string, prevLen int, a
 
 // truncateString 截断字符串到指定长度。
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string([]rune(s)[:maxLen])
 }
 
 // appendSegmentToActiveStep 追加内容片段到当前活动步骤。

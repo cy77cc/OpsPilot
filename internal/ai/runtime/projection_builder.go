@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/google/uuid"
@@ -324,8 +325,11 @@ func blockID(prefix string, index int) string {
 }
 
 func truncate(value string, max int) string {
-	if len(value) <= max {
+	if max <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(value) <= max {
 		return value
 	}
-	return value[:max]
+	return string([]rune(value)[:max])
 }

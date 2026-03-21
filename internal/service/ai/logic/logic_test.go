@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -210,6 +211,17 @@ func TestConsumeProjectedEvents_ExcludesExecutorDeltaFromAssistantContent(t *tes
 
 	if got := builder.String(); got != "final answer" {
 		t.Fatalf("expected assistant content to exclude executor delta, got %q", got)
+	}
+}
+
+func TestBuildSessionTitle_TruncatesByRune(t *testing.T) {
+	input := strings.Repeat("火", 60)
+	got := buildSessionTitle(input)
+	if !utf8.ValidString(got) {
+		t.Fatalf("expected valid utf8 title, got %q", got)
+	}
+	if len([]rune(got)) != 48 {
+		t.Fatalf("expected 48 runes, got %d", len([]rune(got)))
 	}
 }
 
