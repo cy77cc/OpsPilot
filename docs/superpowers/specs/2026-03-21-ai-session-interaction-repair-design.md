@@ -105,6 +105,7 @@ Repair strategy:
   - if absent, fall back to the safest deterministic lookup available in the projection adapter
   - if no safe lookup can be derived, still render the step title and keep the disclosure local-failure path instead of hiding the whole step list
 - If a step title exists but no block can be resolved, still render the step title and fail only the local disclosure panel.
+- Any fallback identifier used for rendering historical steps must stay stable across re-renders and collapse/expand cycles, so React does not remount the step subtree and discard message-local lazy-load cache.
 
 This preserves visibility of historical steps even when content recovery is partial.
 
@@ -134,12 +135,15 @@ Repair strategy:
 - Add an explicit send-time transition:
   - when the user submits a new message, force `followStateRef.current = 'following'`
   - schedule the send-time bottom alignment only after the new user turn has been committed to the DOM, so the scroll height reflects the inserted message
-  - prefer a post-commit mechanism such as `requestAnimationFrame`, `useLayoutEffect`, or an equivalent render-synchronized hook rather than a same-tick synchronous scroll
+  - prefer a post-commit mechanism such as `useLayoutEffect`, `requestAnimationFrame`, or an equivalent render-synchronized hook rather than a same-tick synchronous scroll
+  - prefer `useLayoutEffect` for the one-shot send reset when the inserted turn height is already known at commit time, to avoid visible flicker before paint
+  - if the inserted turn can continue changing height asynchronously after commit, treat that first post-commit scroll as an initial correction rather than the final bottom measurement
   - let subsequent streamed updates continue in follow mode until the user manually detaches again
 - Keep initial-open scroll behavior separate from send-time recovery so the two triggers remain debuggable.
 - The implementation must treat "send reset" and "stream follow" as separate phases:
   - send reset guarantees one post-commit jump to the bottom
   - stream follow handles subsequent height changes for the same run without racing the initial insertion
+  - `ResizeObserver` remains the source of truth for later bottom corrections when content height changes after paint during the same run
 
 This matches the intended UX: sending a message means "return me to the live conversation now."
 

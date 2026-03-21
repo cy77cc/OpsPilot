@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import XMarkdown from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import { normalizeMarkdownContent } from './markdownContent';
-import type { AssistantReplyActivity, AssistantReplyRuntime, AssistantReplySegment } from './types';
+import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRuntime, AssistantReplySegment } from './types';
 import ToolReference from './ToolReference';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
@@ -455,6 +455,11 @@ function AssistantReplyContent({
     segments: AssistantReplySegment[];
     activities: AssistantReplyActivity[];
   } | null>>({});
+  const inflightRequestsRef = useRef<Record<string, symbol>>({});
+
+  useEffect(() => () => {
+    inflightRequestsRef.current = {};
+  }, []);
 
   const activeStepIndex = runtime?.plan?.activeStepIndex;
   const allSteps = runtime?.plan?.steps || [];
@@ -495,7 +500,10 @@ function AssistantReplyContent({
   const isStreaming = status === 'loading' || status === 'updating';
 
   // 处理 step 展开，触发懒加载
-  const handleStepExpand = async (stepId: string, stepIndex: number) => {
+  const handleStepExpand = async (step: AssistantReplyPlanStep) => {
+    const stepId = step.id;
+    const lookupIndex = step.sourceBlockIndex ?? step.sourceStepIndex ?? allSteps.findIndex((candidate) => candidate.id === stepId);
+
     // 1. 状态检查：防止重复请求（竞态条件处理）
     const currentState = stepLoadStates[stepId] || 'idle';
     if (currentState === 'loading' || currentState === 'success') {
@@ -516,11 +524,21 @@ function AssistantReplyContent({
       return;
     }
 
+    if (step.unresolved || lookupIndex === undefined || lookupIndex < 0) {
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+      return;
+    }
+
     // 3. 设置 loading 状态
     setStepLoadStates(prev => ({ ...prev, [stepId]: 'loading' }));
+    const requestToken = Symbol(stepId);
+    inflightRequestsRef.current[stepId] = requestToken;
 
     try {
-      const result = await onLoadStepContent(stepId, stepIndex);
+      const result = await onLoadStepContent(stepId, lookupIndex);
+      if (inflightRequestsRef.current[stepId] !== requestToken) {
+        return;
+      }
       if (result) {
         // 4. 成功：存储内容并标记成功
         setStepContentCache(prev => ({ ...prev, [stepId]: result }));
@@ -531,16 +549,19 @@ function AssistantReplyContent({
         setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
       }
     } catch {
+      if (inflightRequestsRef.current[stepId] !== requestToken) {
+        return;
+      }
       // 6. 异常：标记错误
       setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
     }
   };
 
   // 重试函数
-  const handleRetry = (stepId: string, stepIndex: number) => {
+  const handleRetry = (step: AssistantReplyPlanStep) => {
     // 重置状态后重新触发加载
-    setStepLoadStates(prev => ({ ...prev, [stepId]: 'idle' }));
-    handleStepExpand(stepId, stepIndex);
+    setStepLoadStates(prev => ({ ...prev, [step.id]: 'idle' }));
+    handleStepExpand(step);
   };
 
   return (
@@ -578,7 +599,7 @@ function AssistantReplyContent({
                   <Button
                     type="link"
                     size="small"
-                    onClick={() => handleRetry(step.id, index)}
+                    onClick={() => handleRetry(step)}
                   >
                     重试
                   </Button>
@@ -596,14 +617,20 @@ function AssistantReplyContent({
           activeKey={Object.keys(stepExpandStates).filter((k) => stepExpandStates[k])}
           onChange={(keys) => {
             const newExpanded = Array.isArray(keys) ? keys : [keys];
+            const normalized = newExpanded.map((key) => String(key));
+            const nextExpandStates = normalized.reduce<Record<string, boolean>>((acc, key) => {
+              acc[key] = true;
+              return acc;
+            }, {});
             const prevExpanded = Object.keys(stepExpandStates).filter((k) => stepExpandStates[k]);
 
             // 找到新展开的 step
-            const newlyExpanded = newExpanded.filter((k) => !prevExpanded.includes(k));
+            const newlyExpanded = normalized.filter((k) => !prevExpanded.includes(k));
+            setStepExpandStates(nextExpandStates);
             newlyExpanded.forEach((stepId) => {
-              const stepIndex = completedSteps.findIndex((s) => s.id === stepId);
-              if (stepIndex >= 0) {
-                handleStepExpand(stepId, stepIndex);
+              const targetStep = completedSteps.find((s) => s.id === stepId);
+              if (targetStep) {
+                void handleStepExpand(targetStep);
               }
             });
           }}

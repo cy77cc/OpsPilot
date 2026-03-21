@@ -9,6 +9,58 @@ const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
 export const PROJECTION_MISSING_SUMMARY_LABEL = 'projection missing summary';
 export const PROJECTION_UNRECOVERABLE_PLACEHOLDER = '回答内容不可恢复';
 
+function reconcileHistoricalPlan(
+  previous: AssistantReplyPlanStep[],
+  steps: string[],
+  completed: number,
+  isFinal: boolean,
+): { steps: AssistantReplyPlanStep[]; activeStepIndex?: number } {
+  const total = completed + steps.length;
+  const nextSteps: AssistantReplyPlanStep[] = [];
+
+  for (let index = 0; index < completed; index += 1) {
+    const previousStep = previous[index];
+    nextSteps.push({
+      id: previousStep?.id || `historical-step-${index}`,
+      title: previousStep?.title || `步骤 ${index + 1}`,
+      status: 'done',
+      loaded: false,
+      sourceBlockIndex: previousStep?.sourceBlockIndex,
+      sourceStepIndex: previousStep?.sourceStepIndex ?? index,
+      unresolved: previousStep?.unresolved,
+    });
+  }
+
+  steps.forEach((title, index) => {
+    const nextIndex = index + completed;
+    const previousStep = previous[nextIndex];
+    nextSteps.push({
+      id: previousStep?.id || `historical-step-${nextIndex}`,
+      title,
+      status: 'done',
+      loaded: false,
+      sourceBlockIndex: previousStep?.sourceBlockIndex,
+      sourceStepIndex: previousStep?.sourceStepIndex ?? nextIndex,
+      unresolved: previousStep?.unresolved,
+    });
+  });
+
+  if (isFinal && previous.length > total) {
+    previous.slice(total).forEach((step, index) => {
+      nextSteps.push({
+        ...step,
+        id: step.id || `historical-step-${total + index}`,
+        loaded: false,
+      });
+    });
+  }
+
+  return {
+    steps: nextSteps,
+    activeStepIndex: isFinal ? undefined : completed,
+  };
+}
+
 export function resetHistoryProjectionCache(): void {
   projectionCache.clear();
   contentCache.clear();
@@ -46,20 +98,47 @@ export async function loadRunContent(contentId: string): Promise<AIRunContent | 
  * executor blocks 进行瘦身存储，只保留懒加载必须的字段。
  */
 function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
-  const steps: AssistantReplyPlanStep[] = [];
+  let steps: AssistantReplyPlanStep[] = [];
+  let activeStepIndex: number | undefined;
+  let executorIndex = 0;
 
-  // 从 plan/replan blocks 提取步骤标题
   for (const block of projection.blocks) {
-    if (block.type === 'plan' || block.type === 'replan') {
-      block.steps?.forEach((title) => {
-        steps.push({
-          id: `step-${steps.length}`,
-          title,
-          status: 'done',
-          loaded: false,
-        });
-      });
+    if (block.type === 'plan') {
+      const next = reconcileHistoricalPlan([], block.steps || [], 0, false);
+      steps = next.steps;
+      activeStepIndex = next.activeStepIndex;
+      continue;
     }
+
+    if (block.type === 'replan') {
+      const completed = Number(block.data?.completed || 0);
+      const isFinal = Boolean(block.data?.is_final);
+      const next = reconcileHistoricalPlan(steps, block.steps || [], completed, isFinal);
+      steps = next.steps;
+      activeStepIndex = next.activeStepIndex;
+      continue;
+    }
+
+    if (block.type === 'executor') {
+      if (activeStepIndex !== undefined && steps[activeStepIndex] && steps[activeStepIndex].sourceBlockIndex === undefined) {
+        steps[activeStepIndex] = {
+          ...steps[activeStepIndex],
+          sourceBlockIndex: executorIndex,
+          unresolved: false,
+        };
+      }
+      executorIndex += 1;
+    }
+  }
+
+  if (steps.length > 0) {
+    steps = steps.map((step, index) => ({
+      ...step,
+      id: step.id || `historical-step-${index}`,
+      loaded: false,
+      sourceStepIndex: step.sourceStepIndex ?? index,
+      unresolved: step.unresolved ?? step.sourceBlockIndex === undefined,
+    }));
   }
 
   // executor blocks 瘦身存储，只保留懒加载必须的字段

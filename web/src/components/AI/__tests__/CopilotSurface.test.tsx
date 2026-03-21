@@ -8,6 +8,22 @@ import { aiApi } from '../../../api/modules/ai';
 const mockUseXChat = vi.hoisted(() => vi.fn());
 const mockUseXConversations = vi.hoisted(() => vi.fn());
 const mockXMarkdown = vi.hoisted(() => vi.fn());
+const senderValueRef = vi.hoisted(() => ({ current: '' }));
+
+vi.mock('@ant-design/x', async () => {
+  const actual = await vi.importActual<typeof import('@ant-design/x')>('@ant-design/x');
+  return {
+    ...actual,
+    Sender: (props: any) => {
+      senderValueRef.current = props.value || '';
+      return (
+        <button type="button" aria-label="mock-send" onClick={() => props.onSubmit?.(senderValueRef.current)}>
+          send
+        </button>
+      );
+    },
+  };
+});
 
 vi.mock('@ant-design/x-sdk', async () => {
   const actual = await vi.importActual<typeof import('@ant-design/x-sdk')>('@ant-design/x-sdk');
@@ -46,6 +62,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    senderValueRef.current = '';
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
       writable: true,
@@ -66,6 +83,14 @@ describe('CopilotSurface XMarkdown streaming', () => {
     vi.stubGlobal(
       'IntersectionObserver',
       class IntersectionObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal(
+      'ResizeObserver',
+      class ResizeObserver {
         observe() {}
         unobserve() {}
         disconnect() {}
@@ -253,6 +278,46 @@ describe('CopilotSurface XMarkdown streaming', () => {
     await waitFor(() => {
       expect(scrollToMock).toHaveBeenCalledWith(
         expect.objectContaining({ top: 1280, behavior: 'auto' }),
+      );
+    });
+  });
+
+  it('forces bottom alignment when sending from detached mode', async () => {
+    const onRequest = vi.fn();
+    mockUseXChat.mockReturnValue({
+      messages: [
+        { id: 'u1', status: 'success', message: { role: 'user', content: 'q1' } },
+        { id: 'a1', status: 'success', message: { role: 'assistant', content: 'a1' } },
+      ],
+      onRequest,
+      isRequesting: false,
+      queueRequest: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+        <CopilotSurface open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    const scrollContainer = screen.getByTestId('copilot-scroll-container');
+    Object.defineProperty(scrollContainer, 'scrollHeight', { configurable: true, value: 1600 });
+    Object.defineProperty(scrollContainer, 'clientHeight', { configurable: true, value: 400 });
+    Object.defineProperty(scrollContainer, 'scrollTop', { configurable: true, writable: true, value: 0 });
+
+    scrollContainer.dispatchEvent(new Event('scroll'));
+    senderValueRef.current = '检查集群';
+    screen.getByRole('button', { name: 'mock-send' }).click();
+
+    await waitFor(() => {
+      expect(onRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群' }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalledWith(
+        expect.objectContaining({ top: 1600, behavior: 'auto' }),
       );
     });
   });

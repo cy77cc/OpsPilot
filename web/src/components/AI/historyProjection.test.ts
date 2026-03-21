@@ -4,6 +4,7 @@ import {
   isProjectionHydrationPending,
   loadRunContent,
   loadRunProjection,
+  loadStepContent,
   PROJECTION_MISSING_SUMMARY_LABEL,
   PROJECTION_UNRECOVERABLE_PLACEHOLDER,
   resetHistoryProjectionCache,
@@ -60,7 +61,7 @@ describe('historyProjection', () => {
     } as any);
 
     expect(hydrated.content).toBe('已恢复');
-    expect(hydrated.runtime).toEqual({
+    expect(hydrated.runtime).toMatchObject({
       activities: [],
       summary: {
         title: '结论',
@@ -70,6 +71,7 @@ describe('historyProjection', () => {
         label: 'completed',
       },
     });
+    expect(hydrated.runtime?._executorBlocks).toEqual([]);
   });
 
   it('normalizes escaped line breaks in projection summary content', async () => {
@@ -196,7 +198,7 @@ describe('historyProjection', () => {
     expect(aiApi.getRunProjection).toHaveBeenCalledTimes(2);
   });
 
-  it('hydrates handoff, replan and error details from projection', async () => {
+  it('keeps plan and error status lightweight when hydrating historical projection', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -241,20 +243,15 @@ describe('historyProjection', () => {
       timestamp: '',
     } as any);
 
-    expect(hydrated.runtime?.activities).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'agent_handoff', label: 'DiagnosisAgent' }),
-        expect.objectContaining({ kind: 'replan', label: '重新规划' }),
-        expect.objectContaining({ kind: 'error', detail: 'stream failed' }),
-      ]),
-    );
+    expect(hydrated.runtime?.activities).toEqual([]);
+    expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).toEqual(['修正计划']);
     expect(hydrated.runtime?.status).toEqual({
       kind: 'error',
       label: 'failed_runtime',
     });
   });
 
-  it('maps executor blocks onto planned steps instead of appending 执行过程 as a new step', async () => {
+  it('keeps historical step titles visible before lazy content loads', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -296,28 +293,6 @@ describe('historyProjection', () => {
         ],
       },
     });
-    (aiApi.getRunContent as any)
-      .mockResolvedValueOnce({
-        data: {
-          id: 'executor-content-1',
-          run_id: 'run-1',
-          session_id: 'sess-1',
-          content_kind: 'executor_content',
-          encoding: 'text',
-          body_text: '正在检查 node-1',
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          id: 'tool-result-1',
-          run_id: 'run-1',
-          session_id: 'sess-1',
-          content_kind: 'tool_result',
-          encoding: 'text',
-          body_text: 'ok',
-        },
-      });
-
     const hydrated = await hydrateAssistantHistoryFromProjection({
       id: 'msg-1',
       role: 'assistant',
@@ -328,25 +303,18 @@ describe('historyProjection', () => {
     expect(hydrated.runtime?.plan?.steps).toEqual([
       expect.objectContaining({
         title: '检查节点状态',
-        content: '正在检查 node-1',
+        loaded: false,
       }),
       expect.objectContaining({
         title: '汇总结果',
+        loaded: false,
       }),
     ]);
     expect(hydrated.runtime?.plan?.steps.map((step) => step.title)).not.toContain('执行过程');
-    expect(hydrated.runtime?.activities).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'call-1',
-          label: 'kubectl_describe',
-          stepIndex: 0,
-        }),
-      ]),
-    );
+    expect(hydrated.runtime?._executorBlocks).toHaveLength(1);
   });
 
-  it('preserves completed steps before a replan and attaches executor content to the next remaining step', async () => {
+  it('keeps historical replan steps in lazy runtime instead of hydrating content eagerly', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {
         version: 1,
@@ -383,17 +351,6 @@ describe('historyProjection', () => {
         ],
       },
     });
-    (aiApi.getRunContent as any).mockResolvedValue({
-      data: {
-        id: 'executor-content-1',
-        run_id: 'run-1',
-        session_id: 'sess-1',
-        content_kind: 'executor_content',
-        encoding: 'text',
-        body_text: '正在执行检查',
-      },
-    });
-
     const hydrated = await hydrateAssistantHistoryFromProjection({
       id: 'msg-1',
       role: 'assistant',
@@ -402,9 +359,67 @@ describe('historyProjection', () => {
     } as any);
 
     expect(hydrated.runtime?.plan?.steps).toEqual([
-      expect.objectContaining({ title: '收集上下文' }),
-      expect.objectContaining({ title: '执行检查', content: '正在执行检查' }),
-      expect.objectContaining({ title: '汇总结果' }),
+      expect.objectContaining({ title: '收集上下文', sourceBlockIndex: undefined }),
+      expect.objectContaining({ title: '执行检查', loaded: false, sourceBlockIndex: 0 }),
+      expect.objectContaining({ title: '汇总结果', loaded: false }),
+    ]);
+  });
+
+  it('loads step content on demand from a slim executor block', async () => {
+    (aiApi.getRunContent as any)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'executor-content-1',
+          run_id: 'run-1',
+          session_id: 'sess-1',
+          content_kind: 'executor_content',
+          encoding: 'text',
+          body_text: '正在检查 node-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'tool-result-1',
+          run_id: 'run-1',
+          session_id: 'sess-1',
+          content_kind: 'tool_result',
+          encoding: 'text',
+          body_text: 'ok',
+        },
+      });
+
+    const loaded = await loadStepContent(
+      {
+        id: 'executor-1',
+        items: [
+          { type: 'content', content_id: 'executor-content-1' },
+          {
+            type: 'tool_call',
+            tool_call_id: 'call-1',
+            tool_name: 'kubectl_describe',
+            arguments: { node: 'node-1' },
+            result: {
+              status: 'done',
+              preview: 'ok',
+              result_content_id: 'tool-result-1',
+            },
+          },
+        ],
+      },
+      0,
+    );
+
+    expect(loaded.content).toBe('正在检查 node-1');
+    expect(loaded.segments).toEqual([
+      { type: 'text', text: '正在检查 node-1' },
+      { type: 'tool_ref', callId: 'call-1' },
+    ]);
+    expect(loaded.activities).toEqual([
+      expect.objectContaining({
+        id: 'call-1',
+        label: 'kubectl_describe',
+        stepIndex: 0,
+      }),
     ]);
   });
 });
