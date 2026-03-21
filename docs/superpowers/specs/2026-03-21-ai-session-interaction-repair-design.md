@@ -98,8 +98,12 @@ The current lazy runtime shape is too weak because it assumes the visible comple
 Repair strategy:
 
 - Keep projection hydration lightweight.
-- Extend each historical step with a stable source index or equivalent block lookup metadata created during `projectionToLazyRuntime()`.
+- Extend each historical step with a stable source index or equivalent block lookup metadata created during `projectionToLazyRuntime()` when that mapping can be derived.
 - Make step content loading use this stable mapping instead of relying on the completed-step array position at click time.
+- Preserve backward compatibility for older historical projections that do not provide enough information for a perfect mapping:
+  - first try the stable mapping metadata
+  - if absent, fall back to the safest deterministic lookup available in the projection adapter
+  - if no safe lookup can be derived, still render the step title and keep the disclosure local-failure path instead of hiding the whole step list
 - If a step title exists but no block can be resolved, still render the step title and fail only the local disclosure panel.
 
 This preserves visibility of historical steps even when content recovery is partial.
@@ -113,7 +117,11 @@ Repair strategy:
 - Keep the collapse component controlled.
 - On every `onChange`, rebuild the expanded-key map from the latest key set, covering both open and close transitions.
 - Trigger lazy loading only for keys newly entering the expanded set.
-- Preserve loaded content and successful results in local cache so re-expansion is immediate.
+- Preserve loaded content and successful results in message-local cache so re-expansion is immediate.
+- Scope this cache to `AssistantReply` instance state rather than a global store:
+  - cache survives repeated expand/collapse while the reply stays mounted
+  - cache is released when the reply unmounts or the session detail view is replaced
+  - global history/projection caches remain responsible only for API-level projection/content fetch reuse
 
 ### 4. Follow-mode recovery after send
 
@@ -125,9 +133,13 @@ Repair strategy:
 - Preserve manual scroll detachment and bottom-threshold recovery.
 - Add an explicit send-time transition:
   - when the user submits a new message, force `followStateRef.current = 'following'`
-  - perform an immediate scroll-to-bottom pass for the newly inserted turn
+  - schedule the send-time bottom alignment only after the new user turn has been committed to the DOM, so the scroll height reflects the inserted message
+  - prefer a post-commit mechanism such as `requestAnimationFrame`, `useLayoutEffect`, or an equivalent render-synchronized hook rather than a same-tick synchronous scroll
   - let subsequent streamed updates continue in follow mode until the user manually detaches again
 - Keep initial-open scroll behavior separate from send-time recovery so the two triggers remain debuggable.
+- The implementation must treat "send reset" and "stream follow" as separate phases:
+  - send reset guarantees one post-commit jump to the bottom
+  - stream follow handles subsequent height changes for the same run without racing the initial insertion
 
 This matches the intended UX: sending a message means "return me to the live conversation now."
 
@@ -162,6 +174,11 @@ Add or update tests to lock the repaired behavior:
 6. User upward scroll still detaches follow mode.
 7. Sending a new message while detached forces bottom scroll and restores follow mode.
 8. Streamed assistant updates keep following after send until the user manually detaches again.
+
+Testing split:
+
+- Component tests in `CopilotSurface.test.tsx` should continue to verify follow-state transitions, scheduling decisions, and `scrollTo` invocation contracts with mocked layout primitives.
+- Browser-level E2E coverage should verify the real viewport behavior for detach, send-time recovery, and continued follow during streaming, because JSDOM cannot faithfully simulate actual layout and scroll physics.
 
 ## Acceptance Criteria
 
