@@ -71,10 +71,9 @@ Fields:
 - `created_at`, `updated_at`
 
 Matching semantics:
-- Filter by `enabled=true`.
-- Exact `tool_name` match required.
-- `scene`/`command_class` are exact if present, wildcard when null.
-- `argument_rules` (when present) must match request arguments (exact match and/or regex strategy defined by policy engine contract).
+- DB query path must only filter by `tool_name` and `enabled=true` for low-latency lookup.
+- Application layer then evaluates `scene`, `command_class`, and `argument_rules`.
+- `argument_rules` (when present) match request arguments via exact and/or regex strategy defined by policy engine contract.
 - Highest `priority` wins.
 - For same priority, prefer the more specific rule (argument-aware > command_class > scene-only > tool-only).
 
@@ -88,6 +87,7 @@ Matching semantics:
 - `expires_at` (approval TTL boundary)
 - `locked_at` (state-machine lock timestamp once decision is accepted for processing)
 - `lock_owner` (worker id or logical consumer id)
+- `lock_expires_at` (lease timeout for poisoned-lock recovery)
 
 This ensures resumed execution remains tied to the policy that triggered approval, even if policy rows change later.
 
@@ -108,7 +108,8 @@ Fields:
 - `created_at`, `updated_at`
 
 Idempotency key:
-- `(approval_id, event_type, retry_count window)` plus worker-side dedupe on terminal status.
+- strict unique key `(approval_id, event_type)`.
+- retries must reuse/update the same outbox row (`retry_count`, `next_retry_at`) instead of creating new rows.
 
 ## 4. Execution Flow
 
@@ -138,6 +139,7 @@ Idempotency key:
 3. Worker checks task TTL. If `now() > expires_at`, transition to `expired` and do not resume.
 4. If `approved`:
 - append `resume_started`,
+- set run status to `resuming` (mandatory),
 - build resume params from persisted decision,
 - execute `ResumeWithParams`,
 - persist projected events and final convergence,
@@ -148,6 +150,10 @@ Idempotency key:
 6. On retryable failures:
 - append `resume_failed`,
 - increase retry counter and schedule backoff.
+7. Lock lease recovery:
+- lock ownership must use a lease (`lock_expires_at = now() + lease_window`).
+- if worker crashes and lease expires, another worker may steal lock and retry resume.
+- sweeper job may transition long-expired locked tasks to `resume_failed_retryable`.
 
 ## 5. State Machine
 
@@ -161,7 +167,7 @@ Approval task states:
 Run statuses (approval-related subset):
 - `running`
 - `waiting_approval`
-- `resuming` (optional explicit transitional status)
+- `resuming` (mandatory transitional status during worker-owned resume)
 - `completed|completed_with_tool_errors`
 - `resume_failed_retryable`
 
@@ -171,6 +177,7 @@ Invariants:
 - Ownership validation applies on both decision write and worker resume processing.
 - `waiting_approval` runs must not be finalized as `completed` before resume outcome.
 - Once approval task is locked for worker processing, user-facing decision mutation is forbidden.
+- Worker locks are lease-based and recoverable; tasks must not remain locked indefinitely.
 - Expired approval tasks must never be resumed, even if previously marked approved.
 
 ## 6. Error Handling And Recovery
@@ -178,6 +185,7 @@ Invariants:
 - Policy read failure: safe fallback to approval required for sensitive tool paths.
 - Duplicate decisions: return current task status; no hard failure.
 - Double-submit race: decision transition and lock acquisition must be atomic; second writer receives immutable-state response.
+- Poisoned lock trap: expired leases (`lock_expires_at`) enable lock recovery and prevent indefinite `approved_locked`.
 - Resume execution failures: retriable with bounded backoff, terminally visible as `resume_failed_retryable`.
 - Stream transport failures: do not lose durable progress; event persistence remains source of truth.
 - Policy drift after task creation: task snapshot governs resume behavior.
@@ -203,6 +211,7 @@ Invariants:
 5. Worker reliability
 - Retry scheduling on transient failures.
 - Idempotent behavior under duplicate outbox deliveries.
+- Lease expiry recovery for crashed worker on `approved_locked` tasks.
 
 6. API contract
 - Frontend uses `/ai/approvals/:id/submit` and no direct synchronous resume side effects from submit call.
