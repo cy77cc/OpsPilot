@@ -590,9 +590,9 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     });
   }, []);
 
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
     const el = contentRef.current;
-    if (!el || followStateRef.current !== 'following') {
+    if (!el || (!force && followStateRef.current !== 'following')) {
       return;
     }
     withProgrammaticScroll(() => {
@@ -610,10 +610,13 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     if (!pendingInitialScrollRef.current && !pendingSendScrollRef.current) {
       return;
     }
+    if (pendingInitialScrollRef.current && renderedMessages.length === 0) {
+      return;
+    }
 
     const frameId = requestAnimationFrame(() => {
       if (pendingInitialScrollRef.current || pendingSendScrollRef.current) {
-        scrollToBottom('auto');
+        scrollToBottom('auto', true);
       }
       pendingInitialScrollRef.current = false;
       pendingSendScrollRef.current = false;
@@ -672,7 +675,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
   const handleScrollToBottom = React.useCallback(() => {
     followStateRef.current = 'following';
-    scrollToBottom('smooth');
+    scrollToBottom('smooth', true);
   }, [scrollToBottom]);
 
   const bubbleRole = React.useMemo<BubbleListProps['role']>(
@@ -880,7 +883,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       setAttachedFiles([]);
 
       requestAnimationFrame(() => {
-        scrollToBottom('auto');
+        scrollToBottom('auto', true);
       });
     },
     [
