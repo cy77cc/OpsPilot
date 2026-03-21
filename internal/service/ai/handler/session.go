@@ -42,10 +42,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		if messages, ok := messagesBySession[session.ID]; ok {
 			messageItems := make([]gin.H, 0, len(messages))
 			for _, message := range messages {
-				item := sessionMessageItem(message)
-				if runID := runBySessionAndAssistantMessageID[session.ID][message.ID]; runID != "" {
-					item["run_id"] = runID
-				}
+				item := sessionMessageItem(message, runBySessionAndAssistantMessageID[session.ID][message.ID])
 				messageItems = append(messageItems, item)
 			}
 			summary["messages"] = messageItems
@@ -68,10 +65,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 	runByAssistantMessageID := h.runByAssistantMessageID(c.Request.Context(), session.ID)
 	messageItems := make([]gin.H, 0, len(messages))
 	for _, message := range messages {
-		item := sessionMessageItem(message)
-		if runID := runByAssistantMessageID[message.ID]; runID != "" {
-			item["run_id"] = runID
-		}
+		item := sessionMessageItem(message, runByAssistantMessageID[message.ID])
 		messageItems = append(messageItems, item)
 	}
 	httpx.OK(c, gin.H{
@@ -107,18 +101,34 @@ func sessionSummaryFromModel(session model.AIChatSession) gin.H {
 	}
 }
 
-func sessionMessageItem(message model.AIChatMessage) gin.H {
+const terminalAssistantErrorMessage = "生成中断，请稍后重试。"
+
+func sessionMessageItem(message model.AIChatMessage, run *model.AIRun) gin.H {
 	item := gin.H{
 		"id":             message.ID,
 		"session_id_num": message.SessionIDNum,
 		"role":           message.Role,
 		"status":         message.Status,
 		"created_at":     formatTime(message.CreatedAt),
+		"content":        message.Content,
 	}
-	if message.Role != "assistant" {
-		item["content"] = message.Content
+	if run != nil {
+		item["run_id"] = run.ID
+		if isTerminalAssistantRun(run.Status) {
+			item["status"] = "error"
+			item["error_message"] = terminalAssistantErrorMessage
+		}
 	}
 	return item
+}
+
+func isTerminalAssistantRun(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "failed", "failed_runtime", "expired":
+		return true
+	default:
+		return false
+	}
 }
 
 func formatTime(value time.Time) string {
@@ -128,8 +138,8 @@ func formatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339)
 }
 
-func (h *Handler) runByAssistantMessageID(ctx context.Context, sessionID string) map[string]string {
-	result := map[string]string{}
+func (h *Handler) runByAssistantMessageID(ctx context.Context, sessionID string) map[string]*model.AIRun {
+	result := map[string]*model.AIRun{}
 	if h == nil || h.logic == nil || h.logic.RunDAO == nil {
 		return result
 	}
@@ -139,21 +149,22 @@ func (h *Handler) runByAssistantMessageID(ctx context.Context, sessionID string)
 	}
 	for _, run := range runs {
 		if strings.TrimSpace(run.AssistantMessageID) != "" {
-			result[run.AssistantMessageID] = run.ID
+			runCopy := run
+			result[run.AssistantMessageID] = &runCopy
 		}
 	}
 	return result
 }
 
-func (h *Handler) runBySessionAndAssistantMessageID(ctx context.Context, sessions []model.AIChatSession) map[string]map[string]string {
-	result := map[string]map[string]string{}
+func (h *Handler) runBySessionAndAssistantMessageID(ctx context.Context, sessions []model.AIChatSession) map[string]map[string]*model.AIRun {
+	result := map[string]map[string]*model.AIRun{}
 	if h == nil || h.logic == nil || h.logic.RunDAO == nil || len(sessions) == 0 {
 		return result
 	}
 	sessionIDs := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		sessionIDs = append(sessionIDs, session.ID)
-		result[session.ID] = map[string]string{}
+		result[session.ID] = map[string]*model.AIRun{}
 	}
 	runs, err := h.logic.RunDAO.ListBySessionIDs(ctx, sessionIDs)
 	if err != nil {
@@ -164,9 +175,10 @@ func (h *Handler) runBySessionAndAssistantMessageID(ctx context.Context, session
 			continue
 		}
 		if _, ok := result[run.SessionID]; !ok {
-			result[run.SessionID] = map[string]string{}
+			result[run.SessionID] = map[string]*model.AIRun{}
 		}
-		result[run.SessionID][run.AssistantMessageID] = run.ID
+		runCopy := run
+		result[run.SessionID][run.AssistantMessageID] = &runCopy
 	}
 	return result
 }

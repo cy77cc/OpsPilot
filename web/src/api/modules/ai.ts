@@ -16,6 +16,7 @@ export interface AIMessage {
   thoughtChain?: Array<Record<string, any>>;
   traceId?: string;
   status?: string;
+  error_message?: string;
   timestamp: string;
 }
 
@@ -85,6 +86,7 @@ export interface AIKnowledgeFeedbackPayload {
 export interface AIChatParams {
   sessionId?: string;
   session_id?: string;
+  clientRequestId?: string;
   message: string;
   scene?: string;
   context?: any;
@@ -622,6 +624,7 @@ export const aiApi = {
       body: JSON.stringify({
         ...params,
         ...(params.sessionId && !params.session_id ? { session_id: params.sessionId } : {}),
+        ...(params.clientRequestId ? { client_request_id: params.clientRequestId } : {}),
       }),
     });
 

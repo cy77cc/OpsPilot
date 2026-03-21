@@ -63,6 +63,20 @@ export async function hydrateAssistantHistoryFromProjection(
 
   const projection = await loadRunProjection(runId);
   if (!projection) {
+    if (fallbackContent.trim()) {
+      return {
+        id: message.id,
+        role: 'assistant',
+        content: fallbackContent,
+        runtime: {
+          activities: [],
+          status: {
+            kind: 'error',
+            label: message.error_message || '生成中断，请稍后重试',
+          },
+        },
+      };
+    }
     return {
       id: message.id,
       role: 'assistant',

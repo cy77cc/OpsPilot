@@ -779,6 +779,419 @@ func TestChat_PersistsProjectionSummaryWithoutAssistantMessageContent(t *testing
 	}
 }
 
+func TestChat_PersistsShellBeforeRunnerStarts(t *testing.T) {
+	db := newLogicTestDB(t)
+
+	var observed shellSnapshot
+	agent := &scriptedAgent{
+		beforeRun: func(ctx context.Context) {
+			meta := runtimectx.AIMetadataFrom(ctx)
+			observed.SessionID = meta.SessionID
+			observed.RunID = meta.RunID
+
+			var session model.AIChatSession
+			if err := db.First(&session, "id = ?", meta.SessionID).Error; err == nil {
+				observed.HasSession = true
+			}
+
+			var run model.AIRun
+			if err := db.First(&run, "id = ?", meta.RunID).Error; err == nil {
+				observed.RunStatus = run.Status
+				observed.UserMessageID = run.UserMessageID
+				observed.AssistantMessageID = run.AssistantMessageID
+			}
+
+			var messages []model.AIChatMessage
+			if err := db.Where("session_id = ?", meta.SessionID).Order("session_id_num ASC").Find(&messages).Error; err == nil {
+				observed.MessageCount = len(messages)
+				for _, message := range messages {
+					switch message.Role {
+					case "user":
+						observed.UserStatus = message.Status
+					case "assistant":
+						observed.AssistantStatus = message.Status
+					}
+				}
+			}
+		},
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("ready", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	l := newLogicTestLogic(db, agent)
+	if err := l.Chat(context.Background(), ChatInput{
+		Message: "inspect cluster",
+		Scene:   "ai",
+		UserID:  21,
+	}, func(string, any) {}); err != nil {
+		t.Fatalf("chat returned error: %v", err)
+	}
+
+	if !observed.HasSession {
+		t.Fatal("expected session shell to exist before runner starts")
+	}
+	if observed.RunID == "" {
+		t.Fatal("expected run shell to exist before runner starts")
+	}
+	if observed.MessageCount != 2 {
+		t.Fatalf("expected user and assistant message shells before runner starts, got %d", observed.MessageCount)
+	}
+	if observed.RunStatus != "running" {
+		t.Fatalf("expected run shell status running before runner starts, got %q", observed.RunStatus)
+	}
+	if observed.UserStatus != "done" {
+		t.Fatalf("expected user shell status done before runner starts, got %q", observed.UserStatus)
+	}
+	if observed.AssistantStatus != "streaming" {
+		t.Fatalf("expected assistant shell status streaming before runner starts, got %q", observed.AssistantStatus)
+	}
+}
+
+func TestChat_PersistsFailedStartupTurn(t *testing.T) {
+	db := newLogicTestDB(t)
+	internalErr := errors.New("dial tcp 10.23.4.5:5432: connect: connection refused")
+	emitted := make([]airuntime.PublicStreamEvent, 0, 4)
+
+	l := newLogicTestLogic(db, &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{Err: internalErr},
+		},
+	})
+
+	if err := l.Chat(context.Background(), ChatInput{
+		Message:         "start diagnostics",
+		Scene:           "ai",
+		UserID:          22,
+		ClientRequestID: "req-startup-fail",
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected startup failure to be finalized in-band, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted run")
+	}
+	if run.Status != "failed_runtime" {
+		t.Fatalf("expected failed_runtime startup status, got %q", run.Status)
+	}
+	if !strings.Contains(run.ErrorMessage, "10.23.4.5") {
+		t.Fatalf("expected internal run error message to retain diagnostic details, got %q", run.ErrorMessage)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("id = ?", run.AssistantMessageID).First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Status != "error" {
+		t.Fatalf("expected assistant status error, got %q", assistant.Status)
+	}
+	if strings.TrimSpace(assistant.Content) == "" {
+		t.Fatal("expected assistant failure snapshot to be persisted")
+	}
+	if strings.Contains(assistant.Content, "10.23.4.5") {
+		t.Fatalf("expected assistant failure snapshot to be sanitized, got %q", assistant.Content)
+	}
+
+	errorMessage := findEventField(t, emitted, "error", "message")
+	if strings.TrimSpace(errorMessage) == "" {
+		t.Fatal("expected error event payload")
+	}
+	if strings.Contains(errorMessage, "10.23.4.5") {
+		t.Fatalf("expected emitted error payload to be sanitized, got %q", errorMessage)
+	}
+}
+
+func TestChat_PersistsPartialBodyOnFatalStreamError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-partial-fatal",
+		UserID: 23,
+		Scene:  "ai",
+		Title:  "Partial Fatal",
+	})
+
+	streamReader, streamWriter := schema.Pipe[*schema.Message](2)
+	go func() {
+		streamWriter.Send(schema.AssistantMessage("partial answer", nil), nil)
+		streamWriter.Send(nil, errors.New("read tcp 10.0.0.8:443->10.0.0.9:1234: i/o timeout"))
+		streamWriter.Close()
+	}()
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+	l := newLogicTestLogic(db, &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{
+				AgentName: "scripted-agent",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{
+						IsStreaming:   true,
+						MessageStream: streamReader,
+					},
+				},
+			},
+			adk.EventFromMessage(schema.AssistantMessage("should not be emitted", nil), nil, schema.Assistant, ""),
+		},
+	})
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-partial-fatal",
+		Message:   "trigger stream error",
+		Scene:     "ai",
+		UserID:    23,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected fatal stream error to be finalized in-band, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted run")
+	}
+	if run.Status != "failed_runtime" {
+		t.Fatalf("expected failed_runtime, got %q", run.Status)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("id = ?", run.AssistantMessageID).First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Status != "error" {
+		t.Fatalf("expected assistant status error, got %q", assistant.Status)
+	}
+	if !strings.Contains(assistant.Content, "partial answer") {
+		t.Fatalf("expected assistant snapshot to retain partial body, got %q", assistant.Content)
+	}
+	if strings.Contains(assistant.Content, "10.0.0.8") {
+		t.Fatalf("expected assistant failure snapshot to be sanitized, got %q", assistant.Content)
+	}
+
+	for _, event := range emitted {
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			continue
+		}
+		content, _ := data["content"].(string)
+		if strings.Contains(content, "should not be emitted") {
+			t.Fatalf("expected no emitted content after stream failure, found %#v", event)
+		}
+	}
+}
+
+func TestChat_RetryWithSameClientRequestIDReusesExistingShell(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-idempotent-shell",
+		UserID: 24,
+		Scene:  "ai",
+		Title:  "Idempotent Shell",
+	})
+
+	firstEvents := make([]airuntime.PublicStreamEvent, 0, 4)
+	l := newLogicTestLogic(db, &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{Err: errors.New("startup failed once")},
+		},
+	})
+
+	input := ChatInput{
+		SessionID:       "session-idempotent-shell",
+		ClientRequestID: "req-reuse-shell",
+		Message:         "same turn",
+		Scene:           "ai",
+		UserID:          24,
+	}
+
+	if err := l.Chat(context.Background(), input, func(event string, data any) {
+		firstEvents = append(firstEvents, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("first attempt returned error: %v", err)
+	}
+
+	secondEvents := make([]airuntime.PublicStreamEvent, 0, 4)
+	if err := l.Chat(context.Background(), input, func(event string, data any) {
+		secondEvents = append(secondEvents, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("second attempt returned error: %v", err)
+	}
+
+	firstRunID := findEventField(t, firstEvents, "meta", "run_id")
+	secondRunID := findEventField(t, secondEvents, "meta", "run_id")
+	if firstRunID == "" || secondRunID == "" {
+		t.Fatalf("expected both attempts to emit meta run ids, got %q and %q", firstRunID, secondRunID)
+	}
+	if firstRunID != secondRunID {
+		t.Fatalf("expected retry to reuse existing run shell, got %q then %q", firstRunID, secondRunID)
+	}
+
+	var runCount int64
+	if err := db.Model(&model.AIRun{}).Where("session_id = ?", input.SessionID).Count(&runCount).Error; err != nil {
+		t.Fatalf("count runs: %v", err)
+	}
+	if runCount != 1 {
+		t.Fatalf("expected one run shell for duplicate client request id, got %d", runCount)
+	}
+
+	var messageCount int64
+	if err := db.Model(&model.AIChatMessage{}).Where("session_id = ?", input.SessionID).Count(&messageCount).Error; err != nil {
+		t.Fatalf("count messages: %v", err)
+	}
+	if messageCount != 2 {
+		t.Fatalf("expected one user and one assistant shell, got %d messages", messageCount)
+	}
+}
+
+func TestChat_ProjectionWriteFailureStillFinalizesMessageAndRun(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-projection-failure",
+		UserID: 25,
+		Scene:  "ai",
+		Title:  "Projection Failure",
+	})
+	if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
+		t.Fatalf("drop projection table: %v", err)
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 4)
+	l := newLogicTestLogic(db, &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{Err: errors.New("fatal runtime failure")},
+		},
+	})
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-projection-failure",
+		Message:   "fail after shell",
+		Scene:     "ai",
+		UserID:    25,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected projection write failure to be best-effort, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted run")
+	}
+	if run.Status != "failed_runtime" {
+		t.Fatalf("expected run to finalize as failed_runtime, got %q", run.Status)
+	}
+
+	var assistant model.AIChatMessage
+	if err := db.Where("id = ?", run.AssistantMessageID).First(&assistant).Error; err != nil {
+		t.Fatalf("load assistant message: %v", err)
+	}
+	if assistant.Status != "error" {
+		t.Fatalf("expected assistant message to finalize as error, got %q", assistant.Status)
+	}
+}
+
+func TestChat_SuccessStatusesRemainCompletedAndCompletedWithToolErrors(t *testing.T) {
+	testCases := []struct {
+		name           string
+		sessionID      string
+		events         []*adk.AgentEvent
+		expectedStatus string
+	}{
+		{
+			name:      "completed",
+			sessionID: "session-success-finalize",
+			events: []*adk.AgentEvent{
+				adk.EventFromMessage(schema.AssistantMessage("all good", nil), nil, schema.Assistant, ""),
+			},
+			expectedStatus: "completed",
+		},
+		{
+			name:      "completed_with_tool_errors",
+			sessionID: "session-success-with-tool-errors",
+			events: []*adk.AgentEvent{
+				adk.EventFromMessage(schema.AssistantMessage("checking", nil), nil, schema.Assistant, ""),
+				func() *adk.AgentEvent {
+					event := adk.EventFromMessage(
+						schema.ToolMessage(`{"ok":false}`, "call-1", schema.WithToolName("kubectl_get_pods")),
+						nil,
+						schema.Tool,
+						"kubectl_get_pods",
+					)
+					event.Err = errors.New("tool execution failed")
+					return event
+				}(),
+			},
+			expectedStatus: "completed_with_tool_errors",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newLogicTestDB(t)
+			seedLogicTestSession(t, db, model.AIChatSession{
+				ID:     tc.sessionID,
+				UserID: 26,
+				Scene:  "ai",
+				Title:  tc.name,
+			})
+			if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
+				t.Fatalf("drop projection table: %v", err)
+			}
+
+			emitted := make([]airuntime.PublicStreamEvent, 0, 8)
+			l := newLogicTestLogic(db, &scriptedAgent{runEvents: tc.events})
+
+			if err := l.Chat(context.Background(), ChatInput{
+				SessionID: tc.sessionID,
+				Message:   "finalize despite projection failure",
+				Scene:     "ai",
+				UserID:    26,
+			}, func(event string, data any) {
+				emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+			}); err != nil {
+				t.Fatalf("expected projection persistence to be best-effort, got %v", err)
+			}
+
+			runID := findEventField(t, emitted, "meta", "run_id")
+			run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+			if err != nil {
+				t.Fatalf("load run: %v", err)
+			}
+			if run == nil {
+				t.Fatal("expected persisted run")
+			}
+			if run.Status != tc.expectedStatus {
+				t.Fatalf("expected run status %q, got %q", tc.expectedStatus, run.Status)
+			}
+
+			var assistant model.AIChatMessage
+			if err := db.Where("id = ?", run.AssistantMessageID).First(&assistant).Error; err != nil {
+				t.Fatalf("load assistant message: %v", err)
+			}
+			if assistant.Status != "done" {
+				t.Fatalf("expected assistant status done, got %q", assistant.Status)
+			}
+		})
+	}
+}
+
 func newLogicTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -798,6 +1211,18 @@ func newLogicTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("migrate tables: %v", err)
 	}
 	return db
+}
+
+func newLogicTestLogic(db *gorm.DB, agent adk.ResumableAgent) *Logic {
+	return &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
 }
 
 func seedLogicTestSession(t *testing.T, db *gorm.DB, session model.AIChatSession) {
@@ -843,6 +1268,7 @@ func projectionSummaryContent(t *testing.T, projection *model.AIRunProjection) s
 type scriptedAgent struct {
 	runEvents    []*adk.AgentEvent
 	capturedMeta runtimectx.AIMetadata
+	beforeRun    func(context.Context)
 }
 
 func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
@@ -850,6 +1276,9 @@ func (s *scriptedAgent) Description(context.Context) string { return "scripted a
 
 func (s *scriptedAgent) Run(ctx context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	s.capturedMeta = runtimectx.AIMetadataFrom(ctx)
+	if s.beforeRun != nil {
+		s.beforeRun(ctx)
+	}
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 	go func() {
 		for _, event := range s.runEvents {
@@ -862,4 +1291,16 @@ func (s *scriptedAgent) Run(ctx context.Context, _ *adk.AgentInput, _ ...adk.Age
 
 func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	return s.Run(ctx, nil)
+}
+
+type shellSnapshot struct {
+	SessionID          string
+	RunID              string
+	HasSession         bool
+	RunStatus          string
+	UserMessageID      string
+	AssistantMessageID string
+	MessageCount       int
+	UserStatus         string
+	AssistantStatus    string
 }

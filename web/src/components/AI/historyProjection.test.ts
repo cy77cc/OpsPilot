@@ -124,6 +124,28 @@ describe('historyProjection', () => {
     });
   });
 
+  it('falls back to persisted assistant body when projection is missing for failed run', async () => {
+    (aiApi.getRunProjection as any).mockRejectedValue(new Error('projection unavailable'));
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      content: 'partial answer',
+      error_message: '生成中断，请稍后重试。',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.content).toBe('partial answer');
+    expect(hydrated.runtime).toEqual({
+      activities: [],
+      status: {
+        kind: 'error',
+        label: '生成中断，请稍后重试。',
+      },
+    });
+  });
+
   it('recognizes the transient projection-missing hydration state', () => {
     expect(isProjectionHydrationPending({
       id: 'msg-1',

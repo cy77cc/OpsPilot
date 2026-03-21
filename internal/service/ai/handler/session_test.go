@@ -205,7 +205,7 @@ func TestGetSession_RespectsSceneFilter(t *testing.T) {
 	}
 }
 
-func TestGetSession_AssistantMessageOmitsContentButKeepsRunID(t *testing.T) {
+func TestGetSession_AssistantMessageIncludesContentAndKeepsRunID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
@@ -269,12 +269,198 @@ func TestGetSession_AssistantMessageOmitsContentButKeepsRunID(t *testing.T) {
 	if response.Data.Messages[1]["run_id"] != "run-20" {
 		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data.Messages[1])
 	}
-	if _, ok := response.Data.Messages[1]["content"]; ok {
-		t.Fatalf("expected assistant message to omit content, got %#v", response.Data.Messages[1])
+	if response.Data.Messages[1]["content"] != "world" {
+		t.Fatalf("expected assistant message to include content, got %#v", response.Data.Messages[1])
 	}
 }
 
-func TestListSessions_AssistantMessagesOmitContentButKeepRunID(t *testing.T) {
+func TestGetSession_IncludesAssistantFallbackBodyAndTerminalErrorState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+	now := time.Now()
+
+	cases := []struct {
+		name         string
+		runStatus    string
+		expectedBody string
+	}{
+		{
+			name:         "failed_runtime",
+			runStatus:    "failed_runtime",
+			expectedBody: "partial answer",
+		},
+		{
+			name:         "expired",
+			runStatus:    "expired",
+			expectedBody: "expired answer",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionID := "sess-" + tc.name
+			userMessageID := "msg-user-" + tc.name
+			assistantMessageID := "msg-assistant-" + tc.name
+			runID := "run-" + tc.name
+
+			seedSession(t, db, model.AIChatSession{ID: sessionID, UserID: 22, Title: "Failed", Scene: "ai", CreatedAt: now, UpdatedAt: now})
+			if err := db.Create(&model.AIChatMessage{
+				ID:           userMessageID,
+				SessionID:    sessionID,
+				SessionIDNum: 1,
+				Role:         "user",
+				Content:      "hello",
+				Status:       "done",
+			}).Error; err != nil {
+				t.Fatalf("seed user message: %v", err)
+			}
+			if err := db.Create(&model.AIChatMessage{
+				ID:           assistantMessageID,
+				SessionID:    sessionID,
+				SessionIDNum: 2,
+				Role:         "assistant",
+				Content:      tc.expectedBody,
+				Status:       "done",
+			}).Error; err != nil {
+				t.Fatalf("seed assistant message: %v", err)
+			}
+			if err := aidao.NewAIRunDAO(db).CreateRun(context.Background(), &model.AIRun{
+				ID:                 runID,
+				SessionID:          sessionID,
+				UserMessageID:      userMessageID,
+				AssistantMessageID: assistantMessageID,
+				Status:             tc.runStatus,
+				ErrorMessage:       "internal stack trace",
+				TraceJSON:          "{}",
+			}); err != nil {
+				t.Fatalf("seed run: %v", err)
+			}
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set("uid", uint64(22))
+			c.Params = gin.Params{{Key: "id", Value: sessionID}}
+			c.Request = httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID, nil)
+
+			h.GetSession(c)
+
+			var response struct {
+				Data struct {
+					Messages []map[string]any `json:"messages"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			if len(response.Data.Messages) != 2 {
+				t.Fatalf("expected 2 messages, got %d", len(response.Data.Messages))
+			}
+
+			assistant := response.Data.Messages[1]
+			if assistant["content"] != tc.expectedBody {
+				t.Fatalf("expected assistant content %q, got %#v", tc.expectedBody, assistant)
+			}
+			if assistant["status"] != "error" {
+				t.Fatalf("expected assistant status error, got %#v", assistant)
+			}
+			if assistant["error_message"] != "生成中断，请稍后重试。" {
+				t.Fatalf("expected terminal error metadata, got %#v", assistant)
+			}
+			if assistant["run_id"] != runID {
+				t.Fatalf("expected run_id %q, got %#v", runID, assistant)
+			}
+		})
+	}
+}
+
+func TestGetSession_PreservesAssistantErrorStatusForFailedAndExpiredRuns(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := NewAIHandlerWithDB(db)
+	now := time.Now()
+
+	cases := []struct {
+		name      string
+		runStatus string
+	}{
+		{name: "failed", runStatus: "failed"},
+		{name: "failed_runtime", runStatus: "failed_runtime"},
+		{name: "expired", runStatus: "expired"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionID := "sess-status-" + tc.name
+			userMessageID := "msg-user-status-" + tc.name
+			assistantMessageID := "msg-assistant-status-" + tc.name
+			runID := "run-status-" + tc.name
+
+			seedSession(t, db, model.AIChatSession{ID: sessionID, UserID: 23, Title: "Status", Scene: "ai", CreatedAt: now, UpdatedAt: now})
+			if err := db.Create(&model.AIChatMessage{
+				ID:           userMessageID,
+				SessionID:    sessionID,
+				SessionIDNum: 1,
+				Role:         "user",
+				Content:      "hello",
+				Status:       "done",
+			}).Error; err != nil {
+				t.Fatalf("seed user message: %v", err)
+			}
+			if err := db.Create(&model.AIChatMessage{
+				ID:           assistantMessageID,
+				SessionID:    sessionID,
+				SessionIDNum: 2,
+				Role:         "assistant",
+				Content:      "partial answer",
+				Status:       "done",
+			}).Error; err != nil {
+				t.Fatalf("seed assistant message: %v", err)
+			}
+			if err := aidao.NewAIRunDAO(db).CreateRun(context.Background(), &model.AIRun{
+				ID:                 runID,
+				SessionID:          sessionID,
+				UserMessageID:      userMessageID,
+				AssistantMessageID: assistantMessageID,
+				Status:             tc.runStatus,
+				ErrorMessage:       "internal stack trace",
+				TraceJSON:          "{}",
+			}); err != nil {
+				t.Fatalf("seed run: %v", err)
+			}
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set("uid", uint64(23))
+			c.Params = gin.Params{{Key: "id", Value: sessionID}}
+			c.Request = httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID, nil)
+
+			h.GetSession(c)
+
+			var response struct {
+				Data struct {
+					Messages []map[string]any `json:"messages"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			assistant := response.Data.Messages[1]
+			if assistant["status"] != "error" {
+				t.Fatalf("expected assistant status error, got %#v", assistant)
+			}
+			if assistant["error_message"] != "生成中断，请稍后重试。" {
+				t.Fatalf("expected terminal error metadata, got %#v", assistant)
+			}
+		})
+	}
+}
+
+func TestListSessions_AssistantMessagesIncludeContentButKeepRunID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
@@ -340,8 +526,8 @@ func TestListSessions_AssistantMessagesOmitContentButKeepRunID(t *testing.T) {
 	if response.Data[0].Messages[1]["run_id"] != "run-21" {
 		t.Fatalf("expected assistant message to include run_id, got %#v", response.Data[0].Messages[1])
 	}
-	if _, ok := response.Data[0].Messages[1]["content"]; ok {
-		t.Fatalf("expected assistant message to omit content, got %#v", response.Data[0].Messages[1])
+	if response.Data[0].Messages[1]["content"] != "world" {
+		t.Fatalf("expected assistant message to include content, got %#v", response.Data[0].Messages[1])
 	}
 }
 
