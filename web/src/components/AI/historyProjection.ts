@@ -263,28 +263,23 @@ export async function hydrateAssistantHistoryFromProjection(
     };
   }
 
+  // 使用轻量级 runtime 转换，不加载 executor 内容
+  const runtime = projectionToLazyRuntime(projection);
   const summaryContent = normalizeMarkdownContent(projection.summary?.content || '').trim();
+  const persistedContent = normalizeMarkdownContent(fallbackContent).trim();
+  const displayContent = summaryContent || persistedContent || PROJECTION_UNRECOVERABLE_PLACEHOLDER;
+
   if (!summaryContent) {
-    return {
-      id: message.id,
-      role: 'assistant',
-      content: PROJECTION_UNRECOVERABLE_PLACEHOLDER,
-      runtime: {
-        activities: [],
-        status: {
-          kind: 'error',
-          label: PROJECTION_MISSING_SUMMARY_LABEL,
-        },
-      },
+    runtime.status = {
+      kind: projection.status === 'failed_runtime' ? 'error' : runtime.status?.kind || 'error',
+      label: projection.status || PROJECTION_MISSING_SUMMARY_LABEL,
     };
   }
 
-  // 使用轻量级 runtime 转换，不加载 executor 内容
-  const runtime = projectionToLazyRuntime(projection);
   return {
     id: message.id,
     role: 'assistant',
-    content: summaryContent,
+    content: displayContent,
     runtime,
   };
 }
