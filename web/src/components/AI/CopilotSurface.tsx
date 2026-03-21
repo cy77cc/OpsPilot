@@ -20,7 +20,7 @@ import { createStyles } from 'antd-style';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
-import { hydrateAssistantHistoryFromProjection, isProjectionHydrationPending } from './historyProjection';
+import { hydrateAssistantHistoryFromProjection, isProjectionHydrationPending, loadStepContent } from './historyProjection';
 import { normalizeMarkdownContent } from './markdownContent';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
@@ -558,6 +558,30 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     [renderedMessages],
   );
 
+  // 懒加载 step 内容的回调
+  const handleLoadStepContent = React.useCallback(
+    async (stepId: string, stepIndex: number) => {
+      // 从当前 assistant 消息获取 runtime
+      const currentMsg = currentAssistantMessage?.message;
+      if (!currentMsg?.runtime?._executorBlocks) {
+        return null;
+      }
+
+      const executorBlocks = currentMsg.runtime._executorBlocks;
+      if (stepIndex < 0 || stepIndex >= executorBlocks.length) {
+        return null;
+      }
+
+      const block = executorBlocks[stepIndex];
+      if (!block) {
+        return null;
+      }
+
+      return loadStepContent(block, stepIndex);
+    },
+    [currentAssistantMessage],
+  );
+
   const withProgrammaticScroll = React.useCallback((callback: () => void) => {
     programmaticScrollRef.current = true;
     callback();
@@ -725,6 +749,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
               content={content}
               runtime={(info as any).extraInfo?.runtime}
               status={info.status}
+              onLoadStepContent={handleLoadStepContent}
             />
           </div>
         ),
@@ -740,7 +765,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         },
       },
     }),
-    [],
+    [handleLoadStepContent],
   );
 
   React.useEffect(() => {
