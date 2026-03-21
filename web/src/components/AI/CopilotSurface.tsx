@@ -594,24 +594,38 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     pendingInitialScrollRef.current = true;
   }, [activeConversationKey, open]);
 
+  // 初始化滚动 + 流式响应滚动（使用 ResizeObserver）
   React.useEffect(() => {
-    if (!open || !pendingInitialScrollRef.current || renderedMessages.length === 0) {
-      return;
-    }
+    if (!open) return;
 
-    const frame = requestAnimationFrame(() => {
-      const el = contentRef.current;
-      if (!el) {
-        return;
-      }
-      pendingInitialScrollRef.current = false;
+    const el = contentRef.current;
+    if (!el) return;
+
+    // 滚动到底部的辅助函数
+    const scrollToBottom = () => {
+      if (followStateRef.current !== 'following') return;
       withProgrammaticScroll(() => {
         el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
       });
+    };
+
+    // 创建 ResizeObserver 监听内容区域高度变化
+    const resizeObserver = new ResizeObserver(() => {
+      if (followStateRef.current === 'following') {
+        scrollToBottom();
+      }
     });
 
-    return () => cancelAnimationFrame(frame);
-  }, [open, renderedMessages.length, withProgrammaticScroll]);
+    // 观察内容容器
+    resizeObserver.observe(el);
+
+    // 初始滚动
+    scrollToBottom();
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [open, withProgrammaticScroll]);
 
   React.useEffect(() => {
     const el = contentRef.current;
