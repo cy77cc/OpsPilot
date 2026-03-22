@@ -168,15 +168,18 @@ func (o *ApprovalOrchestrator) createApprovalDecision(
 	}
 
 	eventPayload := map[string]any{
-		"approval_id":     approvalID,
-		"call_id":         meta.CallID,
-		"tool_name":       toolName,
-		"session_id":      meta.SessionID,
-		"run_id":          meta.RunID,
-		"preview":         preview,
-		"timeout_seconds": timeoutSeconds,
-		"expires_at":      expiresAt.UTC().Format(time.RFC3339Nano),
-		"decision_source": decisionSource,
+		"approval_id":        approvalID,
+		"call_id":            meta.CallID,
+		"tool_name":          toolName,
+		"session_id":         meta.SessionID,
+		"run_id":             meta.RunID,
+		"preview":            preview,
+		"timeout_seconds":    timeoutSeconds,
+		"expires_at":         expiresAt.UTC().Format(time.RFC3339Nano),
+		"decision_source":    decisionSource,
+		"approver_id":        "",
+		"approval_timestamp": "",
+		"reject_reason":      "",
 	}
 	if matched != nil {
 		eventPayload["matched_rule_id"] = matched.ID
@@ -301,7 +304,7 @@ func fallbackRequiresApproval(toolName, commandClass string) bool {
 	commandClass = strings.TrimSpace(strings.ToLower(commandClass))
 	if commandClass != "" && commandClass != "readonly" {
 		switch strings.TrimSpace(toolName) {
-		case "host_batch", "host_batch_exec_apply", "host_batch_exec_preview", "host_batch_status_update":
+		case "host_batch", "host_exec_change", "host_batch_exec_apply", "host_batch_exec_preview", "host_batch_status_update":
 			return true
 		}
 	}
@@ -311,7 +314,7 @@ func fallbackRequiresApproval(toolName, commandClass string) bool {
 func defaultFallbackRequiresApproval(toolName string) bool {
 	toolName = strings.TrimSpace(toolName)
 	switch toolName {
-	case "host_batch", "host_batch_exec_apply", "host_batch_status_update",
+	case "host_batch", "host_exec_change", "host_batch_exec_apply", "host_batch_status_update",
 		"k8s_scale_deployment", "k8s_restart_deployment", "k8s_delete_pod",
 		"k8s_rollback_deployment", "k8s_delete_deployment",
 		"cicd_trigger_pipeline", "cicd_cancel_pipeline",

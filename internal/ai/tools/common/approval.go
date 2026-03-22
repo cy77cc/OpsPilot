@@ -104,6 +104,7 @@ type ApprovalEvalMeta struct {
 	CheckpointID   string
 	CallID         string
 	Scene          string
+	AgentRole      string
 	CommandClass   string
 	UserID         uint64
 	TimeoutSeconds int
@@ -111,14 +112,20 @@ type ApprovalEvalMeta struct {
 
 // ApprovalDecision captures the evaluator output used by the approval middleware.
 type ApprovalDecision struct {
-	RequiresApproval bool
-	ApprovalID       string
-	Preview          ApprovalPreview
-	TimeoutSeconds   int
-	MatchedRuleID    *uint64
-	PolicyVersion    string
-	DecisionSource   string
-	ExpiresAt        time.Time
+	RequiresApproval  bool
+	ApprovalID        string
+	Preview           ApprovalPreview
+	TimeoutSeconds    int
+	MatchedRuleID     *uint64
+	PolicyVersion     string
+	DecisionSource    string
+	ExpiresAt         time.Time
+	BoundSessionID    string
+	BoundAgentRole    string
+	ApproverID        string
+	ApprovalTimestamp *time.Time
+	RejectReason      string
+	PolicyViolations  []string
 }
 
 // ApprovalEvaluator can decide whether a tool call requires human approval.

@@ -53,6 +53,19 @@ type HostExecByTargetInput struct {
 	Command string `json:"command" jsonschema_description:"required,readonly command"`
 }
 
+// HostExecReadonlyInput host_exec_readonly 输入参数。
+type HostExecReadonlyInput struct {
+	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
+	Command string `json:"command" jsonschema_description:"required,readonly command"`
+}
+
+// HostExecChangeInput host_exec_change 输入参数。
+type HostExecChangeInput struct {
+	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
+	Command string `json:"command" jsonschema_description:"required,command to execute"`
+	Reason  string `json:"reason,omitempty" jsonschema_description:"optional reason for audit"`
+}
+
 // HostInventoryInput 主机清单查询输入。
 type HostInventoryInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional host status filter"`
@@ -138,9 +151,11 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 func NewHostTools(ctx context.Context) []tool.InvokableTool {
 	readonly := NewHostReadonlyTools(ctx)
 	write := NewHostWriteTools(ctx)
-	result := make([]tool.InvokableTool, 0, len(readonly)+len(write))
+	legacy := NewHostLegacyExecTools(ctx)
+	result := make([]tool.InvokableTool, 0, len(readonly)+len(write)+len(legacy))
 	result = append(result, readonly...)
 	result = append(result, write...)
+	result = append(result, legacy...)
 	return result
 }
 
@@ -155,9 +170,7 @@ func NewHostTools(ctx context.Context) []tool.InvokableTool {
 // 这些工具不修改任何状态，可安全用于诊断场景。
 func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		HostSSHReadonly(ctx),
-		HostExec(ctx),
-		HostExecByTarget(ctx),
+		HostExecReadonly(ctx),
 		HostListInventory(ctx),
 		OSGetCPUMem(ctx),
 		OSGetDiskFS(ctx),
@@ -178,9 +191,19 @@ func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 // 这些工具会修改主机状态或执行命令，需要审批机制（Phase 2 实现）。
 func NewHostWriteTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
+		HostExecChange(ctx),
 		HostBatch(ctx),
 		HostBatchExecApply(ctx),
 		HostBatchStatusUpdate(ctx),
+	}
+}
+
+// NewHostLegacyExecTools returns compatibility wrappers for legacy host exec tools.
+func NewHostLegacyExecTools(ctx context.Context) []tool.InvokableTool {
+	return []tool.InvokableTool{
+		HostSSHReadonly(ctx),
+		HostExec(ctx),
+		HostExecByTarget(ctx),
 	}
 }
 
@@ -194,7 +217,7 @@ func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_ssh_exec_readonly",
-		"Execute an SSH command on a host for diagnosis or remediation. host_id and command are required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Example: {\"host_id\":1,\"command\":\"uptime\"}.",
+		"Legacy wrapper of host_exec_readonly. Execute a host command with host_id only when policy allows.",
 		func(ctx context.Context, input *HostSSHReadonlyInput, opts ...tool.Option) (*HostSSHReadonlyOutput, error) {
 			hostID := input.HostID
 			cmd := strings.TrimSpace(input.Command)
@@ -204,18 +227,11 @@ func HostSSHReadonly(ctx context.Context) tool.InvokableTool {
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if _, _, blocked := classifyHostCommand(cmd); blocked {
-				return nil, fmt.Errorf("dangerous command is blocked")
-			}
-			var node model.Node
-			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
+			out, err := runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec_readonly", strconv.Itoa(hostID), cmd)
+			if err != nil {
 				return nil, err
 			}
-			out, err := executeHostCommand(svcCtx, &node, cmd)
-			if err != nil {
-				return &HostSSHReadonlyOutput{Stdout: out, Stderr: err.Error(), ExitCode: 1}, nil
-			}
-			return &HostSSHReadonlyOutput{Stdout: out, Stderr: "", ExitCode: 0}, nil
+			return &HostSSHReadonlyOutput{Stdout: out.Stdout, Stderr: out.Stderr, ExitCode: out.ExitCode}, nil
 		},
 	)
 	if err != nil {
@@ -230,13 +246,59 @@ type HostExecOutput struct {
 	Stdout   string `json:"stdout"`
 	Stderr   string `json:"stderr"`
 	ExitCode int    `json:"exit_code"`
+	Status   string `json:"status,omitempty"`
+
+	ApprovalRequired bool              `json:"approval_required,omitempty"`
+	PolicyDecision   string            `json:"policy_decision,omitempty"`
+	PolicyReasons    []string          `json:"policy_reasons,omitempty"`
+	Violations       []PolicyViolation `json:"violations,omitempty"`
+}
+
+// HostExecReadonly executes readonly host commands through policy engine.
+func HostExecReadonly(ctx context.Context) tool.InvokableTool {
+	svcCtx := serviceContextFromRuntime(ctx)
+	t, err := einoutils.InferOptionableTool(
+		"host_exec_readonly",
+		"Execute a readonly host command only when policy validation passes. Input: target(optional) and command(required). Returns suspended status when approval is required.",
+		func(ctx context.Context, input *HostExecReadonlyInput, opts ...tool.Option) (*HostExecOutput, error) {
+			cmd := strings.TrimSpace(input.Command)
+			if cmd == "" {
+				return nil, fmt.Errorf("command is required")
+			}
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec_readonly", input.Target, cmd)
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+// HostExecChange routes change command requests through policy engine (default: suspended).
+func HostExecChange(ctx context.Context) tool.InvokableTool {
+	svcCtx := serviceContextFromRuntime(ctx)
+	t, err := einoutils.InferOptionableTool(
+		"host_exec_change",
+		"Execute a host change command through policy/approval boundaries. Input: target(optional), command(required), reason(optional).",
+		func(ctx context.Context, input *HostExecChangeInput, opts ...tool.Option) (*HostExecOutput, error) {
+			cmd := strings.TrimSpace(input.Command)
+			if cmd == "" {
+				return nil, fmt.Errorf("command is required")
+			}
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec_change", input.Target, cmd)
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }
 
 func HostExec(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
-		"Execute a command on a single host via SSH. host_id and command are required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Returns stdout, stderr and exit code. Example: {\"host_id\":1,\"command\":\"systemctl status nginx\"}.",
+		"Legacy wrapper of host_exec_readonly. Executes a command on a single host only when policy allows.",
 		func(ctx context.Context, input *HostExecInput, opts ...tool.Option) (*HostExecOutput, error) {
 			hostID := input.HostID
 			cmd := strings.TrimSpace(input.Command)
@@ -246,30 +308,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if _, _, blocked := classifyHostCommand(cmd); blocked {
-				return nil, fmt.Errorf("dangerous command is blocked")
-			}
-			var node model.Node
-			if err := svcCtx.DB.First(&node, hostID).Error; err != nil {
-				return nil, err
-			}
-			out, err := executeHostCommand(svcCtx, &node, cmd)
-			if err != nil {
-				return &HostExecOutput{
-					HostID:   hostID,
-					Command:  cmd,
-					Stdout:   out,
-					Stderr:   err.Error(),
-					ExitCode: 1,
-				}, nil
-			}
-			return &HostExecOutput{
-				HostID:   hostID,
-				Command:  cmd,
-				Stdout:   out,
-				Stderr:   "",
-				ExitCode: 0,
-			}, nil
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec_readonly", strconv.Itoa(hostID), cmd)
 		},
 	)
 	if err != nil {
@@ -282,61 +321,100 @@ func HostExecByTarget(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec_by_target",
-		"Resolve a host by target string and execute a command. Target may be a host id, IP, hostname, name, or localhost. command is required. Dangerous commands are blocked, but ordinary operational commands are allowed and should be chosen carefully by the model. Returns resolved host metadata, stdout, stderr and exit code. Example: {\"target\":\"volc-engine-server\",\"command\":\"systemctl status nginx\"}.",
+		"Legacy wrapper of host_exec_readonly. Resolve target and execute only when policy allows.",
 		func(ctx context.Context, input *HostExecByTargetInput, opts ...tool.Option) (*HostExecOutput, error) {
 			cmd := strings.TrimSpace(input.Command)
 			if cmd == "" {
 				return nil, fmt.Errorf("command is required")
 			}
-			if _, _, blocked := classifyHostCommand(cmd); blocked {
-				return nil, fmt.Errorf("dangerous command is blocked")
-			}
-			node, err := resolveNodeByTarget(svcCtx, input.Target)
-			if err != nil {
-				return nil, err
-			}
-			if node == nil {
-				out, err := runLocalCommand(ctx, 6*time.Second, "sh", []string{"-c", cmd}...)
-				if err != nil {
-					return &HostExecOutput{
-						HostID:   0,
-						Command:  cmd,
-						Stdout:   out,
-						Stderr:   err.Error(),
-						ExitCode: 1,
-					}, nil
-				}
-				return &HostExecOutput{
-					HostID:   0,
-					Command:  cmd,
-					Stdout:   out,
-					Stderr:   "",
-					ExitCode: 0,
-				}, nil
-			}
-			out, err := executeHostCommand(svcCtx, node, cmd)
-			if err != nil {
-				return &HostExecOutput{
-					HostID:   int(node.ID),
-					Command:  cmd,
-					Stdout:   out,
-					Stderr:   err.Error(),
-					ExitCode: 1,
-				}, nil
-			}
-			return &HostExecOutput{
-				HostID:   int(node.ID),
-				Command:  cmd,
-				Stdout:   out,
-				Stderr:   "",
-				ExitCode: 0,
-			}, nil
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec_readonly", input.Target, cmd)
 		},
 	)
 	if err != nil {
 		panic(err)
 	}
 	return t
+}
+
+func runPolicyAwareExecByTarget(ctx context.Context, svcCtx *svc.ServiceContext, toolName, target, cmd string) (*HostExecOutput, error) {
+	engine := NewHostCommandPolicyEngine(DefaultReadonlyAllowlist())
+	decision := engine.Evaluate(PolicyInput{
+		ToolName:   toolName,
+		CommandRaw: cmd,
+		Target:     strings.TrimSpace(target),
+	})
+
+	output := &HostExecOutput{
+		Command:          cmd,
+		PolicyDecision:   string(decision.DecisionType),
+		PolicyReasons:    decision.ReasonCodes,
+		Violations:       decision.Violations,
+		ApprovalRequired: decision.DecisionType == DecisionRequireApprovalInterrupt,
+	}
+	if decision.DecisionType != DecisionAllowReadonlyExecute {
+		output.Status = "suspended"
+		output.Stderr = "approval required by host command policy"
+		output.ExitCode = 1
+		return output, nil
+	}
+
+	node, err := resolveNodeByTarget(svcCtx, target)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		out, runErr := runLocalCommand(ctx, 6*time.Second, "sh", []string{"-c", cmd}...)
+		if runErr != nil {
+			return &HostExecOutput{
+				HostID:         0,
+				Command:        cmd,
+				Stdout:         out,
+				Stderr:         runErr.Error(),
+				ExitCode:       1,
+				Status:         "completed",
+				PolicyDecision: string(decision.DecisionType),
+				PolicyReasons:  decision.ReasonCodes,
+				Violations:     decision.Violations,
+			}, nil
+		}
+		return &HostExecOutput{
+			HostID:         0,
+			Command:        cmd,
+			Stdout:         out,
+			Stderr:         "",
+			ExitCode:       0,
+			Status:         "completed",
+			PolicyDecision: string(decision.DecisionType),
+			PolicyReasons:  decision.ReasonCodes,
+			Violations:     decision.Violations,
+		}, nil
+	}
+
+	out, runErr := executeHostCommand(svcCtx, node, cmd)
+	if runErr != nil {
+		return &HostExecOutput{
+			HostID:         int(node.ID),
+			Command:        cmd,
+			Stdout:         out,
+			Stderr:         runErr.Error(),
+			ExitCode:       1,
+			Status:         "completed",
+			PolicyDecision: string(decision.DecisionType),
+			PolicyReasons:  decision.ReasonCodes,
+			Violations:     decision.Violations,
+		}, nil
+	}
+	return &HostExecOutput{
+		HostID:         int(node.ID),
+		Command:        cmd,
+		Stdout:         out,
+		Stderr:         "",
+		ExitCode:       0,
+		Status:         "completed",
+		PolicyDecision: string(decision.DecisionType),
+		PolicyReasons:  decision.ReasonCodes,
+		Violations:     decision.Violations,
+	}, nil
 }
 
 type HostListInventoryOutput struct {

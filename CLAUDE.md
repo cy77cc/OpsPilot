@@ -93,7 +93,8 @@ internal/ai/
 | **Platform Discovery** | `platform_discover_resources` | No |
 | **K8s Readonly** | `k8s_query`, `k8s_list_resources`, `k8s_events`, `k8s_logs` | No |
 | **K8s Write** | `k8s_scale_deployment`, `k8s_restart_deployment`, `k8s_delete_pod`, `k8s_rollback_deployment`, `k8s_delete_deployment` | Yes |
-| **Host Readonly** | `host_list_inventory`, `os_get_cpu_mem`, etc. | No |
+| **Host Readonly** | `host_exec_readonly`, `host_list_inventory`, `os_get_cpu_mem`, etc. | Policy pass only |
+| **Host Change** | `host_exec_change` | Yes |
 | **Host Write** | `host_batch`, `host_batch_exec_apply`, `host_batch_status_update` | Yes |
 
 **Approval Flow:**
