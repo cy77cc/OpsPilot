@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -174,6 +173,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		assistantSnapshot strings.Builder
 		projector         = airuntime.NewStreamProjector()
 		hasToolErrors     bool
+		toolFailures      = newToolFailureTracker()
+		circuitBroken     bool
 	)
 
 	for {
@@ -183,9 +184,14 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 
 		if event.Err != nil {
-			if toolErrorEvent, ok := recoverableToolErrorEvent(event); ok {
+			if recoverable, ok := recoverableToolErrorFromEvent(event); ok {
 				hasToolErrors = true
-				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &summaryContent)
+				if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
+					circuitBroken = true
+				}
+				projected := projector.Consume(recoverable.Event)
+				toolFailures.recordProjectedEvents(projected)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
 				if err != nil {
 					return fmt.Errorf("persist projected tool error event: %w", err)
 				}
@@ -195,16 +201,26 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 						AssistantType: update.AssistantType,
 					})
 				}
+				if circuitBroken {
+					break
+				}
 				continue
 			}
 
-			if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
-				return fmt.Errorf("flush projected events: %w", err)
+			if isBusinessToolResultEvent(event) {
+				hasToolErrors = true
+				// Let the normal projection path surface tool_result error semantics.
+			} else {
+				flushEvents := projector.FlushBuffer()
+				toolFailures.recordProjectedEvents(flushEvents)
+				if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
+					return fmt.Errorf("flush projected events: %w", err)
+				}
+				if err := l.emitTerminalFailure(ctx, shell, &seqCounter, event.Err, summaryContent.String(), assistantSnapshot.String(), emit); err != nil {
+					return fmt.Errorf("finalize fatal error: %w", err)
+				}
+				return nil
 			}
-			if err := l.emitTerminalFailure(ctx, shell, &seqCounter, event.Err, summaryContent.String(), assistantSnapshot.String(), emit); err != nil {
-				return fmt.Errorf("finalize fatal error: %w", err)
-			}
-			return nil
 		}
 
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
@@ -214,11 +230,16 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
-					if toolErrorEvent, ok := recoverableToolErrorFromErr(err, event.AgentName); ok {
+					if recoverable, ok := recoverableToolErrorFromErr(err, event.AgentName); ok {
 						hasToolErrors = true
-						update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &summaryContent)
+						if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
+							circuitBroken = true
+						}
+						projected := projector.Consume(recoverable.Event)
+						toolFailures.recordProjectedEvents(projected)
+						update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
 						if consumeErr != nil {
-							return fmt.Errorf("persist projected stream tool error event: %w", consumeErr)
+							return fmt.Errorf("persist projected tool error event: %w", consumeErr)
 						}
 						if update.AssistantType != "" || update.IntentType != "" {
 							_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
@@ -226,9 +247,15 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 								AssistantType: update.AssistantType,
 							})
 						}
-						break
+						if circuitBroken {
+							break
+						}
+						continue
 					}
-					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
+
+					flushEvents := projector.FlushBuffer()
+					toolFailures.recordProjectedEvents(flushEvents)
+					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
 						return fmt.Errorf("flush projected events: %w", err)
 					}
 					snapshot := assistantSnapshot.String()
@@ -246,7 +273,9 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
-				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(chunkEvent), emit, &summaryContent)
+				projected := projector.Consume(chunkEvent)
+				toolFailures.recordProjectedEvents(projected)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
 				if err != nil {
 					return fmt.Errorf("persist projected stream chunk: %w", err)
 				}
@@ -260,10 +289,15 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					})
 				}
 			}
+			if circuitBroken {
+				break
+			}
 			continue
 		}
 
-		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(event), emit, &summaryContent)
+		projected := projector.Consume(event)
+		toolFailures.recordProjectedEvents(projected)
+		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
 		if err != nil {
 			return fmt.Errorf("persist projected event: %w", err)
 		}
@@ -275,7 +309,9 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 	}
 
-	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
+	flushEvents := projector.FlushBuffer()
+	toolFailures.recordProjectedEvents(flushEvents)
+	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
 	}
 	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
@@ -600,19 +636,6 @@ func flushProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitte
 	_ = l.flushProjectedEvents(context.Background(), "", "", &seq, events, emit, assistantContent)
 }
 
-func isRecoverableToolErrorEvent(event *adk.AgentEvent) bool {
-	if event == nil || event.Err == nil || event.Output == nil || event.Output.MessageOutput == nil {
-		return false
-	}
-
-	message, err := event.Output.MessageOutput.GetMessage()
-	if err != nil || message == nil {
-		return false
-	}
-
-	return message.Role == schema.Tool
-}
-
 func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seqCounter *int, eventName string, payload any) error {
 	if l.RunEventDAO == nil || seqCounter == nil {
 		return nil
@@ -804,66 +827,6 @@ func mapValue(data map[string]any, key string) map[string]any {
 	}
 	value, _ := data[key].(map[string]any)
 	return value
-}
-
-var (
-	streamToolCallErrPattern = regexp.MustCompile(`failed to stream tool call (\S+): .*toolName=([^,\s]+), err=(.+)`)
-	invokeToolErrPattern     = regexp.MustCompile(`failed to invoke tool\[name:([^\s\]]+) id:([^\s\]]+)\]: (.+)`)
-)
-
-func recoverableToolErrorEvent(event *adk.AgentEvent) (*adk.AgentEvent, bool) {
-	if isRecoverableToolErrorEvent(event) {
-		return event, true
-	}
-	if event == nil {
-		return nil, false
-	}
-
-	return recoverableToolErrorFromErr(event.Err, event.AgentName)
-}
-
-func recoverableToolErrorFromErr(err error, agentName string) (*adk.AgentEvent, bool) {
-	if err == nil {
-		return nil, false
-	}
-
-	callID, toolName, ok := parseToolInvocationError(err.Error())
-	if !ok {
-		return nil, false
-	}
-
-	payload, err := json.Marshal(map[string]any{
-		"ok":         false,
-		"status":     "error",
-		"tool_name":  toolName,
-		"call_id":    callID,
-		"message":    err.Error(),
-		"error_type": "tool_invocation",
-	})
-	if err != nil {
-		return nil, false
-	}
-
-	message := schema.ToolMessage(string(payload), callID, schema.WithToolName(toolName))
-	synthetic := adk.EventFromMessage(message, nil, schema.Tool, toolName)
-	synthetic.AgentName = agentName
-	synthetic.Err = err
-	return synthetic, true
-}
-
-func parseToolInvocationError(errText string) (callID, toolName string, ok bool) {
-	trimmed := strings.TrimSpace(errText)
-	if trimmed == "" {
-		return "", "", false
-	}
-
-	if matches := streamToolCallErrPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
-		return matches[1], matches[2], matches[3] != ""
-	}
-	if matches := invokeToolErrPattern.FindStringSubmatch(trimmed); len(matches) == 4 {
-		return matches[2], matches[1], matches[3] != ""
-	}
-	return "", "", false
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {

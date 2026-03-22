@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/history"
 )
 
@@ -83,6 +84,13 @@ func NewQAAgent(ctx context.Context) (adk.Agent, error) {
 	// if err != nil {
 	// 	return nil, fmt.Errorf("qa agent: build search tool: %w", err)
 	// }
+	toolset := []tool.BaseTool{
+		history.LoadSessionHistory(ctx),
+	}
+	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, toolset)
+	if err != nil {
+		return nil, fmt.Errorf("qa agent: init tool normalization middleware: %w", err)
+	}
 
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "QAAgent",
@@ -91,9 +99,8 @@ func NewQAAgent(ctx context.Context) (adk.Agent, error) {
 		Model:       model,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: []tool.BaseTool{
-					history.LoadSessionHistory(ctx),
-				},
+				Tools:               toolset,
+				ToolCallMiddlewares: []compose.ToolMiddleware{normalizerMW},
 			},
 		},
 		MaxIterations: 5,

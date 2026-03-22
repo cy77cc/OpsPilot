@@ -89,6 +89,10 @@ func newDiagnosisPlanner(ctx context.Context) (adk.Agent, error) {
 // 工具集仅限只读 K8s 工具 + 监控工具，不包含任何写操作。
 func newDiagnosisExecutor(ctx context.Context) (adk.Agent, error) {
 	toolset := tools.NewDiagnosisTools(ctx)
+	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, toolset)
+	if err != nil {
+		return nil, fmt.Errorf("diagnosis agent: init tool normalization middleware: %w", err)
+	}
 
 	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
 		Timeout:  60 * time.Second,
@@ -104,7 +108,8 @@ func newDiagnosisExecutor(ctx context.Context) (adk.Agent, error) {
 		MaxIterations: 24,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: toolset,
+				Tools:               toolset,
+				ToolCallMiddlewares: []compose.ToolMiddleware{normalizerMW},
 			},
 		},
 		GenInputFn: genExecutorInputFn,

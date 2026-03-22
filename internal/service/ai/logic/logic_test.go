@@ -397,6 +397,103 @@ func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
 	}
 }
 
+func TestChatCircuitBreaksRepeatedSameToolFailure(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-circuit-breaker",
+		UserID: 17,
+		Scene:  "ai",
+		Title:  "Tool Failure Circuit Breaker",
+	})
+
+	toolCall := func(callID string) *adk.AgentEvent {
+		return adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+			{
+				ID: callID,
+				Function: schema.FunctionCall{
+					Name:      "host_exec",
+					Arguments: `{"cmd":"date","scope":"cluster"}`,
+				},
+			},
+		}), nil, schema.Assistant, "")
+	}
+	toolError := func(callID string) *adk.AgentEvent {
+		return &adk.AgentEvent{
+			AgentName: "executor",
+			Err:       errors.New("failed to invoke tool[name:host_exec id:" + callID + "]: command denied"),
+		}
+	}
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			toolCall("call-1"),
+			toolError("call-1"),
+			toolCall("call-2"),
+			toolError("call-2"),
+			adk.EventFromMessage(schema.AssistantMessage("should not be reached", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 16)
+	l := &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-circuit-breaker",
+		Message:   "run repeated tool calls",
+		Scene:     "ai",
+		UserID:    17,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected circuit-broken recoverable failure to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected run status completed_with_tool_errors, got %q", run.Status)
+	}
+
+	for _, event := range emitted {
+		if event.Event != "delta" {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			continue
+		}
+		if content, _ := data["content"].(string); strings.Contains(content, "should not be reached") {
+			t.Fatalf("expected circuit breaker to stop later events, saw %#v", event)
+		}
+	}
+
+	var toolResultCount int64
+	if err := db.Model(&model.AIRunEvent{}).Where("run_id = ? AND event_type = ?", runID, string(airuntime.EventTypeToolResult)).Count(&toolResultCount).Error; err != nil {
+		t.Fatalf("count tool_result events: %v", err)
+	}
+	if toolResultCount < 2 {
+		t.Fatalf("expected repeated tool failures to be persisted, got %d", toolResultCount)
+	}
+}
+
 func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 	db := newLogicTestDB(t)
 	seedLogicTestSession(t, db, model.AIChatSession{

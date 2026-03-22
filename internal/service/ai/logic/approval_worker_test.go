@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -386,6 +387,111 @@ func testWorkerSetsRunResumingAndConverges(t *testing.T) {
 	}
 	if outbox.Status != "done" {
 		t.Fatalf("expected outbox done after convergence, got %q", outbox.Status)
+	}
+}
+
+func TestApprovalWorkerResumeKeepsRunAliveOnRecoverableStreamRecvError(t *testing.T) {
+	db := newApprovalWorkerTestDB(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	seedApprovalWorkerRun(t, db, approvalWorkerRunSeed{
+		sessionID:          "session-resume-recv-error",
+		userID:             53,
+		runID:              "run-resume-recv-error",
+		userMessageID:      "msg-resume-recv-user",
+		assistantMessageID: "msg-resume-recv-assistant",
+		runStatus:          "waiting_approval",
+	})
+	seedApprovalWorkerTask(t, db, &model.AIApprovalTask{
+		ApprovalID:       "approval-resume-recv-error",
+		CheckpointID:     "checkpoint-resume-recv-error",
+		SessionID:        "session-resume-recv-error",
+		RunID:            "run-resume-recv-error",
+		UserID:           53,
+		ToolName:         "exec_command",
+		ToolCallID:       "tool-call-resume-recv-error",
+		ArgumentsJSON:    `{"cmd":"date"}`,
+		PreviewJSON:      `{}`,
+		Status:           "approved",
+		ApprovedBy:       53,
+		Comment:          "resume it",
+		TimeoutSeconds:   300,
+		ExpiresAt:        ptrTime(now.Add(10 * time.Minute)),
+		DecidedAt:        ptrTime(now),
+		LockExpiresAt:    ptrTime(now.Add(2 * time.Minute)),
+		DecisionSource:   ptrString("user"),
+		PolicyVersion:    ptrString("v2"),
+		DisapproveReason: "",
+	})
+	seedApprovalWorkerOutbox(t, db, &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-resume-recv-error",
+		EventType:   "approval_decided",
+		RunID:       "run-resume-recv-error",
+		SessionID:   "session-resume-recv-error",
+		PayloadJSON: `{"approval_id":"approval-resume-recv-error","approved":true}`,
+		Status:      "pending",
+	})
+
+	l := newApprovalWorkerTestLogic(db)
+	seq := 0
+	if err := l.appendRunEvent(context.Background(), "run-resume-recv-error", "session-resume-recv-error", &seq, "meta", map[string]any{
+		"run_id":     "run-resume-recv-error",
+		"session_id": "session-resume-recv-error",
+		"turn":       1,
+	}); err != nil {
+		t.Fatalf("seed meta event: %v", err)
+	}
+
+	streamReader, streamWriter := schema.Pipe[*schema.Message](1)
+	go func() {
+		defer streamWriter.Close()
+		streamWriter.Send(schema.ToolMessage(`{"ok":false,"status":"error"}`, "tool-call-resume-recv-error", schema.WithToolName("exec_command")), nil)
+		streamWriter.Send(nil, errors.New("failed to invoke tool[name:exec_command id:tool-call-resume-recv-error]: command denied"))
+	}()
+
+	worker := NewApprovalWorker(l,
+		WithApprovalWorkerResume(func(ctx context.Context, task *model.AIApprovalTask, params *adk.ResumeParams) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+			iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+			go func() {
+				gen.Send(adk.EventFromMessage(nil, streamReader, schema.Tool, "exec_command"))
+				gen.Close()
+			}()
+			return iter, nil
+		}),
+	)
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected worker to claim approval_decided outbox")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), "run-resume-recv-error")
+	if err != nil {
+		t.Fatalf("reload run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run to exist")
+	}
+	if run.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected completed_with_tool_errors, got %q", run.Status)
+	}
+
+	projection, err := aidao.NewAIRunProjectionDAO(db).GetByRunID(context.Background(), "run-resume-recv-error")
+	if err != nil {
+		t.Fatalf("load run projection: %v", err)
+	}
+	if projection == nil || projection.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected completed_with_tool_errors projection, got %#v", projection)
+	}
+
+	var outbox model.AIApprovalOutboxEvent
+	if err := db.Where("approval_id = ? AND event_type = ?", "approval-resume-recv-error", "approval_decided").First(&outbox).Error; err != nil {
+		t.Fatalf("reload outbox: %v", err)
+	}
+	if outbox.Status != "done" {
+		t.Fatalf("expected outbox done after recovery, got %q", outbox.Status)
 	}
 }
 

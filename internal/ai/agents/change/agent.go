@@ -115,6 +115,10 @@ func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 	// Phase 2 将调用 tools.NewChangeTools(ctx)，其中包含写操作工具
 	// 当前仅使用只读工具，确保 Phase 1 架构验证可通过
 	toolset := tools.NewChangeTools(ctx)
+	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, toolset)
+	if err != nil {
+		return nil, fmt.Errorf("change agent: init tool normalization middleware: %w", err)
+	}
 
 	// 创建审批中间件，用于拦截高风险工具调用
 	approvalMW := tools.ApprovalToolMiddleware(nil)
@@ -140,7 +144,7 @@ func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				Tools: toolset,
 				// 注册审批中间件，拦截高风险工具调用
-				ToolCallMiddlewares: []compose.ToolMiddleware{approvalMW},
+				ToolCallMiddlewares: []compose.ToolMiddleware{normalizerMW, approvalMW},
 			},
 		},
 		GenInputFn: genExecutorInputFn,

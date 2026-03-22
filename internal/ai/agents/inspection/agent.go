@@ -51,6 +51,11 @@ func NewInspectionAgent(ctx context.Context) (adk.Agent, error) {
 		baseTool = append(baseTool, t)
 	}
 
+	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, baseTool)
+	if err != nil {
+		return nil, fmt.Errorf("inspection agent: init tool normalization middleware: %w", err)
+	}
+
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "InspectionAgent",
 		Description: "Scheduled Kubernetes cluster health inspection assistant",
@@ -58,7 +63,8 @@ func NewInspectionAgent(ctx context.Context) (adk.Agent, error) {
 		Model:       model,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: baseTool,
+				Tools:               baseTool,
+				ToolCallMiddlewares: []compose.ToolMiddleware{normalizerMW},
 			},
 		},
 		MaxIterations: 10,
