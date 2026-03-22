@@ -115,11 +115,19 @@ security:
   hide_banner: true
   encryption_key: ${SECURITY_ENCRYPTION_KEY}
 
+# llm:
+#   enable: true
+#   provider: "qwen" # 或 "ark" (火山引擎), "ollama"
+#   base_url: "https://coding.dashscope.aliyuncs.com/v1"
+#   model: "qwen3.5-plus"
+#   temperature: 0.7
+#   api_key: ${LLM_API_KEY}
+
 llm:
   enable: true
   provider: "ark" # 或 "ark" (火山引擎), "ollama"
   base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
-  model: "ark-code-latest"
+  model: "GLM-4.7"
   temperature: 0.7
   api_key: ${LLM_API_KEY}
 

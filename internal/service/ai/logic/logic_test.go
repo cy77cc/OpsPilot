@@ -740,6 +740,100 @@ func TestChatKeepsRunAliveOnToolInvocationNodeError(t *testing.T) {
 	}
 }
 
+func TestChatKeepsRunAliveOnStreamingToolInvocationRecvError(t *testing.T) {
+	db := newLogicTestDB(t)
+	seedLogicTestSession(t, db, model.AIChatSession{
+		ID:     "session-stream-tool-error",
+		UserID: 21,
+		Scene:  "ai",
+		Title:  "Streaming Tool Error",
+	})
+
+	streamReader, streamWriter := schema.Pipe[*schema.Message](2)
+	go func() {
+		streamWriter.Send(schema.AssistantMessage("", []schema.ToolCall{
+			{ID: "call-stream-1", Function: schema.FunctionCall{Name: "host_exec", Arguments: `{"host_id":1,"command":"systemctl status nginx"}`}},
+		}), nil)
+		streamWriter.Send(nil, errors.New("[NodeRunError] failed to stream tool call call-stream-1: [LocalFunc] failed to invoke tool, toolName=host_exec, err=command not allowed"))
+		streamWriter.Close()
+	}()
+
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{
+				AgentName: "executor",
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{
+						IsStreaming:   true,
+						MessageStream: streamReader,
+					},
+				},
+			},
+			adk.EventFromMessage(schema.AssistantMessage("tool failed, continue with fallback", nil), nil, schema.Assistant, ""),
+		},
+	}
+
+	emitted := make([]airuntime.PublicStreamEvent, 0, 10)
+	l := &Logic{
+		svcCtx:           &svc.ServiceContext{DB: db},
+		ChatDAO:          aidao.NewAIChatDAO(db),
+		RunDAO:           aidao.NewAIRunDAO(db),
+		RunEventDAO:      aidao.NewAIRunEventDAO(db),
+		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
+		RunContentDAO:    aidao.NewAIRunContentDAO(db),
+		AIRouter:         agent,
+	}
+
+	if err := l.Chat(context.Background(), ChatInput{
+		SessionID: "session-stream-tool-error",
+		Message:   "run host command",
+		Scene:     "ai",
+		UserID:    21,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("expected streaming tool recv error to return nil, got %v", err)
+	}
+
+	runID := findEventField(t, emitted, "meta", "run_id")
+	if runID == "" {
+		t.Fatal("expected meta event to include run_id")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run record to exist")
+	}
+	if run.Status != "completed_with_tool_errors" {
+		t.Fatalf("expected run status completed_with_tool_errors, got %q", run.Status)
+	}
+
+	var (
+		sawToolResult bool
+		sawDone       bool
+	)
+	for _, event := range emitted {
+		if event.Event == "error" {
+			t.Fatalf("expected streaming tool recv error to avoid terminal error event, got %#v", event)
+		}
+		if event.Event == "tool_result" {
+			sawToolResult = true
+		}
+		if event.Event == "done" {
+			sawDone = true
+		}
+	}
+	if !sawToolResult {
+		t.Fatal("expected synthesized tool_result event for streaming tool recv error")
+	}
+	if !sawDone {
+		t.Fatal("expected done event after streaming tool recv error")
+	}
+}
+
 func TestChatPersistsDoneSummaryInProjection(t *testing.T) {
 	db := newLogicTestDB(t)
 	seedLogicTestSession(t, db, model.AIChatSession{

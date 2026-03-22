@@ -214,6 +214,20 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
+					if toolErrorEvent, ok := recoverableToolErrorFromErr(err, event.AgentName); ok {
+						hasToolErrors = true
+						update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &summaryContent)
+						if consumeErr != nil {
+							return fmt.Errorf("persist projected stream tool error event: %w", consumeErr)
+						}
+						if update.AssistantType != "" || update.IntentType != "" {
+							_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
+								IntentType:    update.IntentType,
+								AssistantType: update.AssistantType,
+							})
+						}
+						break
+					}
 					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 						return fmt.Errorf("flush projected events: %w", err)
 					}
@@ -801,11 +815,19 @@ func recoverableToolErrorEvent(event *adk.AgentEvent) (*adk.AgentEvent, bool) {
 	if isRecoverableToolErrorEvent(event) {
 		return event, true
 	}
-	if event == nil || event.Err == nil {
+	if event == nil {
 		return nil, false
 	}
 
-	callID, toolName, ok := parseToolInvocationError(event.Err.Error())
+	return recoverableToolErrorFromErr(event.Err, event.AgentName)
+}
+
+func recoverableToolErrorFromErr(err error, agentName string) (*adk.AgentEvent, bool) {
+	if err == nil {
+		return nil, false
+	}
+
+	callID, toolName, ok := parseToolInvocationError(err.Error())
 	if !ok {
 		return nil, false
 	}
@@ -815,7 +837,7 @@ func recoverableToolErrorEvent(event *adk.AgentEvent) (*adk.AgentEvent, bool) {
 		"status":     "error",
 		"tool_name":  toolName,
 		"call_id":    callID,
-		"message":    event.Err.Error(),
+		"message":    err.Error(),
 		"error_type": "tool_invocation",
 	})
 	if err != nil {
@@ -824,8 +846,8 @@ func recoverableToolErrorEvent(event *adk.AgentEvent) (*adk.AgentEvent, bool) {
 
 	message := schema.ToolMessage(string(payload), callID, schema.WithToolName(toolName))
 	synthetic := adk.EventFromMessage(message, nil, schema.Tool, toolName)
-	synthetic.AgentName = event.AgentName
-	synthetic.Err = event.Err
+	synthetic.AgentName = agentName
+	synthetic.Err = err
 	return synthetic, true
 }
 
