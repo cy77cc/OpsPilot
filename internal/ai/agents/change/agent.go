@@ -32,6 +32,10 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/prompt"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/ai/tools/middleware"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 // NewChangeAgent 创建变更 Agent 实例（PlanExecute Resumable 架构）。
@@ -114,6 +118,11 @@ func newChangeExecutor(ctx context.Context) (adk.Agent, error) {
 
 	// 创建审批中间件，用于拦截高风险工具调用
 	approvalMW := tools.ApprovalToolMiddleware(nil)
+	if svcCtx, ok := runtimectx.ServicesAs[*svc.ServiceContext](ctx); ok && svcCtx != nil && svcCtx.DB != nil {
+		approvalMW = tools.ApprovalToolMiddleware(&middleware.ApprovalMiddlewareConfig{
+			Orchestrator: common.NewApprovalOrchestrator(svcCtx.DB),
+		})
+	}
 
 	model, err := chatmodel.NewChatModel(ctx, chatmodel.ChatModelConfig{
 		Timeout:  120 * time.Second,

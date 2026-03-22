@@ -21,10 +21,11 @@ type redisClient interface {
 }
 
 type Metadata struct {
-	SessionID string
-	RunID     string
-	UserID    uint64
-	Scene     string
+	SessionID    string
+	RunID        string
+	CheckpointID string
+	UserID       uint64
+	Scene        string
 }
 
 type Store struct {
@@ -48,21 +49,27 @@ func NewStore(dao *aidao.AICheckpointDAO, redisClient redisClient, prefix string
 }
 
 func ContextWithMetadata(ctx context.Context, meta Metadata) context.Context {
+	existing := runtimectx.AIMetadataFrom(ctx)
+	if strings.TrimSpace(meta.CheckpointID) == "" {
+		meta.CheckpointID = existing.CheckpointID
+	}
 	return runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
-		SessionID: meta.SessionID,
-		RunID:     meta.RunID,
-		UserID:    meta.UserID,
-		Scene:     meta.Scene,
+		SessionID:    meta.SessionID,
+		RunID:        meta.RunID,
+		CheckpointID: meta.CheckpointID,
+		UserID:       meta.UserID,
+		Scene:        meta.Scene,
 	})
 }
 
 func metadataFromContext(ctx context.Context) Metadata {
 	meta := runtimectx.AIMetadataFrom(ctx)
 	return Metadata{
-		SessionID: meta.SessionID,
-		RunID:     meta.RunID,
-		UserID:    meta.UserID,
-		Scene:     meta.Scene,
+		SessionID:    meta.SessionID,
+		RunID:        meta.RunID,
+		CheckpointID: meta.CheckpointID,
+		UserID:       meta.UserID,
+		Scene:        meta.Scene,
 	}
 }
 

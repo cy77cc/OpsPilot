@@ -25,16 +25,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 )
 
 // ApprovalMiddlewareConfig 审批中间件配置。
 type ApprovalMiddlewareConfig struct {
+	// Orchestrator evaluates DB-driven approval policy and creates approval snapshots.
+	Orchestrator common.ApprovalEvaluator
+
 	// NeedsApproval 判断工具是否需要审批
 	// 返回 true 表示该工具需要人工审批后才能执行
 	NeedsApproval func(toolName string) bool
@@ -102,6 +107,11 @@ type approvalMiddleware struct {
 	config *ApprovalMiddlewareConfig
 }
 
+type approvalInterruptState struct {
+	ArgumentsInJSON string
+	Decision        *common.ApprovalDecision
+}
+
 // WrapInvokableToolCall 包装同步工具调用。
 //
 // 对于需要审批的工具，在首次调用时触发中断，
@@ -112,23 +122,21 @@ func (m *approvalMiddleware) WrapInvokableToolCall(
 	tCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
 	// 只拦截需要审批的工具
-	if !m.config.NeedsApproval(tCtx.Name) {
+	if !m.requiresApprovalGate(tCtx.Name) {
 		return endpoint, nil
 	}
 
 	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
-		// 检查是否之前已中断过
-		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
+		decision, storedArgs, wasInterrupted, err := m.evaluateApproval(ctx, tCtx.Name, args, tCtx.CallID)
+		if err != nil {
+			return "", err
+		}
 
 		if !wasInterrupted {
-			// 首次调用，触发中断
-			preview := m.generatePreview(tCtx.Name, args)
-			return "", tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-				ToolName:        tCtx.Name,
-				ArgumentsInJSON: args,
-				Preview:         preview,
-				TimeoutSeconds:  m.config.DefaultTimeout,
-			}, args)
+			if decision == nil || !decision.RequiresApproval {
+				return endpoint(ctx, args, opts...)
+			}
+			return "", m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, args, decision)
 		}
 
 		// 已中断过，检查恢复上下文
@@ -144,13 +152,10 @@ func (m *approvalMiddleware) WrapInvokableToolCall(
 		}
 
 		// 恢复上下文不匹配（可能是其他工具的中断），重新中断
-		preview := m.generatePreview(tCtx.Name, storedArgs)
-		return "", tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-			ToolName:        tCtx.Name,
-			ArgumentsInJSON: storedArgs,
-			Preview:         preview,
-			TimeoutSeconds:  m.config.DefaultTimeout,
-		}, storedArgs)
+		if decision == nil {
+			decision = m.defaultDecision(tCtx.Name, storedArgs, tCtx.CallID)
+		}
+		return "", m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 	}, nil
 }
 
@@ -163,21 +168,21 @@ func (m *approvalMiddleware) WrapStreamableToolCall(
 	endpoint adk.StreamableToolCallEndpoint,
 	tCtx *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
-	if !m.config.NeedsApproval(tCtx.Name) {
+	if !m.requiresApprovalGate(tCtx.Name) {
 		return endpoint, nil
 	}
 
 	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
-		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
+		decision, storedArgs, wasInterrupted, err := m.evaluateApproval(ctx, tCtx.Name, args, tCtx.CallID)
+		if err != nil {
+			return nil, err
+		}
 
 		if !wasInterrupted {
-			preview := m.generatePreview(tCtx.Name, args)
-			return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-				ToolName:        tCtx.Name,
-				ArgumentsInJSON: args,
-				Preview:         preview,
-				TimeoutSeconds:  m.config.DefaultTimeout,
-			}, args)
+			if decision == nil || !decision.RequiresApproval {
+				return endpoint(ctx, args, opts...)
+			}
+			return nil, m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, args, decision)
 		}
 
 		isTarget, hasData, result := tool.GetResumeContext[*common.ApprovalResult](ctx)
@@ -189,13 +194,10 @@ func (m *approvalMiddleware) WrapStreamableToolCall(
 			return singleChunkReader(m.formatDisapproveMessage(tCtx.Name, result)), nil
 		}
 
-		preview := m.generatePreview(tCtx.Name, storedArgs)
-		return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-			ToolName:        tCtx.Name,
-			ArgumentsInJSON: storedArgs,
-			Preview:         preview,
-			TimeoutSeconds:  m.config.DefaultTimeout,
-		}, storedArgs)
+		if decision == nil {
+			decision = m.defaultDecision(tCtx.Name, storedArgs, tCtx.CallID)
+		}
+		return nil, m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 	}, nil
 }
 
@@ -209,6 +211,177 @@ func (m *approvalMiddleware) generatePreview(toolName, args string) common.Appro
 	}
 	// 使用默认生成器
 	return m.config.PreviewGenerator(toolName, args)
+}
+
+func (m *approvalMiddleware) requiresApprovalGate(toolName string) bool {
+	if m.config.Orchestrator != nil {
+		return true
+	}
+	return m.config.NeedsApproval(toolName)
+}
+
+func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, args, callID string) (*common.ApprovalDecision, string, bool, error) {
+	if m.config.Orchestrator == nil {
+		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
+		if wasInterrupted {
+			return m.defaultDecision(toolName, storedArgs, callID), storedArgs, true, nil
+		}
+		if !m.config.NeedsApproval(toolName) {
+			return &common.ApprovalDecision{RequiresApproval: false}, storedArgs, false, nil
+		}
+		return m.defaultDecision(toolName, args, callID), args, false, nil
+	}
+
+	wasInterrupted, hasDecisionState, state := tool.GetInterruptState[approvalInterruptState](ctx)
+	if wasInterrupted && hasDecisionState {
+		return state.Decision, state.ArgumentsInJSON, true, nil
+	}
+	if wasInterrupted {
+		_, hasStringState, storedArgs := tool.GetInterruptState[string](ctx)
+		if hasStringState {
+			return m.defaultDecision(toolName, storedArgs, callID), storedArgs, true, nil
+		}
+		return m.defaultDecision(toolName, args, callID), args, true, nil
+	}
+
+	sceneMeta := runtimectx.AIMetadataFrom(ctx)
+	meta := common.ApprovalEvalMeta{
+		SessionID:      sceneMeta.SessionID,
+		RunID:          sceneMeta.RunID,
+		CheckpointID:   sceneMeta.CheckpointID,
+		Scene:          sceneMeta.Scene,
+		CallID:         callID,
+		CommandClass:   commandClassForTool(toolName, args),
+		UserID:         sceneMeta.UserID,
+		TimeoutSeconds: m.config.DefaultTimeout,
+	}
+
+	decision, err := m.config.Orchestrator.Evaluate(ctx, toolName, args, meta)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if decision == nil {
+		return nil, "", false, nil
+	}
+	return decision, args, false, nil
+}
+
+func (m *approvalMiddleware) raiseApprovalInterrupt(ctx context.Context, toolName, callID, args string, decision *common.ApprovalDecision) error {
+	if decision == nil {
+		decision = m.defaultDecision(toolName, args, callID)
+	}
+	info := map[string]any{
+		"approval_id":     decision.ApprovalID,
+		"call_id":         callID,
+		"tool_name":       toolName,
+		"preview":         decision.Preview,
+		"timeout_seconds": decision.TimeoutSeconds,
+		"expires_at":      decision.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"decision_source": decision.DecisionSource,
+	}
+	if decision.MatchedRuleID != nil {
+		info["matched_rule_id"] = *decision.MatchedRuleID
+	}
+	if strings.TrimSpace(decision.PolicyVersion) != "" {
+		info["policy_version"] = strings.TrimSpace(decision.PolicyVersion)
+	}
+	return tool.StatefulInterrupt(ctx, info, approvalInterruptState{
+		ArgumentsInJSON: args,
+		Decision:        decision,
+	})
+}
+
+func (m *approvalMiddleware) defaultDecision(toolName, args, callID string) *common.ApprovalDecision {
+	timeout := m.config.DefaultTimeout
+	if timeout <= 0 {
+		timeout = common.DefaultApprovalTimeout
+	}
+	expiresAt := time.Now().UTC().Add(time.Duration(timeout) * time.Second)
+	approvalID := strings.TrimSpace(callID)
+	if approvalID == "" {
+		approvalID = fmt.Sprintf("approval-%d", time.Now().UTC().UnixNano())
+	}
+	return &common.ApprovalDecision{
+		RequiresApproval: true,
+		ApprovalID:       approvalID,
+		Preview:          m.generatePreview(toolName, args),
+		TimeoutSeconds:   timeout,
+		DecisionSource:   "fallback_static",
+		ExpiresAt:        expiresAt,
+	}
+}
+
+func defaultCommandClass(toolName string) string {
+	toolName = strings.ToLower(strings.TrimSpace(toolName))
+	switch {
+	case strings.Contains(toolName, "delete"),
+		strings.Contains(toolName, "scale"),
+		strings.Contains(toolName, "restart"),
+		strings.Contains(toolName, "rollback"),
+		strings.Contains(toolName, "trigger"),
+		strings.Contains(toolName, "cancel"),
+		strings.Contains(toolName, "update"),
+		strings.Contains(toolName, "apply"),
+		strings.Contains(toolName, "batch"):
+		return "write"
+	default:
+		return ""
+	}
+}
+
+func commandClassForTool(toolName, args string) string {
+	toolName = strings.ToLower(strings.TrimSpace(toolName))
+	switch toolName {
+	case "host_batch", "host_batch_exec_apply", "host_batch_exec_preview":
+		if class := hostBatchCommandClass(args); class != "" {
+			return class
+		}
+		return "service_control"
+	case "host_batch_status_update":
+		return "service_control"
+	default:
+		return defaultCommandClass(toolName)
+	}
+}
+
+func hostBatchCommandClass(args string) string {
+	var params map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(args)), &params); err != nil {
+		return ""
+	}
+	cmd, _ := params["command"].(string)
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return ""
+	}
+	class, _, _ := classifyHostCommand(cmd)
+	return class
+}
+
+func classifyHostCommand(cmd string) (class string, risk string, blocked bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(cmd))
+	if isReadonlyHostCommand(cmd) {
+		return "readonly", "low", false
+	}
+	dangerous := []string{
+		"rm -rf /", "mkfs", "shutdown", "poweroff", "reboot", "init 0",
+		"dd if=", "iptables -f", "userdel", "chown -r /", "chmod -r 777 /",
+	}
+	for _, keyword := range dangerous {
+		if strings.Contains(trimmed, keyword) {
+			return "dangerous", "high", true
+		}
+	}
+	return "service_control", "medium", false
+}
+
+func isReadonlyHostCommand(cmd string) bool {
+	switch strings.TrimSpace(cmd) {
+	case "hostname", "uptime", "df -h", "free -m", "ps aux --sort=-%cpu":
+		return true
+	default:
+		return false
+	}
 }
 
 // formatDisapproveMessage 格式化拒绝消息。
@@ -251,7 +424,7 @@ func singleChunkReader(content string) *schema.StreamReader[string] {
 //	}
 func (m *approvalMiddleware) AsToolMiddleware() compose.ToolMiddleware {
 	return compose.ToolMiddleware{
-		Invokable: m.wrapInvokableForCompose,
+		Invokable:  m.wrapInvokableForCompose,
 		Streamable: m.wrapStreamableForCompose,
 	}
 }
@@ -260,22 +433,20 @@ func (m *approvalMiddleware) AsToolMiddleware() compose.ToolMiddleware {
 func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolEndpoint) compose.InvokableToolEndpoint {
 	return func(ctx context.Context, input *compose.ToolInput) (*compose.ToolOutput, error) {
 		// 检查是否需要审批
-		if !m.config.NeedsApproval(input.Name) {
+		if !m.requiresApprovalGate(input.Name) {
 			return next(ctx, input)
 		}
 
-		// 检查是否之前已中断过
-		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
+		decision, storedArgs, wasInterrupted, err := m.evaluateApproval(ctx, input.Name, input.Arguments, input.CallID)
+		if err != nil {
+			return nil, err
+		}
 
 		if !wasInterrupted {
-			// 首次调用，触发中断
-			preview := m.generatePreview(input.Name, input.Arguments)
-			return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-				ToolName:        input.Name,
-				ArgumentsInJSON: input.Arguments,
-				Preview:         preview,
-				TimeoutSeconds:  m.config.DefaultTimeout,
-			}, input.Arguments)
+			if decision == nil || !decision.RequiresApproval {
+				return next(ctx, input)
+			}
+			return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, input.Arguments, decision)
 		}
 
 		// 已中断过，检查恢复上下文
@@ -298,13 +469,10 @@ func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolE
 		}
 
 		// 恢复上下文不匹配，重新中断
-		preview := m.generatePreview(input.Name, storedArgs)
-		return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-			ToolName:        input.Name,
-			ArgumentsInJSON: storedArgs,
-			Preview:         preview,
-			TimeoutSeconds:  m.config.DefaultTimeout,
-		}, storedArgs)
+		if decision == nil {
+			decision = m.defaultDecision(input.Name, storedArgs, input.CallID)
+		}
+		return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 	}
 }
 
@@ -312,22 +480,20 @@ func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolE
 func (m *approvalMiddleware) wrapStreamableForCompose(next compose.StreamableToolEndpoint) compose.StreamableToolEndpoint {
 	return func(ctx context.Context, input *compose.ToolInput) (*compose.StreamToolOutput, error) {
 		// 检查是否需要审批
-		if !m.config.NeedsApproval(input.Name) {
+		if !m.requiresApprovalGate(input.Name) {
 			return next(ctx, input)
 		}
 
-		// 检查是否之前已中断过
-		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
+		decision, storedArgs, wasInterrupted, err := m.evaluateApproval(ctx, input.Name, input.Arguments, input.CallID)
+		if err != nil {
+			return nil, err
+		}
 
 		if !wasInterrupted {
-			// 首次调用，触发中断
-			preview := m.generatePreview(input.Name, input.Arguments)
-			return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-				ToolName:        input.Name,
-				ArgumentsInJSON: input.Arguments,
-				Preview:         preview,
-				TimeoutSeconds:  m.config.DefaultTimeout,
-			}, input.Arguments)
+			if decision == nil || !decision.RequiresApproval {
+				return next(ctx, input)
+			}
+			return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, input.Arguments, decision)
 		}
 
 		// 已中断过，检查恢复上下文
@@ -350,13 +516,10 @@ func (m *approvalMiddleware) wrapStreamableForCompose(next compose.StreamableToo
 		}
 
 		// 恢复上下文不匹配，重新中断
-		preview := m.generatePreview(input.Name, storedArgs)
-		return nil, tool.StatefulInterrupt(ctx, &common.ApprovalInfo{
-			ToolName:        input.Name,
-			ArgumentsInJSON: storedArgs,
-			Preview:         preview,
-			TimeoutSeconds:  m.config.DefaultTimeout,
-		}, storedArgs)
+		if decision == nil {
+			decision = m.defaultDecision(input.Name, storedArgs, input.CallID)
+		}
+		return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 	}
 }
 
@@ -397,13 +560,13 @@ func DefaultNeedsApproval(toolName string) bool {
 		"k8s_delete_deployment":   true,
 
 		// CI/CD 操作 - 触发流水线
-		"cicd_trigger_pipeline":  true,
-		"cicd_cancel_pipeline":   true,
+		"cicd_trigger_pipeline": true,
+		"cicd_cancel_pipeline":  true,
 
 		// 服务操作 - 变更类操作
-		"service_restart":        true,
-		"service_scale":          true,
-		"service_update_config":  true,
+		"service_restart":       true,
+		"service_scale":         true,
+		"service_update_config": true,
 	}
 	return approvalRequired[toolName]
 }
@@ -502,45 +665,45 @@ func DefaultPreviewGenerator(toolName, args string) common.ApprovalPreview {
 func DefaultToolConfigs() map[string]*common.ToolRiskConfig {
 	return map[string]*common.ToolRiskConfig{
 		"host_batch": {
-			ToolName:       "host_batch",
-			RiskLevel:      common.RiskLevelHigh,
-			NeedsApproval:  true,
+			ToolName:         "host_batch",
+			RiskLevel:        common.RiskLevelHigh,
+			NeedsApproval:    true,
 			PreviewGenerator: hostBatchPreviewGenerator,
 		},
 		"host_batch_exec_apply": {
-			ToolName:       "host_batch_exec_apply",
-			RiskLevel:      common.RiskLevelHigh,
-			NeedsApproval:  true,
+			ToolName:         "host_batch_exec_apply",
+			RiskLevel:        common.RiskLevelHigh,
+			NeedsApproval:    true,
 			PreviewGenerator: hostBatchPreviewGenerator,
 		},
 		"k8s_delete_pod": {
-			ToolName:       "k8s_delete_pod",
-			RiskLevel:      common.RiskLevelHigh,
-			NeedsApproval:  true,
+			ToolName:         "k8s_delete_pod",
+			RiskLevel:        common.RiskLevelHigh,
+			NeedsApproval:    true,
 			PreviewGenerator: k8sPodPreviewGenerator,
 		},
 		"k8s_restart_deployment": {
-			ToolName:       "k8s_restart_deployment",
-			RiskLevel:      common.RiskLevelMedium,
-			NeedsApproval:  true,
+			ToolName:         "k8s_restart_deployment",
+			RiskLevel:        common.RiskLevelMedium,
+			NeedsApproval:    true,
 			PreviewGenerator: k8sDeploymentPreviewGenerator,
 		},
 		"k8s_scale_deployment": {
-			ToolName:       "k8s_scale_deployment",
-			RiskLevel:      common.RiskLevelMedium,
-			NeedsApproval:  true,
+			ToolName:         "k8s_scale_deployment",
+			RiskLevel:        common.RiskLevelMedium,
+			NeedsApproval:    true,
 			PreviewGenerator: k8sScalePreviewGenerator,
 		},
 		"k8s_rollback_deployment": {
-			ToolName:       "k8s_rollback_deployment",
-			RiskLevel:      common.RiskLevelMedium,
-			NeedsApproval:  true,
+			ToolName:         "k8s_rollback_deployment",
+			RiskLevel:        common.RiskLevelMedium,
+			NeedsApproval:    true,
 			PreviewGenerator: k8sRollbackPreviewGenerator,
 		},
 		"k8s_delete_deployment": {
-			ToolName:       "k8s_delete_deployment",
-			RiskLevel:      common.RiskLevelCritical,
-			NeedsApproval:  true,
+			ToolName:         "k8s_delete_deployment",
+			RiskLevel:        common.RiskLevelCritical,
+			NeedsApproval:    true,
 			PreviewGenerator: k8sDeleteDeploymentPreviewGenerator,
 		},
 	}

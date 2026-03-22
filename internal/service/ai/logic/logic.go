@@ -127,16 +127,18 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		runtime.RequestID = requestID
 	}
 	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
-		SessionID: shell.SessionID,
-		RunID:     shell.Run.ID,
-		UserID:    input.UserID,
-		Scene:     shell.Scene,
+		SessionID:    shell.SessionID,
+		RunID:        shell.Run.ID,
+		CheckpointID: shell.Run.ID,
+		UserID:       input.UserID,
+		Scene:        shell.Scene,
 	})
 	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
-		SessionID: shell.SessionID,
-		RunID:     shell.Run.ID,
-		UserID:    input.UserID,
-		Scene:     shell.Scene,
+		SessionID:    shell.SessionID,
+		RunID:        shell.Run.ID,
+		CheckpointID: shell.Run.ID,
+		UserID:       input.UserID,
+		Scene:        shell.Scene,
 	})
 
 	// Step 4: 发送 A2UI meta 事件
@@ -164,7 +166,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		schema.UserMessage(l.buildAugmentedMessage(ctx, shell.Scene, input.Context, input.Message)),
 	}
 
-	iterator := runner.Run(ctx, agentInput)
+	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
 
 	// Step 6: 消费事件
 	var (
@@ -1316,6 +1318,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 	}
 
 	// 验证用户权限
+	resumeScene := ""
 	if l.ChatDAO != nil {
 		session, err := l.ChatDAO.GetSession(ctx, task.SessionID, input.UserID, "")
 		if err != nil {
@@ -1324,6 +1327,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		if session == nil {
 			return fmt.Errorf("session not found or no permission")
 		}
+		resumeScene = normalizeScene(session.Scene)
 	}
 
 	// 更新审批状态
@@ -1352,6 +1356,13 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 
 	// 创建 Runner 并恢复执行
 	ctx = l.runtimeContext(ctx)
+	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
+		SessionID:    task.SessionID,
+		RunID:        task.RunID,
+		CheckpointID: task.CheckpointID,
+		UserID:       input.UserID,
+		Scene:        resumeScene,
+	})
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           l.AIRouter,
 		EnableStreaming: true,
@@ -1365,7 +1376,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		},
 	}
 
-	iterator, err := runner.ResumeWithParams(ctx, task.CheckpointID, resumeParams)
+	iterator, err := runner.ResumeWithParams(ctx, task.CheckpointID, resumeParams, adk.WithCheckPointID(task.CheckpointID))
 	if err != nil {
 		return fmt.Errorf("resume execution: %w", err)
 	}
