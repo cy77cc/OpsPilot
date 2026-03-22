@@ -214,6 +214,87 @@ func TestConsumeProjectedEvents_ExcludesExecutorDeltaFromAssistantContent(t *tes
 	}
 }
 
+func TestMarshalProjectedEventIncludesToolApprovalAndRunState(t *testing.T) {
+	t.Parallel()
+
+	eventType, raw, err := marshalProjectedEvent("tool_approval", map[string]any{
+		"approval_id":     "ap-1",
+		"call_id":         "call-1",
+		"tool_name":       "restart_workload",
+		"preview":         map[string]any{"namespace": "prod"},
+		"timeout_seconds": 300,
+	})
+	if err != nil {
+		t.Fatalf("marshal tool_approval: %v", err)
+	}
+	if eventType != airuntime.EventTypeToolApproval {
+		t.Fatalf("expected tool approval event type, got %q", eventType)
+	}
+	payload, err := airuntime.UnmarshalEventPayload(eventType, raw)
+	if err != nil {
+		t.Fatalf("decode tool approval payload: %v", err)
+	}
+	approval, ok := payload.(*airuntime.ToolApprovalPayload)
+	if !ok {
+		t.Fatalf("expected tool approval payload, got %#v", payload)
+	}
+	if approval.CallID != "call-1" || approval.ToolName != "restart_workload" {
+		t.Fatalf("unexpected tool approval payload: %#v", approval)
+	}
+
+	eventType, raw, err = marshalProjectedEvent("run_state", map[string]any{
+		"status": "waiting_approval",
+		"agent":  "executor",
+	})
+	if err != nil {
+		t.Fatalf("marshal run_state: %v", err)
+	}
+	if eventType != airuntime.EventTypeRunState {
+		t.Fatalf("expected run state event type, got %q", eventType)
+	}
+	payload, err = airuntime.UnmarshalEventPayload(eventType, raw)
+	if err != nil {
+		t.Fatalf("decode run state payload: %v", err)
+	}
+	runState, ok := payload.(*airuntime.RunStatePayload)
+	if !ok {
+		t.Fatalf("expected run state payload, got %#v", payload)
+	}
+	if runState.Status != "waiting_approval" || runState.Agent != "executor" {
+		t.Fatalf("unexpected run state payload: %#v", runState)
+	}
+}
+
+func TestEmitExistingShellTerminal_WaitingApprovalEmitsRunState(t *testing.T) {
+	l := &Logic{}
+	shell := chatShell{
+		Run: &model.AIRun{
+			ID:     "run-waiting",
+			Status: "waiting_approval",
+		},
+		AssistantMessage: &model.AIChatMessage{
+			Content: "waiting for approval",
+		},
+	}
+
+	var gotEvent string
+	var gotData map[string]any
+	l.emitExistingShellTerminal(context.Background(), shell, func(event string, data any) {
+		gotEvent = event
+		gotData, _ = data.(map[string]any)
+	})
+
+	if gotEvent != "run_state" {
+		t.Fatalf("expected run_state event, got %q", gotEvent)
+	}
+	if gotData["status"] != "waiting_approval" {
+		t.Fatalf("expected waiting_approval status payload, got %#v", gotData)
+	}
+	if gotData["run_id"] != "run-waiting" {
+		t.Fatalf("expected run_id run-waiting, got %#v", gotData["run_id"])
+	}
+}
+
 func TestBuildSessionTitle_TruncatesByRune(t *testing.T) {
 	input := strings.Repeat("火", 60)
 	got := buildSessionTitle(input)

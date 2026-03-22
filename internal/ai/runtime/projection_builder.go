@@ -278,6 +278,34 @@ func BuildProjection(events []model.AIRunEvent) (*RunProjection, []*model.AIRunC
 				}
 			}
 			currentExecutor.EndEventID = event.ID
+		case EventTypeToolApproval:
+			flushText()
+			currentExecutor = nil
+			payload, err := UnmarshalEventPayload(EventTypeToolApproval, event.PayloadJSON)
+			if err != nil {
+				return nil, nil, err
+			}
+			approval := payload.(*ToolApprovalPayload)
+			projection.Blocks = append(projection.Blocks, ProjectionBlock{
+				ID:       blockID("tool_approval", len(projection.Blocks)+1),
+				Type:     "tool_approval",
+				Title:    "等待审批",
+				EventIDs: []string{event.ID},
+				Data: map[string]any{
+					"approval_id": approval.ApprovalID,
+					"call_id":     approval.CallID,
+					"tool_name":   approval.ToolName,
+				},
+			})
+		case EventTypeRunState:
+			payload, err := UnmarshalEventPayload(EventTypeRunState, event.PayloadJSON)
+			if err != nil {
+				return nil, nil, err
+			}
+			runState := payload.(*RunStatePayload)
+			if strings.TrimSpace(runState.Status) != "" {
+				projection.Status = strings.TrimSpace(runState.Status)
+			}
 		case EventTypeDone:
 			flushText()
 			currentExecutor = nil

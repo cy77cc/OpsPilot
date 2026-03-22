@@ -431,6 +431,12 @@ export interface ApprovalTicket {
   };
 }
 
+export interface SubmitApprovalPayload {
+  approved: boolean;
+  disapprove_reason?: string;
+  comment?: string;
+}
+
 export interface KnowledgeEntry {
   id: string;
   source: 'user_input' | 'feedback';
@@ -744,60 +750,25 @@ export const aiApi = {
     return apiService.get(`/ai/executions/${id}`);
   },
 
-  async createApproval(params: { tool: string; params?: Record<string, any> }): Promise<ApiResponse<ApprovalTicket>> {
-    return apiService.post('/ai/approvals', params);
+  async listPendingApprovals(): Promise<ApiResponse<ApprovalTicket[]>> {
+    return apiService.get('/ai/approvals/pending');
   },
 
+  async submitApproval(id: string, payload: SubmitApprovalPayload): Promise<ApiResponse<ApprovalTicket>> {
+    return apiService.post(`/ai/approvals/${id}/submit`, payload);
+  },
+
+  // Deprecated: legacy callers should migrate to submitApproval.
   async confirmApproval(id: string, approve: boolean): Promise<ApiResponse<ApprovalTicket>> {
-    return apiService.post(`/ai/approvals/${id}/confirm`, { approve });
+    return this.submitApproval(id, { approved: approve });
   },
 
-  async decideChainApproval(
-    chainId: string,
-    nodeId: string,
-    approved: boolean,
-    reason?: string,
-    editedArguments?: string,
-  ): Promise<ApiResponse<{ approval?: Record<string, unknown>; execution?: Record<string, unknown> }>> {
-    return apiService.post(`/ai/chains/${chainId}/approvals/${nodeId}/decision`, {
-      approved,
-      ...(reason ? { reason } : {}),
-      ...(editedArguments ? { edited_arguments: editedArguments } : {}),
-    });
-  },
-
-  async decideChainApprovalStream(
-    chainId: string,
-    nodeId: string,
-    approved: boolean,
-    handlers: A2UIStreamHandlers,
-    reason?: string,
-    editedArguments?: string,
-  ): Promise<void> {
-    const base = import.meta.env.VITE_API_BASE || '/api/v1';
-    const token = localStorage.getItem('token');
-    const projectId = localStorage.getItem('projectId');
-
-    const response = await fetch(`${base}/ai/chains/${chainId}/approvals/${nodeId}/decision`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(projectId ? { 'X-Project-ID': projectId } : {}),
-      },
-      body: JSON.stringify({
-        approved,
-        ...(reason ? { reason } : {}),
-        ...(editedArguments ? { edited_arguments: editedArguments } : {}),
-      }),
-    });
-
-    await consumeAIStream(response, handlers);
-  },
-
+  // Deprecated: prefer listPendingApprovals for the submit-only approval flow.
   async listApprovals(status?: string): Promise<ApiResponse<ApprovalTicket[]>> {
-    return apiService.get('/ai/approvals', status ? { params: { status } } : undefined);
+    if (status && status !== 'pending') {
+      throw new Error('Only pending approval listing is supported by the current AI approval flow');
+    }
+    return this.listPendingApprovals();
   },
 
   async getApproval(id: string): Promise<ApiResponse<ApprovalTicket>> {

@@ -8,10 +8,11 @@ import (
 type ctxKey struct{}
 
 type AIMetadata struct {
-	SessionID string
-	RunID     string
-	UserID    uint64
-	Scene     string
+	SessionID    string
+	RunID        string
+	CheckpointID string
+	UserID       uint64
+	Scene        string
 }
 
 type Context struct {

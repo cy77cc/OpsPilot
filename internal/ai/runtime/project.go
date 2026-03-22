@@ -107,6 +107,10 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		// 更新持久化状态
 		state.Persisted.Phase = "waiting_approval"
 		state.Persisted.PhaseLabel = "等待审批"
+		state.Persisted.Status = &PersistedStatus{
+			Kind:  "waiting_approval",
+			Label: "等待审批",
+		}
 		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
 			ID:     event.Interrupt.CallID,
 			Kind:   "tool_approval",

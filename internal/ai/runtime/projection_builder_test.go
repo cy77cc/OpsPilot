@@ -81,6 +81,24 @@ func TestBuildProjection_MarksNonSteadyStatus(t *testing.T) {
 	}
 }
 
+func TestBuildProjection_ProjectsWaitingApprovalState(t *testing.T) {
+	events := buildProjectionTestEvents(t, []eventFixture{
+		{id: "evt-1", eventType: EventTypeToolApproval, payload: &ToolApprovalPayload{ApprovalID: "approval-1", CallID: "call-1", ToolName: "k8s_scale_deployment"}},
+		{id: "evt-2", eventType: EventTypeRunState, payload: &RunStatePayload{Status: "waiting_approval", Agent: "executor"}},
+	})
+
+	projection, _, err := BuildProjection(events)
+	if err != nil {
+		t.Fatalf("build projection: %v", err)
+	}
+	if projection.Status != "waiting_approval" {
+		t.Fatalf("expected waiting_approval status, got %q", projection.Status)
+	}
+	if len(projection.Blocks) != 1 || projection.Blocks[0].Type != "tool_approval" {
+		t.Fatalf("expected tool_approval block, got %#v", projection.Blocks)
+	}
+}
+
 func TestBuildProjection_ProjectsReplanBlock(t *testing.T) {
 	events := buildProjectionTestEvents(t, []eventFixture{
 		{id: "evt-1", eventType: EventTypePlan, payload: &PlanPayload{Iteration: 0, Steps: []string{"inspect pods"}}},

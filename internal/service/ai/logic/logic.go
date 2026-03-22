@@ -127,16 +127,18 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		runtime.RequestID = requestID
 	}
 	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
-		SessionID: shell.SessionID,
-		RunID:     shell.Run.ID,
-		UserID:    input.UserID,
-		Scene:     shell.Scene,
+		SessionID:    shell.SessionID,
+		RunID:        shell.Run.ID,
+		CheckpointID: shell.Run.ID,
+		UserID:       input.UserID,
+		Scene:        shell.Scene,
 	})
 	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
-		SessionID: shell.SessionID,
-		RunID:     shell.Run.ID,
-		UserID:    input.UserID,
-		Scene:     shell.Scene,
+		SessionID:    shell.SessionID,
+		RunID:        shell.Run.ID,
+		CheckpointID: shell.Run.ID,
+		UserID:       input.UserID,
+		Scene:        shell.Scene,
 	})
 
 	// Step 4: 发送 A2UI meta 事件
@@ -149,7 +151,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 	emit(meta.Event, meta.Data)
 	if shell.Reused {
-		l.emitExistingShellTerminal(shell, emit)
+		l.emitExistingShellTerminal(ctx, shell, emit)
 		return nil
 	}
 
@@ -164,7 +166,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		schema.UserMessage(l.buildAugmentedMessage(ctx, shell.Scene, input.Context, input.Message)),
 	}
 
-	iterator := runner.Run(ctx, agentInput)
+	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
 
 	// Step 6: 消费事件
 	var (
@@ -261,6 +263,17 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
+	}
+	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+		runStatus := aidao.AIRunStatusUpdate{
+			Status:             "waiting_approval",
+			AssistantMessageID: shell.AssistantMessage.ID,
+		}
+		if err := l.finalizeRunCritical(ctx, shell, runStatus, summaryContent.String()); err != nil {
+			return fmt.Errorf("persist waiting approval state: %w", err)
+		}
+		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String())
+		return nil
 	}
 
 	done := projector.Finish(shell.Run.ID)
@@ -404,12 +417,34 @@ func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCou
 	return nil
 }
 
-func (l *Logic) emitExistingShellTerminal(shell chatShell, emit EventEmitter) {
+func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell chatShell, emit EventEmitter) {
 	switch shell.Run.Status {
 	case "failed", "failed_runtime":
 		emit("error", map[string]any{
 			"run_id":  shell.Run.ID,
 			"message": sanitizeUserFacingError(errors.New(shell.Run.ErrorMessage)),
+		})
+	case "waiting_approval":
+		if l.RunEventDAO != nil {
+			if events, err := l.RunEventDAO.ListByRun(ctx, shell.Run.ID); err == nil {
+				for i := len(events) - 1; i >= 0; i-- {
+					event := events[i]
+					if strings.TrimSpace(event.EventType) != "tool_approval" {
+						continue
+					}
+					var payload map[string]any
+					if unmarshalErr := json.Unmarshal([]byte(event.PayloadJSON), &payload); unmarshalErr == nil {
+						emit("tool_approval", payload)
+						break
+					}
+				}
+			}
+		}
+		emit("run_state", map[string]any{
+			"run_id":  shell.Run.ID,
+			"status":  "waiting_approval",
+			"agent":   "executor",
+			"summary": shell.AssistantMessage.Content,
 		})
 	case "completed", "completed_with_tool_errors":
 		emit("done", map[string]any{
@@ -587,10 +622,14 @@ func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seq
 }
 
 func assistantStatusFromRunStatus(status string) string {
-	if status == "failed_runtime" {
+	switch status {
+	case "failed_runtime":
 		return "error"
+	case "waiting_approval":
+		return "streaming"
+	default:
+		return "done"
 	}
-	return "done"
 }
 
 func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, string, error) {
@@ -635,6 +674,17 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 			ToolName:  stringValue(data, "tool_name"),
 			Arguments: mapValue(data, "arguments"),
 		})
+	case "tool_approval":
+		if strings.TrimSpace(stringValue(data, "approval_id")) == "" || strings.TrimSpace(stringValue(data, "call_id")) == "" || strings.TrimSpace(stringValue(data, "tool_name")) == "" {
+			return "", "", nil
+		}
+		return marshalTypedEvent(airuntime.EventTypeToolApproval, &airuntime.ToolApprovalPayload{
+			ApprovalID:     stringValue(data, "approval_id"),
+			CallID:         stringValue(data, "call_id"),
+			ToolName:       stringValue(data, "tool_name"),
+			Preview:        mapValue(data, "preview"),
+			TimeoutSeconds: intValue(data, "timeout_seconds"),
+		})
 	case "tool_result":
 		return marshalTypedEvent(airuntime.EventTypeToolResult, &airuntime.ToolResultPayload{
 			Agent:    stringValue(data, "agent"),
@@ -642,6 +692,14 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 			ToolName: stringValue(data, "tool_name"),
 			Content:  stringValue(data, "content"),
 			Status:   stringValue(data, "status"),
+		})
+	case "run_state":
+		if strings.TrimSpace(stringValue(data, "status")) == "" {
+			return "", "", nil
+		}
+		return marshalTypedEvent(airuntime.EventTypeRunState, &airuntime.RunStatePayload{
+			Status: stringValue(data, "status"),
+			Agent:  stringValue(data, "agent"),
 		})
 	case "done":
 		return marshalTypedEvent(airuntime.EventTypeDone, &airuntime.DonePayload{
@@ -1237,53 +1295,163 @@ type SubmitApprovalOutput struct {
 // 该方法仅更新审批任务状态，不恢复执行。
 // 用户在前端审批界面点击"批准"或"拒绝"后调用。
 func (l *Logic) SubmitApproval(ctx context.Context, input SubmitApprovalInput) (*SubmitApprovalOutput, error) {
-	if l.ApprovalDAO == nil {
+	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
 		return nil, fmt.Errorf("approval service not initialized")
 	}
-
-	// 获取审批任务
-	task, err := l.ApprovalDAO.GetByApprovalID(ctx, input.ApprovalID)
-	if err != nil {
-		return nil, fmt.Errorf("get approval task: %w", err)
-	}
-	if task == nil {
-		return nil, fmt.Errorf("approval task not found")
+	if strings.TrimSpace(input.ApprovalID) == "" {
+		return nil, fmt.Errorf("approval_id is required")
 	}
 
-	// 检查状态
-	if task.Status != "pending" {
-		return &SubmitApprovalOutput{
+	var result *SubmitApprovalOutput
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		approvalDAO := aidao.NewAIApprovalTaskDAO(tx)
+		outboxDAO := aidao.NewAIApprovalOutboxDAO(tx)
+
+		task, err := approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+		if err != nil {
+			return fmt.Errorf("get approval task: %w", err)
+		}
+		if task == nil {
+			return fmt.Errorf("approval task not found")
+		}
+		if task.UserID != 0 && task.UserID != input.UserID {
+			return fmt.Errorf("approval task not found")
+		}
+
+		now := time.Now()
+		if task.Status != "pending" || (task.LockExpiresAt != nil && task.LockExpiresAt.After(now)) {
+			result = &SubmitApprovalOutput{
+				ApprovalID: input.ApprovalID,
+				Status:     task.Status,
+				Message:    fmt.Sprintf("approval already %s", task.Status),
+			}
+			return nil
+		}
+
+		if task.ExpiresAt != nil && task.ExpiresAt.Before(now) {
+			update := tx.WithContext(ctx).
+				Model(&model.AIApprovalTask{}).
+				Where("approval_id = ? AND status = ?", input.ApprovalID, "pending").
+				Updates(map[string]any{
+					"status":     "expired",
+					"updated_at": now,
+				})
+			if update.Error != nil {
+				return fmt.Errorf("mark approval expired: %w", update.Error)
+			}
+			if update.RowsAffected == 0 {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+			task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+			if err != nil {
+				return fmt.Errorf("reload expired task: %w", err)
+			}
+			payloadJSON, err := buildApprovalDecisionOutboxPayload(task)
+			if err != nil {
+				return fmt.Errorf("build expired approval payload: %w", err)
+			}
+			if err := outboxDAO.EnqueueOrTouch(ctx, &model.AIApprovalOutboxEvent{
+				ApprovalID:  task.ApprovalID,
+				EventType:   "approval_decided",
+				RunID:       task.RunID,
+				SessionID:   task.SessionID,
+				PayloadJSON: payloadJSON,
+				Status:      "pending",
+			}); err != nil {
+				return fmt.Errorf("enqueue approval_decided outbox: %w", err)
+			}
+			result = &SubmitApprovalOutput{
+				ApprovalID: input.ApprovalID,
+				Status:     "expired",
+				Message:    "approval has expired",
+			}
+			return nil
+		}
+
+		if input.Approved {
+			updated, err := approvalDAO.ApproveWithLease(ctx, input.ApprovalID, input.UserID, input.Comment, now.Add(approvalWorkerDefaultLeaseWindow))
+			if err != nil {
+				return fmt.Errorf("approve approval task: %w", err)
+			}
+			if !updated {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+		} else {
+			updated, err := approvalDAO.RejectPending(ctx, input.ApprovalID, input.UserID, input.DisapproveReason, input.Comment)
+			if err != nil {
+				return fmt.Errorf("reject approval task: %w", err)
+			}
+			if !updated {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+		}
+
+		task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+		if err != nil {
+			return fmt.Errorf("reload updated approval task: %w", err)
+		}
+		payloadJSON, err := buildApprovalDecisionOutboxPayload(task)
+		if err != nil {
+			return fmt.Errorf("build approval payload: %w", err)
+		}
+		if err := outboxDAO.EnqueueOrTouch(ctx, &model.AIApprovalOutboxEvent{
+			ApprovalID:  task.ApprovalID,
+			EventType:   "approval_decided",
+			RunID:       task.RunID,
+			SessionID:   task.SessionID,
+			PayloadJSON: payloadJSON,
+			Status:      "pending",
+		}); err != nil {
+			return fmt.Errorf("enqueue approval_decided outbox: %w", err)
+		}
+
+		result = &SubmitApprovalOutput{
 			ApprovalID: input.ApprovalID,
 			Status:     task.Status,
-			Message:    fmt.Sprintf("approval already %s", task.Status),
-		}, nil
+			Message:    fmt.Sprintf("approval %s successfully", task.Status),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	// 检查是否过期
-	if task.ExpiresAt != nil && task.ExpiresAt.Before(time.Now()) {
-		_ = l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, "expired", input.UserID, "", "")
-		return &SubmitApprovalOutput{
-			ApprovalID: input.ApprovalID,
-			Status:     "expired",
-			Message:    "approval has expired",
-		}, nil
-	}
-
-	// 更新状态
-	status := "approved"
-	if !input.Approved {
-		status = "rejected"
-	}
-
-	if err := l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, status, input.UserID, input.DisapproveReason, input.Comment); err != nil {
-		return nil, fmt.Errorf("update approval status: %w", err)
-	}
-
-	return &SubmitApprovalOutput{
-		ApprovalID: input.ApprovalID,
-		Status:     status,
-		Message:    fmt.Sprintf("approval %s successfully", status),
-	}, nil
+	return result, nil
 }
 
 // ResumeApprovalInput 恢复审批执行的输入参数。
@@ -1316,6 +1484,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 	}
 
 	// 验证用户权限
+	resumeScene := ""
 	if l.ChatDAO != nil {
 		session, err := l.ChatDAO.GetSession(ctx, task.SessionID, input.UserID, "")
 		if err != nil {
@@ -1324,6 +1493,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		if session == nil {
 			return fmt.Errorf("session not found or no permission")
 		}
+		resumeScene = normalizeScene(session.Scene)
 	}
 
 	// 更新审批状态
@@ -1352,6 +1522,13 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 
 	// 创建 Runner 并恢复执行
 	ctx = l.runtimeContext(ctx)
+	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
+		SessionID:    task.SessionID,
+		RunID:        task.RunID,
+		CheckpointID: task.CheckpointID,
+		UserID:       input.UserID,
+		Scene:        resumeScene,
+	})
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           l.AIRouter,
 		EnableStreaming: true,
@@ -1365,7 +1542,7 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		},
 	}
 
-	iterator, err := runner.ResumeWithParams(ctx, task.CheckpointID, resumeParams)
+	iterator, err := runner.ResumeWithParams(ctx, task.CheckpointID, resumeParams, adk.WithCheckPointID(task.CheckpointID))
 	if err != nil {
 		return fmt.Errorf("resume execution: %w", err)
 	}

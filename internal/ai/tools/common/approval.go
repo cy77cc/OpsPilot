@@ -12,7 +12,10 @@
 //  4. 中间件根据审批结果决定继续执行或返回拒绝消息
 package common
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ApprovalInfo 审批请求信息，展示给用户决策。
 //
@@ -92,6 +95,35 @@ type ToolRiskConfig struct {
 	// PreviewGenerator 预览生成器函数，根据参数生成 ApprovalPreview
 	// 参数 args 为工具调用的 JSON 参数字符串
 	PreviewGenerator func(args string) ApprovalPreview
+}
+
+// ApprovalEvalMeta carries runtime metadata used to evaluate a tool-call approval policy.
+type ApprovalEvalMeta struct {
+	SessionID      string
+	RunID          string
+	CheckpointID   string
+	CallID         string
+	Scene          string
+	CommandClass   string
+	UserID         uint64
+	TimeoutSeconds int
+}
+
+// ApprovalDecision captures the evaluator output used by the approval middleware.
+type ApprovalDecision struct {
+	RequiresApproval bool
+	ApprovalID       string
+	Preview          ApprovalPreview
+	TimeoutSeconds   int
+	MatchedRuleID    *uint64
+	PolicyVersion    string
+	DecisionSource   string
+	ExpiresAt        time.Time
+}
+
+// ApprovalEvaluator can decide whether a tool call requires human approval.
+type ApprovalEvaluator interface {
+	Evaluate(ctx context.Context, toolName string, args string, meta ApprovalEvalMeta) (*ApprovalDecision, error)
 }
 
 // RiskLevel 风险等级常量。

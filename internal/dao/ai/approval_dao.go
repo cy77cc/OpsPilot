@@ -75,194 +75,66 @@ func (d *AIApprovalTaskDAO) UpdateStatus(ctx context.Context, approvalID string,
 		Updates(updates).Error
 }
 
-// ApproveWithLease atomically approves a pending task and sets the decision lease.
-func (d *AIApprovalTaskDAO) ApproveWithLease(ctx context.Context, approvalID string, approvedBy uint64, comment string, leaseWindow time.Duration) (*model.AIApprovalTask, error) {
-	if approvalID == "" {
-		return nil, fmt.Errorf("approval id is required")
-	}
-
+// ApproveWithLease transitions a pending approval to approved and installs a resume lease atomically.
+func (d *AIApprovalTaskDAO) ApproveWithLease(ctx context.Context, approvalID string, approvedBy uint64, comment string, leaseExpiresAt time.Time) (bool, error) {
 	now := time.Now()
-	var updated *model.AIApprovalTask
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var task model.AIApprovalTask
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("approval_id = ?", approvalID).
-			First(&task).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if task.Status != "pending" {
-			updated = &task
-			return nil
-		}
-		if task.ExpiresAt != nil && task.ExpiresAt.Before(now) {
-			expiredAt := now
-			res := tx.Model(&model.AIApprovalTask{}).
-				Where("approval_id = ? AND status = ?", approvalID, "pending").
-				Updates(map[string]any{
-					"status":            "expired",
-					"approved_by":       approvedBy,
-					"comment":           comment,
-					"disapprove_reason": "",
-					"decided_at":        expiredAt,
-					"lock_expires_at":   nil,
-					"updated_at":        expiredAt,
-				})
-			if res.Error != nil {
-				return res.Error
-			}
-			if res.RowsAffected == 0 {
-				return nil
-			}
-			task.Status = "expired"
-			task.ApprovedBy = approvedBy
-			task.Comment = comment
-			task.DisapproveReason = ""
-			task.DecidedAt = &expiredAt
-			task.LockExpiresAt = nil
-			task.UpdatedAt = expiredAt
-			updated = &task
-			return nil
-		}
-
-		leaseExpires := now.Add(leaseWindow)
-		decisionTime := now
-		res := tx.Model(&model.AIApprovalTask{}).
-			Where("approval_id = ? AND status = ?", approvalID, "pending").
-			Updates(map[string]any{
-				"status":            "approved",
-				"approved_by":       approvedBy,
-				"comment":           comment,
-				"disapprove_reason": "",
-				"decided_at":        decisionTime,
-				"lock_expires_at":   leaseExpires,
-				"updated_at":        decisionTime,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return nil
-		}
-		task.Status = "approved"
-		task.ApprovedBy = approvedBy
-		task.Comment = comment
-		task.DisapproveReason = ""
-		task.DecidedAt = &decisionTime
-		task.LockExpiresAt = &leaseExpires
-		task.UpdatedAt = decisionTime
-		updated = &task
-		return nil
-	})
-	return updated, err
+	lease := leaseExpiresAt
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "pending").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"status":            "approved",
+			"approved_by":       approvedBy,
+			"disapprove_reason": "",
+			"comment":           comment,
+			"decided_at":        now,
+			"lock_expires_at":   &lease,
+			"updated_at":        now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
-// RejectPending rejects a pending approval task without mutating locked tasks.
-func (d *AIApprovalTaskDAO) RejectPending(ctx context.Context, approvalID string, rejectedBy uint64, reason, comment string) (*model.AIApprovalTask, error) {
-	if approvalID == "" {
-		return nil, fmt.Errorf("approval id is required")
-	}
-
+// RejectPending rejects a pending approval only when no active processing lease exists.
+func (d *AIApprovalTaskDAO) RejectPending(ctx context.Context, approvalID string, approvedBy uint64, reason, comment string) (bool, error) {
 	now := time.Now()
-	var updated *model.AIApprovalTask
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var task model.AIApprovalTask
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("approval_id = ?", approvalID).
-			First(&task).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if task.Status != "pending" {
-			updated = &task
-			return nil
-		}
-
-		res := tx.Model(&model.AIApprovalTask{}).
-			Where("approval_id = ? AND status = ?", approvalID, "pending").
-			Updates(map[string]any{
-				"status":            "rejected",
-				"approved_by":       rejectedBy,
-				"disapprove_reason": reason,
-				"comment":           comment,
-				"decided_at":        now,
-				"lock_expires_at":   nil,
-				"updated_at":        now,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return nil
-		}
-		task.Status = "rejected"
-		task.ApprovedBy = rejectedBy
-		task.DisapproveReason = reason
-		task.Comment = comment
-		task.DecidedAt = &now
-		task.LockExpiresAt = nil
-		task.UpdatedAt = now
-		updated = &task
-		return nil
-	})
-	return updated, err
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "pending").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"status":            "rejected",
+			"approved_by":       approvedBy,
+			"disapprove_reason": reason,
+			"comment":           comment,
+			"decided_at":        now,
+			"updated_at":        now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
-// AcquireOrStealLease acquires a lease for approved tasks and refreshes expired locks.
-func (d *AIApprovalTaskDAO) AcquireOrStealLease(ctx context.Context, approvalID string, leaseWindow time.Duration) (*model.AIApprovalTask, error) {
-	if approvalID == "" {
-		return nil, fmt.Errorf("approval id is required")
-	}
-
+// AcquireOrStealLease acquires a lease for an approved task or steals it once the previous lease expires.
+func (d *AIApprovalTaskDAO) AcquireOrStealLease(ctx context.Context, approvalID string, leaseExpiresAt time.Time) (bool, error) {
 	now := time.Now()
-	var updated *model.AIApprovalTask
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var task model.AIApprovalTask
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("approval_id = ?", approvalID).
-			First(&task).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if task.Status != "approved" && task.Status != "approved_locked" {
-			updated = &task
-			return nil
-		}
-		if task.LockExpiresAt != nil && task.LockExpiresAt.After(now) {
-			updated = &task
-			return nil
-		}
-
-		leaseExpires := now.Add(leaseWindow)
-		res := tx.Model(&model.AIApprovalTask{}).
-			Where("approval_id = ? AND status IN ? AND (lock_expires_at IS NULL OR lock_expires_at <= ?)", approvalID, []string{"approved", "approved_locked"}, now).
-			Updates(map[string]any{
-				"status":          "approved_locked",
-				"lock_expires_at": leaseExpires,
-				"updated_at":      now,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return nil
-		}
-		task.Status = "approved_locked"
-		task.LockExpiresAt = &leaseExpires
-		task.UpdatedAt = now
-		updated = &task
-		return nil
-	})
-	return updated, err
+	lease := leaseExpiresAt
+	result := d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ? AND status = ?", approvalID, "approved").
+		Where("(lock_expires_at IS NULL OR lock_expires_at <= ?)", now).
+		Updates(map[string]any{
+			"lock_expires_at": &lease,
+			"updated_at":      now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // ListPendingByUserID 列出用户的待处理审批任务。

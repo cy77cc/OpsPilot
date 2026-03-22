@@ -214,6 +214,24 @@ type AICheckpoint struct {
 
 func (AICheckpoint) TableName() string { return "ai_checkpoints" }
 
+// AIToolRiskPolicy stores DB-driven approval policy for a tool.
+type AIToolRiskPolicy struct {
+	ID                uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ToolName          string    `gorm:"column:tool_name;type:varchar(64);not null;index:idx_ai_tool_risk_policies_tool_enabled,priority:1" json:"tool_name"`
+	Scene             *string   `gorm:"column:scene;type:varchar(32)" json:"scene"`
+	CommandClass      *string   `gorm:"column:command_class;type:varchar(32)" json:"command_class"`
+	ArgumentRulesJSON *string   `gorm:"column:argument_rules;type:longtext" json:"argument_rules"`
+	ApprovalRequired  bool      `gorm:"column:approval_required;not null;default:false" json:"approval_required"`
+	RiskLevel         string    `gorm:"column:risk_level;type:varchar(16);not null;default:'medium'" json:"risk_level"`
+	Priority          int       `gorm:"column:priority;not null;default:0" json:"priority"`
+	Enabled           bool      `gorm:"column:enabled;not null;default:true;index:idx_ai_tool_risk_policies_tool_enabled,priority:2" json:"enabled"`
+	PolicyVersion     string    `gorm:"column:policy_version;type:varchar(64);not null;default:''" json:"policy_version"`
+	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+}
+
+func (AIToolRiskPolicy) TableName() string { return "ai_tool_risk_policies" }
+
 // AIApprovalTask 存储工具审批任务，用于 Human-in-the-Loop 工作流。
 //
 // 当高风险工具需要人工审批时，系统会创建审批任务记录，
@@ -236,6 +254,9 @@ type AIApprovalTask struct {
 	TimeoutSeconds   int            `gorm:"column:timeout_seconds;not null;default:300" json:"timeout_seconds"`
 	ExpiresAt        *time.Time     `gorm:"column:expires_at;index" json:"expires_at"`
 	LockExpiresAt    *time.Time     `gorm:"column:lock_expires_at;index" json:"lock_expires_at"`
+	MatchedRuleID    *uint64        `gorm:"column:matched_rule_id;index" json:"matched_rule_id"`
+	PolicyVersion    *string        `gorm:"column:policy_version;type:varchar(64)" json:"policy_version"`
+	DecisionSource   *string        `gorm:"column:decision_source;type:varchar(32)" json:"decision_source"`
 	DecidedAt        *time.Time     `gorm:"column:decided_at" json:"decided_at"`
 	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
@@ -244,18 +265,18 @@ type AIApprovalTask struct {
 
 func (AIApprovalTask) TableName() string { return "ai_approval_tasks" }
 
-// AIApprovalOutboxEvent stores approval side effects for asynchronous delivery.
+// AIApprovalOutboxEvent stores durable approval-related outbox events.
 type AIApprovalOutboxEvent struct {
 	ID          uint64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	ApprovalID  string     `gorm:"column:approval_id;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:1;index:idx_ai_approval_outbox_events_status_next_retry_created,priority:1" json:"approval_id"`
-	EventType   string     `gorm:"column:event_type;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:2" json:"event_type"`
-	RunID       string     `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"`
-	SessionID   string     `gorm:"column:session_id;type:varchar(64);not null;index" json:"session_id"`
+	ApprovalID  string     `gorm:"column:approval_id;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:1" json:"approval_id"`
+	EventType   string     `gorm:"column:event_type;type:varchar(32);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:2" json:"event_type"`
+	RunID       string     `gorm:"column:run_id;type:varchar(64);not null;index:idx_ai_approval_outbox_events_run_id" json:"run_id"`
+	SessionID   string     `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_approval_outbox_events_session_id" json:"session_id"`
 	PayloadJSON string     `gorm:"column:payload_json;type:longtext;not null" json:"payload_json"`
-	Status      string     `gorm:"column:status;type:varchar(16);not null;default:'pending';index:idx_ai_approval_outbox_events_status_next_retry_created,priority:1" json:"status"`
+	Status      string     `gorm:"column:status;type:varchar(16);not null;default:'pending';index:idx_ai_approval_outbox_events_queue,priority:1" json:"status"`
 	RetryCount  int        `gorm:"column:retry_count;not null;default:0" json:"retry_count"`
-	NextRetryAt *time.Time `gorm:"column:next_retry_at;index:idx_ai_approval_outbox_events_status_next_retry_created,priority:2" json:"next_retry_at"`
-	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime;index:idx_ai_approval_outbox_events_status_next_retry_created,priority:3,sort:asc" json:"created_at"`
+	NextRetryAt *time.Time `gorm:"column:next_retry_at;index:idx_ai_approval_outbox_events_queue,priority:2" json:"next_retry_at"`
+	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime;index:idx_ai_approval_outbox_events_queue,priority:3" json:"created_at"`
 	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 

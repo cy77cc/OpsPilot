@@ -20,7 +20,12 @@ import { createStyles } from 'antd-style';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
-import { hydrateAssistantHistoryFromProjection, isProjectionHydrationPending, loadStepContent } from './historyProjection';
+import {
+  hydrateAssistantHistoryFromProjection,
+  isProjectionHydrationPending,
+  loadStepContent,
+  resetHistoryProjectionCache,
+} from './historyProjection';
 import { normalizeMarkdownContent } from './markdownContent';
 import { PlatformChatProvider } from './providers';
 import type { ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
@@ -487,6 +492,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
   const {
     messages,
+    setMessages,
     onRequest,
     isRequesting,
     queueRequest,
@@ -796,6 +802,43 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       cancelled = true;
     };
   }, [scene, setActiveConversationKey, setConversations]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    resetHistoryProjectionCache();
+  }, [activeConversationKey, open]);
+
+  React.useEffect(() => {
+    if (!open || activeConversationKey === NEW_SESSION_KEY) {
+      return;
+    }
+    let disposed = false;
+    const refreshActiveConversation = async () => {
+      resetHistoryProjectionCache();
+      const next = await defaultMessages({ conversationKey: activeConversationKey });
+      if (disposed) {
+        return;
+      }
+      setMessages(
+        next.map((item, index) => ({
+          id: item.id ?? `history-${activeConversationKey}-${index}`,
+          message: item.message,
+          status: item.status ?? 'success',
+          extraInfo: item.extraInfo,
+        })),
+      );
+    };
+    const handler = () => {
+      void refreshActiveConversation();
+    };
+    window.addEventListener('ai-approval-updated', handler as EventListener);
+    return () => {
+      disposed = true;
+      window.removeEventListener('ai-approval-updated', handler as EventListener);
+    };
+  }, [activeConversationKey, defaultMessages, open, setMessages]);
 
   const ensureSession = React.useCallback(
     async (firstMessage: string) => {
