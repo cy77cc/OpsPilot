@@ -23,3 +23,10 @@ func TestPolicyEngine_FailClosedOnCommandTooLong(t *testing.T) {
 	require.Equal(t, DecisionRequireApprovalInterrupt, got.DecisionType)
 	require.Contains(t, got.ReasonCodes, "command_too_long")
 }
+
+func TestPolicyEngine_RequireApprovalWhenReadonlyValidationFails(t *testing.T) {
+	engine := NewHostCommandPolicyEngine(DefaultReadonlyAllowlist())
+	got := engine.Evaluate(PolicyInput{ToolName: "host_exec_readonly", CommandRaw: "uname -a"})
+	require.Equal(t, DecisionRequireApprovalInterrupt, got.DecisionType)
+	require.Contains(t, got.ReasonCodes, "command_not_allowlisted")
+}
