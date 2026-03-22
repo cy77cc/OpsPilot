@@ -10,11 +10,13 @@ import (
 	"strings"
 	"time"
 
+	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
 	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
 	qwenmodel "github.com/cloudwego/eino-ext/components/model/qwen"
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 )
 
 type ChatModelConfig struct {
@@ -49,6 +51,18 @@ func NewChatModel(ctx context.Context, opts ChatModelConfig) (einomodel.ToolCall
 			Temperature:    &temp,
 			Timeout:        opts.Timeout,
 			EnableThinking: &thinking,
+		})
+	case "ark":
+		temp := opts.Temp
+		return arkmodel.NewChatModel(ctx, &arkmodel.ChatModelConfig{
+			APIKey:         config.CFG.LLM.APIKey,
+			BaseURL:        config.CFG.LLM.BaseURL,
+			Model:          config.CFG.LLM.Model,
+			Temperature:    &temp,
+			Timeout:        &opts.Timeout,
+			Thinking: &model.Thinking{
+				Type: model.ThinkingTypeDisabled,
+			},
 		})
 	default:
 		return nil, fmt.Errorf("unsupported llm provider %q", config.CFG.LLM.Provider)

@@ -59,6 +59,8 @@ require (
 	github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/cloudwego/eino-ext v0.0.1-alpha // indirect
+	github.com/cloudwego/eino-ext/components/model/ark v0.1.65 // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.11 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
