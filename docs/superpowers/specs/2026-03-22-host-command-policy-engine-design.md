@@ -184,6 +184,7 @@
 
 1. `HostApprovalBridge` 在触发审批时立即返回挂起状态（如 `{"status":"suspended","approval_id":"..."}`），而不是同步等待人工结果。
 2. 当前工具调用在挂起后立刻结束，由会话恢复机制在审批通过后继续，避免 LLM/tool call 因人工审批超时而失败。
+3. 当前实现阶段中，`host_exec_readonly` / `host_exec_change` 工具输出会显式带 `status=suspended` 与策略决策摘要；审批中间件同时补齐中断链路字段（包含 `status=suspended`、绑定校验信息）用于会话恢复。
 
 ### 7.2 恢复执行
 
