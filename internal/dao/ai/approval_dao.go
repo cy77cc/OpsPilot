@@ -5,13 +5,10 @@ package ai
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // AIApprovalTaskDAO 审批任务数据访问对象。
