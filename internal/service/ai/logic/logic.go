@@ -168,9 +168,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	// Step 6: 消费事件
 	var (
-		assistantContent strings.Builder
-		projector        = airuntime.NewStreamProjector()
-		hasToolErrors    bool
+		summaryContent    strings.Builder
+		assistantSnapshot strings.Builder
+		projector         = airuntime.NewStreamProjector()
+		hasToolErrors     bool
 	)
 
 	for {
@@ -182,7 +183,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		if event.Err != nil {
 			if toolErrorEvent, ok := recoverableToolErrorEvent(event); ok {
 				hasToolErrors = true
-				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(toolErrorEvent), emit, &summaryContent)
 				if err != nil {
 					return fmt.Errorf("persist projected tool error event: %w", err)
 				}
@@ -195,10 +196,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 				continue
 			}
 
-			if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+			if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 				return fmt.Errorf("flush projected events: %w", err)
 			}
-			if err := l.emitTerminalFailure(ctx, shell, &seqCounter, event.Err, assistantContent.String(), emit); err != nil {
+			if err := l.emitTerminalFailure(ctx, shell, &seqCounter, event.Err, summaryContent.String(), assistantSnapshot.String(), emit); err != nil {
 				return fmt.Errorf("finalize fatal error: %w", err)
 			}
 			return nil
@@ -211,10 +212,14 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 					break
 				}
 				if err != nil {
-					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 						return fmt.Errorf("flush projected events: %w", err)
 					}
-					if err := l.emitTerminalFailure(ctx, shell, &seqCounter, err, assistantContent.String(), emit); err != nil {
+					snapshot := assistantSnapshot.String()
+					if !shouldRetainPartialStreamSnapshot(err) {
+						snapshot = ""
+					}
+					if err := l.emitTerminalFailure(ctx, shell, &seqCounter, err, summaryContent.String(), snapshot, emit); err != nil {
 						return fmt.Errorf("finalize stream error: %w", err)
 					}
 					return nil
@@ -225,9 +230,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
-				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(chunkEvent), emit, &assistantContent)
+				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(chunkEvent), emit, &summaryContent)
 				if err != nil {
 					return fmt.Errorf("persist projected stream chunk: %w", err)
+				}
+				if msg.Role == schema.Assistant {
+					assistantSnapshot.WriteString(msg.Content)
 				}
 				if update.AssistantType != "" || update.IntentType != "" {
 					_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
@@ -239,7 +247,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 			continue
 		}
 
-		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(event), emit, &assistantContent)
+		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.Consume(event), emit, &summaryContent)
 		if err != nil {
 			return fmt.Errorf("persist projected event: %w", err)
 		}
@@ -251,14 +259,14 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		}
 	}
 
-	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &assistantContent); err != nil {
+	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
 	}
 
 	done := projector.Finish(shell.Run.ID)
 	if payload, ok := done.Data.(map[string]any); ok {
 		if strings.TrimSpace(stringValue(payload, "summary")) == "" {
-			payload["summary"] = assistantContent.String()
+			payload["summary"] = summaryContent.String()
 		}
 		done.Data = payload
 	}
@@ -272,10 +280,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	if hasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
 	}
-	if err := l.finalizeRunCritical(ctx, shell, runStatus, assistantContent.String()); err != nil {
+	if err := l.finalizeRunCritical(ctx, shell, runStatus, ""); err != nil {
 		return fmt.Errorf("finalize run critical: %w", err)
 	}
-	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, assistantContent.String())
+	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String())
 
 	emit(done.Event, done.Data)
 
@@ -369,7 +377,7 @@ func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (chatShell
 	return shell, nil
 }
 
-func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCounter *int, internalErr error, assistantBody string, emit EventEmitter) error {
+func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCounter *int, internalErr error, summaryBody string, assistantBody string, emit EventEmitter) error {
 	publicError := sanitizeUserFacingError(internalErr)
 	projected := airuntime.NewErrorEvent(shell.Run.ID, errors.New(publicError))
 	if err := l.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, seqCounter, projected.Event, projected.Data); err != nil {
@@ -382,11 +390,17 @@ func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCou
 		Status:             "failed_runtime",
 		ErrorMessage:       internalErr.Error(),
 	}
-	assistantSnapshot := buildAssistantFailureSnapshot(assistantBody, publicError)
+	assistantSnapshot := buildAssistantFailureSnapshot(summaryBody, assistantBody, publicError)
 	if err := l.finalizeRunCritical(ctx, shell, runUpdate, assistantSnapshot); err != nil {
 		return err
 	}
-	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runUpdate.Status, assistantSnapshot)
+	if err := l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runUpdate.Status, assistantSnapshot); err != nil {
+		// 启动阶段尚未输出任何内容时，允许增强持久化降级为 best-effort。
+		if strings.TrimSpace(summaryBody) == "" && strings.TrimSpace(assistantBody) == "" {
+			return nil
+		}
+		return fmt.Errorf("persist run artifacts: %w", err)
+	}
 	return nil
 }
 
@@ -462,9 +476,12 @@ func (l *Logic) persistRunEnhancementsBestEffort(ctx context.Context, runID, ses
 	})
 }
 
-func buildAssistantFailureSnapshot(assistantBody, publicError string) string {
+func buildAssistantFailureSnapshot(summaryBody, assistantBody, publicError string) string {
 	if strings.TrimSpace(assistantBody) != "" {
 		return assistantBody
+	}
+	if strings.TrimSpace(summaryBody) != "" {
+		return ""
 	}
 	return publicError
 }
@@ -474,6 +491,14 @@ func sanitizeUserFacingError(err error) string {
 		return "生成中断，请稍后重试。"
 	}
 	return "生成中断，请稍后重试。"
+}
+
+func shouldRetainPartialStreamSnapshot(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "timeout")
 }
 
 func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) (projectedRunUpdate, error) {
