@@ -327,6 +327,18 @@ func buildApprovalInterruptInfo(toolName, callID string, decision *common.Approv
 	if strings.TrimSpace(decision.PolicyVersion) != "" {
 		info["policy_version"] = strings.TrimSpace(decision.PolicyVersion)
 	}
+	if approver := strings.TrimSpace(decision.ApproverID); approver != "" {
+		info["approver_id"] = approver
+	}
+	if decision.ApprovalTimestamp != nil {
+		info["approval_timestamp"] = decision.ApprovalTimestamp.UTC().Format(time.RFC3339Nano)
+	}
+	if reason := strings.TrimSpace(decision.RejectReason); reason != "" {
+		info["reject_reason"] = reason
+	}
+	if len(decision.PolicyViolations) > 0 {
+		info["policy_violations"] = decision.PolicyViolations
+	}
 	return info
 }
 

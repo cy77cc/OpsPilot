@@ -112,16 +112,20 @@ type ApprovalEvalMeta struct {
 
 // ApprovalDecision captures the evaluator output used by the approval middleware.
 type ApprovalDecision struct {
-	RequiresApproval bool
-	ApprovalID       string
-	Preview          ApprovalPreview
-	TimeoutSeconds   int
-	MatchedRuleID    *uint64
-	PolicyVersion    string
-	DecisionSource   string
-	ExpiresAt        time.Time
-	BoundSessionID   string
-	BoundAgentRole   string
+	RequiresApproval  bool
+	ApprovalID        string
+	Preview           ApprovalPreview
+	TimeoutSeconds    int
+	MatchedRuleID     *uint64
+	PolicyVersion     string
+	DecisionSource    string
+	ExpiresAt         time.Time
+	BoundSessionID    string
+	BoundAgentRole    string
+	ApproverID        string
+	ApprovalTimestamp *time.Time
+	RejectReason      string
+	PolicyViolations  []string
 }
 
 // ApprovalEvaluator can decide whether a tool call requires human approval.

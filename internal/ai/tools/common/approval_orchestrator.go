@@ -168,15 +168,18 @@ func (o *ApprovalOrchestrator) createApprovalDecision(
 	}
 
 	eventPayload := map[string]any{
-		"approval_id":     approvalID,
-		"call_id":         meta.CallID,
-		"tool_name":       toolName,
-		"session_id":      meta.SessionID,
-		"run_id":          meta.RunID,
-		"preview":         preview,
-		"timeout_seconds": timeoutSeconds,
-		"expires_at":      expiresAt.UTC().Format(time.RFC3339Nano),
-		"decision_source": decisionSource,
+		"approval_id":        approvalID,
+		"call_id":            meta.CallID,
+		"tool_name":          toolName,
+		"session_id":         meta.SessionID,
+		"run_id":             meta.RunID,
+		"preview":            preview,
+		"timeout_seconds":    timeoutSeconds,
+		"expires_at":         expiresAt.UTC().Format(time.RFC3339Nano),
+		"decision_source":    decisionSource,
+		"approver_id":        "",
+		"approval_timestamp": "",
+		"reject_reason":      "",
 	}
 	if matched != nil {
 		eventPayload["matched_rule_id"] = matched.ID

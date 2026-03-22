@@ -130,3 +130,56 @@ func TestCommandClassForTool_HostExecChange(t *testing.T) {
 		t.Fatalf("expected service_control, got %q", got)
 	}
 }
+
+func TestApprovalAudit_RecordsApproverAndTimestamp(t *testing.T) {
+	now := time.Now().UTC()
+	decision := &common.ApprovalDecision{
+		ApprovalID:        "approval-2",
+		TimeoutSeconds:    300,
+		DecisionSource:    "fallback_static",
+		ExpiresAt:         now,
+		ApproverID:        "user-42",
+		ApprovalTimestamp: &now,
+	}
+	info := buildApprovalInterruptInfo("host_exec_change", "call-2", decision)
+	if got, _ := info["approver_id"].(string); got != "user-42" {
+		t.Fatalf("expected approver_id user-42, got %v", info["approver_id"])
+	}
+	if _, ok := info["approval_timestamp"].(string); !ok {
+		t.Fatalf("expected approval_timestamp string, got %T", info["approval_timestamp"])
+	}
+}
+
+func TestApprovalAudit_RecordsRejectReason(t *testing.T) {
+	now := time.Now().UTC()
+	decision := &common.ApprovalDecision{
+		ApprovalID:     "approval-3",
+		TimeoutSeconds: 300,
+		DecisionSource: "fallback_static",
+		ExpiresAt:      now,
+		RejectReason:   "too risky",
+	}
+	info := buildApprovalInterruptInfo("host_exec_change", "call-3", decision)
+	if got, _ := info["reject_reason"].(string); got != "too risky" {
+		t.Fatalf("expected reject_reason too risky, got %v", info["reject_reason"])
+	}
+}
+
+func TestApprovalAudit_RecordsParseFailuresAndViolations(t *testing.T) {
+	now := time.Now().UTC()
+	decision := &common.ApprovalDecision{
+		ApprovalID:       "approval-4",
+		TimeoutSeconds:   300,
+		DecisionSource:   "fallback_static",
+		ExpiresAt:        now,
+		PolicyViolations: []string{"parse_error", "policy_violation"},
+	}
+	info := buildApprovalInterruptInfo("host_exec_readonly", "call-4", decision)
+	raw, ok := info["policy_violations"].([]string)
+	if !ok {
+		t.Fatalf("expected policy_violations []string, got %T", info["policy_violations"])
+	}
+	if len(raw) != 2 {
+		t.Fatalf("expected 2 policy violations, got %v", raw)
+	}
+}
