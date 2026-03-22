@@ -16,7 +16,9 @@ const (
 	EventTypeReplan       EventType = "replan"
 	EventTypeDelta        EventType = "delta"
 	EventTypeToolCall     EventType = "tool_call"
+	EventTypeToolApproval EventType = "tool_approval"
 	EventTypeToolResult   EventType = "tool_result"
+	EventTypeRunState     EventType = "run_state"
 	EventTypeDone         EventType = "done"
 	EventTypeError        EventType = "error"
 )
@@ -57,12 +59,25 @@ type ToolCallPayload struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+type ToolApprovalPayload struct {
+	ApprovalID     string         `json:"approval_id"`
+	CallID         string         `json:"call_id"`
+	ToolName       string         `json:"tool_name"`
+	Preview        map[string]any `json:"preview,omitempty"`
+	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
+}
+
 type ToolResultPayload struct {
 	Agent    string `json:"agent"`
 	CallID   string `json:"call_id"`
 	ToolName string `json:"tool_name"`
 	Content  string `json:"content"`
 	Status   string `json:"status"`
+}
+
+type RunStatePayload struct {
+	Status string `json:"status"`
+	Agent  string `json:"agent,omitempty"`
 }
 
 type DonePayload struct {
@@ -114,8 +129,12 @@ func newPayloadTarget(eventType EventType) (any, error) {
 		return &DeltaPayload{}, nil
 	case EventTypeToolCall:
 		return &ToolCallPayload{}, nil
+	case EventTypeToolApproval:
+		return &ToolApprovalPayload{}, nil
 	case EventTypeToolResult:
 		return &ToolResultPayload{}, nil
+	case EventTypeRunState:
+		return &RunStatePayload{}, nil
 	case EventTypeDone:
 		return &DonePayload{}, nil
 	case EventTypeError:
@@ -184,6 +203,18 @@ func validatePayload(eventType EventType, payload any) (any, error) {
 			value.Arguments = map[string]any{}
 		}
 		return value, nil
+	case EventTypeToolApproval:
+		value, ok := payload.(*ToolApprovalPayload)
+		if !ok {
+			return nil, errors.New("tool_approval payload type mismatch")
+		}
+		if strings.TrimSpace(value.ApprovalID) == "" || strings.TrimSpace(value.CallID) == "" || strings.TrimSpace(value.ToolName) == "" {
+			return nil, errors.New("invalid tool_approval payload")
+		}
+		if value.Preview == nil {
+			value.Preview = map[string]any{}
+		}
+		return value, nil
 	case EventTypeToolResult:
 		value, ok := payload.(*ToolResultPayload)
 		if !ok {
@@ -191,6 +222,15 @@ func validatePayload(eventType EventType, payload any) (any, error) {
 		}
 		if strings.TrimSpace(value.CallID) == "" || strings.TrimSpace(value.ToolName) == "" {
 			return nil, errors.New("invalid tool_result payload")
+		}
+		return value, nil
+	case EventTypeRunState:
+		value, ok := payload.(*RunStatePayload)
+		if !ok {
+			return nil, errors.New("run_state payload type mismatch")
+		}
+		if strings.TrimSpace(value.Status) == "" {
+			return nil, errors.New("invalid run_state payload")
 		}
 		return value, nil
 	case EventTypeDone:

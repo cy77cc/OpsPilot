@@ -151,7 +151,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	}
 	emit(meta.Event, meta.Data)
 	if shell.Reused {
-		l.emitExistingShellTerminal(shell, emit)
+		l.emitExistingShellTerminal(ctx, shell, emit)
 		return nil
 	}
 
@@ -263,6 +263,17 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projector.FlushBuffer(), emit, &summaryContent); err != nil {
 		return fmt.Errorf("flush projected events: %w", err)
+	}
+	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+		runStatus := aidao.AIRunStatusUpdate{
+			Status:             "waiting_approval",
+			AssistantMessageID: shell.AssistantMessage.ID,
+		}
+		if err := l.finalizeRunCritical(ctx, shell, runStatus, summaryContent.String()); err != nil {
+			return fmt.Errorf("persist waiting approval state: %w", err)
+		}
+		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String())
+		return nil
 	}
 
 	done := projector.Finish(shell.Run.ID)
@@ -406,12 +417,34 @@ func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCou
 	return nil
 }
 
-func (l *Logic) emitExistingShellTerminal(shell chatShell, emit EventEmitter) {
+func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell chatShell, emit EventEmitter) {
 	switch shell.Run.Status {
 	case "failed", "failed_runtime":
 		emit("error", map[string]any{
 			"run_id":  shell.Run.ID,
 			"message": sanitizeUserFacingError(errors.New(shell.Run.ErrorMessage)),
+		})
+	case "waiting_approval":
+		if l.RunEventDAO != nil {
+			if events, err := l.RunEventDAO.ListByRun(ctx, shell.Run.ID); err == nil {
+				for i := len(events) - 1; i >= 0; i-- {
+					event := events[i]
+					if strings.TrimSpace(event.EventType) != "tool_approval" {
+						continue
+					}
+					var payload map[string]any
+					if unmarshalErr := json.Unmarshal([]byte(event.PayloadJSON), &payload); unmarshalErr == nil {
+						emit("tool_approval", payload)
+						break
+					}
+				}
+			}
+		}
+		emit("run_state", map[string]any{
+			"run_id":  shell.Run.ID,
+			"status":  "waiting_approval",
+			"agent":   "executor",
+			"summary": shell.AssistantMessage.Content,
 		})
 	case "completed", "completed_with_tool_errors":
 		emit("done", map[string]any{
@@ -589,10 +622,14 @@ func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seq
 }
 
 func assistantStatusFromRunStatus(status string) string {
-	if status == "failed_runtime" {
+	switch status {
+	case "failed_runtime":
 		return "error"
+	case "waiting_approval":
+		return "streaming"
+	default:
+		return "done"
 	}
-	return "done"
 }
 
 func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, string, error) {
@@ -637,6 +674,17 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 			ToolName:  stringValue(data, "tool_name"),
 			Arguments: mapValue(data, "arguments"),
 		})
+	case "tool_approval":
+		if strings.TrimSpace(stringValue(data, "approval_id")) == "" || strings.TrimSpace(stringValue(data, "call_id")) == "" || strings.TrimSpace(stringValue(data, "tool_name")) == "" {
+			return "", "", nil
+		}
+		return marshalTypedEvent(airuntime.EventTypeToolApproval, &airuntime.ToolApprovalPayload{
+			ApprovalID:     stringValue(data, "approval_id"),
+			CallID:         stringValue(data, "call_id"),
+			ToolName:       stringValue(data, "tool_name"),
+			Preview:        mapValue(data, "preview"),
+			TimeoutSeconds: intValue(data, "timeout_seconds"),
+		})
 	case "tool_result":
 		return marshalTypedEvent(airuntime.EventTypeToolResult, &airuntime.ToolResultPayload{
 			Agent:    stringValue(data, "agent"),
@@ -644,6 +692,14 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 			ToolName: stringValue(data, "tool_name"),
 			Content:  stringValue(data, "content"),
 			Status:   stringValue(data, "status"),
+		})
+	case "run_state":
+		if strings.TrimSpace(stringValue(data, "status")) == "" {
+			return "", "", nil
+		}
+		return marshalTypedEvent(airuntime.EventTypeRunState, &airuntime.RunStatePayload{
+			Status: stringValue(data, "status"),
+			Agent:  stringValue(data, "agent"),
 		})
 	case "done":
 		return marshalTypedEvent(airuntime.EventTypeDone, &airuntime.DonePayload{

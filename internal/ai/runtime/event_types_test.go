@@ -30,6 +30,34 @@ func TestDecodeEventPayload_Delta(t *testing.T) {
 	}
 }
 
+func TestDecodeEventPayload_ToolApproval(t *testing.T) {
+	payload, err := UnmarshalEventPayload(EventTypeToolApproval, `{"approval_id":"ap-1","call_id":"call-1","tool_name":"restart_workload","preview":{"namespace":"prod"},"timeout_seconds":300}`)
+	if err != nil {
+		t.Fatalf("unmarshal tool approval: %v", err)
+	}
+	approval, ok := payload.(*ToolApprovalPayload)
+	if !ok {
+		t.Fatalf("unexpected payload type: %#v", payload)
+	}
+	if approval.ApprovalID != "ap-1" || approval.CallID != "call-1" || approval.ToolName != "restart_workload" {
+		t.Fatalf("unexpected tool approval payload: %#v", approval)
+	}
+}
+
+func TestDecodeEventPayload_RunState(t *testing.T) {
+	payload, err := UnmarshalEventPayload(EventTypeRunState, `{"status":"waiting_approval","agent":"executor"}`)
+	if err != nil {
+		t.Fatalf("unmarshal run state: %v", err)
+	}
+	runState, ok := payload.(*RunStatePayload)
+	if !ok {
+		t.Fatalf("unexpected payload type: %#v", payload)
+	}
+	if runState.Status != "waiting_approval" || runState.Agent != "executor" {
+		t.Fatalf("unexpected run state payload: %#v", runState)
+	}
+}
+
 func TestDecodeEventPayload_RejectsUnknownShape(t *testing.T) {
 	if _, err := UnmarshalEventPayload(EventTypeToolCall, `{"agent":"executor","tool_name":"host_list_inventory"}`); err == nil {
 		t.Fatal("expected invalid tool call payload error")

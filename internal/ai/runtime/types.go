@@ -3,6 +3,8 @@
 // 包含流式投影、持久化状态跟踪等核心类型。
 package runtime
 
+import "strings"
+
 // PersistedRuntime 存储到数据库的运行时状态。
 //
 // 与前端 AssistantReplyRuntime 类型保持一致，用于持久化和恢复对话的运行时状态。
@@ -14,12 +16,22 @@ package runtime
 //   - Summary: 执行摘要
 //   - Status: 运行时状态（streaming/completed/error）
 type PersistedRuntime struct {
-	Phase      string               `json:"phase,omitempty"`
-	PhaseLabel string               `json:"phaseLabel,omitempty"`
-	Plan       *PersistedPlan       `json:"plan,omitempty"`
-	Activities []PersistedActivity  `json:"activities,omitempty"`
-	Summary    *PersistedSummary    `json:"summary,omitempty"`
-	Status     *PersistedStatus     `json:"status,omitempty"`
+	Phase      string              `json:"phase,omitempty"`
+	PhaseLabel string              `json:"phaseLabel,omitempty"`
+	Plan       *PersistedPlan      `json:"plan,omitempty"`
+	Activities []PersistedActivity `json:"activities,omitempty"`
+	Summary    *PersistedSummary   `json:"summary,omitempty"`
+	Status     *PersistedStatus    `json:"status,omitempty"`
+}
+
+func (r *PersistedRuntime) CanFinalizeDone() bool {
+	if r == nil {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(r.Phase), "waiting_approval") {
+		return false
+	}
+	return r.Status == nil || !strings.EqualFold(strings.TrimSpace(r.Status.Kind), "waiting_approval")
 }
 
 // PersistedPlan 步骤计划。
@@ -80,6 +92,6 @@ type PersistedSummaryItem struct {
 
 // PersistedStatus 运行时状态。
 type PersistedStatus struct {
-	Kind  string `json:"kind"`           // streaming, completed, error, interrupted
+	Kind  string `json:"kind"`            // streaming, waiting_approval, completed, error, interrupted
 	Label string `json:"label,omitempty"` // 状态显示文本
 }

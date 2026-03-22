@@ -130,6 +130,32 @@ func TestProjectNormalizedEvent_ApprovalEmitsToolApprovalAndRunState(t *testing.
 	}
 }
 
+func TestInterruptDoesNotFinalizeDone(t *testing.T) {
+	t.Parallel()
+
+	state := &ProjectionState{}
+	projectNormalizedEvent(NormalizedEvent{
+		Kind:      NormalizedKindInterrupt,
+		AgentName: "executor",
+		Interrupt: &NormalizedInterrupt{
+			ApprovalID:     "ap-1",
+			CallID:         "call-1",
+			ToolName:       "restart_workload",
+			TimeoutSeconds: 300,
+		},
+	}, state)
+
+	if state.Persisted == nil {
+		t.Fatal("expected persisted runtime state")
+	}
+	if state.Persisted.CanFinalizeDone() {
+		t.Fatalf("expected waiting approval state to block terminal done, got %#v", state.Persisted)
+	}
+	if state.Persisted.Status == nil || state.Persisted.Status.Kind != "waiting_approval" {
+		t.Fatalf("expected waiting_approval status, got %#v", state.Persisted.Status)
+	}
+}
+
 func TestNewRunStateEvent(t *testing.T) {
 	t.Parallel()
 
