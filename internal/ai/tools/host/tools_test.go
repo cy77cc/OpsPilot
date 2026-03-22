@@ -62,6 +62,9 @@ func TestLegacyHostExec_UsesPolicyEngine(t *testing.T) {
 	if !strings.Contains(out, `"status":"suspended"`) {
 		t.Fatalf("expected suspended status, got %s", out)
 	}
+	if !strings.Contains(out, `"policy_decision":"require_approval_interrupt"`) {
+		t.Fatalf("expected policy decision in legacy output, got %s", out)
+	}
 }
 
 func TestLegacyHostExecByTarget_LocalhostCannotBypassPolicy(t *testing.T) {
@@ -74,6 +77,9 @@ func TestLegacyHostExecByTarget_LocalhostCannotBypassPolicy(t *testing.T) {
 	}
 	if !strings.Contains(out, `"status":"suspended"`) {
 		t.Fatalf("expected suspended status, got %s", out)
+	}
+	if !strings.Contains(out, `"policy_decision":"require_approval_interrupt"`) {
+		t.Fatalf("expected policy decision in legacy output, got %s", out)
 	}
 }
 
