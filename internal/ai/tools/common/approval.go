@@ -104,6 +104,7 @@ type ApprovalEvalMeta struct {
 	CheckpointID   string
 	CallID         string
 	Scene          string
+	AgentRole      string
 	CommandClass   string
 	UserID         uint64
 	TimeoutSeconds int
@@ -119,6 +120,8 @@ type ApprovalDecision struct {
 	PolicyVersion    string
 	DecisionSource   string
 	ExpiresAt        time.Time
+	BoundSessionID   string
+	BoundAgentRole   string
 }
 
 // ApprovalEvaluator can decide whether a tool call requires human approval.

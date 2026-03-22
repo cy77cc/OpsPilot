@@ -110,6 +110,8 @@ type approvalMiddleware struct {
 type approvalInterruptState struct {
 	ArgumentsInJSON string
 	Decision        *common.ApprovalDecision
+	SessionID       string
+	AgentRole       string
 }
 
 // WrapInvokableToolCall 包装同步工具调用。
@@ -143,9 +145,15 @@ func (m *approvalMiddleware) WrapInvokableToolCall(
 		isTarget, hasData, result := tool.GetResumeContext[*common.ApprovalResult](ctx)
 
 		if isTarget && hasData {
-			if result.Approved {
+			if result.Approved && m.resumeBindingMatches(ctx, decision) {
 				// 审批通过，执行原始工具
 				return endpoint(ctx, storedArgs, opts...)
+			}
+			if result.Approved {
+				if decision == nil {
+					decision = m.defaultDecision(ctx, tCtx.Name, storedArgs, tCtx.CallID)
+				}
+				return "", m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 			}
 			// 审批拒绝
 			return m.formatDisapproveMessage(tCtx.Name, result), nil
@@ -153,7 +161,7 @@ func (m *approvalMiddleware) WrapInvokableToolCall(
 
 		// 恢复上下文不匹配（可能是其他工具的中断），重新中断
 		if decision == nil {
-			decision = m.defaultDecision(tCtx.Name, storedArgs, tCtx.CallID)
+			decision = m.defaultDecision(ctx, tCtx.Name, storedArgs, tCtx.CallID)
 		}
 		return "", m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 	}, nil
@@ -188,14 +196,20 @@ func (m *approvalMiddleware) WrapStreamableToolCall(
 		isTarget, hasData, result := tool.GetResumeContext[*common.ApprovalResult](ctx)
 
 		if isTarget && hasData {
-			if result.Approved {
+			if result.Approved && m.resumeBindingMatches(ctx, decision) {
 				return endpoint(ctx, storedArgs, opts...)
+			}
+			if result.Approved {
+				if decision == nil {
+					decision = m.defaultDecision(ctx, tCtx.Name, storedArgs, tCtx.CallID)
+				}
+				return nil, m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 			}
 			return singleChunkReader(m.formatDisapproveMessage(tCtx.Name, result)), nil
 		}
 
 		if decision == nil {
-			decision = m.defaultDecision(tCtx.Name, storedArgs, tCtx.CallID)
+			decision = m.defaultDecision(ctx, tCtx.Name, storedArgs, tCtx.CallID)
 		}
 		return nil, m.raiseApprovalInterrupt(ctx, tCtx.Name, tCtx.CallID, storedArgs, decision)
 	}, nil
@@ -224,32 +238,42 @@ func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, arg
 	if m.config.Orchestrator == nil {
 		wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
 		if wasInterrupted {
-			return m.defaultDecision(toolName, storedArgs, callID), storedArgs, true, nil
+			return m.defaultDecision(ctx, toolName, storedArgs, callID), storedArgs, true, nil
 		}
 		if !m.config.NeedsApproval(toolName) {
 			return &common.ApprovalDecision{RequiresApproval: false}, storedArgs, false, nil
 		}
-		return m.defaultDecision(toolName, args, callID), args, false, nil
+		return m.defaultDecision(ctx, toolName, args, callID), args, false, nil
 	}
 
 	wasInterrupted, hasDecisionState, state := tool.GetInterruptState[approvalInterruptState](ctx)
 	if wasInterrupted && hasDecisionState {
+		if state.Decision != nil {
+			if state.Decision.BoundSessionID == "" {
+				state.Decision.BoundSessionID = strings.TrimSpace(state.SessionID)
+			}
+			if state.Decision.BoundAgentRole == "" {
+				state.Decision.BoundAgentRole = strings.TrimSpace(state.AgentRole)
+			}
+		}
 		return state.Decision, state.ArgumentsInJSON, true, nil
 	}
 	if wasInterrupted {
 		_, hasStringState, storedArgs := tool.GetInterruptState[string](ctx)
 		if hasStringState {
-			return m.defaultDecision(toolName, storedArgs, callID), storedArgs, true, nil
+			return m.defaultDecision(ctx, toolName, storedArgs, callID), storedArgs, true, nil
 		}
-		return m.defaultDecision(toolName, args, callID), args, true, nil
+		return m.defaultDecision(ctx, toolName, args, callID), args, true, nil
 	}
 
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
+	agentRole := currentAgentRole(ctx)
 	meta := common.ApprovalEvalMeta{
 		SessionID:      sceneMeta.SessionID,
 		RunID:          sceneMeta.RunID,
 		CheckpointID:   sceneMeta.CheckpointID,
 		Scene:          sceneMeta.Scene,
+		AgentRole:      agentRole,
 		CallID:         callID,
 		CommandClass:   commandClassForTool(toolName, args),
 		UserID:         sceneMeta.UserID,
@@ -263,14 +287,32 @@ func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, arg
 	if decision == nil {
 		return nil, "", false, nil
 	}
+	if decision.BoundSessionID == "" {
+		decision.BoundSessionID = strings.TrimSpace(sceneMeta.SessionID)
+	}
+	if decision.BoundAgentRole == "" {
+		decision.BoundAgentRole = agentRole
+	}
 	return decision, args, false, nil
 }
 
 func (m *approvalMiddleware) raiseApprovalInterrupt(ctx context.Context, toolName, callID, args string, decision *common.ApprovalDecision) error {
 	if decision == nil {
-		decision = m.defaultDecision(toolName, args, callID)
+		decision = m.defaultDecision(ctx, toolName, args, callID)
 	}
+	info := buildApprovalInterruptInfo(toolName, callID, decision)
+	sceneMeta := runtimectx.AIMetadataFrom(ctx)
+	return tool.StatefulInterrupt(ctx, info, approvalInterruptState{
+		ArgumentsInJSON: args,
+		Decision:        decision,
+		SessionID:       strings.TrimSpace(sceneMeta.SessionID),
+		AgentRole:       currentAgentRole(ctx),
+	})
+}
+
+func buildApprovalInterruptInfo(toolName, callID string, decision *common.ApprovalDecision) map[string]any {
 	info := map[string]any{
+		"status":          "suspended",
 		"approval_id":     decision.ApprovalID,
 		"call_id":         callID,
 		"tool_name":       toolName,
@@ -285,13 +327,10 @@ func (m *approvalMiddleware) raiseApprovalInterrupt(ctx context.Context, toolNam
 	if strings.TrimSpace(decision.PolicyVersion) != "" {
 		info["policy_version"] = strings.TrimSpace(decision.PolicyVersion)
 	}
-	return tool.StatefulInterrupt(ctx, info, approvalInterruptState{
-		ArgumentsInJSON: args,
-		Decision:        decision,
-	})
+	return info
 }
 
-func (m *approvalMiddleware) defaultDecision(toolName, args, callID string) *common.ApprovalDecision {
+func (m *approvalMiddleware) defaultDecision(ctx context.Context, toolName, args, callID string) *common.ApprovalDecision {
 	timeout := m.config.DefaultTimeout
 	if timeout <= 0 {
 		timeout = common.DefaultApprovalTimeout
@@ -301,6 +340,7 @@ func (m *approvalMiddleware) defaultDecision(toolName, args, callID string) *com
 	if approvalID == "" {
 		approvalID = fmt.Sprintf("approval-%d", time.Now().UTC().UnixNano())
 	}
+	sceneMeta := runtimectx.AIMetadataFrom(ctx)
 	return &common.ApprovalDecision{
 		RequiresApproval: true,
 		ApprovalID:       approvalID,
@@ -308,7 +348,31 @@ func (m *approvalMiddleware) defaultDecision(toolName, args, callID string) *com
 		TimeoutSeconds:   timeout,
 		DecisionSource:   "fallback_static",
 		ExpiresAt:        expiresAt,
+		BoundSessionID:   strings.TrimSpace(sceneMeta.SessionID),
+		BoundAgentRole:   currentAgentRole(ctx),
 	}
+}
+
+func (m *approvalMiddleware) resumeBindingMatches(ctx context.Context, decision *common.ApprovalDecision) bool {
+	if decision == nil {
+		return false
+	}
+	sceneMeta := runtimectx.AIMetadataFrom(ctx)
+	if boundSession := strings.TrimSpace(decision.BoundSessionID); boundSession != "" && strings.TrimSpace(sceneMeta.SessionID) != boundSession {
+		return false
+	}
+	if boundRole := strings.TrimSpace(decision.BoundAgentRole); boundRole != "" && currentAgentRole(ctx) != boundRole {
+		return false
+	}
+	return true
+}
+
+func currentAgentRole(ctx context.Context) string {
+	runtime := runtimectx.FromContext(ctx)
+	if runtime == nil {
+		return ""
+	}
+	return strings.TrimSpace(runtime.Role)
 }
 
 func defaultCommandClass(toolName string) string {
@@ -338,6 +402,8 @@ func commandClassForTool(toolName, args string) string {
 		}
 		return "service_control"
 	case "host_batch_status_update":
+		return "service_control"
+	case "host_exec_change":
 		return "service_control"
 	default:
 		return defaultCommandClass(toolName)
@@ -453,7 +519,7 @@ func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolE
 		isTarget, hasData, result := tool.GetResumeContext[*common.ApprovalResult](ctx)
 
 		if isTarget && hasData {
-			if result.Approved {
+			if result.Approved && m.resumeBindingMatches(ctx, decision) {
 				// 审批通过，执行原始工具
 				return next(ctx, &compose.ToolInput{
 					Name:        input.Name,
@@ -461,6 +527,12 @@ func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolE
 					CallID:      input.CallID,
 					CallOptions: input.CallOptions,
 				})
+			}
+			if result.Approved {
+				if decision == nil {
+					decision = m.defaultDecision(ctx, input.Name, storedArgs, input.CallID)
+				}
+				return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 			}
 			// 审批拒绝
 			return &compose.ToolOutput{
@@ -470,7 +542,7 @@ func (m *approvalMiddleware) wrapInvokableForCompose(next compose.InvokableToolE
 
 		// 恢复上下文不匹配，重新中断
 		if decision == nil {
-			decision = m.defaultDecision(input.Name, storedArgs, input.CallID)
+			decision = m.defaultDecision(ctx, input.Name, storedArgs, input.CallID)
 		}
 		return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 	}
@@ -500,7 +572,7 @@ func (m *approvalMiddleware) wrapStreamableForCompose(next compose.StreamableToo
 		isTarget, hasData, result := tool.GetResumeContext[*common.ApprovalResult](ctx)
 
 		if isTarget && hasData {
-			if result.Approved {
+			if result.Approved && m.resumeBindingMatches(ctx, decision) {
 				// 审批通过，执行原始工具
 				return next(ctx, &compose.ToolInput{
 					Name:        input.Name,
@@ -508,6 +580,12 @@ func (m *approvalMiddleware) wrapStreamableForCompose(next compose.StreamableToo
 					CallID:      input.CallID,
 					CallOptions: input.CallOptions,
 				})
+			}
+			if result.Approved {
+				if decision == nil {
+					decision = m.defaultDecision(ctx, input.Name, storedArgs, input.CallID)
+				}
+				return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 			}
 			// 审批拒绝
 			return &compose.StreamToolOutput{
@@ -517,7 +595,7 @@ func (m *approvalMiddleware) wrapStreamableForCompose(next compose.StreamableToo
 
 		// 恢复上下文不匹配，重新中断
 		if decision == nil {
-			decision = m.defaultDecision(input.Name, storedArgs, input.CallID)
+			decision = m.defaultDecision(ctx, input.Name, storedArgs, input.CallID)
 		}
 		return nil, m.raiseApprovalInterrupt(ctx, input.Name, input.CallID, storedArgs, decision)
 	}
@@ -549,6 +627,7 @@ func DefaultNeedsApproval(toolName string) bool {
 	approvalRequired := map[string]bool{
 		// 主机操作 - 批量执行和状态变更
 		"host_batch":               true,
+		"host_exec_change":         true,
 		"host_batch_exec_apply":    true,
 		"host_batch_status_update": true,
 

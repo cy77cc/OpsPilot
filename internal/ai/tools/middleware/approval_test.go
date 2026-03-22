@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/ai/tools/common"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
@@ -78,5 +79,48 @@ func TestApprovalMiddlewarePropagatesCheckpointAndBatchCommandClass(t *testing.T
 				t.Fatalf("expected command class %q, got %q", tc.wantClass, capture.meta.CommandClass)
 			}
 		})
+	}
+}
+
+func TestApprovalBridge_ReturnsSuspendedPayload(t *testing.T) {
+	now := time.Now().UTC()
+	decision := &common.ApprovalDecision{
+		ApprovalID:     "approval-1",
+		TimeoutSeconds: 300,
+		DecisionSource: "fallback_static",
+		ExpiresAt:      now,
+	}
+	info := buildApprovalInterruptInfo("host_exec_change", "call-1", decision)
+	if got, _ := info["status"].(string); got != "suspended" {
+		t.Fatalf("expected suspended status, got %v", info["status"])
+	}
+	if got, _ := info["approval_id"].(string); got != "approval-1" {
+		t.Fatalf("expected approval_id approval-1, got %v", info["approval_id"])
+	}
+}
+
+func TestApprovalResume_RejectsMismatchedSessionOrRole(t *testing.T) {
+	mw := &approvalMiddleware{}
+	decision := &common.ApprovalDecision{
+		BoundSessionID: "session-a",
+		BoundAgentRole: "diagnosis",
+	}
+
+	ctxSessionMismatch := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{SessionID: "session-b"})
+	ctxSessionMismatch = runtimectx.WithContext(ctxSessionMismatch, &runtimectx.Context{Role: "diagnosis"})
+	if mw.resumeBindingMatches(ctxSessionMismatch, decision) {
+		t.Fatal("expected session mismatch to fail binding check")
+	}
+
+	ctxRoleMismatch := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{SessionID: "session-a"})
+	ctxRoleMismatch = runtimectx.WithContext(ctxRoleMismatch, &runtimectx.Context{Role: "change"})
+	if mw.resumeBindingMatches(ctxRoleMismatch, decision) {
+		t.Fatal("expected role mismatch to fail binding check")
+	}
+}
+
+func TestDefaultNeedsApproval_CoversHostExecChange(t *testing.T) {
+	if !DefaultNeedsApproval("host_exec_change") {
+		t.Fatal("expected host_exec_change to require approval")
 	}
 }
