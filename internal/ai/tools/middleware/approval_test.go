@@ -124,3 +124,9 @@ func TestDefaultNeedsApproval_CoversHostExecChange(t *testing.T) {
 		t.Fatal("expected host_exec_change to require approval")
 	}
 }
+
+func TestCommandClassForTool_HostExecChange(t *testing.T) {
+	if got := commandClassForTool("host_exec_change", `{"command":"systemctl restart nginx"}`); got != "service_control" {
+		t.Fatalf("expected service_control, got %q", got)
+	}
+}

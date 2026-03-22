@@ -301,7 +301,7 @@ func fallbackRequiresApproval(toolName, commandClass string) bool {
 	commandClass = strings.TrimSpace(strings.ToLower(commandClass))
 	if commandClass != "" && commandClass != "readonly" {
 		switch strings.TrimSpace(toolName) {
-		case "host_batch", "host_batch_exec_apply", "host_batch_exec_preview", "host_batch_status_update":
+		case "host_batch", "host_exec_change", "host_batch_exec_apply", "host_batch_exec_preview", "host_batch_status_update":
 			return true
 		}
 	}
@@ -311,7 +311,7 @@ func fallbackRequiresApproval(toolName, commandClass string) bool {
 func defaultFallbackRequiresApproval(toolName string) bool {
 	toolName = strings.TrimSpace(toolName)
 	switch toolName {
-	case "host_batch", "host_batch_exec_apply", "host_batch_status_update",
+	case "host_batch", "host_exec_change", "host_batch_exec_apply", "host_batch_status_update",
 		"k8s_scale_deployment", "k8s_restart_deployment", "k8s_delete_pod",
 		"k8s_rollback_deployment", "k8s_delete_deployment",
 		"cicd_trigger_pipeline", "cicd_cancel_pipeline",
