@@ -75,3 +75,31 @@ func TestKubernetesReadonlyToolDescriptions_RequireClusterResolution(t *testing.
 		t.Fatalf("missing expected tools from readonly toolset: %v", targets)
 	}
 }
+
+func TestNewDiagnosisTools_ExcludesHostExecChange(t *testing.T) {
+	tools := NewDiagnosisTools(context.Background())
+	if hasToolName(t, tools, "host_exec_change") {
+		t.Fatal("did not expect host_exec_change in diagnosis toolset")
+	}
+}
+
+func TestNewChangeTools_IncludesHostExecChange(t *testing.T) {
+	tools := NewChangeTools(context.Background())
+	if !hasToolName(t, tools, "host_exec_change") {
+		t.Fatal("expected host_exec_change in change toolset")
+	}
+}
+
+func hasToolName(t *testing.T, tools []tool.BaseTool, name string) bool {
+	t.Helper()
+	for _, item := range tools {
+		info, err := item.Info(t.Context())
+		if err != nil {
+			t.Fatalf("get tool info: %v", err)
+		}
+		if info.Name == name {
+			return true
+		}
+	}
+	return false
+}
