@@ -5,71 +5,96 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
-	"github.com/cy77cc/OpsPilot/internal/svc"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
-func TestHostExecAllowsNonReadonlyCommandPastWhitelist(t *testing.T) {
-	t.Parallel()
-
-	db := newHostToolTestDB(t)
-	toolCtx := runtimectx.WithServices(context.Background(), &svc.ServiceContext{DB: db})
-	hostExec := HostExec(toolCtx)
-
-	_, err := hostExec.InvokableRun(toolCtx, `{"host_id":1,"command":"systemctl status nginx"}`)
-	if err == nil {
-		t.Fatal("expected host lookup to fail in test fixture")
+func TestNewHostReadonlyTools_ContainsHostExecReadonlyOnly(t *testing.T) {
+	names := toolNames(t, NewHostReadonlyTools(context.Background()))
+	if !containsTool(names, "host_exec_readonly") {
+		t.Fatalf("expected host_exec_readonly in readonly tools, got %v", names)
 	}
-	if strings.Contains(err.Error(), "only readonly commands are permitted") {
-		t.Fatalf("expected non-dangerous command to pass old readonly whitelist, got %v", err)
+	if containsTool(names, "host_exec_change") {
+		t.Fatalf("did not expect host_exec_change in readonly tools, got %v", names)
 	}
 }
 
-func TestHostExecStillBlocksDangerousCommand(t *testing.T) {
-	t.Parallel()
+func TestHostExecReadonly_InterruptsWhenValidationFails(t *testing.T) {
+	ctx := runtimectx.WithServices(context.Background(), nil)
+	hostExec := HostExecReadonly(ctx)
 
-	db := newHostToolTestDB(t)
-	toolCtx := runtimectx.WithServices(context.Background(), &svc.ServiceContext{DB: db})
-	hostExec := HostExec(toolCtx)
-
-	_, err := hostExec.InvokableRun(toolCtx, `{"host_id":1,"command":"rm -rf /"}`)
-	if err == nil {
-		t.Fatal("expected dangerous command to be blocked")
-	}
-	if !strings.Contains(err.Error(), "dangerous command is blocked") {
-		t.Fatalf("expected dangerous command block error, got %v", err)
-	}
-}
-
-func TestHostExecByTargetAllowsNonReadonlyLocalCommandPastWhitelist(t *testing.T) {
-	t.Parallel()
-
-	db := newHostToolTestDB(t)
-	toolCtx := runtimectx.WithServices(context.Background(), &svc.ServiceContext{DB: db})
-	hostExec := HostExecByTarget(toolCtx)
-
-	out, err := hostExec.InvokableRun(toolCtx, `{"target":"localhost","command":"printf ok"}`)
+	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"uname -a"}`)
 	if err != nil {
-		t.Fatalf("expected localhost command to run, got %v", err)
+		t.Fatalf("expected suspended payload, got error: %v", err)
 	}
-	if !strings.Contains(out, `"stdout":"ok"`) {
-		t.Fatalf("expected stdout to contain command output, got %s", out)
+	if !strings.Contains(out, `"status":"suspended"`) {
+		t.Fatalf("expected suspended status, got %s", out)
+	}
+	if !strings.Contains(out, `"approval_required":true`) {
+		t.Fatalf("expected approval_required=true, got %s", out)
 	}
 }
 
-func newHostToolTestDB(t *testing.T) *gorm.DB {
+func TestHostExecChange_AlwaysRequestsApprovalBeforeExecution(t *testing.T) {
+	ctx := runtimectx.WithServices(context.Background(), nil)
+	hostExec := HostExecChange(ctx)
+
+	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"cat /etc/hosts"}`)
+	if err != nil {
+		t.Fatalf("expected suspended payload, got error: %v", err)
+	}
+	if !strings.Contains(out, `"status":"suspended"`) {
+		t.Fatalf("expected suspended status, got %s", out)
+	}
+	if !strings.Contains(out, `"approval_required":true`) {
+		t.Fatalf("expected approval_required=true, got %s", out)
+	}
+}
+
+func TestLegacyHostExec_UsesPolicyEngine(t *testing.T) {
+	ctx := runtimectx.WithServices(context.Background(), nil)
+	hostExec := HostExec(ctx)
+
+	out, err := hostExec.InvokableRun(ctx, `{"host_id":1,"command":"systemctl status nginx"}`)
+	if err != nil {
+		t.Fatalf("expected suspended payload, got error: %v", err)
+	}
+	if !strings.Contains(out, `"status":"suspended"`) {
+		t.Fatalf("expected suspended status, got %s", out)
+	}
+}
+
+func TestLegacyHostExecByTarget_LocalhostCannotBypassPolicy(t *testing.T) {
+	ctx := runtimectx.WithServices(context.Background(), nil)
+	hostExec := HostExecByTarget(ctx)
+
+	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"uname -a"}`)
+	if err != nil {
+		t.Fatalf("expected suspended payload, got error: %v", err)
+	}
+	if !strings.Contains(out, `"status":"suspended"`) {
+		t.Fatalf("expected suspended status, got %s", out)
+	}
+}
+
+func toolNames(t *testing.T, tools []tool.InvokableTool) []string {
 	t.Helper()
+	result := make([]string, 0, len(tools))
+	for _, item := range tools {
+		info, err := item.Info(t.Context())
+		if err != nil {
+			t.Fatalf("get tool info: %v", err)
+		}
+		result = append(result, info.Name)
+	}
+	return result
+}
 
-	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
+func containsTool(names []string, target string) bool {
+	for _, name := range names {
+		if name == target {
+			return true
+		}
 	}
-	if err := db.AutoMigrate(&model.Node{}); err != nil {
-		t.Fatalf("migrate node table: %v", err)
-	}
-	return db
+	return false
 }
