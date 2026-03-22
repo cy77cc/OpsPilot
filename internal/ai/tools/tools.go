@@ -210,6 +210,22 @@ func ToolMiddleware(ctx context.Context) (adk.ChatModelAgentMiddleware, error) {
 	})
 }
 
+// ArgNormalizationToolMiddleware creates the tool-argument normalization middleware.
+//
+// This helper keeps agent wiring compact while allowing the normalization rollout
+// to start in shadow mode and later be enabled without changing call sites.
+func ArgNormalizationToolMiddleware(ctx context.Context, tools []tool.BaseTool, cfg *middleware.ArgNormalizeConfig) (compose.ToolMiddleware, error) {
+	return middleware.NewArgNormalizationToolMiddleware(ctx, tools, cfg)
+}
+
+// ShadowArgNormalizationToolMiddleware creates the normalization middleware in shadow mode.
+func ShadowArgNormalizationToolMiddleware(ctx context.Context, tools []tool.BaseTool) (compose.ToolMiddleware, error) {
+	return middleware.NewArgNormalizationToolMiddleware(ctx, tools, &middleware.ArgNormalizeConfig{
+		Enabled:    false,
+		ShadowMode: true,
+	})
+}
+
 // ApprovalMiddleware 创建审批中间件。
 //
 // 该中间件拦截高风险工具调用，通过 Eino 的 Interrupt/Resume 机制
