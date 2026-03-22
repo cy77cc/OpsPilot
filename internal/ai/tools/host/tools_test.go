@@ -23,7 +23,7 @@ func TestHostExecReadonly_InterruptsWhenValidationFails(t *testing.T) {
 	ctx := runtimectx.WithServices(context.Background(), nil)
 	hostExec := HostExecReadonly(ctx)
 
-	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"uname -a"}`)
+	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"systemctl status nginx"}`)
 	if err != nil {
 		t.Fatalf("expected suspended payload, got error: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestLegacyHostExecByTarget_LocalhostCannotBypassPolicy(t *testing.T) {
 	ctx := runtimectx.WithServices(context.Background(), nil)
 	hostExec := HostExecByTarget(ctx)
 
-	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"uname -a"}`)
+	out, err := hostExec.InvokableRun(ctx, `{"target":"localhost","command":"systemctl status nginx"}`)
 	if err != nil {
 		t.Fatalf("expected suspended payload, got error: %v", err)
 	}

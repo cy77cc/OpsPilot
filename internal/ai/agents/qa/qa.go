@@ -87,7 +87,7 @@ func NewQAAgent(ctx context.Context) (adk.Agent, error) {
 	toolset := []tool.BaseTool{
 		history.LoadSessionHistory(ctx),
 	}
-	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, toolset)
+	normalizerMW, err := tools.EnabledArgNormalizationToolMiddleware(ctx, toolset)
 	if err != nil {
 		return nil, fmt.Errorf("qa agent: init tool normalization middleware: %w", err)
 	}

@@ -30,7 +30,13 @@ func NewHostCommandPolicyEngine(readonlyAllowlist []string) *HostCommandPolicyEn
 
 // DefaultReadonlyAllowlist returns the initial readonly command allowlist.
 func DefaultReadonlyAllowlist() []string {
-	return []string{"cat", "ls", "grep", "top", "free", "df", "tail"}
+	return []string{
+		"ls", "pwd", "tree", "stat", "file", "wc", "du",
+		"cat", "head", "tail", "grep", "egrep", "fgrep", "zcat", "zgrep", "sort", "uniq", "cut", "tr", "column", "jq",
+		"top", "free", "df", "uptime", "uname", "dmesg", "vmstat", "iostat", "sar", "lsblk", "lscpu", "lsmod", "lspci",
+		"ping", "ss", "netstat", "ip", "route", "arp", "host", "nslookup", "dig",
+		"ps", "pstree", "whoami", "id", "w", "who", "last", "journalctl",
+	}
 }
 
 // Evaluate performs fail-closed policy evaluation.

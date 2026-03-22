@@ -328,9 +328,7 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	done := projector.Finish(shell.Run.ID)
 	if payload, ok := done.Data.(map[string]any); ok {
-		if strings.TrimSpace(stringValue(payload, "summary")) == "" {
-			payload["summary"] = summaryContent.String()
-		}
+		ensureDoneSummary(payload, summaryContent.String(), hasToolErrors)
 		done.Data = payload
 	}
 	if err := l.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, &seqCounter, done.Event, done.Data); err != nil {
@@ -569,6 +567,22 @@ func buildAssistantFailureSnapshot(summaryBody, assistantBody, publicError strin
 		return ""
 	}
 	return publicError
+}
+
+func ensureDoneSummary(payload map[string]any, summary string, hasToolErrors bool) {
+	if payload == nil {
+		return
+	}
+	resolved := strings.TrimSpace(stringValue(payload, "summary"))
+	if resolved == "" {
+		resolved = strings.TrimSpace(summary)
+	}
+	if resolved == "" && hasToolErrors {
+		resolved = "工具调用失败，未生成可用结论。请调整参数后重试。"
+	}
+	if resolved != "" {
+		payload["summary"] = resolved
+	}
 }
 
 func sanitizeUserFacingError(err error) string {

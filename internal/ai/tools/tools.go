@@ -226,6 +226,14 @@ func ShadowArgNormalizationToolMiddleware(ctx context.Context, tools []tool.Base
 	})
 }
 
+// EnabledArgNormalizationToolMiddleware creates the normalization middleware in active mode.
+func EnabledArgNormalizationToolMiddleware(ctx context.Context, tools []tool.BaseTool) (compose.ToolMiddleware, error) {
+	return middleware.NewArgNormalizationToolMiddleware(ctx, tools, &middleware.ArgNormalizeConfig{
+		Enabled:    true,
+		ShadowMode: false,
+	})
+}
+
 // ApprovalMiddleware 创建审批中间件。
 //
 // 该中间件拦截高风险工具调用，通过 Eino 的 Interrupt/Resume 机制

@@ -51,7 +51,7 @@ func NewInspectionAgent(ctx context.Context) (adk.Agent, error) {
 		baseTool = append(baseTool, t)
 	}
 
-	normalizerMW, err := tools.ShadowArgNormalizationToolMiddleware(ctx, baseTool)
+	normalizerMW, err := tools.EnabledArgNormalizationToolMiddleware(ctx, baseTool)
 	if err != nil {
 		return nil, fmt.Errorf("inspection agent: init tool normalization middleware: %w", err)
 	}

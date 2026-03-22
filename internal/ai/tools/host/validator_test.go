@@ -35,6 +35,15 @@ func TestValidator_AllowsPipelineWhenEachCommandAllowlisted(t *testing.T) {
 	require.Empty(t, violations)
 }
 
+func TestValidator_AllowsExpandedReadonlyCommands(t *testing.T) {
+	parsed, err := ParseCommand("uname -a | head -n 1")
+	require.NoError(t, err)
+
+	validator := NewHostCommandValidator(DefaultReadonlyAllowlist())
+	violations := validator.Validate(parsed)
+	require.Empty(t, violations)
+}
+
 func TestValidator_RejectsRedirectionAndBackground(t *testing.T) {
 	validator := NewHostCommandValidator(DefaultReadonlyAllowlist())
 
@@ -48,7 +57,7 @@ func TestValidator_RejectsRedirectionAndBackground(t *testing.T) {
 }
 
 func TestValidator_CommandChainRequiresEachSegmentAllowlisted(t *testing.T) {
-	parsed, err := ParseCommand("cat /etc/hosts; uname -a")
+	parsed, err := ParseCommand("cat /etc/hosts; systemctl status nginx")
 	require.NoError(t, err)
 
 	validator := NewHostCommandValidator(DefaultReadonlyAllowlist())

@@ -324,7 +324,7 @@ type MonitorMetricQueryOutput struct {
 func MonitorMetricQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"monitor_metric_query",
-		"Query metric data points over a time range for analysis and visualization with optional host filtering. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (auto-calculated if not specified to limit data to ~500 points), host_id and host_name filter results to specific hosts. Returns an array of metric points with timestamps. Example: {\"query\":\"host_memory_usage_percent\",\"time_range\":\"24h\",\"host_name\":\"prod-server-01\"}.",
+		"Query metric data points over a time range for analysis and visualization. query is required and specifies the metric name to retrieve. Optional parameters: time_range controls how far back to look (default 1h, supports formats like 5m, 30m, 2h, 24h), step sets the resolution in seconds between data points (default 60). Returns an array of metric points with timestamps. Example: {\"query\":\"host_memory_usage_percent\",\"time_range\":\"30m\"}.",
 		func(ctx context.Context, input *MonitorMetricQueryInput, opts ...tool.Option) (*MonitorMetricQueryOutput, error) {
 			svcCtx := depsFromContextOrFallback(ctx)
 			if svcCtx == nil || svcCtx.Prometheus == nil {
@@ -335,21 +335,10 @@ func MonitorMetricQuery(ctx context.Context) tool.InvokableTool {
 				return nil, fmt.Errorf("query is required")
 			}
 			rangeDuration := parseTimeRange(strings.TrimSpace(input.TimeRange), time.Hour)
-			step := autoCalculateStep(rangeDuration, input.Step)
-
-			// 应用主机过滤
-			hostFilter := buildHostFilter(input.HostID, input.HostName)
-			if hostFilter != "" {
-				// 如果 query 已经是一个完整的 PromQL 表达式，包含大括号，需要插入过滤条件
-				if strings.Contains(queryName, "{") {
-					// 在 { 后面插入主机过滤条件
-					queryName = strings.Replace(queryName, "{", "{"+hostFilter+",", 1)
-				} else {
-					// 纯指标名称，添加过滤条件
-					queryName = queryName + "{" + hostFilter + "}"
-				}
+			step := input.Step
+			if step <= 0 {
+				step = 60
 			}
-
 			start := time.Now().Add(-rangeDuration)
 			end := time.Now()
 

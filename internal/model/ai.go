@@ -42,7 +42,7 @@ type AIRun struct {
 	ClientRequestID    string         `gorm:"column:client_request_id;type:varchar(64);not null;default:'';uniqueIndex:uk_ai_runs_session_request,priority:2" json:"client_request_id"`
 	UserMessageID      string         `gorm:"column:user_message_id;type:varchar(64);not null;index:idx_ai_runs_user_message_id" json:"user_message_id"`
 	AssistantMessageID string         `gorm:"column:assistant_message_id;type:varchar(64);index:idx_ai_runs_assistant_message_id" json:"assistant_message_id"`
-	Status             string         `gorm:"column:status;type:varchar(16);not null;default:'running';index:idx_ai_runs_status_created,priority:1" json:"status"`
+	Status             string         `gorm:"column:status;type:varchar(32);not null;default:'running';index:idx_ai_runs_status_created,priority:1" json:"status"`
 	AssistantType      string         `gorm:"column:assistant_type;type:varchar(64)" json:"assistant_type"`
 	IntentType         string         `gorm:"column:intent_type;type:varchar(32)" json:"intent_type"`
 	ProgressSummary    string         `gorm:"column:progress_summary;type:text" json:"progress_summary"`
@@ -159,7 +159,7 @@ type AITraceSpan struct {
 	RunID      string         `gorm:"column:run_id;type:varchar(64);index" json:"run_id"`
 	SessionID  string         `gorm:"column:session_id;type:varchar(64);index" json:"session_id"`
 	Scene      string         `gorm:"column:scene;type:varchar(32);index" json:"scene"`
-	Status     string         `gorm:"column:status;type:varchar(16);index" json:"status"`
+	Status     string         `gorm:"column:status;type:varchar(32);index" json:"status"`
 	ModelName  string         `gorm:"column:model_name;type:varchar(128)" json:"model_name"`
 	Tokens     int64          `gorm:"column:tokens;not null;default:0" json:"tokens"`
 	DurationMS int64          `gorm:"column:duration_ms;not null;default:0" json:"duration_ms"`
@@ -179,7 +179,7 @@ type AIUsageLog struct {
 	SessionID        string         `gorm:"column:session_id;type:varchar(64);index" json:"session_id"`
 	UserID           uint64         `gorm:"column:user_id;not null;default:0;index" json:"user_id"`
 	Scene            string         `gorm:"column:scene;type:varchar(32);index" json:"scene"`
-	Status           string         `gorm:"column:status;type:varchar(16);index" json:"status"`
+	Status           string         `gorm:"column:status;type:varchar(32);index" json:"status"`
 	PromptTokens     int64          `gorm:"column:prompt_tokens;not null;default:0" json:"prompt_tokens"`
 	CompletionTokens int64          `gorm:"column:completion_tokens;not null;default:0" json:"completion_tokens"`
 	TotalTokens      int64          `gorm:"column:total_tokens;not null;default:0" json:"total_tokens"`

@@ -1509,6 +1509,15 @@ func newLogicTestLogic(db *gorm.DB, agent adk.ResumableAgent) *Logic {
 	}
 }
 
+func TestEnsureDoneSummaryAddsFallbackOnToolErrors(t *testing.T) {
+	payload := map[string]any{}
+	ensureDoneSummary(payload, "", true)
+	got, _ := payload["summary"].(string)
+	if strings.TrimSpace(got) == "" {
+		t.Fatal("expected non-empty fallback summary for tool error completion")
+	}
+}
+
 func seedLogicTestSession(t *testing.T, db *gorm.DB, session model.AIChatSession) {
 	t.Helper()
 	if err := db.Create(&session).Error; err != nil {

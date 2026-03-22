@@ -367,9 +367,7 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 
 	done := projector.Finish(shell.Run.ID)
 	if payload, ok := done.Data.(map[string]any); ok {
-		if strings.TrimSpace(stringValue(payload, "summary")) == "" {
-			payload["summary"] = summaryContent.String()
-		}
+		ensureDoneSummary(payload, summaryContent.String(), hasToolErrors)
 		done.Data = payload
 	}
 	if err := w.logic.appendRunEvent(ctx, shell.Run.ID, shell.SessionID, &seqCounter, done.Event, done.Data); err != nil {
