@@ -95,9 +95,13 @@ Out of scope:
 - Key canonicalization
   - 大小写不敏感
   - `timeRange/time-range/time_range` 统一映射到 `time_range`
+  - 字段匹配优先级固定为：`exact` > `case-insensitive exact` > `normalized-form match`
+  - 当多个字段归一化后冲突（如同时存在 `userName` 与 `user_name`）时，按上述优先级选唯一目标；若仍冲突则标记失败并保留原值，不做猜测映射
 - Type coercion
   - `string -> int/float/bool`（可确定时）
   - `number/bool -> string`
+  - `""` 对可选数值/布尔字段视为“未提供”，按 `null/zero-value` 路径处理，不触发解析报错
+  - enum 值做大小写不敏感匹配（如 `OPEN -> open`），仅在唯一匹配时转换
   - 失败时保留原值并记录失败项
 
 ### Component B: Tool Invocation Error Classifier
@@ -117,6 +121,9 @@ Out of scope:
 解析来源：
 
 - 现有错误格式正则（stream tool call / invoke tool）统一迁入分类器
+- 分类边界：
+  - `RecoverableToolInvocationError` 仅覆盖调用层错误（参数解码、transport、middleware 调用失败、infra 连接失败等）
+  - tool 已成功执行并返回业务错误（如资源不存在、余额不足、权限语义拒绝）按普通 `tool_result` 处理，不归类为 invocation error
 
 ### Component C: Shared Recovery Adapter
 
@@ -131,6 +138,7 @@ Out of scope:
 
 - 两条路径行为一致
 - 最终 run status 一致映射为 `completed_with_tool_errors`（当存在 tool error）
+- 单轮内加入重试熔断：同一 `tool_name + normalized_args` 连续失败达到阈值后，不再自动重试同形态调用，要求模型改参或降级回答
 
 ## Data Contract
 
@@ -141,7 +149,9 @@ Out of scope:
   "tool_name": "monitor_metric",
   "normalized_keys": ["hostId->host_id", "timeRange->time_range"],
   "coercions": ["host_id:string->int"],
-  "coercion_failures": []
+  "coercion_failures": [
+    {"field": "count", "provided": "five", "expected": "int"}
+  ]
 }
 ```
 
@@ -173,6 +183,8 @@ Out of scope:
 
 复用完全相同流程，不允许单独分叉错误语义。
 
+审批任务持久化参数采用“已规范化参数”作为恢复输入源，不再使用原始未规范化 JSON，避免 resume 时重复规范化导致漂移。
+
 ## Redundancy Cleanup Plan
 
 目标是“一个分类器 + 一个恢复适配入口”。
@@ -188,13 +200,18 @@ Out of scope:
 
 - 参数规范化
   - key 风格/大小写映射
+  - 字段冲突优先级与冲突失败路径
   - 类型转换成功与失败
+  - enum 大小写匹配
+  - 可选字段空串处理
   - 未知字段处理
 - 错误分类器
   - 两类已知错误格式可解析
   - 噪声错误不误判
+  - invocation error 与 business error 边界测试
 - 恢复适配
   - 分类成功时生成正确 synthetic tool result
+  - 单轮重试熔断触发后不再重复同形态调用
 
 ### Integration Tests
 
@@ -239,6 +256,8 @@ Out of scope:
 
 - 字段名风格/大小写偏差不再直接导致 tool 调用失败
 - 基础类型漂移在可确定情况下被自动纠正
+- enum 大小写差异不再导致无效参数
+- 可选数值/布尔字段的空串输入不再触发解析失败
 - tool invocation error 不中断会话
 - `Chat` 与 `ApprovalWorker` 对同类错误输出一致
 - 冗余错误校验逻辑被收敛至统一入口
