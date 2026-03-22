@@ -173,7 +173,10 @@ type SubmitApprovalResponse struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// ResumeApprovalRequest 恢复审批执行的请求（SSE 流式）。
+// ResumeApprovalRequest is retained for internal worker recovery flows only.
+//
+// Deprecated: the web approval flow is submit-only and should rely on pending/get/submit
+// plus projection polling or stream updates instead of a direct resume call.
 type ResumeApprovalRequest struct {
 	SessionID  string `json:"session_id"`
 	ApprovalID string `json:"approval_id"`
@@ -182,7 +185,7 @@ type ResumeApprovalRequest struct {
 	Comment    string `json:"comment,omitempty"`
 }
 
-// ApprovalStatusResponse 审批状态响应。
+// ApprovalStatusResponse describes the persisted approval decision state.
 type ApprovalStatusResponse struct {
 	ApprovalID string `json:"approval_id"`
 	Status     string `json:"status"` // pending, approved, rejected, expired
