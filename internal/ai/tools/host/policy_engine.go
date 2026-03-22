@@ -2,8 +2,6 @@ package host
 
 import (
 	"strings"
-
-	"mvdan.cc/sh/v3/syntax"
 )
 
 const maxPolicyCommandLength = 4096
@@ -42,8 +40,8 @@ func (e *HostCommandPolicyEngine) Evaluate(input PolicyInput) PolicyDecision {
 		return e.requireApproval("command_too_long")
 	}
 
-	parser := syntax.NewParser()
-	if _, err := parser.Parse(strings.NewReader(cmd), ""); err != nil {
+	parsed, err := ParseCommand(cmd)
+	if err != nil {
 		return e.requireApproval("parse_error")
 	}
 
@@ -54,6 +52,7 @@ func (e *HostCommandPolicyEngine) Evaluate(input PolicyInput) PolicyDecision {
 		DecisionType:  DecisionAllowReadonlyExecute,
 		ReasonCodes:   []string{"readonly_allowed"},
 		PolicyVersion: e.policyVersion,
+		ASTSummary:    strings.Join(parsed.BaseCommands, ","),
 	}
 }
 
