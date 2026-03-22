@@ -12,6 +12,7 @@ package handler
 
 import (
 	"context"
+	"sync"
 
 	"github.com/cloudwego/eino/adk"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
@@ -24,6 +25,10 @@ import (
 type Handler struct {
 	svcCtx *svc.ServiceContext
 	logic  *logic.Logic
+
+	workerMu     sync.Mutex
+	workerStart  bool
+	workerCancel context.CancelFunc
 }
 
 // NewAIHandler 创建 Handler 实例。

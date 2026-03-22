@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"context"
+
 	"github.com/cy77cc/OpsPilot/internal/middleware"
 	aiHandler "github.com/cy77cc/OpsPilot/internal/service/ai/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -9,6 +11,7 @@ import (
 
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := aiHandler.NewAIHandler(svcCtx)
+	h.StartApprovalWorker(context.Background())
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
@@ -27,6 +30,5 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/approvals/pending", h.ListPendingApprovals)
 		g.GET("/approvals/:id", h.GetApproval)
 		g.POST("/approvals/:id/submit", h.SubmitApproval)
-		g.POST("/approvals/:id/resume", h.ResumeApproval)
 	}
 }

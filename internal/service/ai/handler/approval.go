@@ -7,6 +7,9 @@
 package handler
 
 import (
+	"context"
+	"time"
+
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
@@ -86,9 +89,29 @@ func (h *Handler) ResumeApproval(c *gin.Context) {
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)
 	}); err != nil {
-		httpx.ServerErr(c, err)
+		writeChatEvent(writer, c, "error", gin.H{
+			"message": err.Error(),
+		})
 		return
 	}
+}
+
+// StartApprovalWorker starts the background approval resume worker for this handler instance.
+func (h *Handler) StartApprovalWorker(ctx context.Context) {
+	if h == nil || h.logic == nil {
+		return
+	}
+
+	h.workerMu.Lock()
+	defer h.workerMu.Unlock()
+	if h.workerStart {
+		return
+	}
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	h.workerCancel = cancel
+	h.workerStart = true
+	go logic.NewApprovalWorker(h.logic).RunLoop(workerCtx, 2*time.Second)
 }
 
 // GetApproval 获取审批详情。

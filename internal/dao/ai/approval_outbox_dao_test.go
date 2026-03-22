@@ -315,6 +315,52 @@ func TestApprovalOutboxClaimDoneRetryLifecycle(t *testing.T) {
 	}
 }
 
+func TestApprovalOutboxReclaimsStaleProcessingRow(t *testing.T) {
+	db := newApprovalOutboxTestDB(t)
+	dao := NewAIApprovalOutboxDAO(db)
+	ctx := context.Background()
+
+	stale := &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-stale-processing",
+		EventType:   "approval_decided",
+		RunID:       "run-stale",
+		SessionID:   "session-stale",
+		PayloadJSON: `{"state":"processing"}`,
+		Status:      "pending",
+	}
+	if err := dao.EnqueueOrTouch(ctx, stale); err != nil {
+		t.Fatalf("enqueue stale event: %v", err)
+	}
+	staleAt := time.Now().Add(-(approvalOutboxProcessingLease + 15*time.Second))
+	if err := db.Model(&model.AIApprovalOutboxEvent{}).
+		Where("id = ?", stale.ID).
+		Updates(map[string]any{
+			"status":     "processing",
+			"updated_at": staleAt,
+		}).Error; err != nil {
+		t.Fatalf("seed stale processing row: %v", err)
+	}
+
+	claimed, err := dao.ClaimPending(ctx)
+	if err != nil {
+		t.Fatalf("claim stale processing row: %v", err)
+	}
+	if claimed == nil || claimed.ID != stale.ID {
+		t.Fatalf("expected stale processing row to be reclaimed, got %#v", claimed)
+	}
+
+	var stored model.AIApprovalOutboxEvent
+	if err := db.First(&stored, stale.ID).Error; err != nil {
+		t.Fatalf("reload reclaimed row: %v", err)
+	}
+	if stored.Status != "processing" {
+		t.Fatalf("expected reclaimed row to remain processing, got %q", stored.Status)
+	}
+	if !stored.UpdatedAt.After(staleAt) {
+		t.Fatalf("expected reclaimed row updated_at to advance beyond %v, got %v", staleAt, stored.UpdatedAt)
+	}
+}
+
 func newApprovalOutboxTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

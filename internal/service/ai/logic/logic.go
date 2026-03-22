@@ -1239,53 +1239,163 @@ type SubmitApprovalOutput struct {
 // 该方法仅更新审批任务状态，不恢复执行。
 // 用户在前端审批界面点击"批准"或"拒绝"后调用。
 func (l *Logic) SubmitApproval(ctx context.Context, input SubmitApprovalInput) (*SubmitApprovalOutput, error) {
-	if l.ApprovalDAO == nil {
+	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
 		return nil, fmt.Errorf("approval service not initialized")
 	}
-
-	// 获取审批任务
-	task, err := l.ApprovalDAO.GetByApprovalID(ctx, input.ApprovalID)
-	if err != nil {
-		return nil, fmt.Errorf("get approval task: %w", err)
-	}
-	if task == nil {
-		return nil, fmt.Errorf("approval task not found")
+	if strings.TrimSpace(input.ApprovalID) == "" {
+		return nil, fmt.Errorf("approval_id is required")
 	}
 
-	// 检查状态
-	if task.Status != "pending" {
-		return &SubmitApprovalOutput{
+	var result *SubmitApprovalOutput
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		approvalDAO := aidao.NewAIApprovalTaskDAO(tx)
+		outboxDAO := aidao.NewAIApprovalOutboxDAO(tx)
+
+		task, err := approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+		if err != nil {
+			return fmt.Errorf("get approval task: %w", err)
+		}
+		if task == nil {
+			return fmt.Errorf("approval task not found")
+		}
+		if task.UserID != 0 && task.UserID != input.UserID {
+			return fmt.Errorf("approval task not found")
+		}
+
+		now := time.Now()
+		if task.Status != "pending" || (task.LockExpiresAt != nil && task.LockExpiresAt.After(now)) {
+			result = &SubmitApprovalOutput{
+				ApprovalID: input.ApprovalID,
+				Status:     task.Status,
+				Message:    fmt.Sprintf("approval already %s", task.Status),
+			}
+			return nil
+		}
+
+		if task.ExpiresAt != nil && task.ExpiresAt.Before(now) {
+			update := tx.WithContext(ctx).
+				Model(&model.AIApprovalTask{}).
+				Where("approval_id = ? AND status = ?", input.ApprovalID, "pending").
+				Updates(map[string]any{
+					"status":     "expired",
+					"updated_at": now,
+				})
+			if update.Error != nil {
+				return fmt.Errorf("mark approval expired: %w", update.Error)
+			}
+			if update.RowsAffected == 0 {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+			task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+			if err != nil {
+				return fmt.Errorf("reload expired task: %w", err)
+			}
+			payloadJSON, err := buildApprovalDecisionOutboxPayload(task)
+			if err != nil {
+				return fmt.Errorf("build expired approval payload: %w", err)
+			}
+			if err := outboxDAO.EnqueueOrTouch(ctx, &model.AIApprovalOutboxEvent{
+				ApprovalID:  task.ApprovalID,
+				EventType:   "approval_decided",
+				RunID:       task.RunID,
+				SessionID:   task.SessionID,
+				PayloadJSON: payloadJSON,
+				Status:      "pending",
+			}); err != nil {
+				return fmt.Errorf("enqueue approval_decided outbox: %w", err)
+			}
+			result = &SubmitApprovalOutput{
+				ApprovalID: input.ApprovalID,
+				Status:     "expired",
+				Message:    "approval has expired",
+			}
+			return nil
+		}
+
+		if input.Approved {
+			updated, err := approvalDAO.ApproveWithLease(ctx, input.ApprovalID, input.UserID, input.Comment, now.Add(approvalWorkerDefaultLeaseWindow))
+			if err != nil {
+				return fmt.Errorf("approve approval task: %w", err)
+			}
+			if !updated {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+		} else {
+			updated, err := approvalDAO.RejectPending(ctx, input.ApprovalID, input.UserID, input.DisapproveReason, input.Comment)
+			if err != nil {
+				return fmt.Errorf("reject approval task: %w", err)
+			}
+			if !updated {
+				task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+				if err != nil {
+					return fmt.Errorf("reload approval task: %w", err)
+				}
+				if task == nil {
+					return fmt.Errorf("approval task not found")
+				}
+				result = &SubmitApprovalOutput{
+					ApprovalID: input.ApprovalID,
+					Status:     task.Status,
+					Message:    fmt.Sprintf("approval already %s", task.Status),
+				}
+				return nil
+			}
+		}
+
+		task, err = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+		if err != nil {
+			return fmt.Errorf("reload updated approval task: %w", err)
+		}
+		payloadJSON, err := buildApprovalDecisionOutboxPayload(task)
+		if err != nil {
+			return fmt.Errorf("build approval payload: %w", err)
+		}
+		if err := outboxDAO.EnqueueOrTouch(ctx, &model.AIApprovalOutboxEvent{
+			ApprovalID:  task.ApprovalID,
+			EventType:   "approval_decided",
+			RunID:       task.RunID,
+			SessionID:   task.SessionID,
+			PayloadJSON: payloadJSON,
+			Status:      "pending",
+		}); err != nil {
+			return fmt.Errorf("enqueue approval_decided outbox: %w", err)
+		}
+
+		result = &SubmitApprovalOutput{
 			ApprovalID: input.ApprovalID,
 			Status:     task.Status,
-			Message:    fmt.Sprintf("approval already %s", task.Status),
-		}, nil
+			Message:    fmt.Sprintf("approval %s successfully", task.Status),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	// 检查是否过期
-	if task.ExpiresAt != nil && task.ExpiresAt.Before(time.Now()) {
-		_ = l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, "expired", input.UserID, "", "")
-		return &SubmitApprovalOutput{
-			ApprovalID: input.ApprovalID,
-			Status:     "expired",
-			Message:    "approval has expired",
-		}, nil
-	}
-
-	// 更新状态
-	status := "approved"
-	if !input.Approved {
-		status = "rejected"
-	}
-
-	if err := l.ApprovalDAO.UpdateStatus(ctx, input.ApprovalID, status, input.UserID, input.DisapproveReason, input.Comment); err != nil {
-		return nil, fmt.Errorf("update approval status: %w", err)
-	}
-
-	return &SubmitApprovalOutput{
-		ApprovalID: input.ApprovalID,
-		Status:     status,
-		Message:    fmt.Sprintf("approval %s successfully", status),
-	}, nil
+	return result, nil
 }
 
 // ResumeApprovalInput 恢复审批执行的输入参数。

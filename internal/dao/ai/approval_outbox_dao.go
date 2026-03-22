@@ -14,6 +14,8 @@ type AIApprovalOutboxDAO struct {
 	db *gorm.DB
 }
 
+const approvalOutboxProcessingLease = 2 * time.Minute
+
 // NewAIApprovalOutboxDAO creates an approval outbox DAO.
 func NewAIApprovalOutboxDAO(db *gorm.DB) *AIApprovalOutboxDAO {
 	return &AIApprovalOutboxDAO{db: db}
@@ -86,9 +88,12 @@ func (d *AIApprovalOutboxDAO) claimPendingAttempt(ctx context.Context) (*model.A
 
 	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
+		staleProcessingBefore := now.Add(-approvalOutboxProcessingLease)
 		var event model.AIApprovalOutboxEvent
-		query := tx.Where("status = ?", "pending").
-			Where("(next_retry_at IS NULL OR next_retry_at <= ?)", now).
+		query := tx.Where(
+			"(status = ? AND (next_retry_at IS NULL OR next_retry_at <= ?)) OR (status = ? AND updated_at <= ?)",
+			"pending", now, "processing", staleProcessingBefore,
+		).
 			Order("next_retry_at ASC").
 			Order("created_at ASC").
 			Order("id ASC")
@@ -105,7 +110,10 @@ func (d *AIApprovalOutboxDAO) claimPendingAttempt(ctx context.Context) (*model.A
 			"updated_at": now,
 		}
 		result := tx.Model(&model.AIApprovalOutboxEvent{}).
-			Where("id = ? AND status = ?", event.ID, "pending").
+			Where(
+				"id = ? AND ((status = ?) OR (status = ? AND updated_at <= ?))",
+				event.ID, "pending", "processing", staleProcessingBefore,
+			).
 			Updates(updates)
 		if result.Error != nil {
 			return result.Error
