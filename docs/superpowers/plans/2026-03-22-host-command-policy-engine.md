@@ -28,6 +28,16 @@ func TestPolicyEngine_FailClosedOnParserError(t *testing.T) {
     require.Equal(t, DecisionRequireApprovalInterrupt, got.DecisionType)
     require.Contains(t, got.ReasonCodes, "parse_error")
 }
+
+func TestPolicyEngine_FailClosedOnCommandTooLong(t *testing.T) {
+    engine := NewHostCommandPolicyEngine(DefaultReadonlyAllowlist())
+    got := engine.Evaluate(PolicyInput{
+        ToolName:   "host_exec_readonly",
+        CommandRaw: strings.Repeat("a", 4097),
+    })
+    require.Equal(t, DecisionRequireApprovalInterrupt, got.DecisionType)
+    require.Contains(t, got.ReasonCodes, "command_too_long")
+}
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -44,6 +54,10 @@ const (
     DecisionRequireApprovalInterrupt DecisionType = "require_approval_interrupt"
 )
 ```
+
+实现补充：
+- 在 `Evaluate` 入口增加单条命令长度硬限制（`max_length = 4096` 字节）。
+- 长度超限时不进入 AST 解析，直接返回 `require_approval_interrupt`。
 
 - [ ] **Step 4: 运行测试确认通过**
 
@@ -77,14 +91,14 @@ func TestParseCommand_CollectsPipelineCommands(t *testing.T) {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/host -run 'TestParseCommand|TestPolicyEngine' -v`
+Run: `go test ./internal/ai/tools/host -run="TestParseCommand|TestPolicyEngine" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 最小实现 Parser（mvdan）+ AST 摘要输出**
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/host -run 'TestParseCommand|TestPolicyEngine' -v`
+Run: `go test ./internal/ai/tools/host -run="TestParseCommand|TestPolicyEngine" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -115,7 +129,7 @@ func TestValidator_CommandChainRequiresEachSegmentAllowlisted(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/host -run 'TestValidator|TestPolicyEngine' -v`
+Run: `go test ./internal/ai/tools/host -run="TestValidator|TestPolicyEngine" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 最小实现 Validator**
@@ -128,7 +142,7 @@ Expected: FAIL
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/host -run 'TestValidator|TestPolicyEngine' -v`
+Run: `go test ./internal/ai/tools/host -run="TestValidator|TestPolicyEngine" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -144,6 +158,7 @@ git commit -m "feat(ai/host): enforce allowlist and operator validation on comma
 
 **Files:**
 - Modify: `internal/ai/tools/host/tools.go`
+- Modify: `internal/ai/tools/host/policy_engine.go` (注入接口或构造参数)
 - Test: `internal/ai/tools/host/tools_test.go`
 
 - [ ] **Step 1: 写失败测试验证新工具注册与行为**
@@ -156,7 +171,7 @@ func TestHostExecChange_AlwaysRequestsApprovalBeforeExecution(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/host -run 'TestNewHostReadonlyTools|TestHostExecReadonly|TestHostExecChange' -v`
+Run: `go test ./internal/ai/tools/host -run="TestNewHostReadonlyTools|TestHostExecReadonly|TestHostExecChange" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现新工具入口 + 统一 Facade**
@@ -165,10 +180,11 @@ Expected: FAIL
 - `host_exec_readonly`：策略允许才执行
 - `host_exec_change`：默认审批
 - 输出中包含 policy decision 摘要字段（用于审计/排障）
+- 采用依赖注入（DI）把 `HostCommandPolicyEngine` 传入工具实例，避免工具层硬编码构造，便于 mock 测试
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/host -run 'TestNewHostReadonlyTools|TestHostExecReadonly|TestHostExecChange' -v`
+Run: `go test ./internal/ai/tools/host -run="TestNewHostReadonlyTools|TestHostExecReadonly|TestHostExecChange" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -193,7 +209,7 @@ func TestLegacyHostExecByTarget_LocalhostCannotBypassPolicy(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/host -run 'TestLegacyHostExec|TestLegacyHostExecByTarget' -v`
+Run: `go test ./internal/ai/tools/host -run="TestLegacyHostExec|TestLegacyHostExecByTarget" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现旧工具到新门面的转发**
@@ -205,7 +221,7 @@ Expected: FAIL
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/host -run 'TestLegacyHostExec|TestLegacyHostExecByTarget' -v`
+Run: `go test ./internal/ai/tools/host -run="TestLegacyHostExec|TestLegacyHostExecByTarget" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -233,7 +249,7 @@ func TestApprovalResume_RejectsMismatchedSessionOrRole(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/middleware -run 'TestApprovalBridge|TestApprovalResume' -v`
+Run: `go test ./internal/ai/tools/middleware -run="TestApprovalBridge|TestApprovalResume" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现审批桥接增强**
@@ -245,7 +261,7 @@ Expected: FAIL
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/middleware -run 'TestApprovalBridge|TestApprovalResume' -v`
+Run: `go test ./internal/ai/tools/middleware -run="TestApprovalBridge|TestApprovalResume" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -271,14 +287,14 @@ func TestFallbackRequiresApproval_CoversHostExecChange(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run 'HostExecChange|NeedsApproval|FallbackRequiresApproval' -v`
+Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run="HostExecChange|NeedsApproval|FallbackRequiresApproval" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 最小实现映射更新**
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run 'HostExecChange|NeedsApproval|FallbackRequiresApproval' -v`
+Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run="HostExecChange|NeedsApproval|FallbackRequiresApproval" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -305,7 +321,7 @@ func TestNewChangeTools_IncludesHostExecChange(t *testing.T) {}
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools -run 'TestNewDiagnosisTools|TestNewChangeTools' -v`
+Run: `go test ./internal/ai/tools -run="TestNewDiagnosisTools|TestNewChangeTools" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现装配调整**
@@ -316,7 +332,7 @@ Expected: FAIL
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools -run 'TestNewDiagnosisTools|TestNewChangeTools' -v`
+Run: `go test ./internal/ai/tools -run="TestNewDiagnosisTools|TestNewChangeTools" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -339,11 +355,12 @@ git commit -m "refactor(ai/tools): enforce host execution boundaries across diag
 ```go
 func TestApprovalAudit_RecordsApproverAndTimestamp(t *testing.T) {}
 func TestApprovalAudit_RecordsRejectReason(t *testing.T) {}
+func TestApprovalAudit_RecordsParseFailuresAndViolations(t *testing.T) {}
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run 'TestApprovalAudit' -v`
+Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run="TestApprovalAudit" -v`
 Expected: FAIL
 
 - [ ] **Step 3: 实现字段补充**
@@ -352,10 +369,11 @@ Expected: FAIL
 - `approver_id`
 - `approval_timestamp`
 - `reject_reason`
+- 被策略引擎拦截（如 `parse_error` / `policy_violation`）时也必须落审计，并关联 `approval_id`
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run 'TestApprovalAudit' -v`
+Run: `go test ./internal/ai/tools/middleware ./internal/ai/tools/common -run="TestApprovalAudit" -v`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -383,7 +401,7 @@ Expected: 全部 PASS
 
 - [ ] **Step 2: 运行目标回归测试（审批 + 工具边界）**
 
-Run: `go test ./internal/ai/... -run 'Approval|HostExec|NewDiagnosisTools|NewChangeTools' -v`
+Run: `go test ./internal/ai/... -run="Approval|HostExec|NewDiagnosisTools|NewChangeTools" -v`
 Expected: PASS
 
 - [ ] **Step 3: 更新文档与运行手册（仅必要差异）**
