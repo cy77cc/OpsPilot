@@ -12,7 +12,6 @@ import (
 
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -393,7 +392,7 @@ func newApprovalSubmitTestRouter(db *gorm.DB, userID uint64) *gin.Engine {
 		c.Set("uid", userID)
 		c.Next()
 	})
-	h := NewAIHandler(&svc.ServiceContext{DB: db})
+	h := newAIHandlerTestHarness(db)
 	router.POST("/ai/approvals/:id/submit", h.SubmitApproval)
 	router.POST("/ai/approvals/:id/retry-resume", h.RetryResumeApproval)
 	return router

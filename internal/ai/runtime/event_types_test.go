@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/ai/todo"
+	"github.com/cy77cc/OpsPilot/internal/ai/common/todo"
 )
 
 func TestDecodeEventPayload_ToolCall(t *testing.T) {

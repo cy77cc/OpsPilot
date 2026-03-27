@@ -27,7 +27,7 @@ type StreamEvent struct {
 
 // publicEventNames 是允许通过 EncodePublicEvent 编码的事件名称白名单。
 //
-// 白名单与 internal/ai/events/events.go 中的公开事件常量保持一致：
+// 白名单与前端 A2UI 事件契约保持一致：
 //
 //	会话层：meta
 //	路由层：agent_handoff

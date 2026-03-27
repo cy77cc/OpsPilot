@@ -62,7 +62,7 @@ func TestRunHandler_GetRun(t *testing.T) {
 		t.Fatalf("seed diagnosis report: %v", err)
 	}
 
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -105,7 +105,7 @@ func TestGetRun_ReturnsNotFoundForNonexistentRun(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

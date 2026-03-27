@@ -10,13 +10,11 @@ import (
 	"testing"
 	"time"
 
+	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
-	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 )
 
 func TestRegisterAIHandlers_RegistersAllRoutes(t *testing.T) {
@@ -58,7 +56,7 @@ func TestListSessions_ReturnsEmptyArrayForNewUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -86,7 +84,7 @@ func TestCreateSession_ReturnsSessionWithID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -119,7 +117,7 @@ func TestGetSession_ReturnsNotFoundForNonexistentSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -152,7 +150,7 @@ func TestListSessions_FiltersByScene(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	now := time.Now()
 	seedSession(t, db, model.AIChatSession{ID: "sess-host", UserID: 9, Title: "Host", Scene: "host", CreatedAt: now, UpdatedAt: now})
@@ -184,7 +182,7 @@ func TestGetSession_RespectsSceneFilter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	now := time.Now()
 	seedSession(t, db, model.AIChatSession{ID: "sess-cluster", UserID: 10, Title: "Cluster", Scene: "cluster", CreatedAt: now, UpdatedAt: now})
@@ -212,7 +210,7 @@ func TestGetSession_AssistantMessageIncludesContentAndKeepsRunID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now()
 
 	seedSession(t, db, model.AIChatSession{ID: "sess-run", UserID: 20, Title: "With Run", Scene: "ai", CreatedAt: now, UpdatedAt: now})
@@ -281,7 +279,7 @@ func TestGetSession_IncludesAssistantFallbackBodyAndTerminalErrorState(t *testin
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now()
 
 	cases := []struct {
@@ -383,7 +381,7 @@ func TestGetSession_PreservesAssistantErrorStatusForFailedAndExpiredRuns(t *test
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now()
 
 	cases := []struct {
@@ -467,7 +465,7 @@ func TestListSessions_ReturnsSummaryOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now()
 
 	seedSession(t, db, model.AIChatSession{ID: "sess-list-run", UserID: 21, Title: "With Run", Scene: "ai", CreatedAt: now, UpdatedAt: now})
@@ -583,7 +581,7 @@ func newAIHandlerTestDB(t *testing.T) *gorm.DB {
 }
 
 func registerAIHandlersForTest(v1 *gin.RouterGroup) {
-	h := &Handler{logic: &logic.Logic{}}
+	h := newAIHandlerTestHarness(nil)
 	g := v1.Group("/ai")
 	{
 		g.POST("/chat", h.Chat)

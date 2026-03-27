@@ -29,7 +29,7 @@ func TestGetRunProjection_ReturnsPersistedProjection(t *testing.T) {
 		t.Fatalf("seed projection: %v", err)
 	}
 
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(1))
@@ -66,7 +66,7 @@ func TestGetRunContent_ReturnsLazyPayload(t *testing.T) {
 		t.Fatalf("seed content: %v", err)
 	}
 
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(1))

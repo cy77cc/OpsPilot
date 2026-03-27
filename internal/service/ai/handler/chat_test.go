@@ -24,7 +24,7 @@ func TestChatHandler_PassesClientRequestIDIntoLogic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	agent := &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
 			adk.EventFromMessage(schema.AssistantMessage("ok", nil), nil, schema.Assistant, ""),
@@ -52,7 +52,7 @@ func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -71,7 +71,7 @@ func TestChatHandler_EmitsMetaEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -111,7 +111,7 @@ func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	// First request creates session
 	recorder1 := httptest.NewRecorder()
@@ -145,7 +145,7 @@ func TestChatHandler_PersistsSceneFromRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -173,7 +173,7 @@ func TestGetSession_IncludesResumableRunCredentialsForWaitingApproval(t *testing
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	if err := db.AutoMigrate(&model.AIApprovalTask{}); err != nil {
@@ -297,7 +297,7 @@ func TestChatStreamsRecoverableToolErrorAndDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
 			adk.EventFromMessage(schema.AssistantMessage("checking pods", nil), nil, schema.Assistant, ""),
@@ -365,7 +365,7 @@ func TestChatHandler_EmitsSSEErrorInsteadOfJSONEnvelopeOnLateFailure(t *testing.
 	if err := db.Migrator().DropTable(&model.AIRunProjection{}); err != nil {
 		t.Fatalf("drop projection table: %v", err)
 	}
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
 			adk.EventFromMessage(schema.AssistantMessage("starting run", nil), nil, schema.Assistant, ""),
@@ -405,7 +405,7 @@ func TestChatHandler_EmitsLiveEventIDs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -428,7 +428,7 @@ func TestChatHandler_ReplaysEventsAfterLastEventID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(recorder1)
@@ -479,7 +479,7 @@ func TestChatHandler_ReconnectReplaysOnlyEventsAfterLastEventID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	seedSession(t, db, model.AIChatSession{
@@ -606,7 +606,7 @@ func TestChatHandler_UsesLastEventIDHeaderBeforeQueryAndBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(recorder1)
@@ -658,7 +658,7 @@ func TestChatHandler_ReturnsCursorExpiredError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	db := newAIHandlerTestDB(t)
-	h := NewAIHandlerWithDB(db)
+	h := newAIHandlerTestHarness(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -708,7 +708,7 @@ func TestChatHandler_ReplaysTerminalRunStateBeforeTerminalEvent(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newAIHandlerTestDB(t)
-			h := NewAIHandlerWithDB(db)
+			h := newAIHandlerTestHarness(db)
 
 			seedSession(t, db, model.AIChatSession{
 				ID:        tc.sessionID,

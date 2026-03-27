@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/ai/todo"
+	"github.com/cy77cc/OpsPilot/internal/ai/common/todo"
 )
 
 // EventType 事件类型枚举。
@@ -17,18 +17,18 @@ type EventType string
 
 // 事件类型常量定义。
 const (
-	EventTypeMeta         EventType = "meta"          // 会话元数据
-	EventTypeAgentHandoff EventType = "agent_handoff" // 代理切换
-	EventTypePlan         EventType = "plan"          // 规划步骤
-	EventTypeReplan       EventType = "replan"        // 重新规划
-	EventTypeDelta        EventType = "delta"         // 文本增量
-	EventTypeToolCall     EventType = "tool_call"     // 工具调用
-	EventTypeToolApproval EventType = "tool_approval" // 工具审批请求
-	EventTypeToolResult   EventType = "tool_result"   // 工具调用结果
+	EventTypeMeta           EventType = "meta"             // 会话元数据
+	EventTypeAgentHandoff   EventType = "agent_handoff"    // 代理切换
+	EventTypePlan           EventType = "plan"             // 规划步骤
+	EventTypeReplan         EventType = "replan"           // 重新规划
+	EventTypeDelta          EventType = "delta"            // 文本增量
+	EventTypeToolCall       EventType = "tool_call"        // 工具调用
+	EventTypeToolApproval   EventType = "tool_approval"    // 工具审批请求
+	EventTypeToolResult     EventType = "tool_result"      // 工具调用结果
 	EventTypeOpsPlanUpdated EventType = "ops_plan_updated" // Ops 计划快照更新
-	EventTypeRunState     EventType = "run_state"     // 运行状态变更
-	EventTypeDone         EventType = "done"          // 执行完成
-	EventTypeError        EventType = "error"         // 执行错误
+	EventTypeRunState       EventType = "run_state"        // 运行状态变更
+	EventTypeDone           EventType = "done"             // 执行完成
+	EventTypeError          EventType = "error"            // 执行错误
 )
 
 // MetaPayload 会话元数据负载。

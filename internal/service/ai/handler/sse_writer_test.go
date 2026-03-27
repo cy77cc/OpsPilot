@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/cy77cc/OpsPilot/internal/service/ai/chat"
 )
 
 func TestSSEWriter_WriteEvent(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	writer := NewSSEWriter(&buf)
+	writer := chat.NewSSEWriter(&buf)
 
 	if err := writer.WriteEvent("meta", map[string]any{
 		"session_id": "sess-1",
@@ -41,7 +43,7 @@ func TestSSEWriter_WriteEventWithID(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	writer := NewSSEWriter(&buf)
+	writer := chat.NewSSEWriter(&buf)
 
 	if err := writer.WriteEvent("run_state", map[string]any{
 		"event_id": "evt-42",
@@ -73,7 +75,7 @@ func TestSSEWriter_WriteRunStateEvent(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	writer := NewSSEWriter(&buf)
+	writer := chat.NewSSEWriter(&buf)
 
 	if err := writer.WriteEvent("run_state", map[string]any{
 		"status": "executing",
@@ -101,7 +103,7 @@ func TestSSEWriter_WritePing(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	writer := NewSSEWriter(&buf)
+	writer := chat.NewSSEWriter(&buf)
 
 	if err := writer.WritePing(); err != nil {
 		t.Fatalf("write ping: %v", err)

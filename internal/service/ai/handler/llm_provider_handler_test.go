@@ -9,7 +9,6 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/config"
 	aiService "github.com/cy77cc/OpsPilot/internal/service/ai"
-	handler "github.com/cy77cc/OpsPilot/internal/service/ai/handler"
 	aimodel "github.com/cy77cc/OpsPilot/internal/service/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
@@ -52,7 +51,7 @@ func TestLLMProviderHandler_CreateAndListModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := handler.NewLLMProviderHandlerWithDB(db)
+	h := aimodel.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -120,7 +119,7 @@ func TestLLMProviderHandler_PreviewImportInvalidJSONReturnsLLMImportInvalidJSON(
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := handler.NewLLMProviderHandlerWithDB(db)
+	h := aimodel.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -145,7 +144,7 @@ func TestLLMProviderHandler_PreviewImportValidationFailureReturnsLLMImportValida
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := handler.NewLLMProviderHandlerWithDB(db)
+	h := aimodel.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
