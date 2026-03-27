@@ -189,6 +189,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	// Step 4: 发送 A2UI meta 事件
 	if shell.Reused && strings.TrimSpace(input.LastEventID) != "" {
+		// Terminal reused runs should emit a deterministic terminal snapshot directly,
+		// otherwise replay/tail may return without a recoverable content payload.
+		if isTailTerminalStatus(shell.Run.Status) {
+			l.emitExistingShellTerminal(ctx, shell, emit)
+			return nil
+		}
 		tailer := &RunTailer{
 			RunDAO:      l.RunDAO,
 			RunEventDAO: l.RunEventDAO,

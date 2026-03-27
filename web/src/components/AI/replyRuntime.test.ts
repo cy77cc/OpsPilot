@@ -330,6 +330,41 @@ describe('assistant reply runtime shape', () => {
     expect(failed.pendingRun).toBeUndefined();
   });
 
+  it('maps run_state completed statuses into terminal runtime metadata', () => {
+    const waitingApproval = applyRunState(createEmptyAssistantRuntime(), {
+      run_id: 'run-1',
+      status: 'waiting_approval',
+      agent: 'executor',
+    });
+    expect(waitingApproval.pendingRun).toEqual(expect.objectContaining({
+      runId: 'run-1',
+      status: 'waiting_approval',
+      resumable: true,
+    }));
+
+    const completed = applyRunState(waitingApproval, {
+      run_id: 'run-1',
+      status: 'completed',
+      agent: 'executor',
+    });
+    expect(completed.status).toEqual({
+      kind: 'completed',
+      label: '已完成',
+    });
+    expect(completed.pendingRun).toBeUndefined();
+
+    const completedWithToolErrors = applyRunState(waitingApproval, {
+      run_id: 'run-1',
+      status: 'completed_with_tool_errors',
+      agent: 'executor',
+    });
+    expect(completedWithToolErrors.status).toEqual({
+      kind: 'completed',
+      label: '已完成',
+    });
+    expect(completedWithToolErrors.pendingRun).toBeUndefined();
+  });
+
   it('marks resume completion and expiration with dedicated states', () => {
     const resumed = applyRunResumed(createEmptyAssistantRuntime());
     expect(resumed.status).toEqual({

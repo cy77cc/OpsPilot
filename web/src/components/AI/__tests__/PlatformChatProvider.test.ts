@@ -127,15 +127,16 @@ describe('PlatformChatProvider', () => {
       { params: undefined } as any,
     );
 
-    expect(params).toEqual({
+    expect(params).toEqual(expect.objectContaining({
       message: 'check health',
       sessionId: 'sess-1',
+      clientRequestId: expect.any(String),
       scene: 'cluster',
       context: {
         route: '/deployment/infrastructure/clusters/42',
         resourceId: '42',
       },
-    });
+    }));
   });
 
   it('streams delta chunks through request callbacks', async () => {
@@ -493,7 +494,7 @@ describe('PlatformChatProvider', () => {
       .mockImplementationOnce(async (params, handlers) => {
         expect(params).toEqual(expect.objectContaining({
           sessionId: 'sess-1',
-          clientRequestId: undefined,
+          clientRequestId: expect.any(String),
           lastEventId: 'evt-1',
           message: '',
         }));

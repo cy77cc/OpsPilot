@@ -557,6 +557,17 @@ export function applyRunState(
         status: 'resume_failed_retryable',
         resumable: true,
       });
+    case 'completed':
+    case 'completed_with_tool_errors':
+      return clearPendingRun({
+        ...runtime,
+        phase: 'completed',
+        phaseLabel: '已完成',
+        status: {
+          kind: 'completed',
+          label: '已完成',
+        },
+      });
     case 'failed':
     case 'failed_runtime':
     case 'cancelled':

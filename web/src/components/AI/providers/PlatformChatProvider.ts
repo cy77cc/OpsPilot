@@ -150,6 +150,13 @@ function isCursorExpiredError(payload: { code?: string; error_code?: string; mes
   return message.includes('last_event_id') && message.includes('too old');
 }
 
+function createClientRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function emitApprovalUpdatedEvent(detail?: { token?: string; status?: string }): void {
   if (typeof window === 'undefined') {
     return;
@@ -218,18 +225,22 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     if (!params) {
       return false;
     }
+    const requestParams: ChatRequest = {
+      ...params,
+      clientRequestId: params.clientRequestId || createClientRequestId(),
+    };
     this.abort();
     this.abortController = new AbortController();
     this._isRequesting = true;
     this.clearAgentLabelTimer();
     this.reconnectController = new RunReconnectController();
     this.reconnectController.begin({
-      message: params.message,
-      sessionId: params.sessionId,
-      clientRequestId: params.clientRequestId,
-      lastEventId: params.lastEventId,
-      scene: params.scene,
-      context: params.context,
+      message: requestParams.message,
+      sessionId: requestParams.sessionId,
+      clientRequestId: requestParams.clientRequestId,
+      lastEventId: requestParams.lastEventId,
+      scene: requestParams.scene,
+      context: requestParams.context,
     });
     const visibleChunks: PlatformStreamChunk[] = [];
     let terminalError: { error: Error; info?: unknown } | null = null;
@@ -293,12 +304,12 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     const handlers: A2UIStreamHandlers = {
       onMeta: (payload) => {
         this.reconnectController.handleMeta(payload, {
-          message: params.message,
-          sessionId: params.sessionId,
-          clientRequestId: params.clientRequestId,
-          lastEventId: params.lastEventId,
-          scene: params.scene,
-          context: params.context,
+          message: requestParams.message,
+          sessionId: requestParams.sessionId,
+          clientRequestId: requestParams.clientRequestId,
+          lastEventId: requestParams.lastEventId,
+          scene: requestParams.scene,
+          context: requestParams.context,
         });
         this.onMeta?.(payload);
         runtime = applyMeta(runtime);
@@ -557,12 +568,12 @@ export class PlatformChatRequest extends AbstractXRequestClass<
 
     this._asyncHandler = (async () => {
       let streamParams: ChatRequest = {
-        message: params.message,
-        sessionId: params.sessionId,
-        clientRequestId: params.clientRequestId,
-        lastEventId: params.lastEventId,
-        scene: params.scene,
-        context: params.context,
+        message: requestParams.message,
+        sessionId: requestParams.sessionId,
+        clientRequestId: requestParams.clientRequestId,
+        lastEventId: requestParams.lastEventId,
+        scene: requestParams.scene,
+        context: requestParams.context,
       };
 
       while (true) {
@@ -640,11 +651,13 @@ export class PlatformChatProvider extends AbstractChatProvider<
   }
 
   transformParams(requestParams: Partial<ChatRequest>, options: XRequestOptions<ChatRequest, PlatformStreamChunk, XChatMessage>): ChatRequest {
+    const incomingClientRequestId = requestParams.clientRequestId || options?.params?.clientRequestId;
     return {
       message: requestParams.message || options?.params?.message || '',
       ...(options?.params || {}),
       ...requestParams,
       sessionId: requestParams.sessionId || options?.params?.sessionId || this.getSessionId?.(),
+      clientRequestId: incomingClientRequestId || createClientRequestId(),
       scene: requestParams.scene || options?.params?.scene || this.scene,
       context: requestParams.context || options?.params?.context || this.getSceneContext?.(),
     };
