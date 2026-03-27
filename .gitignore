@@ -120,3 +120,4 @@ bin/
 .github/prompts/
 .github/skills/
 .github/*.md
+openspec/
