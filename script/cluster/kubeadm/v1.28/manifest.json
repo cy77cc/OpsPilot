@@ -1,0 +1,19 @@
+{
+  "version": "1.28.0",
+  "kubeadm_version": "v1.28.0",
+  "kubelet_version": "v1.28.0",
+  "kubectl_version": "v1.28.0",
+  "scripts": {
+    "install": "install.sh",
+    "init": "init.sh",
+    "join": "join.sh",
+    "reset": "reset.sh",
+    "fetch_kubeconfig": "fetch-kubeconfig.sh"
+  },
+  "supported_os": ["ubuntu", "debian", "centos", "rhel", "rocky", "almalinux", "fedora"],
+  "requirements": {
+    "min_memory_gb": 2,
+    "min_cpu_cores": 2,
+    "min_disk_gb": 10
+  }
+}

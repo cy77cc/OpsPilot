@@ -1,0 +1,59 @@
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #374151;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.kbd:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .kbd {
+    color: #d1d5db;
+    background: #374151;
+    border-color: #4b5563;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .kbd:hover {
+    background: #4b5563;
+    border-color: #6b7280;
+  }
+}
+
+/* Size variants */
+.kbd-sm {
+  padding: 1px 4px;
+  font-size: 11px;
+}
+
+.kbd-lg {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* Color variants */
+.kbd-primary {
+  color: #6366f1;
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.kbd-primary:hover {
+  background: rgba(99, 102, 241, 0.15);
+}

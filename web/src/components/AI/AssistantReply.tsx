@@ -1,0 +1,1224 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CodeHighlighter } from '@ant-design/x';
+import XMarkdown from '@ant-design/x-markdown';
+import type { ComponentProps } from '@ant-design/x-markdown';
+import { createStyles } from 'antd-style';
+import { Collapse, Button, Skeleton } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
+import { aiApi, isApprovalConflictError, resolveApprovalTicket } from '../../api/modules/ai';
+import { normalizeMarkdownContent } from './markdownContent';
+import type {
+  AssistantReplyActivity,
+  AssistantReplyActivityStatus,
+  AssistantReplyApprovalState,
+  AssistantReplyPlanStep,
+  AssistantReplyRuntime,
+  AssistantReplySegment,
+  AssistantReplyTodo,
+} from './types';
+import { emitApprovalUpdatedEvent } from './providers/PlatformChatProvider';
+import ToolReference from './ToolReference';
+
+const useAssistantReplyStyles = createStyles(({ token, css }) => ({
+  root: css`
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+    width: 100%;
+  `,
+  phase: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+    letter-spacing: 0.02em;
+  `,
+  activities: css`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `,
+  planSteps: css`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  `,
+  activeStep: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: ${token.colorFillQuaternary};
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+  `,
+  activeStepHeader: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    line-height: 22px;
+    color: ${token.colorText};
+    font-weight: 500;
+  `,
+  activeStepBody: css`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `,
+  stepMarkdown: css`
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.65;
+    word-break: break-word;
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin: 1.1em 0 0.45em;
+      color: ${token.colorText};
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    h4,
+    h5,
+    h6 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 0.85em;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 0.85em;
+      padding-left: 1.4em;
+    }
+
+    li {
+      margin: 0.2em 0;
+    }
+
+    blockquote {
+      margin: 0 0 0.85em;
+      padding-left: 12px;
+      border-left: 3px solid ${token.colorBorder};
+      color: ${token.colorTextSecondary};
+    }
+  `,
+  completedStepsCollapse: css`
+    .ant-collapse-header {
+      font-size: 12px;
+      color: ${token.colorTextSecondary};
+      padding: 4px 0 !important;
+    }
+    .ant-collapse-content-box {
+      padding: 8px 0 !important;
+    }
+  `,
+  completedStepItem: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    &:last-child {
+      border-bottom: none;
+    }
+  `,
+  completedStepTitle: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: ${token.colorTextSecondary};
+  `,
+  activity: css`
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    font-size: 13px;
+    line-height: 20px;
+    color: ${token.colorTextSecondary};
+  `,
+  activityDetail: css`
+    color: ${token.colorTextDescription};
+  `,
+  taskBoard: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: ${token.colorFillQuaternary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 12px;
+  `,
+  taskBoardTitle: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  `,
+  taskBoardList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  taskBoardItem: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+
+    &:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+  `,
+  taskBoardItemHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 20px;
+    color: ${token.colorText};
+    font-weight: 500;
+  `,
+  taskBoardItemForm: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+  `,
+  taskBoardStatus: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+    white-space: nowrap;
+  `,
+  summary: css`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+    background: ${token.colorFillQuaternary};
+    border-radius: 12px;
+  `,
+  summaryTitle: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  `,
+  summaryGrid: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px 12px;
+  `,
+  summaryItem: css`
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  `,
+  summaryLabel: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+  `,
+  summaryValue: css`
+    font-size: 14px;
+    line-height: 22px;
+    color: ${token.colorText};
+    font-weight: 600;
+  `,
+  markdown: css`
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.65;
+    word-break: break-word;
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin: 1.1em 0 0.45em;
+      color: ${token.colorText};
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    h4,
+    h5,
+    h6 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 0.9em;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 0.9em;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin: 0.25em 0;
+    }
+
+    blockquote {
+      margin: 0 0 0.9em;
+      padding: 0 0 0 12px;
+      border-left: 3px solid ${token.colorBorder};
+      color: ${token.colorTextSecondary};
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 0.9em;
+    }
+
+    th,
+    td {
+      border: 1px solid ${token.colorBorderSecondary};
+      padding: 8px 10px;
+      text-align: left;
+    }
+  `,
+  footer: css`
+    font-size: 12px;
+    line-height: 18px;
+    color: ${token.colorTextDescription};
+  `,
+  expandButton: css`
+    padding: 0;
+    height: auto;
+    font-size: 13px;
+    color: ${token.colorPrimary};
+    margin-top: 4px;
+
+    &:hover {
+      background: transparent;
+    }
+  `,
+  loadingContainer: css`
+    padding: 12px;
+    background: ${token.colorFillQuaternary};
+    border-radius: 8px;
+  `,
+  errorContainer: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+  `,
+  inlineToolFlow: css`
+    display: inline;
+    white-space: normal;
+  `,
+  inlineText: css`
+    display: inline;
+    line-height: 1.65;
+    white-space: pre-wrap;
+  `,
+  inlineToolFallback: css`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+  `,
+}));
+
+interface AssistantReplyProps {
+  content: string;
+  runtime?: AssistantReplyRuntime;
+  status?: string;
+  messageId?: string;
+  hasRuntime?: boolean;
+  onLoadRuntime?: (messageId: string) => Promise<AssistantReplyRuntime | null>;
+  onLoadStepContent?: (
+    stepId: string,
+    stepIndex: number,
+  ) => Promise<{
+    content: string;
+    segments: AssistantReplySegment[];
+    activities: AssistantReplyActivity[];
+  } | null>;
+}
+
+const MarkdownCode: React.FC<ComponentProps> = (props) => {
+  const { className, children } = props;
+  const lang = className?.match(/language-(\w+)/)?.[1] || '';
+
+  if (typeof children !== 'string') {
+    return null;
+  }
+
+  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+};
+
+const markdownComponents = {
+  code: MarkdownCode,
+};
+
+const LARGE_MARKDOWN_BYTE_THRESHOLD = 64 * 1024;
+const LARGE_MARKDOWN_LINE_THRESHOLD = 200;
+
+function isLargeMarkdown(content: string): boolean {
+  if (!content) {
+    return false;
+  }
+  if (content.length >= LARGE_MARKDOWN_BYTE_THRESHOLD) {
+    return true;
+  }
+  return content.split(/\r\n|\r|\n/).length >= LARGE_MARKDOWN_LINE_THRESHOLD;
+}
+
+function MarkdownViewportContent({
+  content,
+  styles,
+  isStreaming = false,
+}: {
+  content: string;
+  styles: Record<string, string>;
+  isStreaming?: boolean;
+}) {
+  const normalizedContent = normalizeMarkdownContent(content);
+  const shouldDefer = isLargeMarkdown(normalizedContent);
+  const [isVisible, setIsVisible] = useState(!shouldDefer);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!shouldDefer) {
+      setIsVisible(true);
+      return;
+    }
+
+    setIsVisible(false);
+    const element = viewportRef.current;
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setIsVisible(true);
+        observer.disconnect();
+      }
+    }, { threshold: 0.1 });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [normalizedContent, shouldDefer]);
+
+  if (!normalizedContent) {
+    return null;
+  }
+
+  if (!isVisible) {
+    return <div ref={viewportRef} className={styles.markdown} aria-hidden="true" />;
+  }
+
+  return (
+    <div ref={viewportRef} className={styles.markdown}>
+      <XMarkdown
+        content={normalizedContent}
+        components={markdownComponents}
+        streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
+      />
+    </div>
+  );
+}
+
+// SimpleMarkdownContent 只渲染 markdown 内容，没有 runtime
+function SimpleMarkdownContent({
+  content,
+  styles,
+  isStreaming = false,
+}: {
+  content: string;
+  styles: Record<string, string>;
+  isStreaming?: boolean;
+}) {
+  return <MarkdownViewportContent content={content} styles={styles} isStreaming={isStreaming} />;
+}
+
+function shouldRenderInlineText(text: string): boolean {
+  const value = (text || '').trim();
+  if (!value) {
+    return false;
+  }
+  if (/\n/.test(value)) {
+    return false;
+  }
+  if (/^\s{0,3}(#{1,6}|\d+\. |- |\* |```|>|---)/.test(value)) {
+    return false;
+  }
+  return true;
+}
+
+type ApprovalViewState = {
+  state: AssistantReplyApprovalState | 'refresh-needed';
+  message?: string;
+};
+
+const APPROVAL_RESOLUTION_DELAY_MS = 3000;
+
+function getApprovalActivityKey(activity: AssistantReplyActivity): string {
+  return activity.approvalId || activity.id;
+}
+
+function mapApprovalTicketToViewState(ticket: { status?: string }): ApprovalViewState {
+  switch (ticket.status) {
+    case 'approved':
+    case 'executed':
+      return {
+        state: 'approved',
+        message: '已批准',
+      };
+    case 'rejected':
+    case 'failed':
+    case 'expired':
+      return {
+        state: 'rejected',
+        message: '已拒绝',
+      };
+    case 'pending':
+    default:
+      return {
+        state: 'refresh-needed',
+        message: '审批状态可能已变更，请刷新后查看结果',
+      };
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+  return '提交失败，请刷新后重试';
+}
+
+function createApprovalIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `approval-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getTodoStatusLabel(status: string): string {
+  switch (status) {
+    case 'in_progress':
+      return '进行中';
+    case 'completed':
+      return '已完成';
+    case 'pending':
+    default:
+      return '待办';
+  }
+}
+
+// StepContentRenderer 按 segments 顺序渲染步骤内容
+function StepContentRenderer({
+  step,
+  activities,
+  isStreaming,
+  styles,
+  onApprovalDecision,
+}: {
+  step: { content?: string; segments?: AssistantReplySegment[] };
+  activities: AssistantReplyActivity[];
+  isStreaming: boolean;
+  styles: Record<string, string>;
+  onApprovalDecision?: (activity: AssistantReplyActivity, approved: boolean) => Promise<void> | void;
+}) {
+  // 如果有 segments，按顺序渲染
+  if (step.segments && step.segments.length > 0) {
+    const activityMap = new Map<string, AssistantReplyActivity>();
+    activities.forEach((a) => activityMap.set(a.id, a));
+
+    const elements: React.ReactNode[] = [];
+
+    step.segments.forEach((segment, index) => {
+      if (segment.type === 'text' && segment.text) {
+        const inlineText = shouldRenderInlineText(segment.text);
+        elements.push(inlineText ? (
+          <span key={`text-${index}`} className={styles.inlineText}>
+            {normalizeMarkdownContent(segment.text)}
+          </span>
+        ) : (
+          <MarkdownViewportContent
+            key={`text-${index}`}
+            content={segment.text}
+            styles={styles}
+            isStreaming={isStreaming}
+          />
+        ));
+      } else if (segment.type === 'tool_ref' && segment.callId) {
+        const activity = activityMap.get(segment.callId);
+        if (activity) {
+          elements.push(
+            <ToolReference
+              key={`tool-${segment.callId}`}
+              activity={activity}
+              onApprovalDecision={onApprovalDecision}
+            />,
+          );
+        }
+      }
+    });
+
+    const hasOnlyTools = elements.length > 0 && elements.every((element) =>
+      React.isValidElement(element) && typeof element.key === 'string' && String(element.key).startsWith('tool-'));
+
+    return (
+      <div className={hasOnlyTools ? styles.inlineToolFallback : styles.stepMarkdown}>
+        <span className={styles.inlineToolFlow}>{elements}</span>
+      </div>
+    );
+  }
+
+  // 向后兼容：使用 content 字段 + activities 追加在末尾
+  if (step.content || activities.length > 0) {
+    return (
+      <div className={styles.stepMarkdown}>
+        {step.content && (
+          <MarkdownViewportContent
+            content={step.content}
+            styles={styles}
+            isStreaming={isStreaming}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// Step 加载状态：完整的状态机
+type StepLoadState = 'idle' | 'loading' | 'success' | 'error';
+
+// AssistantReplyContent 渲染完整的 runtime 内容
+function AssistantReplyContent({
+  content,
+  runtime,
+  status,
+  styles,
+  onLoadStepContent,
+}: {
+  content: string;
+  runtime: AssistantReplyRuntime;
+  status?: string;
+  styles: Record<string, string>;
+  onLoadStepContent?: AssistantReplyProps['onLoadStepContent'];
+}) {
+  // 展开状态
+  const [stepExpandStates, setStepExpandStates] = useState<Record<string, boolean>>({});
+  // 加载状态：状态机
+  const [stepLoadStates, setStepLoadStates] = useState<Record<string, StepLoadState>>({});
+  // 内容缓存：异步加载的数据存储于此
+  const [stepContentCache, setStepContentCache] = useState<Record<string, {
+    content: string;
+    segments: AssistantReplySegment[];
+    activities: AssistantReplyActivity[];
+  } | null>>({});
+  const inflightRequestsRef = useRef<Record<string, symbol>>({});
+  const approvalInflightRef = useRef<Record<string, string>>({});
+  const approvalResolutionTimersRef = useRef<Record<string, number>>({});
+  const approvalTimeoutTimersRef = useRef<Record<string, number>>({});
+  const [approvalViewStates, setApprovalViewStates] = useState<Record<string, ApprovalViewState>>({});
+
+  useEffect(() => () => {
+    Object.values(approvalResolutionTimersRef.current).forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    Object.values(approvalTimeoutTimersRef.current).forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    approvalResolutionTimersRef.current = {};
+    approvalTimeoutTimersRef.current = {};
+    inflightRequestsRef.current = {};
+    approvalInflightRef.current = {};
+  }, []);
+
+  const clearApprovalTimers = useCallback((activity: AssistantReplyActivity) => {
+    const key = getApprovalActivityKey(activity);
+    const timerId = approvalResolutionTimersRef.current[key];
+    if (timerId) {
+      window.clearTimeout(timerId);
+      delete approvalResolutionTimersRef.current[key];
+    }
+    const timeoutId = approvalTimeoutTimersRef.current[key];
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      delete approvalTimeoutTimersRef.current[key];
+    }
+  }, []);
+
+  const setApprovalViewState = useCallback((activity: AssistantReplyActivity, nextState: ApprovalViewState) => {
+    const key = getApprovalActivityKey(activity);
+    setApprovalViewStates((current) => ({
+      ...current,
+      [key]: nextState,
+    }));
+  }, []);
+
+  const handleApprovalDecision = useCallback(async (activity: AssistantReplyActivity, approved: boolean) => {
+    const approvalId = activity.approvalId;
+    if (!approvalId) {
+      return;
+    }
+
+    const approvalKey = getApprovalActivityKey(activity);
+    if (approvalInflightRef.current[approvalKey]) {
+      return;
+    }
+    const idempotencyKey = createApprovalIdempotencyKey();
+    approvalInflightRef.current[approvalKey] = idempotencyKey;
+
+    clearApprovalTimers(activity);
+    setApprovalViewState(activity, {
+      state: 'approved_resuming',
+      message: '提交中',
+    });
+
+    approvalResolutionTimersRef.current[approvalKey] = window.setTimeout(() => {
+      setApprovalViewState(activity, {
+        state: 'approved_resuming',
+        message: '结果确认中',
+      });
+      delete approvalResolutionTimersRef.current[approvalKey];
+    }, APPROVAL_RESOLUTION_DELAY_MS);
+
+    approvalTimeoutTimersRef.current[approvalKey] = window.setTimeout(() => {
+      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
+        return;
+      }
+      clearApprovalTimers(activity);
+      delete approvalInflightRef.current[approvalKey];
+      setApprovalViewState(activity, {
+        state: 'refresh-needed',
+        message: '提交超时，请刷新后重试',
+      });
+    }, 15000);
+
+    try {
+      await (aiApi.submitApproval as unknown as (
+        id: string,
+        payload: { approved: boolean },
+        options?: { idempotencyKey?: string },
+      ) => Promise<unknown>)(approvalId, { approved }, {
+        idempotencyKey,
+      });
+      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
+        return;
+      }
+      clearApprovalTimers(activity);
+      setApprovalViewState(activity, {
+        state: approved ? 'approved' : 'rejected',
+        message: approved ? '已批准' : '已拒绝',
+      });
+      emitApprovalUpdatedEvent({
+        token: approvalId,
+        status: approved ? 'approved' : 'rejected',
+      });
+      return;
+    } catch (error) {
+      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
+        return;
+      }
+      if (isApprovalConflictError(error)) {
+        clearApprovalTimers(activity);
+        const latest = await resolveApprovalTicket(approvalId);
+        if (latest && latest.status && latest.status !== 'pending') {
+          setApprovalViewState(activity, mapApprovalTicketToViewState(latest));
+        } else {
+          setApprovalViewState(activity, {
+            state: 'refresh-needed',
+            message: '审批状态可能已变更，请刷新后查看结果',
+          });
+        }
+        emitApprovalUpdatedEvent({
+          token: approvalId,
+          status: latest?.status,
+        });
+        return;
+      }
+
+      clearApprovalTimers(activity);
+      setApprovalViewState(activity, {
+        state: 'refresh-needed',
+        message: `提交失败：${getErrorMessage(error)}`,
+      });
+    } finally {
+      delete approvalInflightRef.current[approvalKey];
+    }
+  }, [clearApprovalTimers, setApprovalViewState]);
+
+  const displayActivities = useMemo<AssistantReplyActivity[]>(
+    () => runtime?.activities?.map((activity) => {
+      const override = approvalViewStates[getApprovalActivityKey(activity)];
+      if (!override) {
+        return activity;
+      }
+
+      const nextStatus: AssistantReplyActivityStatus = override.state === 'approved'
+        ? 'done'
+        : override.state === 'approved_done'
+          ? 'done'
+        : override.state === 'rejected'
+          ? 'error'
+          : override.state === 'approved_failed_terminal'
+            ? 'error'
+            : override.state === 'expired'
+              ? 'error'
+          : override.state === 'refresh-needed'
+            ? 'error'
+            : 'pending';
+
+      return {
+        ...activity,
+        status: nextStatus,
+        approvalState: override.state,
+        approvalMessage: override.message,
+        detail: override.message || activity.detail,
+      };
+    }) || [],
+    [approvalViewStates, runtime?.activities],
+  );
+
+  const activeStepIndex = runtime?.plan?.activeStepIndex;
+  const allSteps = runtime?.plan?.steps || [];
+  const hasPlan = runtime?.plan && allSteps.length > 0;
+
+  // 当前执行的步骤
+  const activeStep = activeStepIndex !== undefined && activeStepIndex >= 0 && activeStepIndex < allSteps.length
+    ? allSteps[activeStepIndex]
+    : null;
+
+  // 已完成的步骤（历史对话中所有步骤都是 done）
+  const completedSteps = activeStepIndex !== undefined && activeStepIndex >= 0
+    ? allSteps.slice(0, activeStepIndex).filter((step) => step.status === 'done')
+    : allSteps.filter((step) => step.status === 'done');
+
+  // 是否有 plan 结构
+  const isPlanBased = hasPlan && activeStepIndex !== undefined && activeStepIndex >= 0;
+
+  const toolActivities = isPlanBased
+    ? displayActivities.filter(
+        (activity) => activity.stepIndex === activeStepIndex &&
+          (activity.kind === 'tool' || activity.kind === 'tool_approval')
+      ) || []
+    : [];
+
+  const activeStepActivities = isPlanBased
+    ? displayActivities.filter(
+        (activity) => activity.stepIndex === activeStepIndex &&
+          activity.kind !== 'tool' &&
+          activity.kind !== 'tool_approval'
+      ) || []
+    : hasPlan
+      ? []
+      : displayActivities;
+
+  const standaloneActivities = !hasPlan ? displayActivities : [];
+  const shouldRenderSummary = Boolean(runtime?.summary?.items?.length);
+  const todoItems = runtime?.todos || [];
+  const shouldRenderTaskBoard = todoItems.length > 0;
+
+  const isStreaming = status === 'loading' || status === 'updating';
+
+  // 处理 step 展开，触发懒加载
+  const handleStepExpand = async (step: AssistantReplyPlanStep) => {
+    const stepId = step.id;
+    const lookupIndex = step.sourceBlockIndex ?? step.sourceStepIndex ?? allSteps.findIndex((candidate) => candidate.id === stepId);
+
+    // 1. 状态检查：防止重复请求（竞态条件处理）
+    const currentState = stepLoadStates[stepId] || 'idle';
+    if (currentState === 'loading' || currentState === 'success') {
+      // 已在加载或已成功，直接展开
+      if (currentState === 'success') {
+        setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      }
+      return;
+    }
+
+    // 2. 检查是否已有缓存
+    if (stepContentCache[stepId]) {
+      setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      return;
+    }
+
+    if (!onLoadStepContent) {
+      return;
+    }
+
+    if (step.unresolved || lookupIndex === undefined || lookupIndex < 0) {
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+      return;
+    }
+
+    // 3. 设置 loading 状态
+    setStepLoadStates(prev => ({ ...prev, [stepId]: 'loading' }));
+    const requestToken = Symbol(stepId);
+    inflightRequestsRef.current[stepId] = requestToken;
+
+    try {
+      const result = await onLoadStepContent(stepId, lookupIndex);
+      if (inflightRequestsRef.current[stepId] !== requestToken) {
+        return;
+      }
+      if (result) {
+        // 4. 成功：存储内容并标记成功
+        setStepContentCache(prev => ({ ...prev, [stepId]: result }));
+        setStepLoadStates(prev => ({ ...prev, [stepId]: 'success' }));
+        setStepExpandStates(prev => ({ ...prev, [stepId]: true }));
+      } else {
+        // 5. 返回 null：标记错误
+        setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+      }
+    } catch {
+      if (inflightRequestsRef.current[stepId] !== requestToken) {
+        return;
+      }
+      // 6. 异常：标记错误
+      setStepLoadStates(prev => ({ ...prev, [stepId]: 'error' }));
+    }
+  };
+
+  // 重试函数
+  const handleRetry = (step: AssistantReplyPlanStep) => {
+    // 重置状态后重新触发加载
+    setStepLoadStates(prev => ({ ...prev, [step.id]: 'idle' }));
+    handleStepExpand(step);
+  };
+
+  return (
+    <>
+      {runtime?.phaseLabel ? <div className={styles.phase}>{runtime.phaseLabel}</div> : null}
+
+      {shouldRenderTaskBoard ? (
+        <div className={styles.taskBoard}>
+          <div className={styles.taskBoardTitle}>Task Board</div>
+          <div className={styles.taskBoardList}>
+            {todoItems.map((todo: AssistantReplyTodo) => (
+              <div key={todo.id} className={styles.taskBoardItem}>
+                <div className={styles.taskBoardItemHeader}>
+                  <span>{todo.content}</span>
+                  <span className={styles.taskBoardStatus}>{getTodoStatusLabel(todo.status)}</span>
+                </div>
+                {todo.activeForm ? (
+                  <div className={styles.taskBoardItemForm}>{todo.activeForm}</div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* 已完成的步骤（每个 step 独立折叠，支持懒加载） */}
+      {completedSteps.length > 0 ? (
+        <Collapse
+          className={styles.completedStepsCollapse}
+          ghost
+          items={completedSteps.map((step, index) => {
+            const loadState = stepLoadStates[step.id] || 'idle';
+            const isExpanded = stepExpandStates[step.id];
+            const cachedContent = stepContentCache[step.id];
+            const displayStep = cachedContent
+              ? { ...step, content: cachedContent.content, segments: cachedContent.segments, loaded: true }
+              : step;
+
+            return {
+              key: step.id,
+              label: (
+                <div className={styles.completedStepTitle}>
+                  <span>✓</span>
+                  <span>{step.title}</span>
+                </div>
+              ),
+              collapsible: step.unresolved ? 'disabled' as const : undefined,
+              children: loadState === 'loading' ? (
+                <div className={styles.loadingContainer}>
+                  <Skeleton active paragraph={{ rows: 2 }} />
+                </div>
+              ) : loadState === 'error' ? (
+                <div className={styles.errorContainer}>
+                  <span style={{ color: '#ff4d4f' }}>加载失败</span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => handleRetry(step)}
+                  >
+                    重试
+                  </Button>
+                </div>
+              ) : (
+                <StepContentRenderer
+                  step={displayStep}
+                  activities={cachedContent?.activities || []}
+                  isStreaming={false}
+                  styles={styles}
+                  onApprovalDecision={handleApprovalDecision}
+                />
+              ),
+            };
+          })}
+          activeKey={Object.keys(stepExpandStates).filter((k) => stepExpandStates[k])}
+          onChange={(keys) => {
+            const newExpanded = Array.isArray(keys) ? keys : [keys];
+            const normalized = newExpanded.map((key) => String(key));
+            const nextExpandStates = normalized.reduce<Record<string, boolean>>((acc, key) => {
+              acc[key] = true;
+              return acc;
+            }, {});
+            const prevExpanded = Object.keys(stepExpandStates).filter((k) => stepExpandStates[k]);
+
+            // 找到新展开的 step
+            const newlyExpanded = normalized.filter((k) => !prevExpanded.includes(k));
+            setStepExpandStates(nextExpandStates);
+            newlyExpanded.forEach((stepId) => {
+              const targetStep = completedSteps.find((s) => s.id === stepId);
+              if (targetStep) {
+                void handleStepExpand(targetStep);
+              }
+            });
+          }}
+        />
+      ) : null}
+
+      {/* 当前执行的步骤（展开） */}
+      {activeStep ? (
+        <div className={styles.activeStep}>
+          <div className={styles.activeStepHeader}>
+            <span>◐</span>
+            <span>{activeStep.title}</span>
+          </div>
+          <div className={styles.activeStepBody}>
+            <StepContentRenderer
+              step={activeStep}
+              activities={toolActivities}
+              isStreaming={isStreaming}
+              styles={styles}
+              onApprovalDecision={handleApprovalDecision}
+            />
+            {activeStepActivities.map((activity) => (
+              activity.kind === 'tool_approval' ? (
+                <ToolReference
+                  key={activity.id}
+                  activity={activity}
+                  onApprovalDecision={handleApprovalDecision}
+                />
+              ) : (
+                <div key={activity.id} className={styles.activity}>
+                  <span>{activity.label}</span>
+                  {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+      ): null}
+
+      {standaloneActivities.length > 0 ? (
+        <div className={styles.activities}>
+          {standaloneActivities.map((activity) => (
+            activity.kind === 'tool' || activity.kind === 'tool_approval' ? (
+              <ToolReference
+                key={activity.id}
+                activity={activity}
+                onApprovalDecision={handleApprovalDecision}
+              />
+            ) : (
+              <div key={activity.id} className={styles.activity}>
+                <span>{activity.label}</span>
+                {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+              </div>
+            )
+          ))}
+        </div>
+      ) : null}
+
+      {shouldRenderSummary ? (
+        <div className={styles.summary}>
+          {runtime.summary.title ? <div className={styles.summaryTitle}>{runtime.summary.title}</div> : null}
+          {runtime.summary.items?.length ? (
+            <div className={styles.summaryGrid}>
+              {runtime.summary.items.map((item) => (
+                <div key={`${item.label}:${item.value}`} className={styles.summaryItem}>
+                  <span className={styles.summaryLabel}>{item.label}</span>
+                  <span className={styles.summaryValue}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {content ? (
+        <MarkdownViewportContent
+          content={content}
+          styles={styles}
+          isStreaming={isStreaming}
+        />
+      ) : null}
+
+      {runtime?.status ? <div className={styles.footer}>{runtime.status.label}</div> : null}
+    </>
+  );
+}
+
+export function AssistantReply({
+  content,
+  runtime,
+  status,
+  messageId,
+  hasRuntime,
+  onLoadRuntime,
+  onLoadStepContent,
+}: AssistantReplyProps) {
+  const { styles } = useAssistantReplyStyles();
+  const [localRuntime, setLocalRuntime] = useState<AssistantReplyRuntime | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const isStreaming = status === 'loading' || status === 'updating';
+
+  // 显示的 runtime：优先使用已加载的，其次使用传入的
+  const displayRuntime = localRuntime || runtime;
+
+  // 有 runtime 时直接显示完整内容
+  if (displayRuntime) {
+    return (
+      <div className={styles.root}>
+        <AssistantReplyContent
+          content={content}
+          runtime={displayRuntime}
+          status={status}
+          styles={styles}
+          onLoadStepContent={onLoadStepContent}
+        />
+      </div>
+    );
+  }
+
+  // 无 runtime 且没有懒加载能力，只显示 markdown
+  if (!messageId || !hasRuntime || !onLoadRuntime) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
+      </div>
+    );
+  }
+
+  // 懒加载场景
+  const handleExpand = async () => {
+    if (loading) return;
+    setLoading(true);
+    setExpanded(true);
+    const loaded = await onLoadRuntime(messageId);
+    if (loaded) {
+      setLocalRuntime(loaded);
+    }
+    setLoading(false);
+  };
+
+  // 加载中
+  if (loading) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
+        <div className={styles.loadingContainer}>
+          <Skeleton active paragraph={{ rows: 3 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // 已展开但加载失败
+  if (expanded && !localRuntime) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
+        <Button type="link" className={styles.expandButton} onClick={handleExpand}>
+          重试加载详情
+        </Button>
+      </div>
+    );
+  }
+
+  // 未展开，显示展开按钮
+  if (!expanded) {
+    return (
+      <div className={styles.root}>
+        <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
+        <Button
+          type="link"
+          className={styles.expandButton}
+          onClick={handleExpand}
+          icon={<DownOutlined />}
+        >
+          展开详情
+        </Button>
+      </div>
+    );
+  }
+
+  // 已展开且有 localRuntime（正常情况会走第一个分支）
+  return (
+    <div className={styles.root}>
+      <SimpleMarkdownContent content={content} styles={styles} isStreaming={isStreaming} />
+    </div>
+  );
+}

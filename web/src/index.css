@@ -1,0 +1,294 @@
+@import url('./assets/css2.css');
+@import url('./styles/motion.css');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  --color-primary: #f4f7fb;
+  --color-secondary: #ffffff;
+  --color-accent: #e9eff7;
+  --color-theme: #3a7afe;
+  --color-theme-strong: #255fe0;
+  --color-sider-start: #1d2b4f;
+  --color-sider-end: #253864;
+  --color-success: #00aa72;
+  --color-warning: #f5a623;
+  --color-error: #e5484d;
+  --color-info: #3a7afe;
+  --color-text-primary: #1f2329;
+  --color-text-secondary: #5f6b7a;
+  --color-border: #dce4ee;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: radial-gradient(circle at top right, #ebf3ff 0%, #f4f7fb 45%, #f4f7fb 100%);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #ecf2f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b8c8dd;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #90a9ca;
+}
+
+.ant-layout {
+  background: var(--color-primary) !important;
+}
+
+.ant-table {
+  background: var(--color-secondary) !important;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--color-accent) !important;
+  color: #2d3a4f !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--color-border) !important;
+  color: #2d3a4f !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f3f8ff !important;
+}
+
+.ant-card {
+  background: var(--color-secondary) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid var(--color-border) !important;
+  color: #2d3a4f !important;
+}
+
+.ant-card-body {
+  color: var(--color-text-secondary) !important;
+}
+
+.ant-menu {
+  background: transparent !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(90deg, #3a7afe 0%, #2f66d9 100%) !important;
+}
+
+.ant-btn-primary {
+  background: var(--color-theme) !important;
+  border-color: var(--color-theme) !important;
+}
+
+.ant-btn-primary:hover {
+  background: var(--color-theme-strong) !important;
+  border-color: var(--color-theme-strong) !important;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-input-number-input,
+.ant-select-selector,
+.ant-picker,
+.ant-mentions,
+.ant-input-textarea textarea {
+  background: #ffffff !important;
+  border-color: var(--color-border) !important;
+  color: #1f2329 !important;
+}
+
+.ant-input::placeholder,
+.ant-input-textarea textarea::placeholder,
+.ant-input-number-input::placeholder {
+  color: #8d98a8 !important;
+}
+
+.ant-input-affix-wrapper .ant-input-prefix,
+.ant-input-affix-wrapper .ant-input-suffix {
+  color: #8d98a8 !important;
+}
+
+.ant-select-selection-item {
+  color: #1f2329 !important;
+}
+
+.ant-select-selection-placeholder {
+  color: #8d98a8 !important;
+}
+
+.ant-picker input {
+  color: #1f2329 !important;
+}
+
+.ant-picker-suffix,
+.ant-picker-clear {
+  color: #8d98a8 !important;
+}
+
+.ant-select-dropdown {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-content {
+  color: #2d3a4f !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-selected .ant-select-item-option-content {
+  color: #1f2329 !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-active {
+  background: #edf4ff !important;
+}
+
+.ant-modal-content {
+  background: var(--color-secondary) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+.ant-modal-header {
+  background: var(--color-secondary) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.ant-modal-title {
+  color: #2d3a4f !important;
+}
+
+.ant-form-item-label > label {
+  color: #4a5568 !important;
+}
+
+.ant-form-item-explain-error {
+  color: #d94f56 !important;
+}
+
+.ant-drawer-content,
+.ant-drawer-header {
+  background: var(--color-secondary) !important;
+  color: #2d3a4f !important;
+  border-color: var(--color-border) !important;
+}
+
+.ant-drawer-title {
+  color: #2d3a4f !important;
+}
+
+.ant-descriptions-item-label {
+  color: #4a5568 !important;
+}
+
+.ant-descriptions-item-content {
+  color: #2d3a4f !important;
+}
+
+.ant-pagination .ant-pagination-item a {
+  color: #4b5a73 !important;
+}
+
+.ant-pagination .ant-pagination-item-active a {
+  color: #255fe0 !important;
+}
+
+.ant-btn-link {
+  color: #3a7afe !important;
+}
+
+.header-search-input input::placeholder {
+  color: #8d98a8 !important;
+}
+
+.ant-breadcrumb-link, .ant-breadcrumb-separator {
+  color: var(--color-text-secondary) !important;
+}
+
+.governance-action-btn {
+  min-height: 44px !important;
+  min-width: 44px !important;
+}
+
+.governance-interactive-row {
+  cursor: pointer;
+}
+
+.governance-interactive-row:focus,
+.governance-interactive-row:focus-within {
+  outline: 2px solid #255fe0;
+  outline-offset: -2px;
+  background: #edf4ff !important;
+}
+
+.ant-tag {
+  border-radius: 4px;
+}
+
+.ant-statistic-title {
+  color: var(--color-text-secondary) !important;
+}
+
+.ant-statistic-content {
+  color: #2d3a4f !important;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px var(--color-theme); }
+  50% { box-shadow: 0 0 20px var(--color-theme), 0 0 30px var(--color-theme); }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.host-terminal-page .host-terminal-xterm .xterm-viewport {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.host-terminal-page .host-terminal-xterm .xterm-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }

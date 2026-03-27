@@ -1,0 +1,32 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerting_rules.yml:/etc/prometheus/alerting_rules.yml:ro
+      - ./ai_alerting_rules.yml:/etc/prometheus/ai_alerting_rules.yml:ro
+      - ./data:/prometheus
+    networks:
+      - monitoring
+
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    name: monitoring

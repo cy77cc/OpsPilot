@@ -1,0 +1,79 @@
+name: Docker Build & Push
+run-name: "Docker: ${{ gitea.actor }} - ${{ gitea.ref_name }}"
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: registry.example.com
+  IMAGE_NAME: ${{ gitea.repository }}
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+
+      - name: Login to Registry
+        if: gitea.event_name != 'pull_request'
+        uses: https://github.com/docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - name: Build and push
+        id: build
+        uses: https://github.com/docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ gitea.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    if: gitea.event_name != 'pull_request'
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: https://github.com/aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.image_digest }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: https://github.com/github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'

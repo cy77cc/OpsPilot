@@ -1,0 +1,22 @@
+const enUS = {
+  'menu.dashboard': 'Dashboard',
+  'menu.hosts': 'Hosts',
+  'menu.services': 'Services',
+  'menu.cmdb': 'CMDB',
+  'menu.automation': 'Automation',
+  'menu.config': 'Config',
+  'menu.tasks': 'Tasks',
+  'menu.k8s': 'K8s',
+  'menu.monitor': 'Monitoring',
+  'menu.tools': 'Tools',
+  'common.success': 'Success',
+  'common.refresh': 'Refresh',
+  'host.title': 'Host Management',
+  'k8s.title': 'Kubernetes Clusters',
+  'automation.title': 'Automation',
+  'cmdb.title': 'CMDB Assets',
+  'lang.zh': 'Chinese',
+  'lang.en': 'English',
+};
+
+export default enUS;

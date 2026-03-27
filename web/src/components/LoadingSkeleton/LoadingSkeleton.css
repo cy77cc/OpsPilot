@@ -1,0 +1,83 @@
+.loading-skeleton-card {
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.loading-skeleton-list-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.loading-skeleton-table {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+}
+
+.loading-skeleton-table-row {
+  padding: 12px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.loading-skeleton-table-row:last-child {
+  border-bottom: none;
+}
+
+.loading-skeleton-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.loading-skeleton-detail-content {
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+/* Skeleton animation enhancement */
+.ant-skeleton-element .ant-skeleton-avatar,
+.ant-skeleton-element .ant-skeleton-input {
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .loading-skeleton-card,
+  .loading-skeleton-list-item,
+  .loading-skeleton-table,
+  .loading-skeleton-detail-header,
+  .loading-skeleton-detail-content {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .loading-skeleton-table-row {
+    border-bottom-color: #374151;
+  }
+}

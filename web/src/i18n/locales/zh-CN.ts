@@ -1,0 +1,22 @@
+const zhCN = {
+  'menu.dashboard': '主控台',
+  'menu.hosts': '主机管理',
+  'menu.services': '服务管理',
+  'menu.cmdb': 'CMDB',
+  'menu.automation': '自动化',
+  'menu.config': '配置中心',
+  'menu.tasks': '任务调度',
+  'menu.k8s': 'K8s集群',
+  'menu.monitor': '监控告警',
+  'menu.tools': '工具集成',
+  'common.success': '成功',
+  'common.refresh': '刷新',
+  'host.title': '主机管理',
+  'k8s.title': 'Kubernetes 集群',
+  'automation.title': '自动化',
+  'cmdb.title': 'CMDB 资产台账',
+  'lang.zh': '中文',
+  'lang.en': 'English',
+};
+
+export default zhCN;

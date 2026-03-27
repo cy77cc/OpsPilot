@@ -1,0 +1,85 @@
+name: Go CI
+run-name: "CI: ${{ gitea.actor }} - ${{ gitea.ref_name }}"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.23"
+  GOLANGCI_LINT_VERSION: "v1.61"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run golangci-lint
+        uses: https://github.com/golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check AI contract parity
+        run: bash script/ai/check_contract_parity.sh
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: https://github.com/actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/server ./cmd/server
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/server-arm64 ./cmd/server
+
+      - name: Upload artifacts
+        uses: https://github.com/actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/

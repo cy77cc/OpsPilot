@@ -1,0 +1,111 @@
+groups:
+    - name: OpsPilot-alerts
+      rules:
+        - alert: 主机 CPU 高使用
+          expr: cpu_usage > 85
+          for: 5m0s
+          labels:
+            rule_id: "1"
+            severity: warning
+            source: host
+          annotations:
+            summary: 主机 CPU 高使用
+        - alert: 主机 CPU 高使用
+          expr: cpu_usage > 85
+          for: 5m0s
+          labels:
+            rule_id: "2"
+            severity: warning
+            source: host
+          annotations:
+            summary: 主机 CPU 高使用
+        - alert: 主机内存高使用
+          expr: memory_usage > 90
+          for: 5m0s
+          labels:
+            rule_id: "3"
+            severity: critical
+            source: host
+          annotations:
+            summary: 主机内存高使用
+        - alert: 主机内存高使用
+          expr: memory_usage > 90
+          for: 5m0s
+          labels:
+            rule_id: "4"
+            severity: critical
+            source: host
+          annotations:
+            summary: 主机内存高使用
+        - alert: 主机磁盘高使用
+          expr: disk_usage > 90
+          for: 10m0s
+          labels:
+            rule_id: "5"
+            severity: critical
+            source: host
+          annotations:
+            summary: 主机磁盘高使用
+        - alert: 主机磁盘高使用
+          expr: disk_usage > 90
+          for: 10m0s
+          labels:
+            rule_id: "6"
+            severity: critical
+            source: host
+          annotations:
+            summary: 主机磁盘高使用
+        - alert: K8s 节点异常
+          expr: k8s_node_not_ready > 0
+          for: 3m0s
+          labels:
+            rule_id: "7"
+            severity: critical
+            source: k8s
+          annotations:
+            summary: K8s 节点异常
+        - alert: K8s 节点异常
+          expr: k8s_node_not_ready > 0
+          for: 3m0s
+          labels:
+            rule_id: "8"
+            severity: critical
+            source: k8s
+          annotations:
+            summary: K8s 节点异常
+        - alert: Pod CrashLoopBackOff
+          expr: pod_crashloop_count > 0
+          for: 3m0s
+          labels:
+            rule_id: "9"
+            severity: warning
+            source: k8s
+          annotations:
+            summary: Pod CrashLoopBackOff
+        - alert: Pod CrashLoopBackOff
+          expr: pod_crashloop_count > 0
+          for: 3m0s
+          labels:
+            rule_id: "10"
+            severity: warning
+            source: k8s
+          annotations:
+            summary: Pod CrashLoopBackOff
+        - alert: 发布失败告警
+          expr: deploy_failed_count > 0
+          for: 1m0s
+          labels:
+            rule_id: "11"
+            severity: critical
+            source: deploy
+          annotations:
+            summary: 发布失败告警
+        - alert: 发布失败告警
+          expr: deploy_failed_count > 0
+          for: 1m0s
+          labels:
+            rule_id: "12"
+            severity: critical
+            source: deploy
+          annotations:
+            summary: 发布失败告警

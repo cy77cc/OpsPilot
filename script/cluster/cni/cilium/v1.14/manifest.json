@@ -1,0 +1,22 @@
+{
+  "name": "cilium",
+  "version": "1.14.5",
+  "description": "Cilium CNI plugin with eBPF-based networking, security, and observability",
+  "supported_k8s_versions": ["1.26", "1.27", "1.28", "1.29"],
+  "install_script": "install.sh",
+  "uninstall_script": "uninstall.sh",
+  "install_method": "helm",
+  "helm_repo": "https://helm.cilium.io/",
+  "chart_name": "cilium/cilium",
+  "features": {
+    "network_policy": true,
+    "ebpf": true,
+    "service_mesh": true,
+    "hubble": true,
+    "transparent_encryption": true
+  },
+  "requirements": {
+    "kernel_version": "4.19",
+    "recommended_kernel": "5.10+"
+  }
+}

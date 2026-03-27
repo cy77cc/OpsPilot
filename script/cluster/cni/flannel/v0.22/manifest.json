@@ -1,0 +1,17 @@
+{
+  "name": "flannel",
+  "version": "0.22.3",
+  "description": "Flannel CNI plugin for Kubernetes",
+  "supported_k8s_versions": ["1.25", "1.26", "1.27", "1.28", "1.29"],
+  "install_script": "install.sh",
+  "uninstall_script": "uninstall.sh",
+  "manifest_url": "https://raw.githubusercontent.com/flannel-io/flannel/v0.22.3/Documentation/kube-flannel.yml",
+  "default_cidr": "10.244.0.0/16",
+  "backend": "vxlan",
+  "features": {
+    "network_policy": false,
+    "vxlan": true,
+    "host-gw": true,
+    "wireguard": true
+  }
+}

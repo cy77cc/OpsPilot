@@ -1,0 +1,10 @@
+{
+  "runtime": "compose",
+  "version": "v0.1.0",
+  "package_file": "runtime-package.txt",
+  "sha256": "2359d6a9fc8533128bf07fc4d2675dc94cb509060d200eeeec71aaf88364d7ef",
+  "preflight_script": "preflight.sh",
+  "install_script": "install.sh",
+  "verify_script": "verify.sh",
+  "uninstall_script": "uninstall.sh"
+}

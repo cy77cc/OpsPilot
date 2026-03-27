@@ -1,0 +1,10 @@
+{
+  "runtime": "k8s",
+  "version": "v0.1.0",
+  "package_file": "runtime-package.txt",
+  "sha256": "db503927a0571b3be3135b518bf71e9ba39ed413d46000394fc68439d436df0a",
+  "preflight_script": "preflight.sh",
+  "install_script": "install.sh",
+  "verify_script": "verify.sh",
+  "uninstall_script": "uninstall.sh"
+}

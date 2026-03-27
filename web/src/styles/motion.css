@@ -1,0 +1,419 @@
+/**
+ * Motion Design System - Tokens and Base Animations
+ *
+ * 统一的动效设计系统，提供时长、缓动曲线、距离等 Token
+ * 以及常用的动画 CSS 类
+ */
+
+:root {
+  /* ================================
+   * Duration Tokens
+   * ================================ */
+  --motion-duration-instant: 100ms;   /* 即时反馈 (button active) */
+  --motion-duration-fast: 150ms;      /* 快速过渡 (hover, focus) */
+  --motion-duration-normal: 200ms;    /* 标准动画 (展开, 切换) */
+  --motion-duration-slow: 300ms;      /* 页面级动画 (进入, 退出) */
+
+  /* ================================
+   * Easing Tokens
+   * ================================ */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);        /* 进入动画，开始快结束慢 */
+  --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);    /* 双向过渡，如展开/折叠 */
+  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 弹跳效果，如成功反馈 */
+
+  /* ================================
+   * Distance Tokens
+   * ================================ */
+  --motion-distance-xs: 4px;   /* 微小移动 */
+  --motion-distance-sm: 8px;   /* 小幅度移动 */
+  --motion-distance-md: 12px;  /* 中等幅度移动 */
+}
+
+/* ================================
+ * Reduced Motion Support
+ * ================================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ================================
+ * Page Transition Animations
+ * ================================ */
+@keyframes motion-page-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes motion-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* ================================
+ * Stagger Animations
+ * ================================ */
+@keyframes motion-stagger-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-distance-sm));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-stagger-fade-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--motion-distance-sm)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Table row stagger animation */
+.stagger-row {
+  animation: motion-stagger-fade-in-left var(--motion-duration-fast) var(--motion-ease-out) forwards;
+  animation-delay: var(--stagger-delay, 0ms);
+  opacity: 0;
+}
+
+/* ================================
+ * Hover Interactions
+ * ================================ */
+
+/* Button hover scale effect */
+.motion-hover-scale {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.motion-hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.motion-hover-scale:active {
+  transform: scale(0.98);
+  transition-duration: var(--motion-duration-instant);
+}
+
+/* Card hover lift effect */
+.motion-hover-lift {
+  transition: transform var(--motion-duration-normal) var(--motion-ease-out),
+              box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.motion-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ================================
+ * Focus Interactions
+ * ================================ */
+.motion-focus-ring {
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.motion-focus-ring:focus,
+.motion-focus-ring:focus-within {
+  border-color: var(--ant-primary-color, #1677ff);
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+
+/* ================================
+ * Operation Feedback
+ * ================================ */
+
+/* Success flash animation */
+@keyframes motion-success-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(82, 196, 26, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0);
+  }
+}
+
+.motion-success-flash {
+  animation: motion-success-flash var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Error shake animation */
+@keyframes motion-error-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+.motion-error-shake {
+  animation: motion-error-shake var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+/* High risk pulse animation */
+@keyframes motion-high-risk-pulse {
+  0%, 100% {
+    border-color: rgba(255, 77, 79, 0.3);
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.2);
+  }
+  50% {
+    border-color: rgba(255, 77, 79, 0.8);
+    box-shadow: 0 0 8px 2px rgba(255, 77, 79, 0.3);
+  }
+}
+
+.motion-high-risk-pulse {
+  animation: motion-high-risk-pulse 1.5s ease-in-out infinite;
+}
+
+/* ================================
+ * Loading Animations
+ * ================================ */
+@keyframes motion-pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.motion-pulse {
+  animation: motion-pulse 2s ease-in-out infinite;
+}
+
+/* ================================
+ * Fade Animations
+ * ================================ */
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.motion-fade-in {
+  animation: motion-fade-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.motion-fade-out {
+  animation: motion-fade-out var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* ================================
+ * Slide Animations
+ * ================================ */
+@keyframes motion-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-distance-md));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--motion-distance-md)));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.motion-slide-up {
+  animation: motion-slide-up var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+.motion-slide-down {
+  animation: motion-slide-down var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+/* ================================
+ * Stagger Delay Utilities
+ * ================================ */
+.motion-stagger-1 { animation-delay: 50ms; }
+.motion-stagger-2 { animation-delay: 100ms; }
+.motion-stagger-3 { animation-delay: 150ms; }
+.motion-stagger-4 { animation-delay: 200ms; }
+.motion-stagger-5 { animation-delay: 250ms; }
+.motion-stagger-6 { animation-delay: 300ms; }
+.motion-stagger-7 { animation-delay: 350ms; }
+.motion-stagger-8 { animation-delay: 400ms; }
+
+/* ================================
+ * Ant Design Enhancements
+ * ================================ */
+
+/* Table row hover transition */
+.ant-table-tbody > tr {
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* Tag color transition */
+.ant-tag {
+  transition: background-color var(--motion-duration-normal) var(--motion-ease-out),
+              border-color var(--motion-duration-normal) var(--motion-ease-out),
+              color var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Input focus transition */
+.ant-input,
+.ant-select-selector,
+.ant-picker {
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* Card hover enhancement */
+.ant-card {
+  transition: transform var(--motion-duration-normal) var(--motion-ease-out),
+              box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Button transitions */
+.ant-btn {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out),
+              background-color var(--motion-duration-fast) var(--motion-ease-out),
+              border-color var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ant-btn:active {
+  transform: scale(0.98);
+}
+
+/* ================================
+ * AI Assistant Motion Enhancements
+ * ================================ */
+
+/* Enhanced first token loading with status indicator */
+.ai-first-token-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 2px 0;
+}
+
+.ai-first-token-loading::after {
+  content: attr(data-status);
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 4px;
+}
+
+/* Tool trace timeline animation */
+.ai-trace-card {
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out),
+              box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ai-trace-card:hover {
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Tool status indicators with animation */
+.ai-trace-status-running {
+  animation: motion-pulse 1.5s ease-in-out infinite;
+}
+
+.ai-trace-status-success {
+  animation: motion-success-flash var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.ai-trace-status-error {
+  animation: motion-error-shake var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+/* Thinking block expand animation */
+.ai-thinking-block .ant-collapse-header {
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.ai-thinking-block .ant-collapse-content {
+  animation: motion-slide-up var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Enhanced recommendation chip animation */
+@keyframes motion-ai-chip-stagger {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ai-recommendation-chip.ant-btn {
+  animation: motion-ai-chip-stagger 180ms var(--motion-ease-out) both;
+}
+
+/* User message bubble entrance */
+@keyframes motion-user-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ai-chat-user-bubble {
+  animation: motion-user-bubble-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Session item hover transition */
+.ai-chat-session-btn {
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out),
+              border-color var(--motion-duration-fast) var(--motion-ease-out);
+}

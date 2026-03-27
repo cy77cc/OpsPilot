@@ -1,0 +1,173 @@
+app:
+  name: gin-prod-app
+  env: dev
+  debug: true
+  timezone: Asia/Shanghai
+  auto_migrate: false
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  max_header_bytes: 1MB
+  salt: ${SERVER_SALT}
+
+log:
+  level: debug            # debug | info | warn | error
+  format: json           # json | text
+  output: file           # stdout | file
+  file:
+    path: log/app.log
+    max_size: 100        # MB
+    max_backups: 10
+    max_age: 7           # days
+    compress: true
+
+mysql:
+  enable: true
+  instance:
+  host: ${MYSQL_HOST}
+  port: ${MYSQL_PORT}
+  user: ${MYSQL_USER}
+  password: ${MYSQL_PASSWORD}
+  database: devops
+  charset: utf8mb4
+  parse_time: true
+  loc: Local
+  max_open_conns: 50
+  max_idle_conns: 20
+  conn_max_lifetime: 1h
+  
+
+postgres:
+  enable: false
+  host: 127.0.0.1
+  port: 5432
+  user: gin_user
+  password: strong_password
+  database: gin_db
+  ssl_mode: disable
+  max_open_conns: 50
+  max_idle_conns: 20
+  conn_max_lifetime: 1h
+
+sqlite:
+  enable: false
+  file: data.db
+  max_open_conns: 1
+  max_idle_conns: 1
+  conn_max_lifetime: 1h
+
+
+redis:
+  enable: true
+  addr: ${REDIS_ADDR}
+  password: ${REDIS_PASSWORD}
+  db: 0
+  pool_size: 50
+  min_idle_conns: 10
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+
+jwt:
+  secret: ${SERVER_SECRET}
+  issuer: cy77cc
+  expire: 10m
+  refresh_expire: 168h
+
+cors:
+  enable: true
+  allow_origins:
+    - "*"
+  allow_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+  allow_headers:
+    - Authorization
+    - Content-Type
+  expose_headers:
+    - Content-Length
+  allow_credentials: true
+  max_age: 12h
+
+rate_limit:
+  enable: true
+  rps: 100
+  burst: 200
+
+pprof:
+  enable: false
+  addr: 127.0.0.1:6060
+
+metrics:
+  enable: true
+  path: /metrics
+
+security:
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 192.168.0.0/16
+  hide_banner: true
+  encryption_key: ${SECURITY_ENCRYPTION_KEY}
+
+llm:
+  enable: true
+  provider: "qwen" # 或 "ark" (火山引擎), "ollama"
+  base_url: "https://coding.dashscope.aliyuncs.com/v1"
+  model: "qwen3.5-plus"
+  temperature: 0.7
+  api_key: ${LLM_API_KEY}
+
+# llm:
+#   enable: true
+#   provider: "ark" # 或 "ark" (火山引擎), "ollama"
+#   base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+#   model: "MiniMax-M2.5"
+#   temperature: 0.7
+#   api_key: ${LLM_API_KEY}
+
+ai:
+  use_multi_domain_arch: false
+
+embedder:
+  enable: true
+  provider: "ollama"
+  model: "qwen3-embedding:8b"
+  base_url: "http://172.22.121.61:11434"
+  api_key: ${EMBEDDER_API_KEY}
+  timeout: 10s
+  max_retries: 3
+
+milvus:
+  enable: true
+  host: ${MILVUS_HOST}
+  port: ${MILVUS_PORT}
+  username: ${MILVUS_USERNAME}
+  password: ${MILVUS_PASSWORD}
+  timeout: 10s
+  use_tls: false
+  dimension: 4096
+  database: ${MILVUS_DATABASE}
+  collection: ${MILVUS_COLLECTION}
+  health_check_interval: 5s
+
+prometheus:
+  enable: true
+  address: ${PROMETHEUS_ADDRESS}
+  host: ${PROMETHEUS_HOST}
+  port: ${PROMETHEUS_PORT}
+  pushgateway_url: ${PROMETHEUS_PUSHGATEWAY_URL}
+  timeout: 10s
+  max_concurrent: 10
+  retry_count: 3
+
+# Swagger API 文档配置
+# 生产环境建议禁用，开发环境默认启用
+swagger:
+  enable: false           # 是否启用 Swagger UI (true/false)
+  path: /swagger/*any     # Swagger UI 访问路径 (gin 要求通配符命名)

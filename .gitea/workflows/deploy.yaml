@@ -1,0 +1,115 @@
+name: Deploy
+run-name: "Deploy: ${{ gitea.actor }} - ${{ gitea.ref_name }}"
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: registry.example.com
+  IMAGE_NAME: ${{ gitea.repository }}
+
+jobs:
+  prepare:
+    name: Prepare Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.image.outputs.tag }}
+      environment: ${{ steps.env.outputs.name }}
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ gitea.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ gitea.event.inputs.environment }}" >> $GITEA_OUTPUT
+          elif [ "${{ gitea.ref }}" = "refs/heads/main" ]; then
+            echo "name=staging" >> $GITEA_OUTPUT
+          else
+            echo "name=production" >> $GITEA_OUTPUT
+          fi
+
+      - name: Extract image tag
+        id: image
+        run: |
+          # 从 tag 提取版本号
+          TAG=${GITEA_REF#refs/tags/}
+          echo "tag=${TAG}" >> $GITEA_OUTPUT
+
+  deploy:
+    name: Deploy to ${{ needs.prepare.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: prepare
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+      url: https://${{ needs.prepare.outputs.environment }}.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: https://github.com/azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/k8s-manage \
+            k8s-manage=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.image_tag }} \
+            -n ${{ needs.prepare.outputs.environment }}
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/k8s-manage \
+            -n ${{ needs.prepare.outputs.environment }} \
+            --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n ${{ needs.prepare.outputs.environment }} -l app=k8s-manage
+
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy]
+    if: always()
+
+    steps:
+      - name: Send notification on success
+        if: needs.deploy.result == 'success'
+        run: |
+          curl -X POST "${{ secrets.WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "✅ Deployment successful",
+              "environment": "${{ needs.prepare.outputs.environment }}",
+              "version": "${{ needs.prepare.outputs.image_tag }}",
+              "actor": "${{ gitea.actor }}",
+              "repository": "${{ gitea.repository }}"
+            }'
+
+      - name: Send notification on failure
+        if: needs.deploy.result == 'failure'
+        run: |
+          curl -X POST "${{ secrets.WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "❌ Deployment failed",
+              "environment": "${{ needs.prepare.outputs.environment }}",
+              "version": "${{ needs.prepare.outputs.image_tag }}",
+              "actor": "${{ gitea.actor }}"
+            }'

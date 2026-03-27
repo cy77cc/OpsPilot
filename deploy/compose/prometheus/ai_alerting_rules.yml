@@ -1,0 +1,166 @@
+groups:
+  - name: ai_orchestration_alerts
+    rules:
+      # ========================================
+      # LLM 调用告警
+      # ========================================
+
+      # LLM 调用错误率过高
+      - alert: AILLMErrorRateHigh
+        expr: |
+          (
+            sum(rate(ai_llm_calls_total{status="error"}[5m]))
+            /
+            sum(rate(ai_llm_calls_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI LLM 调用错误率过高"
+          description: "LLM 调用错误率 {{ $value | humanizePercentage }}，超过 10% 阈值"
+
+      # LLM 调用延迟过高
+      - alert: AILLMLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(ai_llm_latency_seconds_bucket[5m])) by (le, model)) > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI LLM 调用延迟过高"
+          description: "模型 {{ $labels.model }} 的 P95 延迟 {{ $value | humanizeDuration }}，超过 30 秒阈值"
+
+      # LLM Token 消耗异常
+      - alert: AILLMTokenUsageSpike
+        expr: |
+          (
+            sum(rate(ai_llm_tokens_total[1h]))
+            -
+            sum(rate(ai_llm_tokens_total[1h] offset 24h))
+          ) / sum(rate(ai_llm_tokens_total[1h] offset 24h)) > 2
+        for: 10m
+        labels:
+          severity: info
+          component: ai
+        annotations:
+          summary: "AI LLM Token 消耗异常增长"
+          description: "Token 消耗相比 24 小时前增长了 {{ $value | humanizePercentage }}"
+
+      # ========================================
+      # 工具调用告警
+      # ========================================
+
+      # 工具调用错误率过高
+      - alert: AIToolErrorRateHigh
+        expr: |
+          (
+            sum(rate(ai_tool_calls_total{status="error"}[5m]))
+            /
+            sum(rate(ai_tool_calls_total[5m]))
+          ) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI 工具调用错误率过高"
+          description: "工具调用错误率 {{ $value | humanizePercentage }}，超过 20% 阈值"
+
+      # 特定工具调用失败
+      - alert: AIToolCallFailing
+        expr: |
+          sum(rate(ai_tool_calls_total{status="error"}[10m])) by (tool) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI 工具持续调用失败"
+          description: "工具 {{ $labels.tool }} 在过去 10 分钟内持续失败"
+
+      # 工具调用延迟过高
+      - alert: AIToolLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(ai_tool_latency_seconds_bucket[5m])) by (le, tool)) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI 工具调用延迟过高"
+          description: "工具 {{ $labels.tool }} 的 P95 延迟 {{ $value | humanizeDuration }}，超过 5 秒阈值"
+
+      # ========================================
+      # Agent 运行告警
+      # ========================================
+
+      # Agent 运行错误率过高
+      - alert: AIAgentErrorRateHigh
+        expr: |
+          (
+            sum(rate(ai_agent_runs_total{status="error"}[5m]))
+            /
+            sum(rate(ai_agent_runs_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI Agent 运行错误率过高"
+          description: "Agent 运行错误率 {{ $value | humanizePercentage }}，超过 10% 阈值"
+
+      # Agent 运行延迟过高
+      - alert: AIAgentLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(ai_agent_latency_seconds_bucket[5m])) by (le, agent)) > 60
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI Agent 运行延迟过高"
+          description: "Agent {{ $labels.agent }} 的 P95 延迟 {{ $value | humanizeDuration }}，超过 60 秒阈值"
+
+      # Agent 迭代次数过多
+      - alert: AIAgentTooManyIterations
+        expr: |
+          histogram_quantile(0.95, sum(rate(ai_agent_iterations_bucket[10m])) by (le, agent)) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI Agent 迭代次数过多"
+          description: "Agent {{ $labels.agent }} 的 P95 迭代次数超过 10 次，可能陷入循环"
+
+      # ========================================
+      # 系统健康告警
+      # ========================================
+
+      # 队列深度过高
+      - alert: AIQueueDepthHigh
+        expr: ai_queue_depth > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "AI 请求队列深度过高"
+          description: "当前有 {{ $value }} 个请求在队列中等待处理"
+
+      # 活跃会话数异常
+      - alert: AIActiveSessionsSpike
+        expr: |
+          ai_active_sessions >
+          (avg_over_time(ai_active_sessions[1h]) + 3 * stddev_over_time(ai_active_sessions[1h]))
+        for: 10m
+        labels:
+          severity: info
+          component: ai
+        annotations:
+          summary: "AI 活跃会话数异常增长"
+          description: "活跃会话数 {{ $value }} 显著高于正常水平"
