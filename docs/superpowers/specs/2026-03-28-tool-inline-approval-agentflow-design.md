@@ -165,9 +165,9 @@ For live stream:
 
 For history hydration:
 
-- Reconstruct `agent_ref` from projection events in order:
-  - `agent_handoff` events -> direct `agent_ref`
-  - `run_state` with `agent` field -> `agent_ref` only when it indicates a new visible processing actor vs previous emitted agent marker
+- Authoritative persisted source: `AIRunProjection.blocks` with `type='agent_handoff'`.
+- Reconstruct `agent_ref` from `agent_handoff` blocks in stored order.
+- `run_state.agent` is treated as **live-only enrichment** unless/until backend projection schema explicitly persists equivalent state transitions.
 - Never synthesize fixed roles not present in stored events.
 
 ## 8. Error Handling and Fallbacks
@@ -228,6 +228,8 @@ Renderer boundary rules:
 3. Tool status is visible inline with success/failure markers (`✓` / `✕`).
 4. Agent flow is shown only from real runtime events.
 5. Live stream and history projection present the same ordering semantics.
+   - For agent markers, parity guarantee is scoped to persisted `agent_handoff` events.
+   - Live-only `run_state.agent` markers are best-effort runtime hints and are not required to appear in hydrated history.
 
 ## 11. Implementation Scope (Next Step)
 
