@@ -478,7 +478,7 @@ describe('PlatformChatProvider', () => {
 
     expect(statuses).toContain('approved_resuming');
     expect(statuses).toContain('approved_retrying');
-    expect(statuses).toContain('approved_done');
+    expect(statuses).not.toContain('approved_done');
   });
 
   it('stops reconnect attempts when run enters waiting_approval', async () => {
