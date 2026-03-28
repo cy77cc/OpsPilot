@@ -16,8 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -352,8 +350,6 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 		if !ok {
 			break
 		}
-
-		w.dumpApprovalResumeEvent(task, event)
 
 		if event.Err != nil {
 			if interruptEvent, ok := recoverableInterruptEventFromEvent(event); ok {
@@ -754,63 +750,6 @@ func runFinalStatus(hasToolErrors bool) string {
 		return "completed_with_tool_errors"
 	}
 	return "completed"
-}
-
-func (w *ApprovalWorker) dumpApprovalResumeEvent(task *model.AIApprovalTask, event *adk.AgentEvent) {
-	if task == nil || event == nil {
-		return
-	}
-
-	dump := map[string]any{
-		"dumped_at":   time.Now().UTC().Format(time.RFC3339Nano),
-		"approval_id": task.ApprovalID,
-		"run_id":      task.RunID,
-		"session_id":  task.SessionID,
-		"agent_name":  event.AgentName,
-		"go_syntax":   fmt.Sprintf("%#v", event),
-	}
-	if event.Err != nil {
-		dump["event_err"] = event.Err.Error()
-	}
-
-	if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming {
-		dump["is_streaming"] = true
-		if event.Output.MessageOutput.MessageStream != nil {
-			dump["message_stream_ptr"] = fmt.Sprintf("%p", event.Output.MessageOutput.MessageStream)
-		}
-	}
-
-	if rawEvent, err := json.Marshal(event); err == nil {
-		var eventCopy any
-		if err := json.Unmarshal(rawEvent, &eventCopy); err == nil {
-			dump["event"] = eventCopy
-		} else {
-			dump["event_unmarshal_error"] = err.Error()
-			dump["event_raw_json"] = string(rawEvent)
-		}
-	} else {
-		dump["event_marshal_error"] = err.Error()
-	}
-
-	payload, err := json.MarshalIndent(dump, "", "  ")
-	if err != nil {
-		return
-	}
-	dir := filepath.Join(os.TempDir(), "opspilot_approval_event_dumps")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
-	}
-	fileName := fmt.Sprintf("approval-%s-run-%s-%d.json", sanitizeDumpFileToken(task.ApprovalID), sanitizeDumpFileToken(task.RunID), time.Now().UnixNano())
-	_ = os.WriteFile(filepath.Join(dir, fileName), payload, 0o644)
-}
-
-func sanitizeDumpFileToken(raw string) string {
-	clean := strings.TrimSpace(raw)
-	if clean == "" {
-		return "unknown"
-	}
-	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_")
-	return replacer.Replace(clean)
 }
 
 func (w *ApprovalWorker) reconcileApprovalTaskToolCallID(ctx context.Context, task *model.AIApprovalTask, outboxEvent *model.AIApprovalOutboxEvent) (*model.AIApprovalTask, error) {
