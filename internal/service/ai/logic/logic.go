@@ -656,21 +656,6 @@ func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID str
 	return update, nil
 }
 
-func (l *Logic) flushProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) error {
-	if len(events) == 0 {
-		return nil
-	}
-	_, err := l.consumeProjectedEvents(ctx, runID, sessionID, seqCounter, events, emit, assistantContent)
-	return err
-}
-
-func consumeProjectedEvents(events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) projectedRunUpdate {
-	l := &Logic{}
-	seq := 0
-	update, _ := l.consumeProjectedEvents(context.Background(), "", "", &seq, events, emit, assistantContent)
-	return update
-}
-
 func (l *Logic) appendRunEvent(ctx context.Context, runID, sessionID string, seqCounter *int, eventName string, payload any) error {
 	_, err := l.appendRunEventWithID(ctx, runID, sessionID, seqCounter, eventName, payload)
 	return err
