@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -333,206 +332,56 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 	}
 
 	var (
-		summaryContent strings.Builder
-		projector      = airuntime.NewStreamProjector()
-		hasToolErrors  bool
-		toolFailures   = newToolFailureTracker()
-		circuitBroken  bool
+		projector = airuntime.NewStreamProjector()
 	)
 
 	emit := func(string, any) {}
-	for {
-		if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
-			break
-		}
-
-		event, ok := iter.Next()
-		if !ok {
-			break
-		}
-
-		if event.Err != nil {
-			if interruptEvent, ok := recoverableInterruptEventFromEvent(event); ok {
-				projected := projector.Consume(interruptEvent)
-				toolFailures.recordProjectedEvents(projected)
-				update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-				if consumeErr != nil {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-						Status:       "resume_failed_retryable",
-						ErrorMessage: consumeErr.Error(),
-					})
-					return fmt.Errorf("persist projected interrupt event: %w", consumeErr)
-				}
-				if update.AssistantType != "" || update.IntentType != "" {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-						IntentType:    update.IntentType,
-						AssistantType: update.AssistantType,
-					})
-				}
-				continue
+	result, err := processAgentIterator(ctx, iteratorProcessInput{
+		Iterator:  iter,
+		Projector: projector,
+		Emit:      emit,
+		ConsumeProjected: func(_ iteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
+			_, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, events, emit, nil)
+			return consumeErr
+		},
+		HandleRunUpdate: func(update projectedRunUpdate) {
+			if update.AssistantType != "" || update.IntentType != "" {
+				_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
+					IntentType:    update.IntentType,
+					AssistantType: update.AssistantType,
+				})
 			}
-
-			if recoverable, ok := recoverableToolErrorFromEvent(event); ok {
-				hasToolErrors = true
-				if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
-					circuitBroken = true
-				}
-				projected := projector.Consume(recoverable.Event)
-				toolFailures.recordProjectedEvents(projected)
-				update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-				if consumeErr != nil {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-						Status:       "resume_failed_retryable",
-						ErrorMessage: consumeErr.Error(),
-					})
-					return fmt.Errorf("persist recoverable tool error: %w", consumeErr)
-				}
-				if update.AssistantType != "" || update.IntentType != "" {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-						IntentType:    update.IntentType,
-						AssistantType: update.AssistantType,
-					})
-				}
-				if circuitBroken {
-					break
-				}
-				continue
-			}
-			if isBusinessToolResultEvent(event) {
-				hasToolErrors = true
-				// Allow the normal projection path to persist the tool_result error.
-			} else {
-				return w.persistFatalResumeFailure(ctx, task, shell, &seqCounter, fmt.Errorf("resume iterator event: %w", event.Err))
-			}
-		}
-
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
-			for {
-				msg, recvErr := event.Output.MessageOutput.MessageStream.Recv()
-				if recvErr == io.EOF {
-					break
-				}
-				if recvErr != nil {
-					if interruptEvent, ok := recoverableInterruptEventFromErr(recvErr, event.AgentName); ok {
-						projected := projector.Consume(interruptEvent)
-						toolFailures.recordProjectedEvents(projected)
-						update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-						if consumeErr != nil {
-							_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-								Status:       "resume_failed_retryable",
-								ErrorMessage: consumeErr.Error(),
-							})
-							return fmt.Errorf("persist projected interrupt event: %w", consumeErr)
-						}
-						if update.AssistantType != "" || update.IntentType != "" {
-							_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-								IntentType:    update.IntentType,
-								AssistantType: update.AssistantType,
-							})
-						}
-						break
-					}
-					if recoverable, ok := recoverableToolErrorFromErr(recvErr, event.AgentName); ok {
-						hasToolErrors = true
-						if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
-							circuitBroken = true
-						}
-						projected := projector.Consume(recoverable.Event)
-						toolFailures.recordProjectedEvents(projected)
-						update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-						if consumeErr != nil {
-							_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-								Status:       "resume_failed_retryable",
-								ErrorMessage: consumeErr.Error(),
-							})
-							return fmt.Errorf("persist recoverable tool error: %w", consumeErr)
-						}
-						if update.AssistantType != "" || update.IntentType != "" {
-							_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-								IntentType:    update.IntentType,
-								AssistantType: update.AssistantType,
-							})
-						}
-						if circuitBroken {
-							break
-						}
-						continue
-					}
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-						Status:       "resume_failed_retryable",
-						ErrorMessage: recvErr.Error(),
-					})
-					return w.persistFatalResumeFailure(ctx, task, shell, &seqCounter, fmt.Errorf("resume stream recv: %w", recvErr))
-				}
-				if msg == nil {
-					continue
-				}
-
-				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
-				chunkEvent.AgentName = event.AgentName
-				projected := projector.Consume(chunkEvent)
-				toolFailures.recordProjectedEvents(projected)
-				update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-				if consumeErr != nil {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-						Status:       "resume_failed_retryable",
-						ErrorMessage: consumeErr.Error(),
-					})
-					return fmt.Errorf("persist resume stream chunk: %w", consumeErr)
-				}
-				if update.AssistantType != "" || update.IntentType != "" {
-					_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-						IntentType:    update.IntentType,
-						AssistantType: update.AssistantType,
-					})
-				}
-			}
-			if circuitBroken {
-				break
-			}
-			continue
-		}
-
-		projected := projector.Consume(event)
-		toolFailures.recordProjectedEvents(projected)
-		update, consumeErr := w.logic.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-		if consumeErr != nil {
-			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
-				Status:       "resume_failed_retryable",
-				ErrorMessage: consumeErr.Error(),
-			})
-			return fmt.Errorf("persist resume event: %w", consumeErr)
-		}
-		if update.AssistantType != "" || update.IntentType != "" {
-			_ = w.logic.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-				IntentType:    update.IntentType,
-				AssistantType: update.AssistantType,
-			})
-		}
-	}
-
-	flushEvents := projector.FlushBuffer()
-	toolFailures.recordProjectedEvents(flushEvents)
-	if err := w.logic.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
+		},
+	})
+	if err != nil {
 		_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
 			Status:       "resume_failed_retryable",
 			ErrorMessage: err.Error(),
 		})
-		return fmt.Errorf("flush resume projected events: %w", err)
+		return err
 	}
-	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+	if result.FatalErr != nil {
+		cause := result.FatalErr
+		if strings.HasPrefix(cause.Error(), "iterator event:") {
+			cause = fmt.Errorf("resume %w", cause)
+		} else {
+			cause = fmt.Errorf("resume stream recv: %w", cause)
+		}
+		return w.persistFatalResumeFailure(ctx, task, shell, &seqCounter, cause)
+	}
+	if result.Interrupted {
 		runStatus := aidao.AIRunStatusUpdate{
 			Status:             "waiting_approval",
 			AssistantMessageID: shell.AssistantMessage.ID,
 		}
-		if err := w.logic.finalizeRunCritical(ctx, shell, runStatus, summaryContent.String()); err != nil {
+		if err := w.logic.finalizeRunCritical(ctx, shell, runStatus, result.SummaryText); err != nil {
 			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
 				Status:       "resume_failed_retryable",
 				ErrorMessage: err.Error(),
 			})
 			return fmt.Errorf("persist waiting approval state after resume interrupt: %w", err)
 		}
-		if err := w.logic.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String()); err != nil {
+		if err := w.logic.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil {
 			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
 				Status:       "resume_failed_retryable",
 				ErrorMessage: err.Error(),
@@ -544,10 +393,10 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 
 	done := projector.Finish(shell.Run.ID)
 	if payload, ok := done.Data.(map[string]any); ok {
-		ensureDoneSummary(payload, summaryContent.String(), hasToolErrors)
+		ensureDoneSummary(payload, result.SummaryText, result.HasToolErrors)
 		done.Data = payload
 	}
-	if err := w.appendRunStateEvent(ctx, shell, &seqCounter, runStatePayload(shell.Run.ID, runFinalStatus(hasToolErrors), summaryContent.String())); err != nil {
+	if err := w.appendRunStateEvent(ctx, shell, &seqCounter, runStatePayload(shell.Run.ID, runFinalStatus(result.HasToolErrors), result.SummaryText)); err != nil {
 		_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
 			Status:       "resume_failed_retryable",
 			ErrorMessage: err.Error(),
@@ -563,7 +412,7 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 	}
 
 	runStatus := aidao.AIRunStatusUpdate{
-		Status:             runFinalStatus(hasToolErrors),
+		Status:             runFinalStatus(result.HasToolErrors),
 		AssistantMessageID: shell.AssistantMessage.ID,
 	}
 	if err := w.logic.finalizeRunCritical(ctx, shell, runStatus, ""); err != nil {
@@ -573,7 +422,7 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 		})
 		return fmt.Errorf("finalize resumed run: %w", err)
 	}
-	if err := w.logic.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String()); err != nil {
+	if err := w.logic.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil {
 		_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
 			Status:       "resume_failed_retryable",
 			ErrorMessage: err.Error(),

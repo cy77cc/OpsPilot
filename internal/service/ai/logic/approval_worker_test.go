@@ -1018,6 +1018,23 @@ func TestApprovalWorkerResumeInterruptKeepsRunWaitingApproval(t *testing.T) {
 	assertRunEventPresent(t, events, "run_state", "waiting_approval")
 	assertRunEventAbsent(t, events, "run_state", "completed")
 	assertRunEventAbsent(t, events, "done", "completed")
+
+	decided := mustLoadApprovalOutbox(t, db, "approval-resume-interrupt", ApprovalEventTypeDecided)
+	if decided.Status != "done" {
+		t.Fatalf("expected approval_decided outbox done after interrupt persistence, got %q", decided.Status)
+	}
+	_ = mustLoadApprovalOutbox(t, db, "approval-resume-interrupt", RunEventTypeResuming)
+	_ = mustLoadApprovalOutbox(t, db, "approval-resume-interrupt", RunEventTypeResumed)
+
+	var completedCount int64
+	if err := db.Model(&model.AIApprovalOutboxEvent{}).
+		Where("approval_id = ? AND event_type = ?", "approval-resume-interrupt", RunEventTypeCompleted).
+		Count(&completedCount).Error; err != nil {
+		t.Fatalf("count completed lifecycle outbox: %v", err)
+	}
+	if completedCount != 0 {
+		t.Fatalf("expected no completed lifecycle outbox for waiting_approval interrupt, got %d", completedCount)
+	}
 }
 
 func TestApprovalWorker_EmitsCompletedRunStateBeforeDone(t *testing.T) {
@@ -1095,6 +1112,16 @@ func TestApprovalWorker_EmitsCompletedRunStateBeforeDone(t *testing.T) {
 		runEventMatcher{eventType: "done", status: "completed"},
 	)
 	assertRunEventAbsent(t, events, "error", "")
+
+	decided := mustLoadApprovalOutbox(t, db, "approval-terminal-complete", ApprovalEventTypeDecided)
+	if decided.Status != "done" {
+		t.Fatalf("expected approval_decided outbox done after completion, got %q", decided.Status)
+	}
+	completed := mustLoadApprovalOutbox(t, db, "approval-terminal-complete", RunEventTypeCompleted)
+	payload := decodeApprovalWorkerPayload(t, completed.PayloadJSON)
+	if status, _ := payload["status"].(string); status != "completed" {
+		t.Fatalf("expected completed lifecycle payload status completed, got %#v", payload)
+	}
 }
 
 func TestApprovalWorker_EmitsFailedRunStateBeforeError(t *testing.T) {
@@ -1180,6 +1207,16 @@ func TestApprovalWorker_EmitsFailedRunStateBeforeError(t *testing.T) {
 	if run == nil || run.Status == "resume_failed_retryable" {
 		t.Fatalf("expected fatal failure to converge without retryable status, got %#v", run)
 	}
+
+	decided := mustLoadApprovalOutbox(t, db, "approval-terminal-failed", ApprovalEventTypeDecided)
+	if decided.Status != "done" {
+		t.Fatalf("expected approval_decided outbox done after fatal failure, got %q", decided.Status)
+	}
+	resumeFailed := mustLoadApprovalOutbox(t, db, "approval-terminal-failed", RunEventTypeResumeFailed)
+	payload := decodeApprovalWorkerPayload(t, resumeFailed.PayloadJSON)
+	if retryable, _ := payload["retryable"].(bool); retryable {
+		t.Fatalf("expected fatal resume_failed payload to be non-retryable, got %#v", payload)
+	}
 }
 
 func TestApprovalWorker_LeavesRetryableResumeFailureWithoutDone(t *testing.T) {
@@ -1260,6 +1297,12 @@ func TestApprovalWorker_LeavesRetryableResumeFailureWithoutDone(t *testing.T) {
 	}
 	if outbox.RetryCount != 1 {
 		t.Fatalf("expected retry_count=1 after retryable failure, got %d", outbox.RetryCount)
+	}
+
+	resumeFailed := mustLoadApprovalOutbox(t, db, "approval-retryable-resume-failure", RunEventTypeResumeFailed)
+	payload := decodeApprovalWorkerPayload(t, resumeFailed.PayloadJSON)
+	if retryable, _ := payload["retryable"].(bool); !retryable {
+		t.Fatalf("expected retryable resume_failed payload, got %#v", payload)
 	}
 }
 
@@ -1355,6 +1398,16 @@ func TestApprovalWorker_RejectAndExpireEndAsCancelledWithoutDoneOrError(t *testi
 			assertRunEventPresent(t, events, "run_state", "cancelled")
 			assertRunEventAbsent(t, events, "done", "")
 			assertRunEventAbsent(t, events, "error", "")
+
+			decided := mustLoadApprovalOutbox(t, db, tc.approvalID, ApprovalEventTypeDecided)
+			if decided.Status != "done" {
+				t.Fatalf("expected approval_decided outbox done for %s, got %q", tc.name, decided.Status)
+			}
+			completed := mustLoadApprovalOutbox(t, db, tc.approvalID, RunEventTypeCompleted)
+			payload := decodeApprovalWorkerPayload(t, completed.PayloadJSON)
+			if status, _ := payload["status"].(string); status != "cancelled" {
+				t.Fatalf("expected completed lifecycle payload status cancelled for %s, got %#v", tc.name, payload)
+			}
 		})
 	}
 }
