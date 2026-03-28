@@ -1019,7 +1019,7 @@ func TestApprovalWorkerResumeInterruptKeepsRunWaitingApproval(t *testing.T) {
 	assertRunEventAbsent(t, events, "run_state", "completed")
 	assertRunEventAbsent(t, events, "done", "completed")
 
-	decided := mustLoadApprovalOutbox(t, db, "approval-resume-interrupt", ApprovalEventTypeDecided)
+	decided := mustLoadApprovalOutboxByTypes(t, db, "approval-resume-interrupt", approvalDecidedEventTypes()...)
 	if decided.Status != "done" {
 		t.Fatalf("expected approval_decided outbox done after interrupt persistence, got %q", decided.Status)
 	}

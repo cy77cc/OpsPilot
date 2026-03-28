@@ -385,6 +385,15 @@ func mustLoadApprovalOutbox(t *testing.T, db *gorm.DB, approvalID, eventType str
 	return event
 }
 
+func mustLoadApprovalOutboxByTypes(t *testing.T, db *gorm.DB, approvalID string, eventTypes ...string) model.AIApprovalOutboxEvent {
+	t.Helper()
+	var event model.AIApprovalOutboxEvent
+	if err := db.Where("approval_id = ? AND event_type IN ?", approvalID, eventTypes).Order("id ASC").First(&event).Error; err != nil {
+		t.Fatalf("load outbox event %s/%v: %v", approvalID, eventTypes, err)
+	}
+	return event
+}
+
 func mustLoadApprovalOutboxByApprovalID(t *testing.T, db *gorm.DB, approvalID string) []model.AIApprovalOutboxEvent {
 	t.Helper()
 	var events []model.AIApprovalOutboxEvent
