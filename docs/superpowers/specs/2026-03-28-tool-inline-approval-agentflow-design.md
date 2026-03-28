@@ -136,11 +136,66 @@ Idempotency:
 - Upsert activities by stable IDs (`call_id`, `handoff:<agent>` or equivalent).
 - Prevent duplicate segment insertions for replay/reconnect where possible.
 
+### 7.1 Stream Ingestion Seam (Authoritative)
+
+Authoritative ingestion layer: `web/src/components/AI/providers/PlatformChatProvider.ts` handler map.
+
+Required handler-to-reducer mapping (must remain explicit in implementation plan):
+
+- `onDelta` -> `applyDelta` (non-plan) or `applyStepDelta` (plan active step)
+- `onToolCall` -> `applyToolCall`
+- `onToolApproval` -> `applyToolApproval`
+- `onToolResult` -> `applyToolResult`
+- `onAgentHandoff` -> `applyAgentHandoff`
+- `onRunState` -> `applyRunState` (and optional agent marker injection, see 7.2)
+
+Ordering and replay rules at ingestion seam:
+
+1. Preserve incoming SSE order for segment append operations.
+2. Mutating events (`tool_result`, approval state transitions) must update existing activity records without changing segment position.
+3. Reconnect/replay events must be deduped by reference IDs (`call_id`, `handoff-id`, or deterministic key).
+4. Out-of-order `tool_result` (before visible `tool_call`) must still upsert activity; segment insertion follows first observed call/handoff marker and must not duplicate later.
+
+### 7.2 Agent Marker Construction Rule
+
+For live stream:
+
+- Primary source: `onAgentHandoff` payload (`from`, `to`, `intent`) -> append `agent_ref`.
+- Secondary source: `onRunState.agent` when present and meaningful transition detected -> append `agent_ref` only if not duplicate of current tail marker.
+
+For history hydration:
+
+- Reconstruct `agent_ref` from projection events in order:
+  - `agent_handoff` events -> direct `agent_ref`
+  - `run_state` with `agent` field -> `agent_ref` only when it indicates a new visible processing actor vs previous emitted agent marker
+- Never synthesize fixed roles not present in stored events.
+
 ## 8. Error Handling and Fallbacks
 
 - Missing activity for a segment ref: render lightweight placeholder token, do not break message rendering.
 - Legacy runtime without segments: keep backward-compatible fallback path (`content + activities`).
 - Reconnect duplicate events: dedupe via reference IDs and append guards.
+
+## 8.1 Render Contract (Testable Boundary)
+
+`renderSegmentFlow(segments, activities, context)` contract:
+
+| Input Pattern | Expected Rendering |
+|---|---|
+| `text("...") + tool_ref(call-1) + text("...")` with tool done | continuous narrative with inline `[tool_name ✓]` between text fragments |
+| same with tool error | inline `[tool_name ✕]` |
+| tool approval waiting state | inline approval token + expanded detail card with actions |
+| tool approval terminal state (`approved/rejected/expired`) | auto-collapsed inline token; detail hidden by default but expandable |
+| `agent_ref(agent-x)` between texts | inline `[Agent: agent-x]` at exact segment position |
+| markdown block text segment (list/code heading) adjacent to tool token | block-safe rendering for markdown; inline token shown before/after block without breaking layout |
+| missing activity for `tool_ref`/`agent_ref` | render placeholder token (`[tool missing]` / `[agent missing]`), no crash |
+
+Renderer boundary rules:
+
+1. Segment order is authoritative for visible token placement.
+2. Activity table is authoritative for mutable state/status/detail.
+3. Renderer is side-effect free (no mutation of runtime state).
+4. Collapsed/expanded approval visibility is UI state layered on top of segment+activity inputs.
 
 ## 9. Testing Plan
 
