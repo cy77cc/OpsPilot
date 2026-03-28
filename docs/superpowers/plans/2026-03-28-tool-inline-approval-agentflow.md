@@ -299,8 +299,8 @@ Expected: PASS all.
 
 - [ ] **Step 2: Run typecheck/build guard**
 
-Run: `npm run test:run -- web/src/api/modules/ai.streamChunk.test.ts web/src/api/modules/ai.test.ts`  
-Expected: PASS with no stream contract regressions.
+Run: `cd web && npm run build`  
+Expected: PASS (`tsc -b` and `vite build` complete with no type or bundling errors).
 
 - [ ] **Step 3: Update plan progress notes (optional)**
 
