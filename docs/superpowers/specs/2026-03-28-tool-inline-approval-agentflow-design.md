@@ -65,41 +65,238 @@ Segments store references only (e.g., `callId`, `agentId`) and never duplicate m
 
 ## 5. Data Model Changes
 
-## 5.1 Types
+### 5.1 Types
 
 Update `web/src/components/AI/types.ts`:
 
-- Extend `AssistantReplySegment`:
-  - add `type: 'agent_ref'`
-  - add `agentId?: string`
-- Ensure `AssistantReplyRuntime` has narrative-level `segments?: AssistantReplySegment[]` for non-plan flow.
+#### 5.1.1 Extend `AssistantReplySegment`
+
+```typescript
+export interface AssistantReplySegment {
+  type: 'text' | 'tool_ref' | 'agent_ref';  // NEW: add 'agent_ref'
+  text?: string;
+  callId?: string;
+  agentId?: string;  // NEW: for agent_ref
+}
+```
+
+#### 5.1.2 Add Top-Level `segments` to `AssistantReplyRuntime`
+
+**Current state:** Segments only exist within `AssistantReplyPlanStep.segments`. Non-plan runtime has no segment infrastructure.
+
+**Required change:**
+
+```typescript
+export interface AssistantReplyRuntime {
+  phase?: AssistantReplyPhase;
+  phaseLabel?: string;
+  activities: AssistantReplyActivity[];
+  plan?: AssistantReplyPlan;
+  segments?: AssistantReplySegment[];  // NEW: top-level for non-plan narrative
+  summary?: AssistantReplySummary;
+  status?: AssistantReplyRuntimeStatus;
+  pendingRun?: PendingRunMetadata;
+  todos?: AssistantReplyTodo[];
+  _executorBlocks?: SlimExecutorBlock[];
+}
+```
+
+**Migration rule:**
+- If `runtime.plan` exists → use `plan.steps[activeStepIndex].segments` (existing path)
+- If `runtime.plan` is undefined → use `runtime.segments` (new path)
+- Legacy runtimes without `segments` → fallback to `content + activities` rendering
 
 ### 5.2 Runtime Builders
 
 Update `web/src/components/AI/replyRuntime.ts`:
 
-- `applyDelta`: append/merge `text` segment for non-plan mode.
-- `applyToolCall`: append `tool_ref(call_id)` for current narrative flow.
-- `applyToolApproval`/`applyToolResult`: update referenced activity only (segment position unchanged).
-- `applyAgentHandoff`: append `agent_ref` segment and create/update activity.
+#### 5.2.1 `applyDelta` Refactoring
+
+**Current behavior:** Only updates `content` string on `XChatMessage`.
+
+**Required change:** For non-plan mode, also append/merge text segment.
+
+```typescript
+export function applyDelta(
+  message: Pick<XChatMessage, 'content' | 'runtime'>,
+  payload: { content: string },
+): Pick<XChatMessage, 'content' | 'runtime'> {
+  const chunk = payload.content || '';
+  const current = message.content || '';
+  const nextContent = !current || current === PLACEHOLDER_CONTENT ? chunk : `${current}${chunk}`;
+
+  // NEW: Append text segment for non-plan runtime
+  let nextRuntime = message.runtime;
+  if (nextRuntime && !nextRuntime.plan) {
+    const segments = [...(nextRuntime.segments || [])];
+    const lastSegment = segments[segments.length - 1];
+    if (lastSegment?.type === 'text') {
+      // Merge with previous text segment
+      lastSegment.text = `${lastSegment.text || ''}${chunk}`;
+    } else {
+      segments.push({ type: 'text', text: chunk });
+    }
+    nextRuntime = { ...nextRuntime, segments };
+  }
+
+  return { content: nextContent, runtime: nextRuntime };
+}
+```
+
+#### 5.2.2 `applyToolCall` Update
+
+**Current behavior:** Appends `tool_ref` to active step only.
+
+**Required change:** Also append to top-level `segments` for non-plan.
+
+```typescript
+// After existing activity upsert logic:
+if (!nextRuntime.plan && payload.call_id) {
+  const segments = [...(nextRuntime.segments || [])];
+  segments.push({ type: 'tool_ref', callId: payload.call_id });
+  nextRuntime = { ...nextRuntime, segments };
+}
+```
+
+#### 5.2.3 `applyAgentHandoff` Update
+
+**Current behavior:** Creates activity only, no segment.
+
+**Required change:** Append `agent_ref` segment.
+
+```typescript
+export function applyAgentHandoff(
+  runtime: AssistantReplyRuntime,
+  payload: { from: string; to: string; intent: string },
+): AssistantReplyRuntime {
+  let nextRuntime = upsertActivity(
+    runtime,
+    {
+      id: `handoff:${payload.to}`,
+      kind: 'agent_handoff',
+      label: payload.to,
+      detail: payload.intent,
+      status: 'done',
+    },
+    (item) => item.id === `handoff:${payload.to}`,
+  );
+
+  // NEW: Append agent_ref segment for non-plan
+  if (!nextRuntime.plan) {
+    const segments = [...(nextRuntime.segments || [])];
+    segments.push({ type: 'agent_ref', agentId: payload.to });
+    nextRuntime = { ...nextRuntime, segments };
+  }
+
+  return {
+    ...nextRuntime,
+    phase: 'executing',
+    phaseLabel: `${payload.to} 开始处理`,
+  };
+}
+```
+
+#### 5.2.4 `applyToolApproval` / `applyToolResult`
+
+No segment changes needed — these only mutate activity state, segment position is immutable after insertion.
 
 ### 5.3 History Projection
 
-Update `web/src/components/AI/historyProjection.ts` to emit equivalent segment flow for hydrated history so historical display equals live display.
+Update `web/src/components/AI/historyProjection.ts`:
+
+#### 5.3.1 Add `agent_handoff` Handler in `loadStepContent`
+
+```typescript
+// In loadStepContent function, add handler:
+if (item.type === 'agent_handoff' && item.to) {
+  activities.push({
+    id: `handoff:${item.to}`,
+    kind: 'agent_handoff',
+    label: item.to,
+    detail: item.intent || '',
+    status: 'done',
+    stepIndex,
+  });
+  segments.push({ type: 'agent_ref', agentId: item.to });
+}
+```
+
+#### 5.3.2 Non-Plan History Hydration
+
+For messages without plan, build `runtime.segments` from projection blocks:
+
+```typescript
+// In hydrateAssistantHistoryFromProjection or projectionToLazyRuntime
+if (!steps.length) {
+  // Non-plan: build segments from executor items
+  const segments: AssistantReplySegment[] = [];
+  for (const block of projection.blocks) {
+    for (const item of block.items || []) {
+      if (item.type === 'content' && item.content_id) {
+        // Load and append text segment
+      }
+      if (item.type === 'tool_call') {
+        segments.push({ type: 'tool_ref', callId: item.tool_call_id });
+      }
+      if (item.type === 'agent_handoff') {
+        segments.push({ type: 'agent_ref', agentId: item.to });
+      }
+    }
+  }
+  runtime.segments = segments;
+}
+```
 
 ## 6. Rendering Design
 
-## 6.1 One Renderer for All Flows
+### 6.1 Unified Segment Renderer
 
-In `web/src/components/AI/AssistantReply.tsx`:
+**Current state:**
+- `StepContentRenderer` handles segment rendering for plan steps only
+- Non-plan uses `standaloneActivities` array outside narrative flow
+- Two separate rendering paths exist
 
-- Build a single `renderSegmentFlow(segments, activities, context)` path.
-- Reuse for:
-  - active step rendering
-  - completed-step lazy content rendering
-  - non-plan standalone assistant rendering
+**Target state:** Single `renderSegmentFlow(segments, activities, context)` utility.
 
-## 6.2 Inline Token Style Rules
+```typescript
+// web/src/components/AI/renderSegmentFlow.ts (new file or in AssistantReply.tsx)
+
+interface RenderContext {
+  isStreaming: boolean;
+  styles: Record<string, string>;
+  onToolClick?: (activity: AssistantReplyActivity) => void;
+}
+
+function renderSegmentFlow(
+  segments: AssistantReplySegment[],
+  activities: AssistantReplyActivity[],
+  context: RenderContext,
+): React.ReactNode {
+  const activityMap = new Map(activities.map(a => [a.id, a]));
+  const elements: React.ReactNode[] = [];
+
+  for (const segment of segments) {
+    if (segment.type === 'text') {
+      elements.push(renderTextSegment(segment, context));
+    } else if (segment.type === 'tool_ref') {
+      const activity = activityMap.get(segment.callId || '');
+      elements.push(renderToolToken(segment, activity, context));
+    } else if (segment.type === 'agent_ref') {
+      const activity = activityMap.get(`handoff:${segment.agentId}`);
+      elements.push(renderAgentToken(segment, activity, context));
+    }
+  }
+
+  return wrapWithFlowLayout(elements, context);
+}
+```
+
+**Usage in AssistantReply.tsx:**
+- Plan active step: `renderSegmentFlow(step.segments, stepActivities, context)`
+- Plan completed step: `renderSegmentFlow(cachedContent.segments, cachedContent.activities, context)`
+- Non-plan: `renderSegmentFlow(runtime.segments, runtime.activities, context)`
+
+### 6.2 Inline Token Style Rules
 
 Inline tokens:
 
@@ -113,7 +310,7 @@ Layout behavior:
 - Default inline with text flow (`inline-block`).
 - Auto fallback to block-safe layout around markdown block structures to avoid broken typography.
 
-## 6.3 Approval Card Behavior
+### 6.3 Approval Card Behavior
 
 `ToolReference` / `ToolResultCard` behavior:
 
@@ -176,7 +373,7 @@ For history hydration:
 - Legacy runtime without segments: keep backward-compatible fallback path (`content + activities`).
 - Reconnect duplicate events: dedupe via reference IDs and append guards.
 
-## 8.1 Render Contract (Testable Boundary)
+### 8.1 Render Contract (Testable Boundary)
 
 `renderSegmentFlow(segments, activities, context)` contract:
 
@@ -199,7 +396,7 @@ Renderer boundary rules:
 
 ## 9. Testing Plan
 
-## 9.1 Unit Tests
+### 9.1 Unit Tests
 
 - `replyRuntime.test.ts`
   - non-plan `delta -> tool_call -> tool_result` yields inline order.
@@ -216,7 +413,7 @@ Renderer boundary rules:
 - `historyProjection.test.ts`
   - hydrated history segment order matches live runtime behavior.
 
-## 9.2 Regression Coverage
+### 9.2 Regression Coverage
 
 - Existing approval submit/conflict/retry behavior remains unchanged.
 - Existing reconnect behavior for waiting approval and resume statuses remains unchanged.
@@ -233,12 +430,49 @@ Renderer boundary rules:
 
 ## 11. Implementation Scope (Next Step)
 
-Expected touched files:
+### 11.1 Touched Files
 
-- `web/src/components/AI/types.ts`
-- `web/src/components/AI/replyRuntime.ts`
-- `web/src/components/AI/historyProjection.ts`
-- `web/src/components/AI/AssistantReply.tsx`
-- `web/src/components/AI/ToolReference.tsx`
-- `web/src/components/AI/ToolResultCard.tsx` (if needed for collapse behavior)
-- corresponding test files in `web/src/components/AI/__tests__/` and runtime/history tests.
+| File | Change Type | Key Changes |
+|------|-------------|-------------|
+| `web/src/components/AI/types.ts` | Extend | Add `agent_ref` to segment union, add `segments` to runtime |
+| `web/src/components/AI/replyRuntime.ts` | Modify | Refactor `applyDelta`, `applyToolCall`, `applyAgentHandoff` |
+| `web/src/components/AI/historyProjection.ts` | Modify | Add `agent_handoff` handler, non-plan segment building |
+| `web/src/components/AI/AssistantReply.tsx` | Modify | Create unified `renderSegmentFlow`, handle non-plan segments |
+| `web/src/components/AI/ToolReference.tsx` | Modify | Add placeholder fallback, approval collapse logic |
+| `web/src/components/AI/ToolResultCard.tsx` | Minor | Collapse behavior if needed |
+| `web/src/components/AI/providers/PlatformChatProvider.ts` | Verify | No changes needed (handlers already call correct reducers) |
+
+### 11.2 Implementation Phases
+
+**Phase 1: Data Model (Low Risk)**
+- Add `agent_ref` to `AssistantReplySegment`
+- Add `segments?: AssistantReplySegment[]` to `AssistantReplyRuntime`
+- Write unit tests for new types
+
+**Phase 2: Runtime Builders (Medium Risk)**
+- Refactor `applyDelta` with segment appending
+- Update `applyToolCall` for non-plan segment
+- Update `applyAgentHandoff` for segment
+- Unit tests for segment order preservation
+
+**Phase 3: Rendering (Medium Risk)**
+- Extract `renderSegmentFlow` utility
+- Update `AssistantReplyContent` for non-plan segments
+- Add placeholder tokens for missing activities
+- Visual regression tests
+
+**Phase 4: History Projection (Low Risk)**
+- Add `agent_handoff` handler in `loadStepContent`
+- Build non-plan segments from projection
+- Unit tests for history parity
+
+**Phase 5: Approval Collapse (Low Risk)**
+- Update `ToolReference` for auto-collapse
+- Ensure expanded/collapsed state management
+- Unit tests for approval state transitions
+
+### 11.3 Risk Mitigation
+
+1. **Legacy compatibility:** Always check for `segments` existence before using
+2. **Reconnect safety:** Dedupe segments by ID during replay
+3. **Plan vs non-plan:** Clear conditional paths with explicit `if (runtime.plan)` checks
