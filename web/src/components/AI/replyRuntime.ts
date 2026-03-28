@@ -14,6 +14,133 @@ const PLACEHOLDER_CONTENT = '[准备中]';
 const SOFT_TIMEOUT_MESSAGE = '工具执行较慢，正在继续等待结果…';
 const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
 const MAX_ACTIVITIES = 50;
+const APPROVAL_SUMMARY_MAX_ROWS = 8;
+const APPROVAL_SUMMARY_MAX_VALUE_LENGTH = 80;
+
+type ApprovalPreviewSummaryRow = NonNullable<AssistantReplyActivity['approvalPreviewSummary']>[number];
+
+const APPROVAL_SUMMARY_PREFERRED_FIELDS: Array<{
+  key: string;
+  aliases: string[];
+}> = [
+  { key: 'cluster', aliases: ['cluster'] },
+  { key: 'namespace', aliases: ['namespace'] },
+  { key: 'resource', aliases: ['resource', 'resourceType'] },
+  { key: 'kind', aliases: ['kind'] },
+  { key: 'name', aliases: ['name'] },
+  { key: 'action', aliases: ['action'] },
+  { key: 'risk', aliases: ['risk', 'riskLevel'] },
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function truncatePreviewValue(value: string): string {
+  if (value.length <= APPROVAL_SUMMARY_MAX_VALUE_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, APPROVAL_SUMMARY_MAX_VALUE_LENGTH - 1)}…`;
+}
+
+function formatApprovalPreviewValue(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? truncatePreviewValue(trimmed) : undefined;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return undefined;
+    }
+    const serialized = value.map((item) => formatApprovalPreviewValue(item) || '').filter(Boolean).join(', ');
+    return serialized ? truncatePreviewValue(serialized) : truncatePreviewValue(JSON.stringify(value));
+  }
+
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort();
+    if (keys.length === 0) {
+      return undefined;
+    }
+    return truncatePreviewValue(JSON.stringify(value));
+  }
+
+  return truncatePreviewValue(String(value));
+}
+
+function flattenApprovalPreview(
+  value: Record<string, unknown>,
+  prefix = '',
+): Array<{ key: string; value: unknown }> {
+  return Object.keys(value)
+    .sort((left, right) => left.localeCompare(right))
+    .flatMap((key) => {
+      const nextKey = prefix ? `${prefix}.${key}` : key;
+      const nextValue = value[key];
+      if (isRecord(nextValue)) {
+        const nested = flattenApprovalPreview(nextValue, nextKey);
+        if (nested.length > 0) {
+          return nested;
+        }
+      }
+      return [{ key: nextKey, value: nextValue }];
+    });
+}
+
+function deriveApprovalPreviewSummary(preview: Record<string, unknown>): ApprovalPreviewSummaryRow[] {
+  if (!isRecord(preview) || Object.keys(preview).length === 0) {
+    return [];
+  }
+
+  const rows: ApprovalPreviewSummaryRow[] = [];
+  const consumedTopLevelKeys = new Set<string>();
+
+  APPROVAL_SUMMARY_PREFERRED_FIELDS.forEach(({ key, aliases }) => {
+    const matchedAlias = aliases.find((alias) => Object.prototype.hasOwnProperty.call(preview, alias));
+    if (!matchedAlias) {
+      return;
+    }
+    const formattedValue = formatApprovalPreviewValue(preview[matchedAlias]);
+    if (!formattedValue) {
+      return;
+    }
+    rows.push({
+      key,
+      label: key,
+      value: formattedValue,
+    });
+    consumedTopLevelKeys.add(matchedAlias);
+  });
+
+  if (rows.length >= APPROVAL_SUMMARY_MAX_ROWS) {
+    return rows.slice(0, APPROVAL_SUMMARY_MAX_ROWS);
+  }
+
+  const fallbackRows = flattenApprovalPreview(preview)
+    .filter(({ key }) => !consumedTopLevelKeys.has(key.split('.')[0] || key))
+    .map(({ key, value }) => {
+      const formattedValue = formatApprovalPreviewValue(value);
+      if (!formattedValue) {
+        return null;
+      }
+      return {
+        key,
+        label: key,
+        value: formattedValue,
+      };
+    })
+    .filter((row): row is ApprovalPreviewSummaryRow => Boolean(row));
+
+  return [...rows, ...fallbackRows].slice(0, APPROVAL_SUMMARY_MAX_ROWS);
+}
 
 function mergePendingRun(
   runtime: AssistantReplyRuntime,
@@ -435,6 +562,7 @@ export function applyToolApproval(
   },
 ): AssistantReplyRuntime {
   const activeStepIndex = runtime.plan?.activeStepIndex;
+  const approvalPreview = isRecord(payload.preview) ? { ...payload.preview } : {};
   return mergePendingRun(upsertActivity(
     runtime,
     {
@@ -445,6 +573,9 @@ export function applyToolApproval(
       status: 'pending',
       approvalId: payload.approval_id,
       approvalState: 'waiting-approval',
+      approvalPreview,
+      approvalPreviewSummary: deriveApprovalPreviewSummary(approvalPreview),
+      approvalTimeoutSeconds: payload.timeout_seconds,
       stepIndex: activeStepIndex,
     },
     (item) => item.id === payload.call_id,

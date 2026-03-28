@@ -128,6 +128,12 @@ describe('assistant reply runtime shape', () => {
         createdAt?: string;
         arguments?: Record<string, unknown>;
         rawContent?: string;
+        approvalPreview?: Record<string, unknown>;
+        approvalPreviewSummary?: Array<{
+          key: string;
+          label: string;
+          value: string;
+        }>;
       }>
     >();
   });
@@ -173,6 +179,65 @@ describe('assistant reply runtime shape', () => {
         kind: 'tool_approval',
         approvalId: 'approval-1',
         status: 'pending',
+      }),
+    );
+  });
+
+  it('stores tool approval preview and derives ordered summary rows', () => {
+    const runtime = applyToolApproval(createEmptyAssistantRuntime(), {
+      approval_id: 'approval-1',
+      call_id: 'call-1',
+      tool_name: 'kubectl_apply',
+      timeout_seconds: 300,
+      preview: {
+        extra9: 'drop-me',
+        action: 'apply',
+        riskLevel: 'high',
+        namespace: 'ops',
+        cluster: 'prod',
+        name: 'payments-api',
+        resourceType: 'deployment',
+        kind: 'Deployment',
+        dryRun: false,
+        manifest: {
+          replicas: 3,
+        },
+      },
+    });
+
+    expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        approvalPreview: expect.objectContaining({
+          cluster: 'prod',
+          namespace: 'ops',
+        }),
+        approvalPreviewSummary: [
+          { key: 'cluster', label: 'cluster', value: 'prod' },
+          { key: 'namespace', label: 'namespace', value: 'ops' },
+          { key: 'resource', label: 'resource', value: 'deployment' },
+          { key: 'kind', label: 'kind', value: 'Deployment' },
+          { key: 'name', label: 'name', value: 'payments-api' },
+          { key: 'action', label: 'action', value: 'apply' },
+          { key: 'risk', label: 'risk', value: 'high' },
+          { key: 'dryRun', label: 'dryRun', value: 'false' },
+        ],
+      }),
+    );
+  });
+
+  it('keeps approval preview but falls back gracefully when no structured rows can be derived', () => {
+    const runtime = applyToolApproval(createEmptyAssistantRuntime(), {
+      approval_id: 'approval-1',
+      call_id: 'call-1',
+      tool_name: 'kubectl_apply',
+      timeout_seconds: 300,
+      preview: {},
+    });
+
+    expect(runtime.activities[0]).toEqual(
+      expect.objectContaining({
+        approvalPreview: {},
+        approvalPreviewSummary: [],
       }),
     );
   });

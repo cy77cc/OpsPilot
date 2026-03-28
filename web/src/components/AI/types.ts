@@ -95,6 +95,13 @@ export interface AssistantReplyActivity {
   createdAt?: string;
   arguments?: Record<string, unknown>;  // 工具调用参数
   rawContent?: string;                  // 完整结果内容
+  approvalPreview?: Record<string, unknown>;
+  approvalPreviewSummary?: Array<{
+    key: string;
+    label: string;
+    value: string;
+  }>;
+  approvalTimeoutSeconds?: number;
 }
 
 export interface AssistantReplyTodo {
