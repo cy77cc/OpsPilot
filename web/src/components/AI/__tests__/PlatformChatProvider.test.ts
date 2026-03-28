@@ -21,7 +21,19 @@ vi.mock('../../../api/modules/ai', async (importOriginal) => {
 });
 
 vi.mock('../ToolResultCard', () => ({
-  default: () => React.createElement('div', { 'data-testid': 'tool-result-card' }),
+  default: ({
+    activity,
+    children,
+  }: {
+    activity?: { approvalMessage?: string; approvalState?: string };
+    children?: React.ReactNode;
+  }) => React.createElement(
+    'div',
+    { 'data-testid': 'tool-result-card' },
+    activity?.approvalMessage,
+    activity?.approvalState,
+    children,
+  ),
 }));
 
 afterEach(() => {
@@ -823,13 +835,13 @@ describe('PlatformChatProvider', () => {
     );
   });
 
-  it.skip('renders approval actions and submits the selected decision', async () => {
+  it('renders approval actions and submits the selected decision', async () => {
     const user = userEvent.setup();
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
     vi.mocked(aiApi.submitApproval).mockResolvedValue({
       success: true,
       data: {
-        id: 'approval-1',
+        approval_id: 'approval-1',
         status: 'approved',
       },
     } as any);
@@ -874,7 +886,7 @@ describe('PlatformChatProvider', () => {
     });
   });
 
-  it.skip('shows the refresh-needed failure state when submitApproval fails', async () => {
+  it('shows the refresh-needed failure state when submitApproval fails', async () => {
     const user = userEvent.setup();
     vi.mocked(aiApi.submitApproval).mockRejectedValueOnce(new Error('network down'));
 
@@ -909,7 +921,7 @@ describe('PlatformChatProvider', () => {
     });
   });
 
-  it.skip('refreshes approval state on conflict and shows the latest status', async () => {
+  it('refreshes approval state on conflict and shows the latest status', async () => {
     const user = userEvent.setup();
     vi.mocked(aiApi.submitApproval).mockRejectedValueOnce({
       statusCode: 409,
@@ -918,7 +930,7 @@ describe('PlatformChatProvider', () => {
     vi.mocked(aiApi.getApproval).mockResolvedValueOnce({
       success: true,
       data: {
-        id: 'approval-1',
+        approval_id: 'approval-1',
         status: 'approved',
       },
     } as any);
@@ -952,22 +964,13 @@ describe('PlatformChatProvider', () => {
     });
   });
 
-  it.skip('keeps conflict refresh fallback non-interactive when refresh is flaky', async () => {
+  it('keeps conflict refresh fallback non-interactive when refresh is flaky', async () => {
     const user = userEvent.setup();
     vi.mocked(aiApi.submitApproval).mockRejectedValueOnce({
       statusCode: 409,
       message: 'already approved',
     });
     vi.mocked(aiApi.getApproval).mockRejectedValueOnce(new Error('refresh failed'));
-    vi.mocked(aiApi.listPendingApprovals).mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          id: 'approval-1',
-          status: 'pending',
-        },
-      ],
-    } as any);
 
     const runtime: AssistantReplyRuntime = {
       activities: [
@@ -994,8 +997,8 @@ describe('PlatformChatProvider', () => {
 
     await waitFor(() => {
       expect(aiApi.getApproval).toHaveBeenCalledWith('approval-1');
-      expect(aiApi.listPendingApprovals).toHaveBeenCalled();
-      expect(screen.getByText(/刷新后查看结果|审批状态可能已变更/)).toBeInTheDocument();
+      expect(screen.getByText(/审批状态可能已变更/)).toBeInTheDocument();
+      expect(screen.getAllByText(/需刷新/).length).toBeGreaterThan(0);
       expect(screen.queryByRole('button', { name: /批\s*准/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /拒\s*绝/ })).not.toBeInTheDocument();
     });

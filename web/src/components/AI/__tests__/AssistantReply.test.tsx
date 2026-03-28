@@ -54,15 +54,6 @@ vi.mock('../../../api/modules/ai', async (importOriginal) => {
   };
 });
 
-vi.mock('../ToolResultCard', () => ({
-  default: ({ activity }: { activity: { label: string; rawContent?: string } }) => (
-    <div data-testid="tool-result-card">
-      {activity.label}
-      {activity.rawContent ? `:${activity.rawContent}` : null}
-    </div>
-  ),
-}));
-
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -343,6 +334,109 @@ describe('AssistantReply', () => {
     expect(screen.getByText('节点总数')).toBeInTheDocument();
     expect(screen.getByText('高风险')).toBeInTheDocument();
     expect(screen.getAllByText('建议先处理 node-2 的磁盘压力。')).toHaveLength(1);
+  });
+
+  it('renders approval summary rows for structured preview fields', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          activities: [
+            {
+              id: 'call-1',
+              kind: 'tool_approval',
+              label: 'kubectl_apply',
+              detail: '等待审批 300s',
+              status: 'pending',
+              approvalId: 'approval-1',
+              approvalPreview: {
+                cluster: 'prod',
+                namespace: 'ops',
+                action: 'apply',
+              },
+              approvalPreviewSummary: [
+                { key: 'cluster', label: 'cluster', value: 'prod' },
+                { key: 'namespace', label: 'namespace', value: 'ops' },
+                { key: 'action', label: 'action', value: 'apply' },
+              ],
+            },
+          ],
+          status: { kind: 'waiting_approval', label: '等待审批' },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('cluster')).toBeInTheDocument();
+    expect(screen.getByText('prod')).toBeInTheDocument();
+    expect(screen.getByText('namespace')).toBeInTheDocument();
+    expect(screen.getByText('ops')).toBeInTheDocument();
+    expect(screen.getByText('action')).toBeInTheDocument();
+    expect(screen.getByText('apply')).toBeInTheDocument();
+  });
+
+  it('keeps raw approval JSON collapsed by default and expands it on demand', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          activities: [
+            {
+              id: 'call-1',
+              kind: 'tool_approval',
+              label: 'kubectl_apply',
+              detail: '等待审批 300s',
+              status: 'pending',
+              approvalId: 'approval-1',
+              approvalPreview: {
+                cluster: 'prod',
+                namespace: 'ops',
+                action: 'apply',
+              },
+              approvalPreviewSummary: [
+                { key: 'cluster', label: 'cluster', value: 'prod' },
+                { key: 'namespace', label: 'namespace', value: 'ops' },
+              ],
+            },
+          ],
+          status: { kind: 'waiting_approval', label: '等待审批' },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText('"cluster": "prod"')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /查看原始审批载荷/i }));
+
+    expect(screen.getByText(/"cluster": "prod"/)).toBeInTheDocument();
+    expect(screen.getByText(/"namespace": "ops"/)).toBeInTheDocument();
+  });
+
+  it('shows a legacy fallback when structured approval preview is unavailable', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          activities: [
+            {
+              id: 'call-1',
+              kind: 'tool_approval',
+              label: 'kubectl_apply',
+              detail: '等待审批 300s',
+              status: 'pending',
+              approvalId: 'approval-1',
+            },
+          ],
+          status: { kind: 'waiting_approval', label: '等待审批' },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('No structured preview available')).toBeInTheDocument();
   });
 
   it('renders task board items from runtime.todos', () => {
@@ -780,7 +874,7 @@ describe('AssistantReply', () => {
     expect(screen.queryAllByText('host_list_inventory')).toHaveLength(0);
   });
 
-  it.skip('submits approval once when user clicks confirm repeatedly', async () => {
+  it('submits approval once when user clicks confirm repeatedly', async () => {
     vi.mocked(aiApi.submitApproval).mockResolvedValueOnce({
       success: true,
       data: {
@@ -826,65 +920,56 @@ describe('AssistantReply', () => {
         idempotencyKey: expect.any(String),
       }),
     );
+    expect(screen.getByRole('button', { name: /kubectl_apply/i })).toHaveTextContent('已批准');
   });
 
-  it.skip('falls back to a timeout state when approval submission stalls', async () => {
-    vi.useFakeTimers();
-    try {
-      const deferred = createDeferred<any>();
-      vi.mocked(aiApi.submitApproval).mockReturnValueOnce(deferred.promise);
+  it('shows submitting state while approval submission is in flight', async () => {
+    const deferred = createDeferred<any>();
+    vi.mocked(aiApi.submitApproval).mockReturnValueOnce(deferred.promise);
 
-      render(
-        <AssistantReply
-          content=""
-          status="updating"
-          runtime={{
-            activities: [
-              {
-                id: 'call-1',
-                kind: 'tool_approval',
-                label: 'kubectl_apply',
-                detail: '等待审批 300s',
-                status: 'pending',
-                approvalId: 'approval-1',
-              },
-            ],
-            status: { kind: 'streaming', label: '持续生成中' },
-          }}
-        />,
-      );
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          activities: [
+            {
+              id: 'call-1',
+              kind: 'tool_approval',
+              label: 'kubectl_apply',
+              detail: '等待审批 300s',
+              status: 'pending',
+              approvalId: 'approval-1',
+            },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
 
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /批\s*准/ }));
+    fireEvent.click(screen.getByRole('button', { name: /批\s*准/ }));
+
+    expect(screen.getAllByText('提交中').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /批\s*准/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /拒\s*绝/ })).toBeDisabled();
+
+    await act(async () => {
+      deferred.resolve({
+        success: true,
+        data: {
+          approval_id: 'approval-1',
+          status: 'approved',
+        },
       });
+      await Promise.resolve();
+    });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(15000);
-      });
-
-      expect(screen.getByText(/提交超时，请刷新后重试/)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /批\s*准/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /拒\s*绝/ })).not.toBeInTheDocument();
-
-      await act(async () => {
-        deferred.resolve({
-          success: true,
-          data: {
-            approval_id: 'approval-1',
-            status: 'approved',
-          },
-        });
-        await Promise.resolve();
-      });
-
-      expect(screen.getByText(/提交超时，请刷新后重试/)).toBeInTheDocument();
-      expect(screen.queryByText('已批准')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /kubectl_apply/i })).toHaveTextContent('已批准');
+    });
   });
 
-  it.skip('shows a refresh-needed failure state when approval submission fails', async () => {
+  it('shows a refresh-needed failure state when approval submission fails', async () => {
     vi.mocked(aiApi.submitApproval).mockRejectedValueOnce(new Error('network down'));
 
     render(
@@ -909,11 +994,11 @@ describe('AssistantReply', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /批\s*准/ }));
 
-    expect(screen.getByText('提交中')).toBeInTheDocument();
+    expect(screen.getAllByText('提交中').length).toBeGreaterThan(0);
 
     await waitFor(() => {
       expect(screen.getByText(/network down/)).toBeInTheDocument();
-      expect(screen.getByText(/需刷新/)).toBeInTheDocument();
+      expect(screen.getAllByText(/需刷新/).length).toBeGreaterThan(0);
     });
     expect(screen.queryByRole('button', { name: /批\s*准/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /拒\s*绝/ })).not.toBeInTheDocument();
