@@ -51,6 +51,7 @@ type NormalizedHandoff struct {
 type NormalizedInterrupt struct {
 	Type           string
 	ApprovalID     string
+	TargetID       string
 	CallID         string
 	ToolName       string
 	Preview        map[string]any
@@ -192,7 +193,7 @@ func normalizeInterrupt(event *adk.AgentEvent) *NormalizedEvent {
 		Kind:      NormalizedKindInterrupt,
 		AgentName: event.AgentName,
 		Interrupt: interrupt,
-		Raw: event,
+		Raw:       event,
 	}
 }
 
@@ -208,10 +209,11 @@ func parseApprovalInterrupt(interrupted *adk.InterruptInfo) (*NormalizedInterrup
 		stringValue(payload["tool"]),
 		stringValue(payload["name"]),
 	)
+	targetID := interruptContextID(interrupted)
 	callID := firstNonEmptyString(
 		stringValue(payload["call_id"]),
 		stringValue(payload["callId"]),
-		interruptContextID(interrupted),
+		targetID,
 	)
 	approvalID := firstNonEmptyString(
 		stringValue(payload["approval_id"]),
@@ -233,6 +235,7 @@ func parseApprovalInterrupt(interrupted *adk.InterruptInfo) (*NormalizedInterrup
 	return &NormalizedInterrupt{
 		Type:           "approval",
 		ApprovalID:     approvalID,
+		TargetID:       targetID,
 		CallID:         callID,
 		ToolName:       toolName,
 		Preview:        mapValue(payload["preview"]),
@@ -245,27 +248,13 @@ func extractInterruptPayload(interrupted *adk.InterruptInfo) (map[string]any, bo
 		return nil, false
 	}
 	if payload, ok := normalizeInterruptPayloadMap(interrupted.Data); ok {
-		return payload, true
+		if approvalPayload, ok := extractApprovalPayloadFromContainer(payload); ok {
+			return approvalPayload, true
+		}
 	}
 
-	var first map[string]any
-	for _, ctx := range interrupted.InterruptContexts {
-		if ctx == nil {
-			continue
-		}
-		payload, ok := normalizeInterruptPayloadMap(ctx.Info)
-		if !ok {
-			continue
-		}
-		if ctx.IsRootCause {
-			return payload, true
-		}
-		if first == nil {
-			first = payload
-		}
-	}
-	if first != nil {
-		return first, true
+	if payload, ok := extractApprovalPayloadFromInterruptCtxs(interrupted.InterruptContexts); ok {
+		return payload, true
 	}
 	return nil, false
 }
@@ -288,6 +277,23 @@ func interruptContextID(interrupted *adk.InterruptInfo) string {
 		}
 		if first == "" {
 			first = id
+		}
+	}
+	if first != "" {
+		return first
+	}
+	if payload, ok := normalizeInterruptPayloadMap(interrupted.Data); ok {
+		for _, ctx := range interruptCtxMaps(payload["InterruptContexts"]) {
+			id := strings.TrimSpace(stringValue(ctx["ID"]))
+			if id == "" {
+				continue
+			}
+			if isRootCauseValue(ctx["IsRootCause"]) {
+				return id
+			}
+			if first == "" {
+				first = id
+			}
 		}
 	}
 	return first
@@ -319,4 +325,83 @@ func normalizeInterruptPayloadMap(v any) (map[string]any, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+func extractApprovalPayloadFromContainer(container map[string]any) (map[string]any, bool) {
+	if looksLikeApprovalPayload(container) {
+		return container, true
+	}
+	if nested, ok := normalizeInterruptPayloadMap(container["Info"]); ok && looksLikeApprovalPayload(nested) {
+		return nested, true
+	}
+	for _, ctx := range interruptCtxMaps(container["InterruptContexts"]) {
+		if nested, ok := normalizeInterruptPayloadMap(ctx["Info"]); ok {
+			if looksLikeApprovalPayload(nested) {
+				return nested, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func extractApprovalPayloadFromInterruptCtxs(contexts []*adk.InterruptCtx) (map[string]any, bool) {
+	var first map[string]any
+	for _, ctx := range contexts {
+		if ctx == nil {
+			continue
+		}
+		payload, ok := normalizeInterruptPayloadMap(ctx.Info)
+		if !ok || !looksLikeApprovalPayload(payload) {
+			continue
+		}
+		if ctx.IsRootCause {
+			return payload, true
+		}
+		if first == nil {
+			first = payload
+		}
+	}
+	if first != nil {
+		return first, true
+	}
+	return nil, false
+}
+
+func interruptCtxMaps(v any) []map[string]any {
+	if v == nil {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var out []map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func looksLikeApprovalPayload(payload map[string]any) bool {
+	if payload == nil {
+		return false
+	}
+	toolName := firstNonEmptyString(
+		stringValue(payload["tool_name"]),
+		stringValue(payload["toolName"]),
+		stringValue(payload["tool"]),
+		stringValue(payload["name"]),
+	)
+	return strings.TrimSpace(toolName) != ""
+}
+
+func isRootCauseValue(v any) bool {
+	switch value := v.(type) {
+	case bool:
+		return value
+	case string:
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	default:
+		return false
+	}
 }

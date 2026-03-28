@@ -240,6 +240,10 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	)
 
 	for {
+		if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+			break
+		}
+
 		event, ok := iterator.Next()
 		if !ok {
 			break
@@ -912,6 +916,7 @@ func marshalProjectedEvent(eventName string, payload any) (airuntime.EventType, 
 		}
 		return marshalTypedEvent(airuntime.EventTypeToolApproval, &airuntime.ToolApprovalPayload{
 			ApprovalID:     stringValue(data, "approval_id"),
+			TargetID:       stringValue(data, "target_id"),
 			CallID:         stringValue(data, "call_id"),
 			ToolName:       stringValue(data, "tool_name"),
 			Preview:        mapValue(data, "preview"),

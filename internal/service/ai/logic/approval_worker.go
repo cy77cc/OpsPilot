@@ -12,13 +12,17 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cy77cc/OpsPilot/internal/ai/common/approval"
 	airuntime "github.com/cy77cc/OpsPilot/internal/ai/runtime"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
@@ -190,6 +194,10 @@ func (w *ApprovalWorker) processClaimedEvent(ctx context.Context, event *model.A
 	if task == nil {
 		return fmt.Errorf("approval task %q not found", event.ApprovalID)
 	}
+	task, err = w.reconcileApprovalTaskToolCallID(ctx, task, event)
+	if err != nil {
+		return err
+	}
 	if err := w.ensureApprovalOwnership(ctx, task); err != nil {
 		return err
 	}
@@ -336,10 +344,17 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 
 	emit := func(string, any) {}
 	for {
+		if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+			break
+		}
+
 		event, ok := iter.Next()
 		if !ok {
 			break
 		}
+
+		w.dumpApprovalResumeEvent(task, event)
+
 		if event.Err != nil {
 			if interruptEvent, ok := recoverableInterruptEventFromEvent(event); ok {
 				projected := projector.Consume(interruptEvent)
@@ -508,6 +523,27 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *model.AIA
 			ErrorMessage: err.Error(),
 		})
 		return fmt.Errorf("flush resume projected events: %w", err)
+	}
+	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+		runStatus := aidao.AIRunStatusUpdate{
+			Status:             "waiting_approval",
+			AssistantMessageID: shell.AssistantMessage.ID,
+		}
+		if err := w.logic.finalizeRunCritical(ctx, shell, runStatus, summaryContent.String()); err != nil {
+			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
+				Status:       "resume_failed_retryable",
+				ErrorMessage: err.Error(),
+			})
+			return fmt.Errorf("persist waiting approval state after resume interrupt: %w", err)
+		}
+		if err := w.logic.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String()); err != nil {
+			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
+				Status:       "resume_failed_retryable",
+				ErrorMessage: err.Error(),
+			})
+			return fmt.Errorf("persist waiting approval convergence after resume interrupt: %w", err)
+		}
+		return nil
 	}
 
 	done := projector.Finish(shell.Run.ID)
@@ -720,6 +756,138 @@ func runFinalStatus(hasToolErrors bool) string {
 	return "completed"
 }
 
+func (w *ApprovalWorker) dumpApprovalResumeEvent(task *model.AIApprovalTask, event *adk.AgentEvent) {
+	if task == nil || event == nil {
+		return
+	}
+
+	dump := map[string]any{
+		"dumped_at":   time.Now().UTC().Format(time.RFC3339Nano),
+		"approval_id": task.ApprovalID,
+		"run_id":      task.RunID,
+		"session_id":  task.SessionID,
+		"agent_name":  event.AgentName,
+		"go_syntax":   fmt.Sprintf("%#v", event),
+	}
+	if event.Err != nil {
+		dump["event_err"] = event.Err.Error()
+	}
+
+	if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming {
+		dump["is_streaming"] = true
+		if event.Output.MessageOutput.MessageStream != nil {
+			dump["message_stream_ptr"] = fmt.Sprintf("%p", event.Output.MessageOutput.MessageStream)
+		}
+	}
+
+	if rawEvent, err := json.Marshal(event); err == nil {
+		var eventCopy any
+		if err := json.Unmarshal(rawEvent, &eventCopy); err == nil {
+			dump["event"] = eventCopy
+		} else {
+			dump["event_unmarshal_error"] = err.Error()
+			dump["event_raw_json"] = string(rawEvent)
+		}
+	} else {
+		dump["event_marshal_error"] = err.Error()
+	}
+
+	payload, err := json.MarshalIndent(dump, "", "  ")
+	if err != nil {
+		return
+	}
+	dir := filepath.Join(os.TempDir(), "opspilot_approval_event_dumps")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	fileName := fmt.Sprintf("approval-%s-run-%s-%d.json", sanitizeDumpFileToken(task.ApprovalID), sanitizeDumpFileToken(task.RunID), time.Now().UnixNano())
+	_ = os.WriteFile(filepath.Join(dir, fileName), payload, 0o644)
+}
+
+func sanitizeDumpFileToken(raw string) string {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return "unknown"
+	}
+	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_")
+	return replacer.Replace(clean)
+}
+
+func (w *ApprovalWorker) reconcileApprovalTaskToolCallID(ctx context.Context, task *model.AIApprovalTask, outboxEvent *model.AIApprovalOutboxEvent) (*model.AIApprovalTask, error) {
+	if task == nil {
+		return nil, nil
+	}
+	// Prefer persisted run events because tool_approval now carries target_id (interrupt context id),
+	// while outbox payload can still contain legacy call_id only.
+	candidate := w.findApprovalResumeTargetFromRunEvents(ctx, task)
+	if strings.TrimSpace(candidate) == "" && outboxEvent != nil {
+		candidate = approvalResumeTargetFromPayloadJSON(outboxEvent.PayloadJSON)
+	}
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" || candidate == strings.TrimSpace(task.ToolCallID) {
+		return task, nil
+	}
+
+	task.ToolCallID = candidate
+	if w == nil || w.logic == nil || w.logic.svcCtx == nil || w.logic.svcCtx.DB == nil {
+		return task, nil
+	}
+	if err := w.logic.svcCtx.DB.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ?", task.ApprovalID).
+		Update("tool_call_id", candidate).Error; err != nil {
+		return nil, fmt.Errorf("backfill approval task tool_call_id: %w", err)
+	}
+	return task, nil
+}
+
+func (w *ApprovalWorker) findApprovalResumeTargetFromRunEvents(ctx context.Context, task *model.AIApprovalTask) string {
+	if task == nil || w == nil || w.logic == nil || w.logic.RunEventDAO == nil || strings.TrimSpace(task.RunID) == "" || strings.TrimSpace(task.ApprovalID) == "" {
+		return ""
+	}
+	events, err := w.logic.RunEventDAO.ListByRun(ctx, task.RunID)
+	if err != nil || len(events) == 0 {
+		return ""
+	}
+	for idx := len(events) - 1; idx >= 0; idx-- {
+		event := events[idx]
+		if strings.TrimSpace(event.EventType) != "tool_approval" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(event.PayloadJSON), &payload); err != nil {
+			continue
+		}
+		if strings.TrimSpace(stringValue(payload, "approval_id")) != strings.TrimSpace(task.ApprovalID) {
+			continue
+		}
+		targetID := strings.TrimSpace(stringValue(payload, "target_id"))
+		if targetID != "" {
+			return targetID
+		}
+		callID := strings.TrimSpace(stringValue(payload, "call_id"))
+		if callID != "" {
+			return callID
+		}
+	}
+	return ""
+}
+
+func approvalResumeTargetFromPayloadJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return ""
+	}
+	if targetID := strings.TrimSpace(stringValue(payload, "target_id")); targetID != "" {
+		return targetID
+	}
+	return strings.TrimSpace(stringValue(payload, "call_id"))
+}
+
 func (w *ApprovalWorker) retryBackoff(retryCount int) time.Duration {
 	if retryCount < 0 {
 		retryCount = 0
@@ -766,29 +934,44 @@ func (w *ApprovalWorker) defaultResume(ctx context.Context, task *model.AIApprov
 		EnableStreaming: true,
 		CheckPointStore: w.logic.CheckpointStore,
 	})
-	return runner.ResumeWithParams(ctx, task.CheckpointID, params, adk.WithCheckPointID(task.CheckpointID))
+	return runner.ResumeWithParams(ctx, task.CheckpointID, params)
 }
 
 func buildApprovalResumeParams(task *model.AIApprovalTask) *adk.ResumeParams {
-	payload := map[string]any{
-		"approved":          task != nil && task.Status == "approved",
-		"disapprove_reason": "",
-		"comment":           "",
-		"approved_by":       uint64(0),
-		"approved_at":       "",
+	payload := &approval.ApprovalResult{
+		Approved: task != nil && task.Status == "approved",
+		Comment:  "",
 	}
 	if task != nil {
-		payload["disapprove_reason"] = task.DisapproveReason
-		payload["comment"] = task.Comment
-		payload["approved_by"] = task.ApprovedBy
+		if reason := strings.TrimSpace(task.DisapproveReason); reason != "" {
+			payload.DisapproveReason = &reason
+		}
+		payload.Comment = task.Comment
+		if task.ApprovedBy > 0 {
+			payload.ApprovedBy = fmt.Sprintf("%d", task.ApprovedBy)
+		}
 		if task.DecidedAt != nil {
-			payload["approved_at"] = task.DecidedAt.UTC().Format(time.RFC3339)
+			decidedAt := task.DecidedAt.UTC()
+			payload.ApprovedAt = &decidedAt
 		}
 	}
 
 	targets := map[string]any{}
-	if task != nil && strings.TrimSpace(task.ToolCallID) != "" {
-		targets[task.ToolCallID] = payload
+	if task != nil {
+		targetID := strings.TrimSpace(task.ToolCallID)
+		if targetID == "" {
+			// fallback_static 场景下 decision.ApprovalID 可能直接等于 call_id
+			approvalID := strings.TrimSpace(task.ApprovalID)
+			if strings.HasPrefix(approvalID, "call_") {
+				targetID = approvalID
+			}
+		}
+		if targetID == "" {
+			targetID = strings.TrimSpace(task.CheckpointID)
+		}
+		if targetID != "" {
+			targets[targetID] = payload
+		}
 	}
 	return &adk.ResumeParams{Targets: targets}
 }

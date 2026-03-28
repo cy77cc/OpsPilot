@@ -38,7 +38,6 @@ const { Text } = Typography;
 const NEW_SESSION_KEY = '__new__';
 const SCROLL_BUTTON_RECOVERY_THRESHOLD = 24;
 const SCROLL_BUTTON_VISIBILITY_THRESHOLD = 120;
-const APPROVAL_REFRESH_DELAY_MS = 1200;
 
 /**
  * mapHistoryMessageStatus 将后端消息状态映射为 Bubble 组件状态。
@@ -81,20 +80,14 @@ function buildHistoricalPendingRuntime(
 
   upsertPendingRun(pendingRun);
 
-  const statusLabel = pendingRun.status === 'waiting_approval'
-    ? '等待审批'
-    : pendingRun.status === 'resume_failed_retryable'
-      ? '恢复失败，可重试'
-      : pendingRun.status === 'resuming'
-        ? '恢复中'
-        : '执行中';
+  const statusLabel = pendingRun.status === 'resuming'
+    ? '恢复中'
+    : '执行中';
 
   return {
     ...(runtime || createEmptyAssistantRuntime()),
     pendingRun,
-    phase: pendingRun.status === 'waiting_approval' || pendingRun.status === 'resume_failed_retryable'
-      ? 'interrupted'
-      : 'executing',
+    phase: 'executing',
     phaseLabel: statusLabel,
     status: {
       kind: pendingRun.status === 'running' ? 'streaming' : pendingRun.status,
@@ -463,9 +456,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const programmaticScrollRef = React.useRef(false);
   const pendingInitialScrollRef = React.useRef(false);
   const pendingSendScrollRef = React.useRef(false);
-  const approvalRefreshTimerRef = React.useRef<number | null>(null);
-  const approvalRefreshInFlightRef = React.useRef(false);
-  const approvalRefreshPendingRef = React.useRef(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = React.useState(false);
   const location = useLocation();
   const { scene, context } = React.useMemo(
@@ -861,74 +851,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     }
     resetHistoryProjectionCache();
   }, [activeConversationKey, open]);
-
-  React.useEffect(() => {
-    if (!open || activeConversationKey === NEW_SESSION_KEY) {
-      return;
-    }
-    let disposed = false;
-    const refreshActiveConversation = async () => {
-      resetHistoryProjectionCache();
-      const next = await defaultMessages({ conversationKey: activeConversationKey });
-      if (disposed) {
-        return;
-      }
-      setMessages(
-        next.map((item, index) => ({
-          id: `history-${activeConversationKey}-${index}`,
-          message: item.message,
-          status: item.status ?? 'success',
-        })),
-      );
-    };
-
-    const triggerRefresh = (delayMs: number) => {
-      if (disposed) {
-        return;
-      }
-      if (approvalRefreshTimerRef.current !== null) {
-        window.clearTimeout(approvalRefreshTimerRef.current);
-      }
-      approvalRefreshTimerRef.current = window.setTimeout(() => {
-        approvalRefreshTimerRef.current = null;
-        if (disposed) {
-          return;
-        }
-        if (approvalRefreshInFlightRef.current) {
-          approvalRefreshPendingRef.current = true;
-          return;
-        }
-        approvalRefreshInFlightRef.current = true;
-        void refreshActiveConversation().finally(() => {
-          approvalRefreshInFlightRef.current = false;
-          if (approvalRefreshPendingRef.current) {
-            approvalRefreshPendingRef.current = false;
-            triggerRefresh(0);
-          }
-        });
-      }, Math.max(0, delayMs));
-    };
-
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ token?: string; status?: string }>).detail || {};
-      const normalizedStatus = String(detail.status || '').trim().toLowerCase();
-      const delay = normalizedStatus === 'approved' || normalizedStatus === 'rejected'
-        ? APPROVAL_REFRESH_DELAY_MS
-        : 0;
-      triggerRefresh(delay);
-    };
-    window.addEventListener('ai-approval-updated', handler as EventListener);
-    return () => {
-      disposed = true;
-      if (approvalRefreshTimerRef.current !== null) {
-        window.clearTimeout(approvalRefreshTimerRef.current);
-        approvalRefreshTimerRef.current = null;
-      }
-      approvalRefreshPendingRef.current = false;
-      approvalRefreshInFlightRef.current = false;
-      window.removeEventListener('ai-approval-updated', handler as EventListener);
-    };
-  }, [activeConversationKey, defaultMessages, open, setMessages]);
 
   const ensureSession = React.useCallback(
     async (firstMessage: string) => {

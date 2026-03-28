@@ -84,14 +84,15 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 			Status: "pending",
 		})
 		return []PublicStreamEvent{
-			{
-				Event: "tool_approval",
-				Data: map[string]any{
-					"approval_id":     event.Interrupt.ApprovalID,
-					"call_id":         event.Interrupt.CallID,
-					"tool_name":       event.Interrupt.ToolName,
-					"preview":         event.Interrupt.Preview,
-					"timeout_seconds": event.Interrupt.TimeoutSeconds,
+				{
+					Event: "tool_approval",
+					Data: map[string]any{
+						"approval_id":     event.Interrupt.ApprovalID,
+						"target_id":       event.Interrupt.TargetID,
+						"call_id":         event.Interrupt.CallID,
+						"tool_name":       event.Interrupt.ToolName,
+						"preview":         event.Interrupt.Preview,
+						"timeout_seconds": event.Interrupt.TimeoutSeconds,
 				},
 			},
 			NewRunStateEvent("waiting_approval", map[string]any{

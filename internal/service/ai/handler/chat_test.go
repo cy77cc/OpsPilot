@@ -293,6 +293,119 @@ func TestGetSession_IncludesResumableRunCredentialsForWaitingApproval(t *testing
 	}
 }
 
+func TestGetSession_IncludesResumableRunCredentialsForRetryableResumeFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := newAIHandlerTestHarness(db)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	if err := db.AutoMigrate(&model.AIApprovalTask{}); err != nil {
+		t.Fatalf("migrate approval task table: %v", err)
+	}
+
+	seedSession(t, db, model.AIChatSession{
+		ID:        "sess-resume-retryable",
+		UserID:    208,
+		Title:     "Resume Retryable",
+		Scene:     "ai",
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	if err := db.Create(&model.AIChatMessage{
+		ID:           "msg-retryable-user",
+		SessionID:    "sess-resume-retryable",
+		SessionIDNum: 1,
+		Role:         "user",
+		Content:      "continue",
+		Status:       "done",
+	}).Error; err != nil {
+		t.Fatalf("seed user message: %v", err)
+	}
+	if err := db.Create(&model.AIChatMessage{
+		ID:           "msg-retryable-assistant",
+		SessionID:    "sess-resume-retryable",
+		SessionIDNum: 2,
+		Role:         "assistant",
+		Content:      "",
+		Status:       "in_progress",
+	}).Error; err != nil {
+		t.Fatalf("seed assistant message: %v", err)
+	}
+	if err := aidao.NewAIRunDAO(db).CreateRun(context.Background(), &model.AIRun{
+		ID:                 "run-resume-retryable",
+		SessionID:          "sess-resume-retryable",
+		ClientRequestID:    "req-retryable-1",
+		UserMessageID:      "msg-retryable-user",
+		AssistantMessageID: "msg-retryable-assistant",
+		Status:             "resume_failed_retryable",
+		TraceJSON:          "{}",
+	}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	if err := db.Create(&model.AIRunEvent{
+		ID:          "evt-retryable-1",
+		RunID:       "run-resume-retryable",
+		SessionID:   "sess-resume-retryable",
+		Seq:         1,
+		EventType:   "run_state",
+		PayloadJSON: `{"status":"resume_failed_retryable"}`,
+	}).Error; err != nil {
+		t.Fatalf("seed run event: %v", err)
+	}
+	if err := db.Create(&model.AIApprovalTask{
+		ApprovalID:     "approval-retryable",
+		CheckpointID:   "checkpoint-retryable",
+		SessionID:      "sess-resume-retryable",
+		RunID:          "run-resume-retryable",
+		UserID:         208,
+		ToolName:       "host_exec",
+		ToolCallID:     "call-retryable",
+		ArgumentsJSON:  `{"command":"date"}`,
+		PreviewJSON:    `{}`,
+		Status:         "approved",
+		TimeoutSeconds: 300,
+	}).Error; err != nil {
+		t.Fatalf("seed approval task: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(208))
+	c.Params = gin.Params{{Key: "id", Value: "sess-resume-retryable"}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/sessions/sess-resume-retryable", nil)
+
+	h.GetSession(c)
+
+	var response struct {
+		Data struct {
+			Messages []map[string]any `json:"messages"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	var assistant map[string]any
+	for _, message := range response.Data.Messages {
+		if role, _ := message["role"].(string); role == "assistant" {
+			assistant = message
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatalf("expected assistant message in session payload, got %#v", response.Data.Messages)
+	}
+	if assistant["status"] != "resume_failed_retryable" {
+		t.Fatalf("expected assistant status resume_failed_retryable, got %#v", assistant)
+	}
+	if assistant["approval_id"] != "approval-retryable" {
+		t.Fatalf("expected assistant approval_id to be exposed, got %#v", assistant)
+	}
+	if resumable, ok := assistant["resumable"].(bool); !ok || !resumable {
+		t.Fatalf("expected assistant resumable=true, got %#v", assistant)
+	}
+}
+
 func TestChatStreamsRecoverableToolErrorAndDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

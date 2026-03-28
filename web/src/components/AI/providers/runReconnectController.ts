@@ -6,7 +6,6 @@ import type {
   AIMessage,
   AIChatParams,
 } from '../../../api/modules/ai';
-import { aiApi } from '../../../api/modules/ai';
 import {
   getPendingRun,
   listPendingRuns,
@@ -16,14 +15,6 @@ import {
 import type { PendingRunMetadata } from '../types';
 
 const REATTACH_DELAY_MS = 300;
-const APPROVAL_SIGNAL_WAIT_TIMEOUT_MS = 5000;
-
-function createTriggerId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `retry-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function isReconnectableStatus(status?: string): status is PendingRunMetadata['status'] {
   return status === 'waiting_approval' || status === 'resuming' || status === 'running' || status === 'resume_failed_retryable';
@@ -53,17 +44,10 @@ interface RunReconnectControllerConfig {
 
 export class RunReconnectController {
   private pendingRun: PendingRunMetadata | null = null;
-  private lastApprovalUpdate: { token?: string; status?: string } | null = null;
   private readonly onPendingRunChange?: (pendingRun: PendingRunMetadata | null) => void;
-  private readonly handleApprovalUpdated = (event: Event) => {
-    this.lastApprovalUpdate = (event as CustomEvent<{ token?: string; status?: string }>).detail || {};
-  };
 
   constructor(config: RunReconnectControllerConfig = {}) {
     this.onPendingRunChange = config.onPendingRunChange;
-    if (typeof window !== 'undefined') {
-      window.addEventListener('ai-approval-updated', this.handleApprovalUpdated as EventListener);
-    }
   }
 
   seedHistoricalMessages(messages: Array<Partial<AIMessage>>): PendingRunMetadata[] {
@@ -88,11 +72,7 @@ export class RunReconnectController {
     }
   }
 
-  dispose(): void {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('ai-approval-updated', this.handleApprovalUpdated as EventListener);
-    }
-  }
+  dispose(): void {}
 
   handleMeta(payload: A2UIMetaEvent, params: AIChatParams): void {
     const existing = payload.run_id ? getPendingRun(payload.run_id) : null;
@@ -127,18 +107,7 @@ export class RunReconnectController {
     this.onPendingRunChange?.(this.pendingRun);
   }
 
-  handleToolApproval(payload: A2UIToolApprovalEvent): void {
-    if (!this.pendingRun?.runId) {
-      return;
-    }
-
-    this.pendingRun = upsertPendingRun({
-      ...this.pendingRun,
-      approvalId: payload.approval_id,
-      approvalCallId: payload.call_id,
-    });
-    this.onPendingRunChange?.(this.pendingRun);
-  }
+  handleToolApproval(_payload: A2UIToolApprovalEvent): void {}
 
   handleRunState(payload: A2UIRunStateEvent): void {
     if (!isReconnectableStatus(payload.status)) {
@@ -182,22 +151,14 @@ export class RunReconnectController {
     }
 
     const run = this.pendingRun;
-    if (run.status === 'resuming' || run.status === 'running') {
-      await this.waitForDelay(signal);
-      return this.toRetryParams(run);
-    }
-
-    const detail = this.consumeApprovalUpdate(run) || await this.waitForApprovalUpdate(run, signal);
-    if (!detail) {
+    if (run.status === 'waiting_approval' || run.status === 'resume_failed_retryable') {
       return null;
     }
 
-    if (run.status === 'resume_failed_retryable' && run.approvalId && detail.status === 'approved') {
-      await aiApi.retryResumeApproval(run.approvalId, {
-        trigger_id: createTriggerId(),
-      });
+    if (run.status !== 'resuming' && run.status !== 'running') {
+      return null;
     }
-
+    await this.waitForDelay(signal);
     return this.toRetryParams(run);
   }
 
@@ -228,60 +189,6 @@ export class RunReconnectController {
     });
   }
 
-  private async waitForApprovalUpdate(
-    run: PendingRunMetadata,
-    signal?: AbortSignal,
-  ): Promise<{ token?: string; status?: string } | null> {
-    const buffered = this.consumeApprovalUpdate(run);
-    if (buffered) {
-      return buffered;
-    }
-
-    return new Promise((resolve) => {
-      const timeout = window.setTimeout(() => {
-        cleanup();
-        resolve({});
-      }, APPROVAL_SIGNAL_WAIT_TIMEOUT_MS);
-
-      const cleanup = () => {
-        window.clearTimeout(timeout);
-        window.removeEventListener('ai-approval-updated', handleEvent as EventListener);
-        signal?.removeEventListener('abort', handleAbort);
-      };
-
-      const handleAbort = () => {
-        cleanup();
-        resolve(null);
-      };
-
-      const handleEvent = (event: Event) => {
-        const detail = (event as CustomEvent<{ token?: string; status?: string }>).detail || {};
-        if (!matchesRunApprovalSignal(run, detail.token)) {
-          return;
-        }
-        cleanup();
-        resolve(detail);
-      };
-
-      window.addEventListener('ai-approval-updated', handleEvent as EventListener);
-      signal?.addEventListener('abort', handleAbort, { once: true });
-    });
-  }
-
-  private consumeApprovalUpdate(
-    run: PendingRunMetadata,
-  ): { token?: string; status?: string } | null {
-    if (!this.lastApprovalUpdate) {
-      return null;
-    }
-    if (!matchesRunApprovalSignal(run, this.lastApprovalUpdate.token)) {
-      return null;
-    }
-    const detail = this.lastApprovalUpdate;
-    this.lastApprovalUpdate = null;
-    return detail;
-  }
-
   private findPendingRunByClientRequestId(clientRequestId: string): PendingRunMetadata | null {
     if (!clientRequestId) {
       return null;
@@ -291,12 +198,4 @@ export class RunReconnectController {
       .filter((item): item is PendingRunMetadata => Boolean(item));
     return candidates.find((item) => item.clientRequestId === clientRequestId) || null;
   }
-}
-
-function matchesRunApprovalSignal(run: PendingRunMetadata, token?: string): boolean {
-  const normalized = String(token || '').trim();
-  if (!normalized) {
-    return false;
-  }
-  return normalized === run.approvalId || normalized === run.approvalCallId;
 }

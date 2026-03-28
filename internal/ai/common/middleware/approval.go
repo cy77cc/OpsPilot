@@ -222,10 +222,22 @@ func (m *approvalMiddleware) generatePreview(toolName, args string) approval.App
 }
 
 func (m *approvalMiddleware) requiresApprovalGate(toolName string) bool {
+	if isApprovalBypassTool(toolName) {
+		return false
+	}
 	if m.config.Orchestrator != nil {
 		return true
 	}
 	return m.config.NeedsApproval(toolName)
+}
+
+func isApprovalBypassTool(toolName string) bool {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "task":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, args, callID string) (*approval.ApprovalDecision, string, bool, error) {

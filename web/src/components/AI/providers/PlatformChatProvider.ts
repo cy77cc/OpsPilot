@@ -157,13 +157,6 @@ function createClientRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function emitApprovalUpdatedEvent(detail?: { token?: string; status?: string }): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail }));
-}
-
 interface PlatformChatRequestConfig {
   onMeta?: MetaHandler;
   onUnknownEvent?: A2UIStreamHandlers['onUnknownEvent'];

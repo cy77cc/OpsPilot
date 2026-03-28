@@ -76,6 +76,7 @@ type ToolCallPayload struct {
 // ToolApprovalPayload 工具审批请求负载。
 type ToolApprovalPayload struct {
 	ApprovalID     string         `json:"approval_id"`
+	TargetID       string         `json:"target_id,omitempty"`
 	CallID         string         `json:"call_id"`
 	ToolName       string         `json:"tool_name"`
 	Preview        map[string]any `json:"preview,omitempty"`

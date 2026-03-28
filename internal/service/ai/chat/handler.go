@@ -386,7 +386,7 @@ func isTerminalAssistantRun(status string) bool {
 
 func isResumableRunStatus(status string) bool {
 	switch strings.TrimSpace(status) {
-	case "waiting_approval", "resuming", "running":
+	case "waiting_approval", "resuming", "running", "resume_failed_retryable":
 		return true
 	default:
 		return false

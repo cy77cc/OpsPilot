@@ -30,6 +30,11 @@ A second critical issue is checkpoint semantics for approval resume:
 4. Preserve external SSE event contract (`meta/delta/tool_approval/tool_result/run_state/done/error`).
 5. Keep scope focused: no unrelated refactor.
 
+Priority rule for this change set:
+
+- Primary: follow the root-cause conclusion from the 2026-03-27 approval-resume incident in this thread (real interrupted `call_id` binding first).
+- Secondary: merge and unify duplicated event handling paths as long as it does not weaken the primary resume-correctness rule.
+
 ## 3. Non-Goals
 
 - No protocol redesign of SSE event names.
@@ -108,6 +113,34 @@ A second critical issue is checkpoint semantics for approval resume:
 - orchestrator: before task `Create`, enforce non-empty and non-`run_id` checkpoint; reject write on violation.
 - worker: before `ResumeWithParams`, resolve and validate checkpoint existence/resumability.
 
+### 5.4 Nested Tool-Call Resume Target Semantics (Critical)
+
+In nested execution (`agent` as outer tool-call, then inner tool-call), approval resume target must bind to the exact interrupted inner call id.
+
+Canonical target id priority for `ResumeParams.Targets`:
+
+1. `AIApprovalTask.ToolCallID` (primary)
+2. fallback-only: `AIApprovalTask.ApprovalID` when it is a call-id form (e.g. `call_*`, legacy `fallback_static`)
+3. last-resort compatibility fallback: `AIApprovalTask.CheckpointID`
+
+Required payload fields for diagnosability and downstream binding:
+
+- `approved`, `disapprove_reason`, `comment`, `approved_by`, `approved_at`
+- `call_id` (same as effective tool-call target when available)
+- `approval_task_id` (persistent task identifier in DB, not resume target key)
+
+Failure pattern observed in production-like trace (2026-03-27):
+
+- interrupt root cause carried `approval_id/call_id = call_f1c1...` under tool node `task`
+- worker used `checkpoint_id` as resume target key
+- ADK could not match resume context to interrupted inner call
+- run stayed/re-entered `Interrupted` after approval decision
+
+Design decision:
+
+- resume target key is call-id first, checkpoint second.
+- checkpoint remains required for runner resume API (`ResumeWithParams(ctx, checkpointID, params)`), but it is not the decision-target selector.
+
 ## 6. Error Handling
 
 ### 6.1 Checkpoint Errors (Hard)
@@ -153,7 +186,8 @@ Boundary rules:
 Boundary rules:
 
 - Worker never calls runner resume before successful resolve.
-- No fallback logic in worker.
+- No checkpoint fallback in worker.
+- Resume decision-target selection may use compatibility fallback (`ToolCallID -> ApprovalID(call_*) -> CheckpointID`) only for target-key binding, not for checkpoint resolution.
 - Non-resumable detection contract:
 - source: checkpoint store lookup by checkpoint id + resumable metadata check.
 - errors map to:
@@ -184,6 +218,9 @@ Boundary rules:
 - Approval interleaving cases:
 - `tool_approval(callA) -> tool_approval(callA-v2) -> tool_result(callA)` results in no pending callA.
 - mixed calls (`callA`, `callB`) preserve independent resolution.
+- Nested-call resume binding:
+- interrupt payload has inner `call_id`, `checkpoint_id` points to outer run checkpoint; worker must target inner `call_id`.
+- legacy fallback-static decision (`approval_id == call_*`) still resumes correctly when `ToolCallID` is absent.
 
 ### 9.2 Integration Tests
 
@@ -212,6 +249,7 @@ Add/normalize metrics and logs around unified pipeline:
 Structured logging keys:
 
 - `run_id`, `session_id`, `approval_id`, `checkpoint_id`, `cursor`, `event_id`, `event_type`
+- `resume_target_call_id`, `approval_task_id`, `interrupt_root_call_id`
 
 ## 11. SSE Compatibility Matrix
 

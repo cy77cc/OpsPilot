@@ -168,6 +168,50 @@ func TestNormalizeAgentEvent_InterruptActionFallbackToInterruptContextInfo(t *te
 	}
 }
 
+func TestNormalizeAgentEvent_InterruptActionNestedInDataInterruptContexts(t *testing.T) {
+	t.Parallel()
+
+	event := &adk.AgentEvent{
+		AgentName: "executor",
+		Action: &adk.AgentAction{
+			Interrupted: &adk.InterruptInfo{
+				Data: map[string]any{
+					"InterruptContexts": []map[string]any{
+						{
+							"ID":          "interrupt-root-nested",
+							"IsRootCause": true,
+							"Info": map[string]any{
+								"approval_id":     "ap-nested-1",
+								"call_id":         "call-nested-1",
+								"tool_name":       "host_exec",
+								"preview":         map[string]any{"target": "node-2"},
+								"timeout_seconds": 90,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got := NormalizeAgentEvent(event)
+	if len(got) != 1 {
+		t.Fatalf("expected one normalized event, got %d", len(got))
+	}
+	if got[0].Kind != NormalizedKindInterrupt {
+		t.Fatalf("expected interrupt event, got %q", got[0].Kind)
+	}
+	if got[0].Interrupt == nil {
+		t.Fatal("expected interrupt payload")
+	}
+	if got[0].Interrupt.ApprovalID != "ap-nested-1" || got[0].Interrupt.CallID != "call-nested-1" || got[0].Interrupt.ToolName != "host_exec" {
+		t.Fatalf("unexpected interrupt payload: %#v", got[0].Interrupt)
+	}
+	if got[0].Interrupt.TargetID != "interrupt-root-nested" {
+		t.Fatalf("expected target id from nested root context, got %#v", got[0].Interrupt)
+	}
+}
+
 func TestNormalizeAgentEvent_InterruptActionLegacyPayloadBackfillsIDs(t *testing.T) {
 	t.Parallel()
 

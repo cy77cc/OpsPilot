@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/OpsPilot/internal/ai/common/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -580,6 +581,108 @@ func TestApprovalWorkerSetsRunResumingAndConverges(t *testing.T) {
 	testWorkerSetsRunResumingAndConverges(t)
 }
 
+func TestApprovalWorkerBackfillsResumeTargetFromToolApprovalEvent(t *testing.T) {
+	db := newApprovalWorkerTestDB(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	seedApprovalWorkerRun(t, db, approvalWorkerRunSeed{
+		sessionID:          "session-resume-backfill",
+		userID:             66,
+		runID:              "run-resume-backfill",
+		userMessageID:      "msg-resume-backfill-user",
+		assistantMessageID: "msg-resume-backfill-assistant",
+		runStatus:          "waiting_approval",
+	})
+	seedApprovalWorkerTask(t, db, &model.AIApprovalTask{
+		ApprovalID:       "approval-resume-backfill",
+		CheckpointID:     "checkpoint-resume-backfill",
+		SessionID:        "session-resume-backfill",
+		RunID:            "run-resume-backfill",
+		UserID:           66,
+		ToolName:         "host_exec",
+		ToolCallID:       "outer-agent-call-id",
+		ArgumentsJSON:    `{"command":"date"}`,
+		PreviewJSON:      `{}`,
+		Status:           "approved",
+		ApprovedBy:       66,
+		Comment:          "resume with corrected call id",
+		TimeoutSeconds:   300,
+		ExpiresAt:        ptrTime(now.Add(10 * time.Minute)),
+		DecidedAt:        ptrTime(now),
+		LockExpiresAt:    ptrTime(now.Add(2 * time.Minute)),
+		DecisionSource:   ptrString("user"),
+		PolicyVersion:    ptrString("v2"),
+		DisapproveReason: "",
+	})
+	seedApprovalWorkerOutbox(t, db, &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-resume-backfill",
+		EventType:   "approval_decided",
+		RunID:       "run-resume-backfill",
+		SessionID:   "session-resume-backfill",
+		PayloadJSON: `{"approval_id":"approval-resume-backfill","approved":true,"call_id":"stale-call-id"}`,
+		Status:      "pending",
+	})
+
+	l := newApprovalWorkerTestLogic(db)
+	seq := 0
+	if err := l.appendRunEvent(context.Background(), "run-resume-backfill", "session-resume-backfill", &seq, "meta", map[string]any{
+		"run_id":     "run-resume-backfill",
+		"session_id": "session-resume-backfill",
+		"turn":       1,
+	}); err != nil {
+		t.Fatalf("seed meta event: %v", err)
+	}
+	if err := l.appendRunEvent(context.Background(), "run-resume-backfill", "session-resume-backfill", &seq, "tool_approval", map[string]any{
+		"approval_id": "approval-resume-backfill",
+		"target_id":   "interrupt-context-id",
+		"call_id":     "inner-tool-call-id",
+		"tool_name":   "host_exec",
+	}); err != nil {
+		t.Fatalf("seed tool_approval event: %v", err)
+	}
+
+	var capturedParams *adk.ResumeParams
+	worker := NewApprovalWorker(l, WithApprovalWorkerResume(func(ctx context.Context, task *model.AIApprovalTask, params *adk.ResumeParams) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+		capturedParams = params
+		iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+		go func() {
+			gen.Send(adk.EventFromMessage(schema.AssistantMessage("resumed output", nil), nil, schema.Assistant, ""))
+			gen.Close()
+		}()
+		return iter, nil
+	}))
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected worker to claim approval_decided outbox")
+	}
+	if capturedParams == nil {
+		t.Fatal("expected resume params to be provided")
+	}
+	if _, ok := capturedParams.Targets["interrupt-context-id"].(*approval.ApprovalResult); !ok {
+		t.Fatalf("expected corrected interrupt target id, got %#v", capturedParams.Targets)
+	}
+	if _, wrong := capturedParams.Targets["outer-agent-call-id"]; wrong {
+		t.Fatalf("expected outer stale call id to be ignored, got %#v", capturedParams.Targets)
+	}
+	if _, wrong := capturedParams.Targets["inner-tool-call-id"]; wrong {
+		t.Fatalf("expected tool call id to be ignored when target_id exists, got %#v", capturedParams.Targets)
+	}
+
+	reloaded, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-resume-backfill")
+	if err != nil {
+		t.Fatalf("reload approval task: %v", err)
+	}
+	if reloaded == nil {
+		t.Fatal("expected approval task to exist")
+	}
+	if reloaded.ToolCallID != "interrupt-context-id" {
+		t.Fatalf("expected tool_call_id backfilled to interrupt target id, got %q", reloaded.ToolCallID)
+	}
+}
+
 func testWorkerSetsRunResumingAndConverges(t *testing.T) {
 	db := newApprovalWorkerTestDB(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -665,14 +768,14 @@ func testWorkerSetsRunResumingAndConverges(t *testing.T) {
 		t.Fatal("expected resume params to be provided")
 	}
 
-	target, ok := capturedParams.Targets["tool-call-resume"].(map[string]any)
+	target, ok := capturedParams.Targets["tool-call-resume"].(*approval.ApprovalResult)
 	if !ok {
 		t.Fatalf("expected resume target payload, got %#v", capturedParams.Targets)
 	}
-	if approved, _ := target["approved"].(bool); !approved {
+	if !target.Approved {
 		t.Fatalf("expected persisted approval in resume params, got %#v", target)
 	}
-	if comment, _ := target["comment"].(string); comment != "looks good" {
+	if target.Comment != "looks good" {
 		t.Fatalf("expected persisted comment in resume params, got %#v", target)
 	}
 
@@ -810,6 +913,111 @@ func TestApprovalWorkerResumeKeepsRunAliveOnRecoverableStreamRecvError(t *testin
 	if outbox.Status != "done" {
 		t.Fatalf("expected outbox done after recovery, got %q", outbox.Status)
 	}
+}
+
+func TestApprovalWorkerResumeInterruptKeepsRunWaitingApproval(t *testing.T) {
+	db := newApprovalWorkerTestDB(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	seedApprovalWorkerRun(t, db, approvalWorkerRunSeed{
+		sessionID:          "session-resume-interrupt",
+		userID:             54,
+		runID:              "run-resume-interrupt",
+		userMessageID:      "msg-resume-interrupt-user",
+		assistantMessageID: "msg-resume-interrupt-assistant",
+		runStatus:          "waiting_approval",
+	})
+	seedApprovalWorkerTask(t, db, &model.AIApprovalTask{
+		ApprovalID:       "approval-resume-interrupt",
+		CheckpointID:     "checkpoint-resume-interrupt",
+		SessionID:        "session-resume-interrupt",
+		RunID:            "run-resume-interrupt",
+		UserID:           54,
+		ToolName:         "host_exec",
+		ToolCallID:       "tool-call-resume-interrupt",
+		ArgumentsJSON:    `{"command":"echo test"}`,
+		PreviewJSON:      `{}`,
+		Status:           "approved",
+		ApprovedBy:       54,
+		Comment:          "resume it",
+		TimeoutSeconds:   300,
+		ExpiresAt:        ptrTime(now.Add(10 * time.Minute)),
+		DecidedAt:        ptrTime(now),
+		LockExpiresAt:    ptrTime(now.Add(2 * time.Minute)),
+		DecisionSource:   ptrString("user"),
+		PolicyVersion:    ptrString("v2"),
+		DisapproveReason: "",
+	})
+	seedApprovalWorkerOutbox(t, db, &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-resume-interrupt",
+		EventType:   "approval_decided",
+		RunID:       "run-resume-interrupt",
+		SessionID:   "session-resume-interrupt",
+		PayloadJSON: `{"approval_id":"approval-resume-interrupt","approved":true}`,
+		Status:      "pending",
+	})
+
+	l := newApprovalWorkerTestLogic(db)
+	seq := 0
+	if err := l.appendRunEvent(context.Background(), "run-resume-interrupt", "session-resume-interrupt", &seq, "meta", map[string]any{
+		"run_id":     "run-resume-interrupt",
+		"session_id": "session-resume-interrupt",
+		"turn":       1,
+	}); err != nil {
+		t.Fatalf("seed meta event: %v", err)
+	}
+
+	worker := NewApprovalWorker(l,
+		WithApprovalWorkerResume(func(ctx context.Context, task *model.AIApprovalTask, params *adk.ResumeParams) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+			iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+			go func() {
+				gen.Send(&adk.AgentEvent{
+					AgentName: "executor",
+					Action: &adk.AgentAction{
+						Interrupted: &adk.InterruptInfo{
+							Data: map[string]any{
+								"status":          "suspended",
+								"approval_id":     "approval-second",
+								"call_id":         "call-second",
+								"tool_name":       "host_exec",
+								"preview":         map[string]any{"action": "echo test"},
+								"timeout_seconds": 300,
+							},
+						},
+					},
+				})
+				gen.Close()
+			}()
+			return iter, nil
+		}),
+	)
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected worker to claim approval_decided outbox")
+	}
+
+	run, err := aidao.NewAIRunDAO(db).GetRun(context.Background(), "run-resume-interrupt")
+	if err != nil {
+		t.Fatalf("reload run: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected run to exist")
+	}
+	if run.Status != "waiting_approval" {
+		t.Fatalf("expected waiting_approval after resume interrupt, got %q", run.Status)
+	}
+
+	events, err := aidao.NewAIRunEventDAO(db).ListByRun(context.Background(), "run-resume-interrupt")
+	if err != nil {
+		t.Fatalf("list run events: %v", err)
+	}
+	assertRunEventPresent(t, events, "tool_approval", "")
+	assertRunEventPresent(t, events, "run_state", "waiting_approval")
+	assertRunEventAbsent(t, events, "run_state", "completed")
+	assertRunEventAbsent(t, events, "done", "completed")
 }
 
 func TestApprovalWorker_EmitsCompletedRunStateBeforeDone(t *testing.T) {
@@ -1216,11 +1424,11 @@ func TestSubmitApproval_PersistsAuditRecordBeforeResumingEvent(t *testing.T) {
 				t.Fatalf("expected approval_decided sequence before resuming, decided=%d resuming=%d", decided.Sequence, resuming.Sequence)
 			}
 
-			target, ok := params.Targets[task.ToolCallID].(map[string]any)
+			target, ok := params.Targets[task.ToolCallID].(*approval.ApprovalResult)
 			if !ok {
 				t.Fatalf("expected resume params target for %q, got %#v", task.ToolCallID, params.Targets)
 			}
-			if target["comment"] != "ship it" {
+			if target.Comment != "ship it" {
 				t.Fatalf("expected resume params to include persisted comment, got %#v", target)
 			}
 			resumeObservedAudit = true

@@ -190,6 +190,7 @@ func projectApprovalEvent(event *adk.AgentEvent) *StreamEvent {
 		Event: "tool_approval",
 		Data: map[string]any{
 			"approval_id":     interrupt.ApprovalID,
+			"target_id":       interrupt.TargetID,
 			"call_id":         interrupt.CallID,
 			"tool_name":       interrupt.ToolName,
 			"preview":         interrupt.Preview,

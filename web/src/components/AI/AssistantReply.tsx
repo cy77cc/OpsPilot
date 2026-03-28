@@ -5,18 +5,14 @@ import type { ComponentProps } from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
-import { aiApi, isApprovalConflictError, resolveApprovalTicket } from '../../api/modules/ai';
 import { normalizeMarkdownContent } from './markdownContent';
 import type {
   AssistantReplyActivity,
-  AssistantReplyActivityStatus,
-  AssistantReplyApprovalState,
   AssistantReplyPlanStep,
   AssistantReplyRuntime,
   AssistantReplySegment,
   AssistantReplyTodo,
 } from './types';
-import { emitApprovalUpdatedEvent } from './providers/PlatformChatProvider';
 import ToolReference from './ToolReference';
 
 const useAssistantReplyStyles = createStyles(({ token, css }) => ({
@@ -504,59 +500,6 @@ function shouldRenderInlineText(text: string): boolean {
   return true;
 }
 
-type ApprovalViewState = {
-  state: AssistantReplyApprovalState | 'refresh-needed';
-  message?: string;
-};
-
-const APPROVAL_RESOLUTION_DELAY_MS = 3000;
-
-function getApprovalActivityKey(activity: AssistantReplyActivity): string {
-  return activity.approvalId || activity.id;
-}
-
-function mapApprovalTicketToViewState(ticket: { status?: string }): ApprovalViewState {
-  switch (ticket.status) {
-    case 'approved':
-    case 'executed':
-      return {
-        state: 'approved',
-        message: '已批准',
-      };
-    case 'rejected':
-    case 'failed':
-    case 'expired':
-      return {
-        state: 'rejected',
-        message: '已拒绝',
-      };
-    case 'pending':
-    default:
-      return {
-        state: 'refresh-needed',
-        message: '审批状态可能已变更，请刷新后查看结果',
-      };
-  }
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error.trim();
-  }
-  return '提交失败，请刷新后重试';
-}
-
-function createApprovalIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return `approval-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function getTodoStatusLabel(status: string): string {
   switch (status) {
     case 'in_progress':
@@ -575,13 +518,11 @@ function StepContentRenderer({
   activities,
   isStreaming,
   styles,
-  onApprovalDecision,
 }: {
   step: { content?: string; segments?: AssistantReplySegment[] };
   activities: AssistantReplyActivity[];
   isStreaming: boolean;
   styles: Record<string, string>;
-  onApprovalDecision?: (activity: AssistantReplyActivity, approved: boolean) => Promise<void> | void;
 }) {
   // 如果有 segments，按顺序渲染
   if (step.segments && step.segments.length > 0) {
@@ -612,7 +553,6 @@ function StepContentRenderer({
             <ToolReference
               key={`tool-${segment.callId}`}
               activity={activity}
-              onApprovalDecision={onApprovalDecision}
             />,
           );
         }
@@ -675,168 +615,13 @@ function AssistantReplyContent({
     activities: AssistantReplyActivity[];
   } | null>>({});
   const inflightRequestsRef = useRef<Record<string, symbol>>({});
-  const approvalInflightRef = useRef<Record<string, string>>({});
-  const approvalResolutionTimersRef = useRef<Record<string, number>>({});
-  const approvalTimeoutTimersRef = useRef<Record<string, number>>({});
-  const [approvalViewStates, setApprovalViewStates] = useState<Record<string, ApprovalViewState>>({});
 
   useEffect(() => () => {
-    Object.values(approvalResolutionTimersRef.current).forEach((timerId) => {
-      window.clearTimeout(timerId);
-    });
-    Object.values(approvalTimeoutTimersRef.current).forEach((timerId) => {
-      window.clearTimeout(timerId);
-    });
-    approvalResolutionTimersRef.current = {};
-    approvalTimeoutTimersRef.current = {};
     inflightRequestsRef.current = {};
-    approvalInflightRef.current = {};
   }, []);
-
-  const clearApprovalTimers = useCallback((activity: AssistantReplyActivity) => {
-    const key = getApprovalActivityKey(activity);
-    const timerId = approvalResolutionTimersRef.current[key];
-    if (timerId) {
-      window.clearTimeout(timerId);
-      delete approvalResolutionTimersRef.current[key];
-    }
-    const timeoutId = approvalTimeoutTimersRef.current[key];
-    if (timeoutId) {
-      window.clearTimeout(timeoutId);
-      delete approvalTimeoutTimersRef.current[key];
-    }
-  }, []);
-
-  const setApprovalViewState = useCallback((activity: AssistantReplyActivity, nextState: ApprovalViewState) => {
-    const key = getApprovalActivityKey(activity);
-    setApprovalViewStates((current) => ({
-      ...current,
-      [key]: nextState,
-    }));
-  }, []);
-
-  const handleApprovalDecision = useCallback(async (activity: AssistantReplyActivity, approved: boolean) => {
-    const approvalId = activity.approvalId;
-    if (!approvalId) {
-      return;
-    }
-
-    const approvalKey = getApprovalActivityKey(activity);
-    if (approvalInflightRef.current[approvalKey]) {
-      return;
-    }
-    const idempotencyKey = createApprovalIdempotencyKey();
-    approvalInflightRef.current[approvalKey] = idempotencyKey;
-
-    clearApprovalTimers(activity);
-    setApprovalViewState(activity, {
-      state: 'approved_resuming',
-      message: '提交中',
-    });
-
-    approvalResolutionTimersRef.current[approvalKey] = window.setTimeout(() => {
-      setApprovalViewState(activity, {
-        state: 'approved_resuming',
-        message: '结果确认中',
-      });
-      delete approvalResolutionTimersRef.current[approvalKey];
-    }, APPROVAL_RESOLUTION_DELAY_MS);
-
-    approvalTimeoutTimersRef.current[approvalKey] = window.setTimeout(() => {
-      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
-        return;
-      }
-      clearApprovalTimers(activity);
-      delete approvalInflightRef.current[approvalKey];
-      setApprovalViewState(activity, {
-        state: 'refresh-needed',
-        message: '提交超时，请刷新后重试',
-      });
-    }, 15000);
-
-    try {
-      await (aiApi.submitApproval as unknown as (
-        id: string,
-        payload: { approved: boolean },
-        options?: { idempotencyKey?: string },
-      ) => Promise<unknown>)(approvalId, { approved }, {
-        idempotencyKey,
-      });
-      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
-        return;
-      }
-      clearApprovalTimers(activity);
-      setApprovalViewState(activity, {
-        state: approved ? 'approved' : 'rejected',
-        message: approved ? '已批准' : '已拒绝',
-      });
-      emitApprovalUpdatedEvent({
-        token: approvalId,
-        status: approved ? 'approved' : 'rejected',
-      });
-      return;
-    } catch (error) {
-      if (approvalInflightRef.current[approvalKey] !== idempotencyKey) {
-        return;
-      }
-      if (isApprovalConflictError(error)) {
-        clearApprovalTimers(activity);
-        const latest = await resolveApprovalTicket(approvalId);
-        if (latest && latest.status && latest.status !== 'pending') {
-          setApprovalViewState(activity, mapApprovalTicketToViewState(latest));
-        } else {
-          setApprovalViewState(activity, {
-            state: 'refresh-needed',
-            message: '审批状态可能已变更，请刷新后查看结果',
-          });
-        }
-        emitApprovalUpdatedEvent({
-          token: approvalId,
-          status: latest?.status,
-        });
-        return;
-      }
-
-      clearApprovalTimers(activity);
-      setApprovalViewState(activity, {
-        state: 'refresh-needed',
-        message: `提交失败：${getErrorMessage(error)}`,
-      });
-    } finally {
-      delete approvalInflightRef.current[approvalKey];
-    }
-  }, [clearApprovalTimers, setApprovalViewState]);
-
   const displayActivities = useMemo<AssistantReplyActivity[]>(
-    () => runtime?.activities?.map((activity) => {
-      const override = approvalViewStates[getApprovalActivityKey(activity)];
-      if (!override) {
-        return activity;
-      }
-
-      const nextStatus: AssistantReplyActivityStatus = override.state === 'approved'
-        ? 'done'
-        : override.state === 'approved_done'
-          ? 'done'
-        : override.state === 'rejected'
-          ? 'error'
-          : override.state === 'approved_failed_terminal'
-            ? 'error'
-            : override.state === 'expired'
-              ? 'error'
-          : override.state === 'refresh-needed'
-            ? 'error'
-            : 'pending';
-
-      return {
-        ...activity,
-        status: nextStatus,
-        approvalState: override.state,
-        approvalMessage: override.message,
-        detail: override.message || activity.detail,
-      };
-    }) || [],
-    [approvalViewStates, runtime?.activities],
+    () => runtime?.activities || [],
+    [runtime?.activities],
   );
 
   const activeStepIndex = runtime?.plan?.activeStepIndex;
@@ -1011,7 +796,6 @@ function AssistantReplyContent({
                   activities={cachedContent?.activities || []}
                   isStreaming={false}
                   styles={styles}
-                  onApprovalDecision={handleApprovalDecision}
                 />
               ),
             };
@@ -1052,14 +836,12 @@ function AssistantReplyContent({
               activities={toolActivities}
               isStreaming={isStreaming}
               styles={styles}
-              onApprovalDecision={handleApprovalDecision}
             />
             {activeStepActivities.map((activity) => (
               activity.kind === 'tool_approval' ? (
                 <ToolReference
                   key={activity.id}
                   activity={activity}
-                  onApprovalDecision={handleApprovalDecision}
                 />
               ) : (
                 <div key={activity.id} className={styles.activity}>
@@ -1079,7 +861,6 @@ function AssistantReplyContent({
               <ToolReference
                 key={activity.id}
                 activity={activity}
-                onApprovalDecision={handleApprovalDecision}
               />
             ) : (
               <div key={activity.id} className={styles.activity}>
