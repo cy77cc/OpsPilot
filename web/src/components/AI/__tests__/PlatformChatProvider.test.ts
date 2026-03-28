@@ -481,7 +481,7 @@ describe('PlatformChatProvider', () => {
     expect(statuses).not.toContain('approved_done');
   });
 
-  it('stops reconnect attempts when run enters waiting_approval', async () => {
+  it('reattaches stream after approval update when run is waiting_approval', async () => {
     const request = new PlatformChatRequest();
     const onSuccess = vi.fn();
     request.options.callbacks = {
@@ -502,6 +502,10 @@ describe('PlatformChatProvider', () => {
           timeout_seconds: 300,
         });
         handlers.onRunState?.({ run_id: 'run-1', status: 'waiting_approval', agent: 'executor' } as any);
+      })
+      .mockImplementationOnce(async (_params, handlers) => {
+        handlers.onRunResuming?.({ run_id: 'run-1', session_id: 'sess-1', approval_id: 'approval-1' });
+        handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
       });
 
     request.run({ message: 'hi', scene: 'cluster' });
@@ -511,11 +515,11 @@ describe('PlatformChatProvider', () => {
 
     await request.asyncHandler;
 
-    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(streamMock).toHaveBeenCalledTimes(2);
     expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores approval token updates while waiting_approval without reconnecting', async () => {
+  it('ignores non-matching approval token updates while waiting_approval', async () => {
     const request = new PlatformChatRequest();
     const onSuccess = vi.fn();
     request.options.callbacks = {
@@ -540,9 +544,10 @@ describe('PlatformChatProvider', () => {
 
     request.run({ message: 'hi', scene: 'cluster' });
     window.dispatchEvent(new CustomEvent('ai-approval-updated', {
-      detail: { token: 'call-1', status: 'approved' },
+      detail: { token: 'call-mismatch', status: 'approved' },
     }));
 
+    request.abort();
     await request.asyncHandler;
 
     expect(streamMock).toHaveBeenCalledTimes(1);

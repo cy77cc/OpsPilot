@@ -131,8 +131,11 @@ export function applyDelta(
     const segments = [...(nextRuntime.segments || [])];
     const lastSegment = segments[segments.length - 1];
     if (lastSegment?.type === 'text') {
-      // Merge with previous text segment
-      lastSegment.text = `${lastSegment.text || ''}${chunk}`;
+      // Merge with previous text segment (immutably)
+      segments[segments.length - 1] = {
+        ...lastSegment,
+        text: `${lastSegment.text || ''}${chunk}`,
+      };
     } else {
       segments.push({ type: 'text', text: chunk });
     }
@@ -204,20 +207,20 @@ No segment changes needed — these only mutate activity state, segment position
 
 Update `web/src/components/AI/historyProjection.ts`:
 
-#### 5.3.1 Add `agent_handoff` Handler in `loadStepContent`
+#### 5.3.1 Add `agent_handoff` Handling at Block Level (Not Executor Item Level)
 
 ```typescript
-// In loadStepContent function, add handler:
-if (item.type === 'agent_handoff' && item.to) {
+// source: AIRunProjectionBlock (type='agent_handoff')
+if (block.type === 'agent_handoff' && block.agent) {
   activities.push({
-    id: `handoff:${item.to}`,
+    id: `handoff:${block.id}`,
     kind: 'agent_handoff',
-    label: item.to,
-    detail: item.intent || '',
+    label: block.agent,
+    detail: String(block.data?.intent || ''),
     status: 'done',
     stepIndex,
   });
-  segments.push({ type: 'agent_ref', agentId: item.to });
+  segments.push({ type: 'agent_ref', agentId: block.agent });
 }
 ```
 
@@ -228,18 +231,21 @@ For messages without plan, build `runtime.segments` from projection blocks:
 ```typescript
 // In hydrateAssistantHistoryFromProjection or projectionToLazyRuntime
 if (!steps.length) {
-  // Non-plan: build segments from executor items
+  // Non-plan: build segments from projection blocks in order
   const segments: AssistantReplySegment[] = [];
   for (const block of projection.blocks) {
-    for (const item of block.items || []) {
-      if (item.type === 'content' && item.content_id) {
-        // Load and append text segment
-      }
-      if (item.type === 'tool_call') {
-        segments.push({ type: 'tool_ref', callId: item.tool_call_id });
-      }
-      if (item.type === 'agent_handoff') {
-        segments.push({ type: 'agent_ref', agentId: item.to });
+    if (block.type === 'agent_handoff' && block.agent) {
+      segments.push({ type: 'agent_ref', agentId: block.agent });
+      continue;
+    }
+    if (block.type === 'executor') {
+      for (const item of block.items || []) {
+        if (item.type === 'content' && item.content_id) {
+          // Load and append text segment
+        }
+        if (item.type === 'tool_call' && item.tool_call_id) {
+          segments.push({ type: 'tool_ref', callId: item.tool_call_id });
+        }
       }
     }
   }
@@ -359,6 +365,8 @@ For live stream:
 
 - Primary source: `onAgentHandoff` payload (`from`, `to`, `intent`) -> append `agent_ref`.
 - Secondary source: `onRunState.agent` when present and meaningful transition detected -> append `agent_ref` only if not duplicate of current tail marker.
+  - Dedupe key for live-only marker: `runstate-agent:<agentName>`
+  - This requires lightweight provider-side injection logic in `PlatformChatProvider` before/after `applyRunState`.
 
 For history hydration:
 
@@ -440,7 +448,7 @@ Renderer boundary rules:
 | `web/src/components/AI/AssistantReply.tsx` | Modify | Create unified `renderSegmentFlow`, handle non-plan segments |
 | `web/src/components/AI/ToolReference.tsx` | Modify | Add placeholder fallback, approval collapse logic |
 | `web/src/components/AI/ToolResultCard.tsx` | Minor | Collapse behavior if needed |
-| `web/src/components/AI/providers/PlatformChatProvider.ts` | Verify | No changes needed (handlers already call correct reducers) |
+| `web/src/components/AI/providers/PlatformChatProvider.ts` | Modify | Optional live `run_state.agent` marker injection + dedupe |
 
 ### 11.2 Implementation Phases
 

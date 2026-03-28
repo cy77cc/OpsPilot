@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +40,8 @@ type NormalizationMetadata struct {
 	Coercions        []string          `json:"coercions,omitempty"`
 	CoercionFailures []CoercionFailure `json:"coercion_failures,omitempty"`
 }
+
+var hostExecBareIPv4Pattern = regexp.MustCompile(`("host_id"\s*:\s*)(\d{1,3}(?:\.\d{1,3}){3})(\s*[,}])`)
 
 // CoercionFailure records a normalization failure with the original provided value.
 type CoercionFailure struct {
@@ -204,7 +208,8 @@ func normalizeRawArgs(toolName, raw string, js *jsonschema.Schema) (string, Norm
 		return raw, meta
 	}
 
-	decoded, err := decodeJSONWithNumber(raw)
+	decodeRaw := preprocessRawArgs(toolName, raw, &meta)
+	decoded, err := decodeJSONWithNumber(decodeRaw)
 	if err != nil {
 		meta.CoercionFailures = append(meta.CoercionFailures, CoercionFailure{
 			Field:    "$root",
@@ -226,6 +231,10 @@ func normalizeRawArgs(toolName, raw string, js *jsonschema.Schema) (string, Norm
 		return raw, meta
 	}
 
+	if toolName == "host_exec" {
+		coerceHostExecIPHostID(root, &meta)
+	}
+
 	normalized := normalizeObject("", root, js, &meta, fieldRequirements(js))
 	encoded, err := json.Marshal(normalized)
 	if err != nil {
@@ -239,6 +248,90 @@ func normalizeRawArgs(toolName, raw string, js *jsonschema.Schema) (string, Norm
 	}
 
 	return string(encoded), meta
+}
+
+func preprocessRawArgs(toolName, raw string, meta *NormalizationMetadata) string {
+	if strings.TrimSpace(toolName) != "host_exec" {
+		return raw
+	}
+	rewritten, changed := quoteBareIPv4HostID(raw)
+	if changed {
+		appendCoercion(meta, "host_id", "bare-ipv4->quoted-string")
+	}
+	return rewritten
+}
+
+func quoteBareIPv4HostID(raw string) (string, bool) {
+	matches := hostExecBareIPv4Pattern.FindAllStringSubmatchIndex(raw, -1)
+	if len(matches) == 0 {
+		return raw, false
+	}
+
+	var (
+		builder strings.Builder
+		last    int
+		changed bool
+	)
+	for _, match := range matches {
+		if len(match) < 8 {
+			continue
+		}
+		fullStart, fullEnd := match[0], match[1]
+		prefixStart, prefixEnd := match[2], match[3]
+		ipStart, ipEnd := match[4], match[5]
+		suffixStart, suffixEnd := match[6], match[7]
+		ip := raw[ipStart:ipEnd]
+		if !isStrictIPv4(ip) {
+			continue
+		}
+
+		builder.WriteString(raw[last:fullStart])
+		builder.WriteString(raw[prefixStart:prefixEnd])
+		builder.WriteString(`"`)
+		builder.WriteString(ip)
+		builder.WriteString(`"`)
+		builder.WriteString(raw[suffixStart:suffixEnd])
+		last = fullEnd
+		changed = true
+	}
+	if !changed {
+		return raw, false
+	}
+	builder.WriteString(raw[last:])
+	return builder.String(), true
+}
+
+func isStrictIPv4(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.Count(raw, ".") != 3 {
+		return false
+	}
+	ip := net.ParseIP(raw)
+	return ip != nil && ip.To4() != nil
+}
+
+func coerceHostExecIPHostID(root map[string]any, meta *NormalizationMetadata) {
+	if root == nil {
+		return
+	}
+	rawHostID, ok := root["host_id"]
+	if !ok {
+		return
+	}
+	hostID, ok := rawHostID.(string)
+	if !ok {
+		return
+	}
+	hostID = strings.TrimSpace(hostID)
+	if !isStrictIPv4(hostID) {
+		return
+	}
+	if existingTarget, ok := root["target"].(string); !ok || strings.TrimSpace(existingTarget) == "" {
+		root["target"] = hostID
+		appendCoercion(meta, "target", "derived-from-host_id")
+	}
+	delete(root, "host_id")
+	appendCoercion(meta, "host_id", "ipv4->target")
 }
 
 func decodeJSONWithNumber(raw string) (any, error) {

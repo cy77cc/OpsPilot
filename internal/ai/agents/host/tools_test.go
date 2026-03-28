@@ -43,8 +43,8 @@ func TestHostExec_RejectsWhenHostIDInvalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), "host_id is required") {
-		t.Fatalf("expected host_id validation error, got %v", err)
+	if !strings.Contains(err.Error(), "host_id or target is required") {
+		t.Fatalf("expected host_id/target validation error, got %v", err)
 	}
 }
 

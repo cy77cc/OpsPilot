@@ -38,7 +38,8 @@ func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
 
 // HostExecInput 主机命令执行输入。
 type HostExecInput struct {
-	HostID  int    `json:"host_id" jsonschema_description:"required,host id"`
+	HostID  int    `json:"host_id" jsonschema_description:"optional host id"`
+	Target  string `json:"target,omitempty" jsonschema_description:"optional target host id/ip/hostname"`
 	Command string `json:"command,omitempty" jsonschema_description:"optional,readonly command"`
 	Script  string `json:"script,omitempty" jsonschema_description:"optional,script command"`
 }
@@ -129,13 +130,14 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 	svcCtx := serviceContextFromRuntime(ctx)
 	t, err := einoutils.InferOptionableTool(
 		"host_exec",
-		"Execute a command or script on a single host only when policy allows. Provide exactly one of command or script together with host_id. Approval is enforced by the middleware interrupt flow.",
+		"Execute a command or script on a single host only when policy allows. Provide exactly one of command or script together with host_id or target (id/ip/hostname). Approval is enforced by the middleware interrupt flow.",
 		func(ctx context.Context, input *HostExecInput, opts ...tool.Option) (*HostExecOutput, error) {
 			hostID := input.HostID
+			target := strings.TrimSpace(input.Target)
 			cmd := strings.TrimSpace(input.Command)
 			script := strings.TrimSpace(input.Script)
-			if hostID <= 0 {
-				return nil, fmt.Errorf("host_id is required")
+			if hostID <= 0 && target == "" {
+				return nil, fmt.Errorf("host_id or target is required")
 			}
 			if (cmd == "" && script == "") || (cmd != "" && script != "") {
 				return nil, fmt.Errorf("provide exactly one of command or script")
@@ -144,7 +146,10 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 			if execText == "" {
 				execText = script
 			}
-			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec", strconv.Itoa(hostID), execText)
+			if target == "" {
+				target = strconv.Itoa(hostID)
+			}
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec", target, execText)
 		},
 	)
 	if err != nil {

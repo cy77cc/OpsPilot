@@ -64,6 +64,23 @@ func TestClassifyRecoverableToolInvocationError(t *testing.T) {
 			t.Fatalf("unexpected generic classification: %#v", info)
 		}
 	})
+
+	t.Run("stream tool call multiline unmarshal args pattern", func(t *testing.T) {
+		t.Parallel()
+
+		msg := `[NodeRunError] failed to stream tool call call_2d94d158c1fb44cda1494891: [LocalFunc] failed to unmarshal arguments in json, toolName=host_exec, err="Syntax error at index 19: invalid char
+
+	ost_id\": 115.190.245.134, \"comma
+	................^...............
+"`
+		info, ok := classifyRecoverableToolInvocationError(errors.New(msg))
+		if !ok {
+			t.Fatal("expected multiline unmarshal error to be classified as recoverable")
+		}
+		if info.CallID != "call_2d94d158c1fb44cda1494891" || info.ToolName != "host_exec" {
+			t.Fatalf("unexpected multiline classification: %#v", info)
+		}
+	})
 }
 
 func TestRecoverableToolErrorFromEventRejectsBusinessToolResult(t *testing.T) {

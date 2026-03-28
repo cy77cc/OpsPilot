@@ -45,6 +45,8 @@ interface RunReconnectControllerConfig {
 export class RunReconnectController {
   private pendingRun: PendingRunMetadata | null = null;
   private readonly onPendingRunChange?: (pendingRun: PendingRunMetadata | null) => void;
+  private approvalResumeRequested = false;
+  private approvalResumeWaiters: Array<() => void> = [];
 
   constructor(config: RunReconnectControllerConfig = {}) {
     this.onPendingRunChange = config.onPendingRunChange;
@@ -107,7 +109,38 @@ export class RunReconnectController {
     this.onPendingRunChange?.(this.pendingRun);
   }
 
-  handleToolApproval(_payload: A2UIToolApprovalEvent): void {}
+  handleToolApproval(payload: A2UIToolApprovalEvent): void {
+    if (!this.pendingRun?.runId) {
+      return;
+    }
+    this.pendingRun = upsertPendingRun({
+      ...this.pendingRun,
+      approvalId: payload.approval_id || this.pendingRun.approvalId,
+      approvalCallId: payload.call_id || this.pendingRun.approvalCallId,
+      resumable: true,
+    });
+    this.onPendingRunChange?.(this.pendingRun);
+  }
+
+  handleApprovalUpdated(detail: { token?: string; status?: string } | null | undefined): void {
+    const token = (detail?.token || '').trim();
+    const status = (detail?.status || '').trim();
+    if (!token || status !== 'approved' || !this.pendingRun) {
+      return;
+    }
+    if (this.pendingRun.status !== 'waiting_approval') {
+      return;
+    }
+
+    const matchesApprovalID = token === (this.pendingRun.approvalId || '');
+    const matchesCallID = token === (this.pendingRun.approvalCallId || '');
+    if (!matchesApprovalID && !matchesCallID) {
+      return;
+    }
+
+    this.approvalResumeRequested = true;
+    this.flushApprovalResumeWaiters();
+  }
 
   handleRunState(payload: A2UIRunStateEvent): void {
     if (!isReconnectableStatus(payload.status)) {
@@ -151,7 +184,21 @@ export class RunReconnectController {
     }
 
     const run = this.pendingRun;
-    if (run.status === 'waiting_approval' || run.status === 'resume_failed_retryable') {
+    if (run.status === 'waiting_approval') {
+      const approved = await this.waitForApprovalResumeSignal(signal);
+      if (!approved || !this.pendingRun) {
+        return null;
+      }
+      this.pendingRun = upsertPendingRun({
+        ...this.pendingRun,
+        status: 'resuming',
+        resumable: true,
+      });
+      this.onPendingRunChange?.(this.pendingRun);
+      return this.toRetryParams(this.pendingRun);
+    }
+
+    if (run.status === 'resume_failed_retryable') {
       return null;
     }
 
@@ -172,11 +219,51 @@ export class RunReconnectController {
   }
 
   private clear(runId: string): void {
+    this.approvalResumeRequested = false;
+    this.flushApprovalResumeWaiters();
     removePendingRun(runId);
     if (this.pendingRun?.runId === runId) {
       this.pendingRun = null;
       this.onPendingRunChange?.(null);
     }
+  }
+
+  private async waitForApprovalResumeSignal(signal?: AbortSignal): Promise<boolean> {
+    if (this.approvalResumeRequested) {
+      this.approvalResumeRequested = false;
+      return true;
+    }
+    if (signal?.aborted) {
+      return false;
+    }
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const complete = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.approvalResumeWaiters = this.approvalResumeWaiters.filter((waiter) => waiter !== onSignal);
+        signal?.removeEventListener('abort', onSignal);
+        resolve(value);
+      };
+      const onSignal = () => {
+        if (this.approvalResumeRequested) {
+          this.approvalResumeRequested = false;
+          complete(true);
+          return;
+        }
+        complete(false);
+      };
+      this.approvalResumeWaiters.push(onSignal);
+      signal?.addEventListener('abort', onSignal, { once: true });
+    });
+  }
+
+  private flushApprovalResumeWaiters(): void {
+    const waiters = [...this.approvalResumeWaiters];
+    this.approvalResumeWaiters = [];
+    waiters.forEach((waiter) => waiter());
   }
 
   private async waitForDelay(signal?: AbortSignal): Promise<void> {

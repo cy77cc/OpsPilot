@@ -224,6 +224,7 @@ export class PlatformChatRequest extends AbstractXRequestClass<
     };
     this.abort();
     this.abortController = new AbortController();
+    const requestSignal = this.abortController.signal;
     this._isRequesting = true;
     this.clearAgentLabelTimer();
     this.reconnectController = new RunReconnectController();
@@ -556,32 +557,41 @@ export class PlatformChatRequest extends AbstractXRequestClass<
         context: streamParams.context,
       },
       handlers,
-      this.abortController?.signal,
+      requestSignal,
     );
 
     this._asyncHandler = (async () => {
-      let streamParams: ChatRequest = {
-        message: requestParams.message,
-        sessionId: requestParams.sessionId,
-        clientRequestId: requestParams.clientRequestId,
-        lastEventId: requestParams.lastEventId,
-        scene: requestParams.scene,
-        context: requestParams.context,
+      const onApprovalUpdated = (event: Event) => {
+        const detail = (event as CustomEvent<{ token?: string; status?: string }>).detail;
+        this.reconnectController.handleApprovalUpdated(detail);
       };
-
-      while (true) {
-        await stream(streamParams);
-        if (terminalError || this.abortController?.signal.aborted) {
-          return;
-        }
-        const nextAttempt = await this.reconnectController.nextAttempt(this.abortController?.signal);
-        if (!nextAttempt) {
-          return;
-        }
-        streamParams = {
-          ...streamParams,
-          ...nextAttempt,
+      window.addEventListener('ai-approval-updated', onApprovalUpdated);
+      try {
+        let streamParams: ChatRequest = {
+          message: requestParams.message,
+          sessionId: requestParams.sessionId,
+          clientRequestId: requestParams.clientRequestId,
+          lastEventId: requestParams.lastEventId,
+          scene: requestParams.scene,
+          context: requestParams.context,
         };
+
+        while (true) {
+          await stream(streamParams);
+          if (terminalError || requestSignal.aborted) {
+            return;
+          }
+          const nextAttempt = await this.reconnectController.nextAttempt(requestSignal);
+          if (!nextAttempt) {
+            return;
+          }
+          streamParams = {
+            ...streamParams,
+            ...nextAttempt,
+          };
+        }
+      } finally {
+        window.removeEventListener('ai-approval-updated', onApprovalUpdated);
       }
     })()
       .then(() => {
