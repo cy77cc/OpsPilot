@@ -254,6 +254,13 @@ func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, arg
 
 	wasInterrupted, hasDecisionState, state := tool.GetInterruptState[approvalInterruptState](ctx)
 	if wasInterrupted && hasDecisionState {
+		storedArgs := strings.TrimSpace(state.ArgumentsInJSON)
+		if storedArgs == "" {
+			storedArgs = args
+		}
+		if state.Decision == nil {
+			return m.defaultDecision(ctx, toolName, storedArgs, callID), storedArgs, true, nil
+		}
 		if state.Decision != nil {
 			if state.Decision.BoundSessionID == "" {
 				state.Decision.BoundSessionID = strings.TrimSpace(state.SessionID)
@@ -262,11 +269,14 @@ func (m *approvalMiddleware) evaluateApproval(ctx context.Context, toolName, arg
 				state.Decision.BoundAgentRole = strings.TrimSpace(state.AgentRole)
 			}
 		}
-		return state.Decision, state.ArgumentsInJSON, true, nil
+		return state.Decision, storedArgs, true, nil
 	}
 	if wasInterrupted {
 		_, hasStringState, storedArgs := tool.GetInterruptState[string](ctx)
 		if hasStringState {
+			if strings.TrimSpace(storedArgs) == "" {
+				storedArgs = args
+			}
 			return m.defaultDecision(ctx, toolName, storedArgs, callID), storedArgs, true, nil
 		}
 		return m.defaultDecision(ctx, toolName, args, callID), args, true, nil

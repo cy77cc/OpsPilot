@@ -10,13 +10,12 @@
 
 ## 1. Background
 
-Current backend has repeated `for + iterator.Next() + stream recv` logic in three paths:
+Current backend has repeated `for + iterator.Next() + stream recv` logic in two paths:
 
 1. `Logic.Chat`
 2. `ApprovalWorker.resumeApprovedTask`
-3. `Logic.ResumeApproval` (deprecated path)
 
-Although behavior is similar, these paths independently maintain interrupt handling, recoverable tool errors, stream receive failures, and projector flush/finalization logic. This creates drift risk.
+These paths independently maintain interrupt handling, recoverable tool errors, stream receive failures, and projector flush/finalization logic. This creates drift risk.
 
 On frontend, `tool_approval` currently stores only minimal info in runtime activity. The approval card mostly exposes approve/reject actions, while the operation preview payload is not surfaced in a user-readable way.
 
@@ -24,7 +23,7 @@ On frontend, `tool_approval` currently stores only minimal info in runtime activ
 
 ### 2.1 Goals
 
-1. Remove duplicated iterator consumption core from the three backend paths.
+1. Remove duplicated iterator consumption core from the two backend paths.
 2. Keep existing path-specific orchestration semantics intact.
 3. Render approval-required operation details in UI:
    - key parameter summary table
@@ -129,8 +128,6 @@ This result is interpreted by each caller to perform path-specific finalize beha
 2. `ApprovalWorker.resumeApprovedTask`
    - run status transitions (`resuming`, retryable failure, terminal failure)
    - outbox/write-model side effects
-3. `Logic.ResumeApproval` (deprecated)
-   - keep existing compatibility behavior while reusing shared consumption core
 
 ## 4.2 Frontend Approval Experience
 
@@ -234,7 +231,6 @@ Actions remain available.
 2. Regression tests for:
    - `Logic.Chat`
    - `ApprovalWorker.resumeApprovedTask`
-   - `Logic.ResumeApproval`
 3. Assert event ordering and run state parity with current contract.
 
 ## 7.2 Frontend
@@ -249,7 +245,7 @@ Actions remain available.
 
 ## 8. Acceptance Criteria
 
-1. Backend no longer maintains three independent full iterator loops.
+1. Backend no longer maintains duplicated full iterator loops across paths.
 2. Frontend approval card clearly shows operation details before user decision.
 3. Legacy events without preview remain actionable.
 4. Existing SSE event names and compatibility remain intact.
@@ -257,5 +253,4 @@ Actions remain available.
 ## 9. Implementation Notes
 
 1. This change intentionally preserves existing route and API surfaces.
-2. `ResumeApproval` remains deprecated but shares core processor for behavior consistency.
-3. Follow-up refactors can remove deprecated path after product confirmation.
+2. Follow-up refactors can extend the shared processor to additional iterator consumers if needed.
