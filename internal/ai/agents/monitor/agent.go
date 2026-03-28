@@ -33,7 +33,7 @@ func New(ctx context.Context) (adk.Agent, error) {
 			},
 		},
 		Handlers:      handlers,
-		MaxIterations: 8,
+		MaxIterations: 20,
 	})
 }
 

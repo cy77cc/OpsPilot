@@ -37,7 +37,7 @@ func New(ctx context.Context) (adk.Agent, error) {
 		Model:         model,
 		ToolsConfig:   adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools}},
 		Handlers:      handlers,
-		MaxIterations: 8,
+		MaxIterations: 20,
 	})
 }
 
