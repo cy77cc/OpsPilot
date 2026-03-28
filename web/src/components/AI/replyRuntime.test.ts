@@ -430,18 +430,40 @@ describe('assistant reply runtime shape', () => {
     expect(completedWithToolErrors.pendingRun).toBeUndefined();
   });
 
-  it('marks resume completion and expiration with dedicated states', () => {
-    const resumed = applyRunResumed(createEmptyAssistantRuntime());
-    expect(resumed.status).toEqual({
-      kind: 'approved_done',
-      label: '已批准，恢复完成',
+  it('keeps resumed approval runs reconnectable until a terminal event arrives', () => {
+    const waitingApproval = applyToolApproval(applyRunState(createEmptyAssistantRuntime(), {
+      run_id: 'run-1',
+      status: 'waiting_approval',
+      agent: 'executor',
+    }), {
+      approval_id: 'approval-1',
+      call_id: 'call-1',
+      tool_name: 'kubectl_apply',
+      preview: {},
+      timeout_seconds: 300,
     });
+    const resumed = applyRunResumed(waitingApproval);
+    expect(resumed.status).toEqual({
+      kind: 'approved_resuming',
+      label: '已批准，继续执行',
+    });
+    expect(resumed.pendingRun).toEqual(expect.objectContaining({
+      runId: 'run-1',
+      approvalId: 'approval-1',
+      resumable: true,
+      status: 'running',
+    }));
+    expect(resumed.phase).toBe('executing');
+    expect(resumed.activities[0]).toEqual(expect.objectContaining({
+      approvalState: 'approved_done',
+    }));
 
-    const done = applyDone(applyRunResuming(createEmptyAssistantRuntime()));
+    const done = applyDone(resumed);
     expect(done.status).toEqual({
       kind: 'approved_done',
       label: '已批准，恢复完成',
     });
+    expect(done.pendingRun).toBeUndefined();
 
     const expired = applyApprovalExpired(createEmptyAssistantRuntime());
     expect(expired.status).toEqual({

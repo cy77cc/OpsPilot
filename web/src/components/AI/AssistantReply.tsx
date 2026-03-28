@@ -358,6 +358,9 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     display: inline;
     white-space: normal;
   `,
+  blockToolFlow: css`
+    width: 100%;
+  `,
   inlineText: css`
     display: inline;
     line-height: 1.65;
@@ -530,10 +533,12 @@ function StepContentRenderer({
     activities.forEach((a) => activityMap.set(a.id, a));
 
     const elements: React.ReactNode[] = [];
+    let hasBlockContent = false;
 
     step.segments.forEach((segment, index) => {
       if (segment.type === 'text' && segment.text) {
         const inlineText = shouldRenderInlineText(segment.text);
+        hasBlockContent = hasBlockContent || !inlineText;
         elements.push(inlineText ? (
           <span key={`text-${index}`} className={styles.inlineText}>
             {normalizeMarkdownContent(segment.text)}
@@ -561,10 +566,12 @@ function StepContentRenderer({
 
     const hasOnlyTools = elements.length > 0 && elements.every((element) =>
       React.isValidElement(element) && typeof element.key === 'string' && String(element.key).startsWith('tool-'));
+    const FlowWrapper = hasBlockContent ? 'div' : 'span';
+    const flowClassName = hasBlockContent ? styles.blockToolFlow : styles.inlineToolFlow;
 
     return (
       <div className={hasOnlyTools ? styles.inlineToolFallback : styles.stepMarkdown}>
-        <span className={styles.inlineToolFlow}>{elements}</span>
+        <FlowWrapper className={flowClassName}>{elements}</FlowWrapper>
       </div>
     );
   }

@@ -615,6 +615,40 @@ describe('AssistantReply', () => {
     expect(screen.queryByTestId('x-markdown')).not.toBeInTheDocument();
   });
 
+  it('uses a block-safe wrapper when active step content mixes markdown blocks and tool refs', () => {
+    render(
+      <AssistantReply
+        content=""
+        status="updating"
+        runtime={{
+          phase: 'executing',
+          phaseLabel: '执行中',
+          plan: {
+            activeStepIndex: 0,
+            steps: [
+              {
+                id: 'plan-step-0',
+                title: '检查结果',
+                status: 'active',
+                segments: [
+                  { type: 'text', text: '## 检查结果\n\n发现 1 个异常节点。' },
+                  { type: 'tool_ref', callId: 'call-1' },
+                ],
+              },
+            ],
+          },
+          activities: [
+            { id: 'call-1', kind: 'tool', label: 'cluster_query', status: 'done', rawContent: 'ok', stepIndex: 0 },
+          ],
+          status: { kind: 'streaming', label: '持续生成中' },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'cluster_query' })).toBeInTheDocument();
+    expect(screen.getByTestId('x-markdown').closest('span')).toBeNull();
+  });
+
   it('only exposes button semantics for terminal tool states', () => {
     const { rerender } = render(
       <AssistantReply

@@ -437,12 +437,15 @@ export function applyRunResuming(runtime: AssistantReplyRuntime): AssistantReply
 }
 
 export function applyRunResumed(runtime: AssistantReplyRuntime): AssistantReplyRuntime {
-  return clearPendingRun(updateApprovalActivities({
+  return mergePendingRun(updateApprovalActivities({
     ...runtime,
-    phase: 'completed',
-    phaseLabel: '已批准，恢复完成',
-    status: buildApprovalRuntimeStatus('approved_done', '已批准，恢复完成'),
-  }, 'approved_done'));
+    phase: 'executing',
+    phaseLabel: '已批准，继续执行',
+    status: buildApprovalRuntimeStatus('approved_resuming', '已批准，继续执行'),
+  }, 'approved_done'), {
+    status: 'running',
+    resumable: true,
+  });
 }
 
 export function applyRunResumeFailed(

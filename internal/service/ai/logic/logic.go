@@ -506,6 +506,13 @@ func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell chatShell, 
 			"agent":   "executor",
 			"summary": shell.AssistantMessage.Content,
 		})
+	case "cancelled", "expired":
+		emit("run_state", map[string]any{
+			"run_id":  shell.Run.ID,
+			"status":  shell.Run.Status,
+			"agent":   "executor",
+			"summary": shell.AssistantMessage.Content,
+		})
 	case "completed", "completed_with_tool_errors":
 		emit("done", map[string]any{
 			"run_id":  shell.Run.ID,

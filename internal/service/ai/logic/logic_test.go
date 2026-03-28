@@ -458,6 +458,51 @@ func TestEmitExistingShellTerminalReplaysLatestApprovalSnapshotPerCall(t *testin
 	}
 }
 
+func TestEmitExistingShellTerminalCancelledOrExpiredEmitsRunStateSnapshot(t *testing.T) {
+	testCases := []struct {
+		name      string
+		runStatus string
+	}{
+		{name: "cancelled", runStatus: "cancelled"},
+		{name: "expired", runStatus: "expired"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := &Logic{}
+			shell := chatShell{
+				Run: &model.AIRun{
+					ID:     "run-terminal",
+					Status: tc.runStatus,
+				},
+				AssistantMessage: &model.AIChatMessage{
+					Content: "approval stopped",
+				},
+			}
+
+			var gotEvent string
+			var gotData map[string]any
+			l.emitExistingShellTerminal(context.Background(), shell, func(event string, data any) {
+				gotEvent = event
+				gotData, _ = data.(map[string]any)
+			})
+
+			if gotEvent != "run_state" {
+				t.Fatalf("expected run_state event, got %q", gotEvent)
+			}
+			if gotData["status"] != tc.runStatus {
+				t.Fatalf("expected %s status payload, got %#v", tc.runStatus, gotData)
+			}
+			if gotData["run_id"] != "run-terminal" {
+				t.Fatalf("expected run_id run-terminal, got %#v", gotData["run_id"])
+			}
+			if gotData["summary"] != "approval stopped" {
+				t.Fatalf("expected summary approval stopped, got %#v", gotData["summary"])
+			}
+		})
+	}
+}
+
 func TestLegacySuspendedRun_IsIgnoredWhenCutoverEnabled(t *testing.T) {
 	db := newLogicTestDB(t)
 	runID := "run-legacy-suspended-cutover"
