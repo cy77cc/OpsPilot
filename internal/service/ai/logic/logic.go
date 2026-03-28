@@ -231,204 +231,54 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 
 	// Step 6: 消费事件
 	var (
-		summaryContent    strings.Builder
-		assistantSnapshot strings.Builder
-		projector         = airuntime.NewStreamProjector()
-		hasToolErrors     bool
-		toolFailures      = newToolFailureTracker()
-		circuitBroken     bool
+		projector = airuntime.NewStreamProjector()
 	)
 
-	for {
-		if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
-			break
-		}
-
-		event, ok := iterator.Next()
-		if !ok {
-			break
-		}
-
-		if interruptEvent, ok := recoverableInterruptEventFromEvent(event); ok {
-			projected := projector.Consume(interruptEvent)
-			toolFailures.recordProjectedEvents(projected)
-			update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-			if consumeErr != nil {
-				return fmt.Errorf("persist projected interrupt event: %w", consumeErr)
-			}
+	result, err := processAgentIterator(ctx, iteratorProcessInput{
+		Iterator:  iterator,
+		Projector: projector,
+		Emit:      emit,
+		ConsumeProjected: func(_ iteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
+			_, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, events, emit, nil)
+			return consumeErr
+		},
+		HandleRunUpdate: func(update projectedRunUpdate) {
 			if update.AssistantType != "" || update.IntentType != "" {
 				_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
 					IntentType:    update.IntentType,
 					AssistantType: update.AssistantType,
 				})
 			}
-			continue
-		}
-
-		if event.Err != nil {
-			if recoverable, ok := recoverableToolErrorFromEvent(event); ok {
-				hasToolErrors = true
-				if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
-					circuitBroken = true
-				}
-				projected := projector.Consume(recoverable.Event)
-				toolFailures.recordProjectedEvents(projected)
-				update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-				if consumeErr != nil {
-					return fmt.Errorf("persist recoverable tool error: %w", consumeErr)
-				}
-				if update.AssistantType != "" || update.IntentType != "" {
-					_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-						IntentType:    update.IntentType,
-						AssistantType: update.AssistantType,
-					})
-				}
-				if circuitBroken {
-					break
-				}
-				continue
-			}
-
-			if !isBusinessToolResultEvent(event) {
-				flushEvents := projector.FlushBuffer()
-				toolFailures.recordProjectedEvents(flushEvents)
-				if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
-					return fmt.Errorf("flush projected events: %w", err)
-				}
-				snapshot := assistantSnapshot.String()
-				if !shouldRetainPartialStreamSnapshot(event.Err) {
-					snapshot = ""
-				}
-				if err := l.emitTerminalFailure(ctx, shell, &seqCounter, fmt.Errorf("iterator event: %w", event.Err), summaryContent.String(), snapshot, emit); err != nil {
-					return fmt.Errorf("finalize iterator error: %w", err)
-				}
-				return nil
-			}
-			hasToolErrors = true
-		}
-
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
-			for {
-				msg, err := event.Output.MessageOutput.MessageStream.Recv()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					if interruptEvent, ok := recoverableInterruptEventFromErr(err, event.AgentName); ok {
-						projected := projector.Consume(interruptEvent)
-						toolFailures.recordProjectedEvents(projected)
-						update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-						if consumeErr != nil {
-							return fmt.Errorf("persist projected interrupt event: %w", consumeErr)
-						}
-						if update.AssistantType != "" || update.IntentType != "" {
-							_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-								IntentType:    update.IntentType,
-								AssistantType: update.AssistantType,
-							})
-						}
-						break
-					}
-
-					if recoverable, ok := recoverableToolErrorFromErr(err, event.AgentName); ok {
-						hasToolErrors = true
-						if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
-							circuitBroken = true
-						}
-						projected := projector.Consume(recoverable.Event)
-						toolFailures.recordProjectedEvents(projected)
-						update, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-						if consumeErr != nil {
-							return fmt.Errorf("persist projected tool error event: %w", consumeErr)
-						}
-						if update.AssistantType != "" || update.IntentType != "" {
-							_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-								IntentType:    update.IntentType,
-								AssistantType: update.AssistantType,
-							})
-						}
-						if circuitBroken {
-							break
-						}
-						continue
-					}
-
-					flushEvents := projector.FlushBuffer()
-					toolFailures.recordProjectedEvents(flushEvents)
-					if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
-						return fmt.Errorf("flush projected events: %w", err)
-					}
-					snapshot := assistantSnapshot.String()
-					if !shouldRetainPartialStreamSnapshot(err) {
-						snapshot = ""
-					}
-					if err := l.emitTerminalFailure(ctx, shell, &seqCounter, err, summaryContent.String(), snapshot, emit); err != nil {
-						return fmt.Errorf("finalize stream error: %w", err)
-					}
-					return nil
-				}
-				if msg == nil {
-					continue
-				}
-
-				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
-				chunkEvent.AgentName = event.AgentName
-				projected := projector.Consume(chunkEvent)
-				toolFailures.recordProjectedEvents(projected)
-				update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-				if err != nil {
-					return fmt.Errorf("persist projected stream chunk: %w", err)
-				}
-				if msg.Role == schema.Assistant {
-					assistantSnapshot.WriteString(msg.Content)
-				}
-				if update.AssistantType != "" || update.IntentType != "" {
-					_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-						IntentType:    update.IntentType,
-						AssistantType: update.AssistantType,
-					})
-				}
-			}
-			if circuitBroken {
-				break
-			}
-			continue
-		}
-
-		projected := projector.Consume(event)
-		toolFailures.recordProjectedEvents(projected)
-		update, err := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, projected, emit, &summaryContent)
-		if err != nil {
-			return fmt.Errorf("persist projected event: %w", err)
-		}
-		if update.AssistantType != "" || update.IntentType != "" {
-			_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-				IntentType:    update.IntentType,
-				AssistantType: update.AssistantType,
-			})
-		}
+		},
+	})
+	if err != nil {
+		return err
 	}
-
-	flushEvents := projector.FlushBuffer()
-	toolFailures.recordProjectedEvents(flushEvents)
-	if err := l.flushProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, flushEvents, emit, &summaryContent); err != nil {
-		return fmt.Errorf("flush projected events: %w", err)
+	if result.FatalErr != nil {
+		snapshot := result.AssistantSnapshot
+		if !shouldRetainPartialStreamSnapshot(result.FatalErr) {
+			snapshot = ""
+		}
+		if err := l.emitTerminalFailure(ctx, shell, &seqCounter, result.FatalErr, result.SummaryText, snapshot, emit); err != nil {
+			return fmt.Errorf("finalize iterator error: %w", err)
+		}
+		return nil
 	}
 	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
 		runStatus := aidao.AIRunStatusUpdate{
 			Status:             "waiting_approval",
 			AssistantMessageID: shell.AssistantMessage.ID,
 		}
-		if err := l.finalizeRunCritical(ctx, shell, runStatus, summaryContent.String()); err != nil {
+		if err := l.finalizeRunCritical(ctx, shell, runStatus, result.SummaryText); err != nil {
 			return fmt.Errorf("persist waiting approval state: %w", err)
 		}
-		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String())
+		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
 		return nil
 	}
 
 	done := projector.Finish(shell.Run.ID)
 	if payload, ok := done.Data.(map[string]any); ok {
-		ensureDoneSummary(payload, summaryContent.String(), hasToolErrors)
+		ensureDoneSummary(payload, result.SummaryText, result.HasToolErrors)
 		done.Data = payload
 	}
 	eventID, err := l.appendRunEventWithID(ctx, shell.Run.ID, shell.SessionID, &seqCounter, done.Event, done.Data)
@@ -439,13 +289,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 		Status:             "completed",
 		AssistantMessageID: shell.AssistantMessage.ID,
 	}
-	if hasToolErrors {
+	if result.HasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
 	}
 	if err := l.finalizeRunCritical(ctx, shell, runStatus, ""); err != nil {
 		return fmt.Errorf("finalize run critical: %w", err)
 	}
-	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, summaryContent.String())
+	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
 
 	emit(done.Event, withEventID(done.Data, eventID))
 
@@ -763,17 +613,13 @@ func shouldRetainPartialStreamSnapshot(err error) bool {
 	return strings.Contains(message, "timeout")
 }
 
-func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) (projectedRunUpdate, error) {
+func accumulateProjectedEvents(events []airuntime.PublicStreamEvent, assistantContent *strings.Builder) projectedRunUpdate {
 	update := projectedRunUpdate{}
 	for _, projected := range events {
-		eventID, err := l.appendRunEventWithID(ctx, runID, sessionID, seqCounter, projected.Event, projected.Data)
-		if err != nil {
-			return update, err
-		}
 		if projected.Event == "delta" {
 			if data, ok := projected.Data.(map[string]any); ok {
 				agent := strings.TrimSpace(stringValue(data, "agent"))
-				if content, ok := data["content"].(string); ok && agent != "executor" {
+				if content, ok := data["content"].(string); ok && agent != "executor" && assistantContent != nil {
 					assistantContent.WriteString(content)
 				}
 			}
@@ -787,6 +633,17 @@ func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID str
 					update.IntentType = intentType
 				}
 			}
+		}
+	}
+	return update
+}
+
+func (l *Logic) consumeProjectedEvents(ctx context.Context, runID, sessionID string, seqCounter *int, events []airuntime.PublicStreamEvent, emit EventEmitter, assistantContent *strings.Builder) (projectedRunUpdate, error) {
+	update := accumulateProjectedEvents(events, assistantContent)
+	for _, projected := range events {
+		eventID, err := l.appendRunEventWithID(ctx, runID, sessionID, seqCounter, projected.Event, projected.Data)
+		if err != nil {
+			return update, err
 		}
 		emit(projected.Event, withEventID(projected.Data, eventID))
 	}

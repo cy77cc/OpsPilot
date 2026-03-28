@@ -1991,6 +1991,22 @@ func TestChat_SuccessStatusesRemainCompletedAndCompletedWithToolErrors(t *testin
 	}
 }
 
+func TestLogic_ChatRecoverableToolFailure(t *testing.T) {
+	TestChatKeepsRunAliveOnRecoverableToolFailure(t)
+}
+
+func TestLogic_ChatApprovalInterruptMaintainsWaitingApprovalState(t *testing.T) {
+	TestChatPausesWaitingApprovalOnIteratorInterruptError(t)
+}
+
+func TestLogic_ChatRunStateWaitingApprovalInterruptMaintainsOrdering(t *testing.T) {
+	TestChatPausesWaitingApprovalOnIteratorInterruptedAction(t)
+}
+
+func TestLogic_ChatDoneStatusesRemainCompletedAndCompletedWithToolErrors(t *testing.T) {
+	TestChat_SuccessStatusesRemainCompletedAndCompletedWithToolErrors(t)
+}
+
 func newLogicTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
