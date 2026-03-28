@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
@@ -2007,6 +2008,146 @@ func TestLogic_ChatDoneStatusesRemainCompletedAndCompletedWithToolErrors(t *test
 	TestChat_SuccessStatusesRemainCompletedAndCompletedWithToolErrors(t)
 }
 
+func TestLogic_ResumeApprovalProjectsRecoverableToolErrorAndDone(t *testing.T) {
+	db := newApprovalWorkerTestDB(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	store := &inMemoryCheckpointStore{data: make(map[string][]byte)}
+	checkpointID := "checkpoint-resumeapproval-parity"
+	approvalID := "approval-resumeapproval-parity"
+	sessionID := "session-resumeapproval-parity"
+
+	var resumeTargetID string
+	agent := &scriptedAgent{
+		runFn: func(ctx context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+			iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+			go func() {
+				defer gen.Close()
+				event := adk.StatefulInterrupt(ctx, map[string]any{
+					"approval_id":     approvalID,
+					"call_id":         "call-resumeapproval-parity",
+					"tool_name":       "host_exec",
+					"preview":         map[string]any{"command": "uptime"},
+					"timeout_seconds": 300,
+				}, "resumeapproval-state")
+				gen.Send(event)
+			}()
+			return iter
+		},
+		resumeFn: func(_ context.Context, info *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+			if info == nil || !info.IsResumeTarget {
+				t.Fatalf("expected resume target info, got %#v", info)
+			}
+			iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+			go func() {
+				defer gen.Close()
+				gen.Send(adk.EventFromMessage(schema.AssistantMessage("", []schema.ToolCall{
+					{
+						ID: "call-resumeapproval-parity",
+						Function: schema.FunctionCall{
+							Name:      "host_exec",
+							Arguments: `{"command":"uptime"}`,
+						},
+					},
+				}), nil, schema.Assistant, ""))
+				gen.Send(&adk.AgentEvent{
+					AgentName: "executor",
+					Err:       errors.New("[NodeRunError] failed to stream tool call call-resumeapproval-parity: [LocalFunc] failed to invoke tool, toolName=host_exec, err=command denied"),
+				})
+			}()
+			return iter
+		},
+	}
+
+	runner := adk.NewRunner(context.Background(), adk.RunnerConfig{
+		Agent:           agent,
+		EnableStreaming: true,
+		CheckPointStore: store,
+	})
+	iter := runner.Query(context.Background(), "seed resume checkpoint", adk.WithCheckPointID(checkpointID))
+	for {
+		event, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if event.Action == nil || event.Action.Interrupted == nil || len(event.Action.Interrupted.InterruptContexts) == 0 {
+			continue
+		}
+		resumeTargetID = event.Action.Interrupted.InterruptContexts[0].ID
+	}
+	if strings.TrimSpace(resumeTargetID) == "" {
+		t.Fatal("expected interrupt checkpoint target id")
+	}
+
+	seedApprovalWorkerRun(t, db, approvalWorkerRunSeed{
+		sessionID:          sessionID,
+		userID:             71,
+		runID:              "run-resumeapproval-parity",
+		userMessageID:      "msg-resumeapproval-parity-user",
+		assistantMessageID: "msg-resumeapproval-parity-assistant",
+		runStatus:          "waiting_approval",
+	})
+	seedApprovalWorkerTask(t, db, &model.AIApprovalTask{
+		ApprovalID:     approvalID,
+		CheckpointID:   checkpointID,
+		SessionID:      sessionID,
+		RunID:          "run-resumeapproval-parity",
+		UserID:         71,
+		ToolName:       "host_exec",
+		ToolCallID:     resumeTargetID,
+		ArgumentsJSON:  `{"command":"uptime"}`,
+		PreviewJSON:    `{}`,
+		Status:         "pending",
+		TimeoutSeconds: 300,
+		ExpiresAt:      ptrTime(now.Add(10 * time.Minute)),
+		DecisionSource: ptrString("user"),
+		PolicyVersion:  ptrString("v1"),
+	})
+
+	l := &Logic{
+		svcCtx:          &svc.ServiceContext{DB: db},
+		ChatDAO:         aidao.NewAIChatDAO(db),
+		ApprovalDAO:     aidao.NewAIApprovalTaskDAO(db),
+		AIRouter:        agent,
+		CheckpointStore: store,
+	}
+
+	var emitted []airuntime.PublicStreamEvent
+	if err := l.ResumeApproval(context.Background(), ResumeApprovalInput{
+		ApprovalID: approvalID,
+		Approved:   true,
+		Comment:    "resume it",
+		UserID:     71,
+	}, func(event string, data any) {
+		emitted = append(emitted, airuntime.PublicStreamEvent{Event: event, Data: data})
+	}); err != nil {
+		t.Fatalf("resume approval: %v", err)
+	}
+
+	if len(emitted) == 0 || emitted[0].Event != "meta" {
+		t.Fatalf("expected meta event first, got %#v", emitted)
+	}
+	assertPublicEventPresent(t, emitted, "tool_call")
+	assertPublicEventPresent(t, emitted, "tool_result")
+	assertPublicEventPresent(t, emitted, "done")
+	assertPublicEventAbsent(t, emitted, "error")
+
+	donePayload := findPublicEventPayload(t, emitted, "done")
+	if status := stringValue(donePayload, "status"); status != "completed_with_tool_errors" {
+		t.Fatalf("expected done status completed_with_tool_errors, got %#v", donePayload)
+	}
+	if strings.TrimSpace(stringValue(donePayload, "summary")) == "" {
+		t.Fatalf("expected done summary fallback for tool error completion, got %#v", donePayload)
+	}
+
+	task, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), approvalID)
+	if err != nil {
+		t.Fatalf("reload approval task: %v", err)
+	}
+	if task == nil || task.Status != "approved" {
+		t.Fatalf("expected approval task to be approved after resume, got %#v", task)
+	}
+}
+
 func newLogicTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -2074,6 +2215,36 @@ func findEventField(t *testing.T, events []airuntime.PublicStreamEvent, wantEven
 	return ""
 }
 
+func findPublicEventPayload(t *testing.T, events []airuntime.PublicStreamEvent, wantEvent string) map[string]any {
+	t.Helper()
+	for _, event := range events {
+		if event.Event != wantEvent {
+			continue
+		}
+		payload, ok := event.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected %s payload to be a map, got %T", wantEvent, event.Data)
+		}
+		return payload
+	}
+	t.Fatalf("expected %s event, got %#v", wantEvent, events)
+	return nil
+}
+
+func assertPublicEventPresent(t *testing.T, events []airuntime.PublicStreamEvent, wantEvent string) {
+	t.Helper()
+	_ = findPublicEventPayload(t, events, wantEvent)
+}
+
+func assertPublicEventAbsent(t *testing.T, events []airuntime.PublicStreamEvent, wantEvent string) {
+	t.Helper()
+	for _, event := range events {
+		if event.Event == wantEvent {
+			t.Fatalf("expected %s to be absent, got %#v", wantEvent, events)
+		}
+	}
+}
+
 func projectionSummaryContent(t *testing.T, projection *model.AIRunProjection) string {
 	t.Helper()
 	if projection == nil {
@@ -2093,30 +2264,67 @@ func projectionSummaryContent(t *testing.T, projection *model.AIRunProjection) s
 
 type scriptedAgent struct {
 	runEvents    []*adk.AgentEvent
+	resumeEvents []*adk.AgentEvent
 	capturedMeta runtimectx.AIMetadata
 	beforeRun    func(context.Context)
+	beforeResume func(context.Context, *adk.ResumeInfo)
+	runFn        func(context.Context, *adk.AgentInput, ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent]
+	resumeFn     func(context.Context, *adk.ResumeInfo, ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent]
 }
 
 func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
 func (s *scriptedAgent) Description(context.Context) string { return "scripted agent for tests" }
 
-func (s *scriptedAgent) Run(ctx context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+func (s *scriptedAgent) Run(ctx context.Context, input *adk.AgentInput, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	if s.runFn != nil {
+		return s.runFn(ctx, input, opts...)
+	}
 	s.capturedMeta = runtimectx.AIMetadataFrom(ctx)
 	if s.beforeRun != nil {
 		s.beforeRun(ctx)
 	}
-	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
-	go func() {
-		for _, event := range s.runEvents {
-			gen.Send(event)
-		}
-		gen.Close()
-	}()
-	return iter
+	return iteratorFromAgentEvents(s.runEvents)
 }
 
-func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+func (s *scriptedAgent) Resume(ctx context.Context, info *adk.ResumeInfo, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	if s.beforeResume != nil {
+		s.beforeResume(ctx, info)
+	}
+	if s.resumeFn != nil {
+		return s.resumeFn(ctx, info, opts...)
+	}
+	if s.resumeEvents != nil {
+		return iteratorFromAgentEvents(s.resumeEvents)
+	}
 	return s.Run(ctx, nil)
+}
+
+type inMemoryCheckpointStore struct {
+	data map[string][]byte
+}
+
+func (m *inMemoryCheckpointStore) Get(_ context.Context, key string) ([]byte, bool, error) {
+	value, ok := m.data[key]
+	return value, ok, nil
+}
+
+func (m *inMemoryCheckpointStore) Set(_ context.Context, key string, value []byte) error {
+	if m.data == nil {
+		m.data = make(map[string][]byte)
+	}
+	m.data[key] = value
+	return nil
+}
+
+func iteratorFromAgentEvents(events []*adk.AgentEvent) *adk.AsyncIterator[*adk.AgentEvent] {
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	go func() {
+		defer gen.Close()
+		for _, event := range events {
+			gen.Send(event)
+		}
+	}()
+	return iter
 }
 
 type shellSnapshot struct {

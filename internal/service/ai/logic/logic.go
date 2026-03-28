@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -1644,60 +1643,28 @@ func (l *Logic) ResumeApproval(ctx context.Context, input ResumeApprovalInput, e
 		return fmt.Errorf("resume execution: %w", err)
 	}
 
-	// 消费事件
-	var assistantContent strings.Builder
 	projector := airuntime.NewStreamProjector()
-	stopConsuming := false
-
-	for {
-		if stopConsuming {
-			break
-		}
-
-		event, ok := iterator.Next()
-		if !ok {
-			break
-		}
-
-		if event.Err != nil {
-			projected := projector.Fail(task.RunID, event.Err)
-			emit(projected.Event, projected.Data)
-			return nil
-		}
-
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
-			for {
-				msg, err := event.Output.MessageOutput.MessageStream.Recv()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					stopConsuming = true
-					projected := projector.Fail(task.RunID, err)
-					emit(projected.Event, projected.Data)
-					break
-				}
-				if msg == nil {
-					continue
-				}
-
-				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
-				chunkEvent.AgentName = event.AgentName
-				consumeProjectedEvents(projector.Consume(chunkEvent), emit, &assistantContent)
-			}
-			continue
-		}
-
-		consumeProjectedEvents(projector.Consume(event), emit, &assistantContent)
+	result, err := processAgentIterator(ctx, iteratorProcessInput{
+		Iterator:  iterator,
+		Projector: projector,
+		Emit:      emit,
+	})
+	if err != nil {
+		return err
 	}
-
-	// 刷新缓冲区
-	if remaining := projector.FlushBuffer(); len(remaining) > 0 {
-		for _, e := range remaining {
-			emit(e.Event, e.Data)
-		}
+	if result.FatalErr != nil {
+		projected := projector.Fail(task.RunID, result.FatalErr)
+		emit(projected.Event, projected.Data)
+		return nil
+	}
+	if result.Interrupted {
+		return nil
 	}
 	done := projector.Finish(task.RunID)
+	if payload, ok := done.Data.(map[string]any); ok {
+		ensureDoneSummary(payload, result.SummaryText, result.HasToolErrors)
+		done.Data = payload
+	}
 	emit(done.Event, done.Data)
 
 	return nil
