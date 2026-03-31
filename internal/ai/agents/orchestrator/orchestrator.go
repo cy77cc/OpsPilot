@@ -12,12 +12,10 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/cicd"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/deployment"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/governance"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/history"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/host"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/infrastructure"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/kubernetes"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/monitor"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/platform"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/service"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/ai/common/middleware"
@@ -53,15 +51,7 @@ func NewOpsPilotAgent(ctx context.Context) (adk.ResumableAgent, error) {
 	if err != nil {
 		return nil, err
 	}
-	historyAgent, err := history.New(ctx)
-	if err != nil {
-		return nil, err
-	}
 	infrastructureAgent, err := infrastructure.New(ctx)
-	if err != nil {
-		return nil, err
-	}
-	platformAgent, err := platform.New(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +78,12 @@ func NewOpsPilotAgent(ctx context.Context) (adk.ResumableAgent, error) {
 		return nil, err
 	}
 	return deep.New(ctx, &deep.Config{
-		Name:                   "OpsPilotAgent",
-		Description:            "Main DeepAgents entrypoint for OpsPilot.",
+		Name:        "OpsPilotAgent",
+		Description: "Main DeepAgents entrypoint for OpsPilot.",
 		// Instruction:            opsPilotSystemPrompt,
 		ChatModel:              model,
 		ToolsConfig:            adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools}},
-		SubAgents:              []adk.Agent{k8sAgent, hostAgent, monitorAgent, changeAgent, cicdAgent, deploymentAgent, governanceAgent, historyAgent, infrastructureAgent, platformAgent, serviceAgent},
+		SubAgents:              []adk.Agent{k8sAgent, hostAgent, monitorAgent, changeAgent, cicdAgent, deploymentAgent, governanceAgent, infrastructureAgent, serviceAgent},
 		WithoutGeneralSubAgent: true,
 		Handlers:               handlers,
 		MaxIteration:           100,
@@ -101,5 +91,5 @@ func NewOpsPilotAgent(ctx context.Context) (adk.ResumableAgent, error) {
 }
 
 func newTools(ctx context.Context) []tool.BaseTool {
-	return []tool.BaseTool{platform.PlatformDiscoverResources(ctx)}
+	return []tool.BaseTool{PlatformDiscoverResources(ctx), LoadSessionHistory(ctx)}
 }

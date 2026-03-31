@@ -745,7 +745,7 @@ export interface UsageLogsParams extends UsageStatsParams {
 export interface AILLMProvider {
   id: number;
   name: string;
-  provider: 'qwen' | 'ark' | 'ollama' | string;
+  provider: 'qwen' | 'ark' | 'ollama' | 'openai' | 'minimax' | string;
   model: string;
   base_url: string;
   api_key_masked?: string;

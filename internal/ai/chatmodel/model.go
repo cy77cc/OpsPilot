@@ -8,7 +8,9 @@ import (
 	"time"
 
 	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
+	"github.com/cloudwego/eino-ext/components/model/claude"
 	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
+	"github.com/cloudwego/eino-ext/components/model/openai"
 	qwenmodel "github.com/cloudwego/eino-ext/components/model/qwen"
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -110,6 +112,25 @@ func newConfiguredChatModel(ctx context.Context, opts ChatModelConfig) (einomode
 			Timeout:     &opts.Timeout,
 			Thinking: &arkruntime.Thinking{
 				Type: arkruntime.ThinkingTypeDisabled,
+			},
+		})
+	case "openai":
+		temp := opts.Temp
+		return openai.NewChatModel(ctx, &openai.ChatModelConfig{
+			APIKey:      config.CFG.LLM.APIKey,
+			BaseURL:     config.CFG.LLM.BaseURL,
+			Model:       config.CFG.LLM.Model,
+			Temperature: &temp,
+		})
+	case "minimax":
+		temp := opts.Temp
+		return claude.NewChatModel(ctx, &claude.Config{
+			APIKey:      config.CFG.LLM.APIKey,
+			BaseURL:     &config.CFG.LLM.BaseURL,
+			Model:       config.CFG.LLM.Model,
+			Temperature: &temp,
+			Thinking: &claude.Thinking{
+				Enable: false,
 			},
 		})
 	default:

@@ -10,11 +10,9 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/cicd"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/deployment"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/history"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/host"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/kubernetes"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/monitor"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/platform"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/service"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/ai/common/middleware"
@@ -42,10 +40,6 @@ func New(ctx context.Context) (adk.Agent, error) {
 }
 
 func newTools(ctx context.Context) []tool.BaseTool {
-	platformTools := []tool.InvokableTool{
-		history.LoadSessionHistory(ctx),
-		platform.PlatformDiscoverResources(ctx),
-	}
 	k8sTools := kubernetes.NewKubernetesTools(ctx)
 	monitorTools := monitor.NewMonitorTools(ctx)
 	hostTools := host.NewHostTools(ctx)
@@ -54,10 +48,7 @@ func newTools(ctx context.Context) []tool.BaseTool {
 		deployment.ServiceListInventory(ctx),
 	}
 
-	readonly := make([]tool.BaseTool, 0, len(platformTools)+len(k8sTools)+len(monitorTools)+len(hostTools)+len(deploymentTools))
-	for _, t := range platformTools {
-		readonly = append(readonly, t)
-	}
+	readonly := make([]tool.BaseTool, 0, len(k8sTools)+len(monitorTools)+len(hostTools)+len(deploymentTools))
 	for _, t := range k8sTools {
 		readonly = append(readonly, t)
 	}

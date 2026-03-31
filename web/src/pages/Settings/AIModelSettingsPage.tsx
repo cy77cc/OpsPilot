@@ -14,6 +14,7 @@ import {
   Popconfirm,
   Row,
   Segmented,
+  Select,
   Space,
   Switch,
   Table,
@@ -45,12 +46,14 @@ import {
 
 const { Text, Paragraph } = Typography;
 
-type ProviderType = 'qwen' | 'ark' | 'ollama';
+type ProviderType = 'qwen' | 'ark' | 'ollama' | 'openai' | 'minimax';
 
 const providerChoices: Array<{ label: string; value: ProviderType }> = [
   { label: 'Qwen', value: 'qwen' },
   { label: 'Ark', value: 'ark' },
   { label: 'Ollama', value: 'ollama' },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'MiniMax', value: 'minimax' },
 ];
 
 interface ModelFormValues {
@@ -428,7 +431,7 @@ const AIModelSettingsPage: React.FC = () => {
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="provider" label="供应商" rules={[{ required: true }]}>
-                <Segmented block options={providerChoices} />
+                <Select options={providerChoices} placeholder="请选择供应商" />
               </Form.Item>
             </Col>
             <Col span={12}>
