@@ -35,19 +35,19 @@ type EventInfo struct {
 
 // HPAInfo Horizontal Pod Autoscaler 信息结构。
 type HPAInfo struct {
-	Name        string          `json:"name"`        // HPA 名称
-	Namespace   string          `json:"namespace"`   // 命名空间
-	Reference   string          `json:"reference"`   // 目标引用
+	Name        string          `json:"name"`         // HPA 名称
+	Namespace   string          `json:"namespace"`    // 命名空间
+	Reference   string          `json:"reference"`    // 目标引用
 	MinReplicas int32           `json:"min_replicas"` // 最小副本数
 	MaxReplicas int32           `json:"max_replicas"` // 最大副本数
-	CurrentCPU  string          `json:"current_cpu"` // 当前 CPU 使用率
-	TargetCPU   string          `json:"target_cpu"`  // 目标 CPU 使用率
-	CurrentMem  string          `json:"current_mem"` // 当前内存使用率
-	TargetMem   string          `json:"target_mem"`  // 目标内存使用率
-	Replicas    int32           `json:"replicas"`    // 当前副本数
-	Metrics     []HPAMetricInfo `json:"metrics"`     // 指标列表
-	Age         string          `json:"age"`         // 创建时长
-	CreatedAt   string          `json:"created_at"`  // 创建时间
+	CurrentCPU  string          `json:"current_cpu"`  // 当前 CPU 使用率
+	TargetCPU   string          `json:"target_cpu"`   // 目标 CPU 使用率
+	CurrentMem  string          `json:"current_mem"`  // 当前内存使用率
+	TargetMem   string          `json:"target_mem"`   // 目标内存使用率
+	Replicas    int32           `json:"replicas"`     // 当前副本数
+	Metrics     []HPAMetricInfo `json:"metrics"`      // 指标列表
+	Age         string          `json:"age"`          // 创建时长
+	CreatedAt   string          `json:"created_at"`   // 创建时间
 }
 
 // HPAMetricInfo HPA 指标信息结构。
@@ -60,21 +60,21 @@ type HPAMetricInfo struct {
 
 // ResourceQuotaInfo ResourceQuota 信息结构。
 type ResourceQuotaInfo struct {
-	Name      string            `json:"name"`      // 配额名称
-	Namespace string            `json:"namespace"` // 命名空间
-	Hard      map[string]string `json:"hard"`      // 硬限制
-	Used      map[string]string `json:"used"`      // 已使用量
-	Age       string            `json:"age"`       // 创建时长
+	Name      string            `json:"name"`       // 配额名称
+	Namespace string            `json:"namespace"`  // 命名空间
+	Hard      map[string]string `json:"hard"`       // 硬限制
+	Used      map[string]string `json:"used"`       // 已使用量
+	Age       string            `json:"age"`        // 创建时长
 	CreatedAt string            `json:"created_at"` // 创建时间
 }
 
 // LimitRangeInfo LimitRange 信息结构。
 type LimitRangeInfo struct {
-	Name      string           `json:"name"`      // 限制范围名称
-	Namespace string           `json:"namespace"` // 命名空间
-	Type      string           `json:"type"`      // 类型
-	Limits    []LimitRangeItem `json:"limits"`    // 限制项列表
-	Age       string           `json:"age"`       // 创建时长
+	Name      string           `json:"name"`       // 限制范围名称
+	Namespace string           `json:"namespace"`  // 命名空间
+	Type      string           `json:"type"`       // 类型
+	Limits    []LimitRangeItem `json:"limits"`     // 限制项列表
+	Age       string           `json:"age"`        // 创建时长
 	CreatedAt string           `json:"created_at"` // 创建时间
 }
 
@@ -614,6 +614,12 @@ func (h *Handler) GetUpgradePlan(c *gin.Context) {
 // UpgradeClusterReq 集群升级请求结构。
 type UpgradeClusterReq struct {
 	TargetVersion string `json:"target_version" binding:"required"` // 目标版本 (必填)
+	ApprovalToken string `json:"approval_token"`                    // 审批票据
+}
+
+// RenewCertificatesReq 证书续期请求结构。
+type RenewCertificatesReq struct {
+	ApprovalToken string `json:"approval_token"` // 审批票据
 }
 
 // UpgradeClusterResult 集群升级结果结构。
@@ -672,6 +678,12 @@ func (h *Handler) UpgradeCluster(c *gin.Context) {
 		return
 	}
 
+	gate := h.requireHighRiskApproval(c.Request.Context(), id, "", "cluster.upgrade", "cluster", cluster.Name, req.ApprovalToken, httpx.UIDFromCtx(c))
+	if !gate.Allowed {
+		httpx.OK(c, operationResponseFromGate(id, "cluster", cluster.Name, gate))
+		return
+	}
+
 	// Get current version
 	client, err := h.getClusterClient(c.Request.Context(), id)
 	if err != nil {
@@ -704,7 +716,16 @@ func (h *Handler) UpgradeCluster(c *gin.Context) {
 		},
 	}
 
-	httpx.OK(c, result)
+	audit, _ := h.RecordClusterOperationAudit(c.Request.Context(), id, "", "cluster.upgrade", "cluster", cluster.Name, "success", "upgrade preview generated", uint(httpx.UIDFromCtx(c)))
+	httpx.OK(c, operationSuccessResponse(id, "cluster", cluster.Name, "upgrade preview generated", audit.ID, map[string]any{
+		"cluster_id":    result.ClusterID,
+		"from_version":  result.FromVersion,
+		"to_version":    result.ToVersion,
+		"status":        result.Status,
+		"message":       result.Message,
+		"upgrade_steps": result.UpgradeSteps,
+		"current_stage": "preview",
+	}))
 }
 
 // RenewCertificates 续期集群证书。
@@ -743,6 +764,14 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 	// Check if platform managed
 	if cluster.Source != "platform_managed" {
 		httpx.BadRequest(c, "only platform-managed clusters can renew certificates through this API")
+		return
+	}
+
+	var req RenewCertificatesReq
+	_ = c.ShouldBindJSON(&req)
+	gate := h.requireHighRiskApproval(c.Request.Context(), id, "", "cluster.certificates.renew", "cluster", cluster.Name, req.ApprovalToken, httpx.UIDFromCtx(c))
+	if !gate.Allowed {
+		httpx.OK(c, operationResponseFromGate(id, "cluster", cluster.Name, gate))
 		return
 	}
 
@@ -801,11 +830,13 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 		}
 	}
 
-	httpx.OK(c, gin.H{
+	message := fmt.Sprintf("Processed %d control plane nodes", len(controlPlaneNodes))
+	audit, _ := h.RecordClusterOperationAudit(c.Request.Context(), id, "", "cluster.certificates.renew", "cluster", cluster.Name, "success", message, uint(httpx.UIDFromCtx(c)))
+	httpx.OK(c, operationSuccessResponse(id, "cluster", cluster.Name, message, audit.ID, map[string]any{
 		"cluster_id": id,
 		"results":    results,
-		"message":    fmt.Sprintf("Processed %d control plane nodes", len(controlPlaneNodes)),
-	})
+		"message":    message,
+	}))
 }
 
 // executeCertRenewal 在主机上执行证书续期。

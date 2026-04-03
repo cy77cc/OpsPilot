@@ -26,6 +26,7 @@ const EnhancedDeploymentCreatePage = lazy(() => import('./pages/Deployment/Enhan
 const ApprovalCenterPage = lazy(() => import('./pages/Deployment/ApprovalCenterPage'));
 const ClusterListPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterListPage'));
 const ClusterDetailPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterDetailPage'));
+const ClusterOperationCenterPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterOperationCenterPage'));
 const ClusterBootstrapWizard = lazy(() => import('./pages/Deployment/Infrastructure/ClusterBootstrapWizard'));
 const ClusterImportWizard = lazy(() => import('./pages/Deployment/Infrastructure/ClusterImportWizard'));
 const CredentialListPage = lazy(() => import('./pages/Deployment/Infrastructure/CredentialListPage'));
@@ -107,6 +108,7 @@ export default function ProtectedApp() {
                 <Route path="/deployment/approvals" element={withAuth('deploy:target', 'read', <ApprovalCenterPage />)} />
                 <Route path="/deployment/infrastructure/clusters" element={withAuth('cluster', 'read', <ClusterListPage />)} />
                 <Route path="/deployment/infrastructure/clusters/:id" element={withAuth('cluster', 'read', <ClusterDetailPage />)} />
+                <Route path="/deployment/infrastructure/clusters/:id/operations" element={withAuth('cluster', 'read', <ClusterOperationCenterPage />)} />
                 <Route path="/deployment/infrastructure/clusters/bootstrap" element={withAuth('cluster', 'write', <ClusterBootstrapWizard />)} />
                 <Route path="/deployment/infrastructure/clusters/import" element={withAuth('cluster', 'write', <ClusterImportWizard />)} />
                 <Route path="/deployment/infrastructure/credentials" element={withAuth('cluster', 'read', <CredentialListPage />)} />

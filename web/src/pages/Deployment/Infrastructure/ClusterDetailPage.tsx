@@ -2,23 +2,26 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   Card, Tabs, Table, Tag, Button, Space, Descriptions, Spin, message,
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
-  Select
+  Select, Dropdown
 } from 'antd';
+import type { FormInstance } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, ClusterOutlined,
   DeleteOutlined, EditOutlined, ApiOutlined,
   PlusOutlined, SyncOutlined, NodeIndexOutlined, InfoCircleOutlined,
   AppstoreOutlined, CloudServerOutlined, SettingOutlined,
-  DatabaseOutlined, CloudOutlined, ToolOutlined
+  DatabaseOutlined, CloudOutlined, ToolOutlined,
+  MoreOutlined, SafetyOutlined, TagOutlined, AuditOutlined
 } from '@ant-design/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../../api';
 import type {
   Cluster, ClusterNode, NamespaceInfo, DeploymentInfo,
   StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo,
   ConfigMapInfo, SecretInfo, PVCInfo, PVInfo, ClusterServiceInfo,
   EventInfo, HPAInfo, ResourceQuotaInfo, LimitRangeInfo,
-  ClusterVersionInfo, CertificateInfo, ClusterUpgradePlan
+  ClusterVersionInfo, CertificateInfo, ClusterUpgradePlan,
+  ClusterOperationApproval, ClusterOperationResponse, ClusterOperationState
 } from '../../../api/modules/cluster';
 
 const { Text, Title } = Typography;
@@ -64,8 +67,27 @@ const ClusterDetailPage: React.FC = () => {
   const [addNodeModalVisible, setAddNodeModalVisible] = useState(false);
   const [nodeDrawerVisible, setNodeDrawerVisible] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ClusterNode | null>(null);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [pendingApprovalOperation, setPendingApprovalOperation] = useState<null | {
+    title: string;
+    actionKey: string;
+    resourceKey: string;
+    approval?: ClusterOperationApproval;
+    retry: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>;
+  }>(null);
+  const [nodeMutationLoadingKey, setNodeMutationLoadingKey] = useState<string>('');
+  const [nodeMetadataLoadingKey, setNodeMetadataLoadingKey] = useState<string>('');
+  const [operationFeedback, setOperationFeedback] = useState<Record<string, {
+    action: string;
+    state: ClusterOperationState;
+    message: string;
+    audit_id?: string | number;
+  }>>({});
   const [editForm] = Form.useForm();
   const [addNodeForm] = Form.useForm();
+  const [approvalForm] = Form.useForm();
+  const [nodeLabelForm] = Form.useForm();
+  const [nodeTaintForm] = Form.useForm();
 
   const loadCluster = useCallback(async () => {
     if (!clusterId) return;
@@ -197,6 +219,238 @@ const ClusterDetailPage: React.FC = () => {
     }
   }, [clusterId]);
 
+  const buildOperationLink = useCallback((auditId?: string | number) => {
+    if (!auditId) return '';
+    return `/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
+  }, [clusterId]);
+
+  const recordOperationFeedback = useCallback((nodeName: string, feedback: {
+    action: string;
+    state: ClusterOperationState;
+    message: string;
+    audit_id?: string | number;
+  }) => {
+    setOperationFeedback((prev) => ({
+      ...prev,
+      [nodeName]: feedback,
+    }));
+  }, []);
+
+  const openApprovalModal = useCallback((
+    operation: {
+      title: string;
+      actionKey: string;
+      resourceKey: string;
+      approval?: ClusterOperationApproval;
+      retry: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>;
+    },
+  ) => {
+    setPendingApprovalOperation(operation);
+    approvalForm.resetFields();
+    approvalForm.setFieldsValue({ approval_token: '' });
+    setApprovalModalVisible(true);
+  }, [approvalForm]);
+
+  const executeClusterOperation = useCallback(async <T,>(
+    actionKey: string,
+    resourceKey: string,
+    actionLabel: string,
+    runner: (approvalToken?: string) => Promise<ClusterOperationResponse<T>>,
+  ) => {
+    setNodeMutationLoadingKey(resourceKey);
+    try {
+      const result = await runner(undefined);
+      recordOperationFeedback(resourceKey, {
+        action: actionLabel,
+        state: result.state,
+        message: result.message,
+        audit_id: result.audit_id,
+      });
+
+      if (result.state === 'approval_required') {
+        openApprovalModal({
+          title: actionLabel,
+          actionKey,
+          resourceKey,
+          approval: result.approval,
+          retry: runner,
+        });
+        message.warning(result.approval?.ticket
+          ? `${actionLabel} 已进入审批，ticket: ${result.approval.ticket}`
+          : `${actionLabel} 已进入审批`);
+        return result;
+      }
+
+      if (result.state === 'rejected') {
+        message.error(result.message || `${actionLabel} 已拒绝`);
+      } else if (result.state === 'failed') {
+        message.error(result.message || `${actionLabel} 失败`);
+      } else {
+        message.success(result.message || `${actionLabel} 成功`);
+      }
+
+      if (result.audit_id) {
+        message.info(
+          <span>
+            审计记录已生成，前往{' '}
+            <Link to={buildOperationLink(result.audit_id)}>操作中心</Link>
+          </span>,
+        );
+      }
+
+      if (actionKey.includes('upgrade') || actionKey.includes('renew')) {
+        await loadClusterInfo();
+      } else {
+        await loadNodes();
+      }
+      return result;
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : `${actionLabel} 失败`);
+      throw err;
+    } finally {
+      setNodeMutationLoadingKey('');
+    }
+  }, [buildOperationLink, loadNodes, openApprovalModal, recordOperationFeedback]);
+
+  const submitApprovalToken = useCallback(async () => {
+    if (!pendingApprovalOperation) return;
+    try {
+      const values = await approvalForm.validateFields();
+      const token = String(values.approval_token || '').trim();
+      if (!token) {
+        message.warning('请输入 approval_token');
+        return;
+      }
+      setNodeMutationLoadingKey(pendingApprovalOperation.resourceKey);
+      const result = await pendingApprovalOperation.retry(token);
+      recordOperationFeedback(pendingApprovalOperation.resourceKey, {
+        action: pendingApprovalOperation.title,
+        state: result.state,
+        message: result.message,
+        audit_id: result.audit_id,
+      });
+      setApprovalModalVisible(false);
+      setPendingApprovalOperation(null);
+      approvalForm.resetFields();
+      if (result.state === 'completed') {
+        message.success(result.message || `${pendingApprovalOperation.title} 已完成`);
+        if (result.audit_id) {
+          message.info(
+            <span>
+              审计记录已生成，前往{' '}
+              <Link to={buildOperationLink(result.audit_id)}>操作中心</Link>
+            </span>,
+          );
+        }
+        if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
+          await loadClusterInfo();
+        } else {
+          await loadNodes();
+        }
+        return;
+      }
+      if (result.state === 'approval_required') {
+        openApprovalModal({
+          title: pendingApprovalOperation.title,
+          actionKey: pendingApprovalOperation.actionKey,
+          resourceKey: pendingApprovalOperation.resourceKey,
+          approval: result.approval,
+          retry: pendingApprovalOperation.retry,
+        });
+        message.warning(result.approval?.ticket
+          ? `${pendingApprovalOperation.title} 仍需审批，ticket: ${result.approval.ticket}`
+          : `${pendingApprovalOperation.title} 仍需审批`);
+        return;
+      }
+      if (result.state === 'rejected') {
+        message.error(result.message || `${pendingApprovalOperation.title} 已拒绝`);
+      } else if (result.state === 'failed') {
+        message.error(result.message || `${pendingApprovalOperation.title} 失败`);
+      }
+      if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
+        await loadClusterInfo();
+      } else {
+        await loadNodes();
+      }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '提交审批失败');
+    } finally {
+      setNodeMutationLoadingKey('');
+    }
+  }, [approvalForm, buildOperationLink, loadNodes, openApprovalModal, pendingApprovalOperation, recordOperationFeedback]);
+
+  const performNodeOperation = useCallback(async (
+    actionKey: string,
+    node: ClusterNode,
+    runner: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>,
+  ) => {
+    const actionLabels: Record<string, string> = {
+      cordon: '节点隔离',
+      uncordon: '节点恢复',
+      drain: '节点排空',
+      remove: '节点移除',
+    };
+    const actionLabel = actionLabels[actionKey] || actionKey;
+    await executeClusterOperation(actionKey, `${node.name}:${actionKey}`, actionLabel, runner);
+  }, [executeClusterOperation]);
+
+  const handleNodeMetadataOperation = useCallback(async (
+    kind: 'label' | 'taint',
+    mode: 'upsert' | 'remove',
+    node: ClusterNode,
+    values: { key: string; value?: string; effect?: string; approvalToken?: string },
+  ) => {
+    const resourceKey = `${node.name}:${kind}:${values.key}`;
+    setNodeMetadataLoadingKey(resourceKey);
+    try {
+      const runner = async (approvalToken?: string) => {
+        if (kind === 'label' && mode === 'upsert') {
+          return Api.cluster.upsertNodeLabel(clusterId, node.name, {
+            key: values.key,
+            value: values.value,
+            approval_token: approvalToken,
+          }).then((resp) => resp.data);
+        }
+        if (kind === 'label' && mode === 'remove') {
+          return Api.cluster.removeNodeLabel(clusterId, node.name, {
+            key: values.key,
+            value: values.value,
+            approval_token: approvalToken,
+          }).then((resp) => resp.data);
+        }
+        if (kind === 'taint' && mode === 'upsert') {
+          return Api.cluster.upsertNodeTaint(clusterId, node.name, {
+            key: values.key,
+            value: values.value,
+            effect: values.effect,
+            approval_token: approvalToken,
+          }).then((resp) => resp.data);
+        }
+        return Api.cluster.removeNodeTaint(clusterId, node.name, {
+          key: values.key,
+          value: values.value,
+          effect: values.effect,
+          approval_token: approvalToken,
+        }).then((resp) => resp.data);
+      };
+
+      const result = await executeClusterOperation(
+        `${kind}:${mode}`,
+        resourceKey,
+        `${kind === 'label' ? '标签' : '污点'}${mode === 'upsert' ? '更新' : '删除'}`,
+        runner,
+      );
+      if (result.state !== 'approval_required') {
+        nodeLabelForm.resetFields();
+        nodeTaintForm.resetFields();
+      }
+    } catch {
+      // handled by executeClusterOperation
+    } finally {
+      setNodeMetadataLoadingKey('');
+    }
+  }, [clusterId, executeClusterOperation, nodeLabelForm, nodeTaintForm]);
+
   useEffect(() => {
     loadCluster();
     loadNodes();
@@ -280,16 +534,40 @@ const ClusterDetailPage: React.FC = () => {
     }
   };
 
-  const handleRemoveNode = async (nodeName: string) => {
-    if (!clusterId) return;
-    try {
-      await Api.cluster.removeClusterNode(clusterId, nodeName);
-      message.success('节点已移除');
-      loadNodes();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '移除节点失败');
-    }
-  };
+  const handleNodeCordon = useCallback((node: ClusterNode) => {
+    if (!clusterId) return Promise.resolve();
+    return performNodeOperation('cordon', node, (approvalToken) => (
+      Api.cluster.cordonNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
+    ));
+  }, [clusterId, performNodeOperation]);
+
+  const handleNodeUncordon = useCallback((node: ClusterNode) => {
+    if (!clusterId) return Promise.resolve();
+    return performNodeOperation('uncordon', node, (approvalToken) => (
+      Api.cluster.uncordonNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
+    ));
+  }, [clusterId, performNodeOperation]);
+
+  const handleNodeDrain = useCallback((node: ClusterNode) => {
+    if (!clusterId) return Promise.resolve();
+    return performNodeOperation('drain', node, (approvalToken) => (
+      Api.cluster.drainNode(clusterId, node.name, {
+        approval_token: approvalToken,
+        ignore_daemonsets: true,
+        delete_emptydir_data: false,
+        force: false,
+        grace_period_seconds: 30,
+        timeout_seconds: 300,
+      }).then((resp) => resp.data)
+    ));
+  }, [clusterId, performNodeOperation]);
+
+  const handleNodeRemove = useCallback((node: ClusterNode) => {
+    if (!clusterId) return Promise.resolve();
+    return performNodeOperation('remove', node, (approvalToken) => (
+      Api.cluster.removeClusterNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
+    ));
+  }, [clusterId, performNodeOperation]);
 
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
@@ -304,9 +582,75 @@ const ClusterDetailPage: React.FC = () => {
     return <Badge status="warning" text="Unknown" />;
   };
 
+  const runNodeMenuAction = useCallback((record: ClusterNode, key: string) => {
+    if (key === 'cordon') return void handleNodeCordon(record);
+    if (key === 'uncordon') return void handleNodeUncordon(record);
+    if (key === 'drain') return void handleNodeDrain(record);
+    if (key === 'remove') {
+      Modal.confirm({
+        title: '移除节点',
+        content: `确定要移除节点 ${record.name} 吗？此操作可能影响工作负载调度。`,
+        okText: '确定',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: () => handleNodeRemove(record),
+      });
+    }
+  }, [handleNodeCordon, handleNodeUncordon, handleNodeDrain, handleNodeRemove]);
+
+  const nodeOperationMenuItems = (record: ClusterNode) => ([
+    {
+      key: 'cordon',
+      label: 'Cordon',
+      icon: <SafetyOutlined />,
+    },
+    {
+      key: 'uncordon',
+      label: 'Uncordon',
+    },
+    {
+      key: 'drain',
+      label: 'Drain',
+      icon: <AuditOutlined />,
+    },
+    {
+      key: 'remove',
+      label: 'Remove',
+      danger: true,
+      icon: <DeleteOutlined />,
+    },
+  ]);
+
   // Table columns
   const nodeColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name', render: (name: string, record: ClusterNode) => <a onClick={() => { setSelectedNode(record); setNodeDrawerVisible(true); }}>{name}</a> },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string, record: ClusterNode) => (
+        <Space direction="vertical" size={0}>
+          <Button type="link" className="p-0 h-auto" onClick={() => { setSelectedNode(record); setNodeDrawerVisible(true); }}>{name}</Button>
+          {operationFeedback[record.name] && (
+            <Space size={6} wrap>
+              <Tag color={
+                operationFeedback[record.name].state === 'completed'
+                  ? 'green'
+                  : operationFeedback[record.name].state === 'approval_required'
+                    ? 'orange'
+                    : 'red'
+              }>
+                {operationFeedback[record.name].action}
+              </Tag>
+              {operationFeedback[record.name].audit_id && (
+                <Link to={buildOperationLink(operationFeedback[record.name].audit_id)}>
+                  审计
+                </Link>
+              )}
+            </Space>
+          )}
+        </Space>
+      ),
+    },
     { title: 'IP', dataIndex: 'ip', key: 'ip' },
     { title: '角色', dataIndex: 'role', key: 'role', render: (role: string) => <Tag color={role === 'control-plane' ? 'blue' : 'green'}>{role}</Tag> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (status: string) => getNodeStatusBadge(status) },
@@ -314,14 +658,40 @@ const ClusterDetailPage: React.FC = () => {
     { title: '容器运行时', dataIndex: 'container_runtime', key: 'container_runtime', render: (r: string) => r?.split('/')[0] || '-' },
     { title: 'CPU/内存', key: 'resources', render: (_: any, r: ClusterNode) => <span>{r.allocatable_cpu || '-'} / {r.allocatable_mem || '-'}</span> },
     {
-      title: '操作', key: 'actions', width: 100,
+      title: '操作', key: 'actions', width: 180,
       render: (_: any, record: ClusterNode) => (
-        <Space>
-          <Tooltip title="查看详情"><Button type="link" size="small" icon={<InfoCircleOutlined />} onClick={() => { setSelectedNode(record); setNodeDrawerVisible(true); }} /></Tooltip>
-          {cluster?.source === 'platform_managed' && record.role !== 'control-plane' && (
-            <Popconfirm title="确定移除此节点？" onConfirm={() => handleRemoveNode(record.name)} okText="确定" cancelText="取消">
-              <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
+        <Space direction="vertical" size={4}>
+          <Space>
+            <Tooltip title="查看详情">
+              <Button
+                type="link"
+                size="small"
+                icon={<InfoCircleOutlined />}
+                onClick={() => { setSelectedNode(record); setNodeDrawerVisible(true); }}
+              />
+            </Tooltip>
+            {cluster?.source === 'platform_managed' && record.role !== 'control-plane' && (
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: nodeOperationMenuItems(record),
+                  onClick: ({ key }) => { runNodeMenuAction(record, key); },
+                }}
+              >
+                <Button size="small" icon={<MoreOutlined />}>操作</Button>
+              </Dropdown>
+            )}
+          </Space>
+          {operationFeedback[record.name] && (
+            <Tag color={
+              operationFeedback[record.name].state === 'completed'
+                ? 'green'
+                : operationFeedback[record.name].state === 'approval_required'
+                  ? 'orange'
+                  : 'red'
+            }>
+              {operationFeedback[record.name].state}
+            </Tag>
           )}
         </Space>
       ),
@@ -395,6 +765,9 @@ const ClusterDetailPage: React.FC = () => {
           </div>
         </div>
         <Space>
+          <Button icon={<AuditOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`)}>
+            操作中心
+          </Button>
           <Button icon={<SyncOutlined />} onClick={handleSyncNodes} loading={nodesLoading}>同步节点</Button>
           <Button icon={<ApiOutlined />} onClick={handleTestConnection}>测试连接</Button>
           <Button icon={<EditOutlined />} onClick={() => { editForm.setFieldsValue({ name: cluster.name, description: cluster.description }); setEditModalVisible(true); }}>编辑</Button>
@@ -599,13 +972,12 @@ const ClusterDetailPage: React.FC = () => {
                     title="续期证书"
                     description="确定要续期所有证书吗？此操作将重启控制平面组件。"
                     onConfirm={async () => {
-                      try {
-                        const res = await Api.cluster.renewCertificates(clusterId);
-                        message.success(res.data.message);
-                        loadClusterInfo();
-                      } catch (err) {
-                        message.error(err instanceof Error ? err.message : '证书续期失败');
-                      }
+                      await executeClusterOperation(
+                        'renew-certificates',
+                        'cluster:certificates',
+                        '证书续期',
+                        (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
+                      );
                     }}
                     okText="确定"
                     cancelText="取消"
@@ -631,16 +1003,19 @@ const ClusterDetailPage: React.FC = () => {
                       title="升级集群"
                       description="确定要升级集群吗？建议先备份数据。"
                       onConfirm={async () => {
-                        try {
-                          // Extract version number from current version (e.g., v1.28.0 -> 1.29.0)
-                          const currentParts = upgradePlan.current_version.replace('v', '').split('.');
-                          const nextMinor = parseInt(currentParts[1]) + 1;
-                          const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
-                          const res = await Api.cluster.upgradeCluster(clusterId, targetVersion);
-                          message.success(res.data.message);
-                        } catch (err) {
-                          message.error(err instanceof Error ? err.message : '升级预览失败');
-                        }
+                        // Extract version number from current version (e.g., v1.28.0 -> 1.29.0)
+                        const currentParts = upgradePlan.current_version.replace('v', '').split('.');
+                        const nextMinor = parseInt(currentParts[1], 10) + 1;
+                        const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
+                        await executeClusterOperation(
+                          'upgrade',
+                          `cluster:upgrade:${targetVersion}`,
+                          '集群升级',
+                          (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
+                            target_version: targetVersion,
+                            approval_token: approvalToken,
+                          }).then((resp) => resp.data),
+                        );
                       }}
                       okText="确定"
                       cancelText="取消"
@@ -703,18 +1078,121 @@ const ClusterDetailPage: React.FC = () => {
 
       <Drawer title={`节点详情: ${selectedNode?.name}`} placement="right" width={600} onClose={() => setNodeDrawerVisible(false)} open={nodeDrawerVisible}>
         {selectedNode && (
-          <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="名称" span={2}>{selectedNode.name}</Descriptions.Item>
-            <Descriptions.Item label="IP">{selectedNode.ip}</Descriptions.Item>
-            <Descriptions.Item label="状态">{getNodeStatusBadge(selectedNode.status)}</Descriptions.Item>
-            <Descriptions.Item label="角色"><Tag color={selectedNode.role === 'control-plane' ? 'blue' : 'green'}>{selectedNode.role}</Tag></Descriptions.Item>
-            <Descriptions.Item label="Kubelet">{selectedNode.kubelet_version}</Descriptions.Item>
-            <Descriptions.Item label="容器运行时">{selectedNode.container_runtime}</Descriptions.Item>
-            <Descriptions.Item label="操作系统">{selectedNode.os_image}</Descriptions.Item>
-            <Descriptions.Item label="内核版本">{selectedNode.kernel_version}</Descriptions.Item>
-            <Descriptions.Item label="CPU">{selectedNode.allocatable_cpu}</Descriptions.Item>
-            <Descriptions.Item label="内存">{selectedNode.allocatable_mem}</Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" className="w-full" size={16}>
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="名称" span={2}>{selectedNode.name}</Descriptions.Item>
+              <Descriptions.Item label="IP">{selectedNode.ip}</Descriptions.Item>
+              <Descriptions.Item label="状态">{getNodeStatusBadge(selectedNode.status)}</Descriptions.Item>
+              <Descriptions.Item label="角色"><Tag color={selectedNode.role === 'control-plane' ? 'blue' : 'green'}>{selectedNode.role}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Kubelet">{selectedNode.kubelet_version}</Descriptions.Item>
+              <Descriptions.Item label="容器运行时">{selectedNode.container_runtime}</Descriptions.Item>
+              <Descriptions.Item label="操作系统">{selectedNode.os_image}</Descriptions.Item>
+              <Descriptions.Item label="内核版本">{selectedNode.kernel_version}</Descriptions.Item>
+              <Descriptions.Item label="CPU">{selectedNode.allocatable_cpu}</Descriptions.Item>
+              <Descriptions.Item label="内存">{selectedNode.allocatable_mem}</Descriptions.Item>
+            </Descriptions>
+
+            <Card size="small" title="标签">
+              <Space wrap className="mb-3">
+                {selectedNode.labels && Object.keys(selectedNode.labels).length > 0 ? (
+                  Object.entries(selectedNode.labels).map(([key, value]) => (
+                    <Tag key={key} color="blue">{key}={value}</Tag>
+                  ))
+                ) : <Text type="secondary">暂无标签</Text>}
+              </Space>
+              <Form
+                form={nodeLabelForm}
+                layout="vertical"
+                onFinish={async (values: { key: string; value?: string }) => {
+                  await handleNodeMetadataOperation('label', 'upsert', selectedNode, values);
+                }}
+              >
+                <div className="grid grid-cols-1 gap-3">
+                  <Form.Item name="key" label="标签键" rules={[{ required: true }]} className="mb-0">
+                    <Input placeholder="app.kubernetes.io/name" />
+                  </Form.Item>
+                  <Form.Item name="value" label="标签值" className="mb-0">
+                    <Input placeholder="frontend" />
+                  </Form.Item>
+                </div>
+                <Space className="mt-3">
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={nodeMetadataLoadingKey.startsWith(`${selectedNode.name}:label`)}
+                  >
+                    保存标签
+                  </Button>
+                  <Button
+                    danger
+                    onClick={async () => {
+                      const values = await nodeLabelForm.validateFields();
+                      await handleNodeMetadataOperation('label', 'remove', selectedNode, values);
+                    }}
+                    loading={nodeMetadataLoadingKey.startsWith(`${selectedNode.name}:label`)}
+                  >
+                    删除标签
+                  </Button>
+                </Space>
+              </Form>
+            </Card>
+
+            <Card size="small" title="污点">
+              <Space wrap className="mb-3">
+                {selectedNode.taints && selectedNode.taints.length > 0 ? (
+                  selectedNode.taints.map((taint) => (
+                    <Tag key={`${taint.key}:${taint.effect}`} color="orange">
+                      {taint.key}={taint.value || '-'}:{taint.effect}
+                    </Tag>
+                  ))
+                ) : <Text type="secondary">暂无污点</Text>}
+              </Space>
+              <Form
+                form={nodeTaintForm}
+                layout="vertical"
+                onFinish={async (values: { key: string; value?: string; effect?: string }) => {
+                  await handleNodeMetadataOperation('taint', 'upsert', selectedNode, values);
+                }}
+              >
+                <div className="grid grid-cols-1 gap-3">
+                  <Form.Item name="key" label="污点键" rules={[{ required: true }]} className="mb-0">
+                    <Input placeholder="node-role.kubernetes.io/worker" />
+                  </Form.Item>
+                  <Form.Item name="value" label="污点值" className="mb-0">
+                    <Input placeholder="value" />
+                  </Form.Item>
+                  <Form.Item name="effect" label="效果" className="mb-0">
+                    <Select
+                      options={[
+                        { value: 'NoSchedule', label: 'NoSchedule' },
+                        { value: 'PreferNoSchedule', label: 'PreferNoSchedule' },
+                        { value: 'NoExecute', label: 'NoExecute' },
+                      ]}
+                    />
+                  </Form.Item>
+                </div>
+                <Space className="mt-3">
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={nodeMetadataLoadingKey.startsWith(`${selectedNode.name}:taint`)}
+                  >
+                    保存污点
+                  </Button>
+                  <Button
+                    danger
+                    onClick={async () => {
+                      const values = await nodeTaintForm.validateFields();
+                      await handleNodeMetadataOperation('taint', 'remove', selectedNode, values);
+                    }}
+                    loading={nodeMetadataLoadingKey.startsWith(`${selectedNode.name}:taint`)}
+                  >
+                    删除污点
+                  </Button>
+                </Space>
+              </Form>
+            </Card>
+          </Space>
         )}
       </Drawer>
     </div>

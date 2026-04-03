@@ -1,0 +1,411 @@
+// Package cluster 提供 Kubernetes 集群管理服务的核心业务逻辑。
+//
+// 本文件实现集群高风险操作的统一审批/审计辅助方法，以及操作历史查询接口。
+package cluster
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	clusterOperationCodeSuccess          = "success"
+	clusterOperationCodeApprovalRequired = "approval_required"
+	clusterOperationCodeApprovalRejected = "approval_rejected"
+	clusterOperationCodeTokenNotApproved = "token_not_approved"
+)
+
+var sensitiveOperationPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(bearer)\s+[A-Za-z0-9\-._~+/=]+`),
+	regexp.MustCompile(`(?i)\b(authorization|token|password|secret|key|cert|kubeconfig)\b\s*[:=]\s*([^\s,;]+)`),
+}
+
+// ClusterOperationResponse 是高风险操作的统一响应体。
+type ClusterOperationResponse struct {
+	State          string             `json:"state"`              // 操作状态
+	Approval       *OperationApproval `json:"approval,omitempty"` // 审批信息
+	AuditID        uint               `json:"audit_id,omitempty"` // 审计 ID
+	Code           string             `json:"code,omitempty"`     // 业务结果码
+	Message        string             `json:"message,omitempty"`  // 结果消息
+	Data           any                `json:"data,omitempty"`     // 结果数据
+	ClusterID      uint               `json:"-"`                  // 兼容旧字段
+	Resource       string             `json:"-"`                  // 兼容旧字段
+	ResourceID     string             `json:"-"`                  // 兼容旧字段
+	ApprovalTicket string             `json:"-"`                  // 兼容旧字段
+	Diagnostics    string             `json:"-"`                  // 兼容旧字段
+	Details        map[string]any     `json:"-"`                  // 兼容旧字段
+}
+
+// OperationHistoryItem 是操作历史列表项。
+type OperationHistoryItem struct {
+	AuditID     uint      `json:"audit_id"`
+	ClusterID   uint      `json:"cluster_id"`
+	Namespace   string    `json:"namespace"`
+	Action      string    `json:"action"`
+	Resource    string    `json:"resource"`
+	ResourceID  string    `json:"resource_id"`
+	Status      string    `json:"status"`
+	Message     string    `json:"message"`
+	Diagnostics string    `json:"diagnostics,omitempty"`
+	OperatorID  uint      `json:"operator_id"`
+	Operator    string    `json:"operator"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// OperationHistoryResponse 是操作历史分页响应。
+type OperationHistoryResponse struct {
+	List       []OperationHistoryItem `json:"list"`
+	Total      int64                  `json:"total"`
+	Page       int                    `json:"page"`
+	PageSize   int                    `json:"page_size"`
+	TotalPages int                    `json:"total_pages"`
+}
+
+// OperationGateResult 表示高风险操作的审批门禁结果。
+type OperationGateResult struct {
+	Allowed        bool
+	Code           string
+	Message        string
+	ApprovalTicket string
+	AuditID        uint
+}
+
+// RecordClusterOperationAudit 写入集群操作审计。
+func (h *Handler) RecordClusterOperationAudit(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, message string, operatorID uint) (model.ClusterOperationAudit, error) {
+	rec, err := PersistClusterOperationAudit(ctx, h.svcCtx.DB, clusterID, namespace, action, resource, resourceID, status, operatorID, truncateOperationText(sanitizeOperationText(message), 255))
+	if err != nil {
+		return model.ClusterOperationAudit{}, err
+	}
+	return *rec, nil
+}
+
+// requireHighRiskApproval 统一处理高风险操作的审批门禁。
+//
+// 如果操作者拥有审批权限则直接放行；否则根据 approval_token 验证审批票据。
+// 当没有票据时，会创建一条待审批记录并返回 approval_required。
+func (h *Handler) requireHighRiskApproval(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, approvalToken string, operatorID uint64) OperationGateResult {
+	if httpx.HasAnyPermission(h.svcCtx.DB, operatorID, "k8s:approve", "kubernetes:approve") {
+		return OperationGateResult{Allowed: true, Code: clusterOperationCodeSuccess}
+	}
+
+	token := strings.TrimSpace(approvalToken)
+	scope := NormalizeApprovalScope(ApprovalScope{
+		ClusterID:  clusterID,
+		Namespace:  namespace,
+		Action:     action,
+		Resource:   resource,
+		ResourceID: resourceID,
+	})
+	if token == "" {
+		rec, err := IssueClusterDeployApproval(ctx, h.svcCtx.DB, scope, uint(operatorID), time.Now().UTC().Add(30*time.Minute))
+		if err != nil {
+			return OperationGateResult{Allowed: false, Code: clusterOperationCodeApprovalRequired, Message: clusterOperationCodeApprovalRequired}
+		}
+		audit, err := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, "pending", clusterOperationCodeApprovalRequired, uint(operatorID))
+		if err != nil {
+			return OperationGateResult{Allowed: false, Code: clusterOperationCodeApprovalRequired, Message: clusterOperationCodeApprovalRequired, ApprovalTicket: rec.Ticket}
+		}
+		return OperationGateResult{
+			Allowed:        false,
+			Code:           clusterOperationCodeApprovalRequired,
+			Message:        clusterOperationCodeApprovalRequired,
+			ApprovalTicket: rec.Ticket,
+			AuditID:        audit.ID,
+		}
+	}
+
+	_, err := ConsumeClusterDeployApproval(ctx, h.svcCtx.DB, token, scope, uint(operatorID), time.Now().UTC())
+	if err != nil {
+		approvalErr, ok := IsApprovalError(err)
+		if !ok {
+			audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, "failed", err.Error(), uint(operatorID))
+			return OperationGateResult{Allowed: false, Code: clusterOperationCodeTokenNotApproved, Message: sanitizeOperationText(err.Error()), AuditID: audit.ID}
+		}
+		status := "failed"
+		switch approvalErr.Code {
+		case ApprovalTokenReplayedCode:
+			status = "failed"
+		case approvalTokenExpiredCode:
+			status = "failed"
+		case approvalTokenScopeCode:
+			status = "failed"
+		case approvalTokenInvalidCode:
+			status = "failed"
+		case approvalTokenPendingCode:
+			status = "pending"
+		}
+		audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, status, approvalErr.Error(), uint(operatorID))
+		if approvalErr.Code == ApprovalTokenReplayedCode {
+			return OperationGateResult{Allowed: false, Code: ApprovalTokenReplayedCode, Message: ApprovalTokenReplayedCode, AuditID: audit.ID}
+		}
+		return OperationGateResult{Allowed: false, Code: approvalErr.Code, Message: approvalErr.Error(), AuditID: audit.ID}
+	}
+	return OperationGateResult{Allowed: true, Code: clusterOperationCodeSuccess}
+}
+
+// ListOperationHistory 获取集群操作历史。
+func (h *Handler) ListOperationHistory(c *gin.Context) {
+	clusterID := httpx.UintFromParam(c, "id")
+	if clusterID == 0 {
+		httpx.BindErr(c, nil)
+		return
+	}
+
+	if _, err := h.repo.GetClusterModel(c.Request.Context(), clusterID); err != nil {
+		httpx.NotFound(c, "cluster not found")
+		return
+	}
+
+	page := httpx.UintFromQuery(c, "page")
+	if page == 0 {
+		page = 1
+	}
+	pageSize := httpx.UintFromQuery(c, "page_size")
+	if pageSize == 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	resource := strings.TrimSpace(c.Query("resource"))
+	status := strings.TrimSpace(c.Query("status"))
+	operator := strings.TrimSpace(c.Query("operator"))
+	from, err := parseOperationHistoryTime(c.Query("from"))
+	if err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	to, err := parseOperationHistoryTime(c.Query("to"))
+	if err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+
+	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.ClusterOperationAudit{}).Where("cluster_id = ?", clusterID)
+	if resource != "" {
+		query = query.Where("resource = ?", resource)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if from != nil {
+		query = query.Where("created_at >= ?", *from)
+	}
+	if to != nil {
+		query = query.Where("created_at <= ?", *to)
+	}
+	if operator != "" {
+		if operatorID, parseErr := strconv.ParseUint(operator, 10, 64); parseErr == nil {
+			query = query.Where("operator_id = ?", operatorID)
+		} else {
+			query = query.Joins("LEFT JOIN users ON users.id = cluster_operation_audits.operator_id").Where("users.username = ?", operator)
+		}
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+
+	offset := int((page - 1) * pageSize)
+	var rows []model.ClusterOperationAudit
+	if err := query.Order("cluster_operation_audits.id DESC").Offset(offset).Limit(int(pageSize)).Find(&rows).Error; err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+
+	items := h.clusterOperationAuditsToHistoryItems(c.Request.Context(), rows)
+	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
+	httpx.OK(c, OperationHistoryResponse{
+		List:       items,
+		Total:      total,
+		Page:       int(page),
+		PageSize:   int(pageSize),
+		TotalPages: totalPages,
+	})
+}
+
+// GetOperationAudit 获取单条集群操作审计详情。
+func (h *Handler) GetOperationAudit(c *gin.Context) {
+	clusterID := httpx.UintFromParam(c, "id")
+	auditID := httpx.UintFromParam(c, "audit_id")
+	if clusterID == 0 || auditID == 0 {
+		httpx.BindErr(c, nil)
+		return
+	}
+
+	var row model.ClusterOperationAudit
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
+		Where("cluster_id = ? AND id = ?", clusterID, auditID).
+		First(&row).Error; err != nil {
+		httpx.NotFound(c, "operation audit not found")
+		return
+	}
+
+	item := h.clusterOperationAuditsToHistoryItems(c.Request.Context(), []model.ClusterOperationAudit{row})
+	if len(item) == 0 {
+		httpx.NotFound(c, "operation audit not found")
+		return
+	}
+	httpx.OK(c, item[0])
+}
+
+func (h *Handler) clusterOperationAuditsToHistoryItems(ctx context.Context, rows []model.ClusterOperationAudit) []OperationHistoryItem {
+	operatorIDs := make([]uint, 0, len(rows))
+	seen := make(map[uint]struct{}, len(rows))
+	for _, row := range rows {
+		if row.OperatorID == 0 {
+			continue
+		}
+		if _, ok := seen[row.OperatorID]; ok {
+			continue
+		}
+		seen[row.OperatorID] = struct{}{}
+		operatorIDs = append(operatorIDs, row.OperatorID)
+	}
+
+	operatorNames := map[uint]string{}
+	if len(operatorIDs) > 0 {
+		var users []model.User
+		if err := h.svcCtx.DB.WithContext(ctx).Select("id", "username").Where("id IN ?", operatorIDs).Find(&users).Error; err == nil {
+			for _, user := range users {
+				operatorNames[uint(user.ID)] = strings.TrimSpace(user.Username)
+			}
+		}
+	}
+
+	items := make([]OperationHistoryItem, 0, len(rows))
+	for _, row := range rows {
+		operator := operatorNames[row.OperatorID]
+		if operator == "" {
+			switch row.OperatorID {
+			case 0:
+				operator = "system"
+			default:
+				operator = fmt.Sprintf("user#%d", row.OperatorID)
+			}
+		}
+		message := sanitizeOperationText(row.Message)
+		item := OperationHistoryItem{
+			AuditID:    row.ID,
+			ClusterID:  row.ClusterID,
+			Namespace:  row.Namespace,
+			Action:     row.Action,
+			Resource:   row.Resource,
+			ResourceID: row.ResourceID,
+			Status:     row.Status,
+			Message:    message,
+			OperatorID: row.OperatorID,
+			Operator:   operator,
+			CreatedAt:  row.CreatedAt,
+		}
+		if row.Status != "success" && message != "" {
+			item.Diagnostics = message
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func parseOperationHistoryTime(raw string) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	if ts, err := time.Parse(time.RFC3339, value); err == nil {
+		t := ts.UTC()
+		return &t, nil
+	}
+	if ts, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
+		t := ts.UTC()
+		return &t, nil
+	}
+	if secs, err := strconv.ParseInt(value, 10, 64); err == nil {
+		t := time.Unix(secs, 0).UTC()
+		return &t, nil
+	}
+	return nil, fmt.Errorf("invalid time format: %s", value)
+}
+
+func sanitizeOperationText(input string) string {
+	text := strings.TrimSpace(input)
+	if text == "" {
+		return text
+	}
+	for _, pattern := range sensitiveOperationPatterns {
+		text = pattern.ReplaceAllStringFunc(text, func(match string) string {
+			lower := strings.ToLower(match)
+			if strings.HasPrefix(lower, "bearer ") {
+				return "Bearer ***"
+			}
+			parts := strings.FieldsFunc(match, func(r rune) bool {
+				return r == ':' || r == '='
+			})
+			if len(parts) > 0 {
+				return parts[0] + "=***"
+			}
+			return "***"
+		})
+	}
+	return text
+}
+
+func truncateOperationText(input string, max int) string {
+	if max <= 0 || len(input) <= max {
+		return input
+	}
+	return input[:max]
+}
+
+// operationResponseFromGate 将审批门禁结果转换为响应。
+func operationResponseFromGate(clusterID uint, resource, resourceID string, gate OperationGateResult) ClusterOperationResponse {
+	state := operationStateFromGateCode(gate.Code)
+	return ClusterOperationResponse{
+		State:          state,
+		Approval:       &OperationApproval{Ticket: gate.ApprovalTicket},
+		AuditID:        gate.AuditID,
+		Code:           gate.Code,
+		Message:        gate.Message,
+		ClusterID:      clusterID,
+		Resource:       resource,
+		ResourceID:     resourceID,
+		ApprovalTicket: gate.ApprovalTicket,
+	}
+}
+
+// operationSuccessResponse 构造成功响应。
+func operationSuccessResponse(clusterID uint, resource, resourceID, message string, auditID uint, details map[string]any) ClusterOperationResponse {
+	return ClusterOperationResponse{
+		State:      OperationStateCompleted,
+		AuditID:    auditID,
+		Code:       clusterOperationCodeSuccess,
+		Message:    message,
+		Data:       details,
+		ClusterID:  clusterID,
+		Resource:   resource,
+		ResourceID: resourceID,
+		Details:    details,
+	}
+}
+
+func operationStateFromGateCode(code string) string {
+	switch code {
+	case clusterOperationCodeApprovalRequired:
+		return OperationStateApprovalRequired
+	case clusterOperationCodeApprovalRejected:
+		return OperationStateRejected
+	default:
+		return OperationStateFailed
+	}
+}

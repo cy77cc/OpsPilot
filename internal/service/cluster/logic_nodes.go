@@ -7,7 +7,9 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -16,6 +18,9 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -27,31 +32,61 @@ type AddNodeReq struct {
 	Role    string `json:"role"`                        // 节点角色: worker/control-plane
 }
 
+// NodeHighRiskReq 高风险节点操作请求。
+type NodeHighRiskReq struct {
+	ApprovalToken string `json:"approval_token"` // 审批票据
+}
+
+// NodeDrainReq 节点驱逐请求。
+type NodeDrainReq struct {
+	ApprovalToken      string `json:"approval_token"`       // 审批票据
+	GracePeriodSeconds int64  `json:"grace_period_seconds"` // 优雅终止秒数
+	Force              bool   `json:"force"`                // 是否强制删除 Pod
+	IgnoreDaemonSets   bool   `json:"ignore_daemonsets"`    // 是否忽略 DaemonSet Pod
+}
+
+// NodeLabelsReq 节点标签更新请求。
+type NodeLabelsReq struct {
+	ApprovalToken string            `json:"approval_token"`            // 审批票据
+	Labels        map[string]string `json:"labels" binding:"required"` // 节点标签
+	Key           string            `json:"key"`                       // 单条标签键（兼容）
+	Value         string            `json:"value"`                     // 单条标签值（兼容）
+}
+
+// NodeTaintsReq 节点污点更新请求。
+type NodeTaintsReq struct {
+	ApprovalToken string  `json:"approval_token"`            // 审批票据
+	Taints        []Taint `json:"taints" binding:"required"` // 节点污点
+	Key           string  `json:"key"`                       // 单条污点键（兼容）
+	Value         string  `json:"value"`                     // 单条污点值（兼容）
+	Effect        string  `json:"effect"`                    // 单条污点效果（兼容）
+}
+
 // NodeDetail 节点详情响应结构。
 type NodeDetail struct {
-	ID               uint        `json:"id"`                // 节点 ID
-	ClusterID        uint        `json:"cluster_id"`        // 所属集群 ID
-	HostID           *uint       `json:"host_id"`           // 关联主机 ID
+	ID               uint        `json:"id"`                  // 节点 ID
+	ClusterID        uint        `json:"cluster_id"`          // 所属集群 ID
+	HostID           *uint       `json:"host_id"`             // 关联主机 ID
 	HostName         string      `json:"host_name,omitempty"` // 主机名称
-	Name             string      `json:"name"`              // 节点名称
-	IP               string      `json:"ip"`                // 节点 IP
-	Role             string      `json:"role"`              // 节点角色
-	Status           string      `json:"status"`            // 节点状态
-	KubeletVersion   string      `json:"kubelet_version"`   // Kubelet 版本
-	KubeProxyVersion string      `json:"kube_proxy_version"` // Kube-proxy 版本
-	ContainerRuntime string      `json:"container_runtime"` // 容器运行时
-	OSImage          string      `json:"os_image"`          // 操作系统镜像
-	KernelVersion    string      `json:"kernel_version"`    // 内核版本
-	AllocatableCPU   string      `json:"allocatable_cpu"`   // 可分配 CPU
-	AllocatableMem   string      `json:"allocatable_mem"`   // 可分配内存
-	AllocatablePods  int         `json:"allocatable_pods"`  // 可分配 Pod 数量
-	Labels           MapString   `json:"labels"`            // 节点标签
-	Taints           []Taint     `json:"taints"`            // 节点污点
-	Conditions       []Condition `json:"conditions"`        // 节点条件
-	JoinedAt         *time.Time  `json:"joined_at"`         // 加入时间
-	LastSeenAt       *time.Time  `json:"last_seen_at"`      // 最后心跳时间
-	CreatedAt        time.Time   `json:"created_at"`        // 创建时间
-	UpdatedAt        time.Time   `json:"updated_at"`        // 更新时间
+	Name             string      `json:"name"`                // 节点名称
+	IP               string      `json:"ip"`                  // 节点 IP
+	Role             string      `json:"role"`                // 节点角色
+	Status           string      `json:"status"`              // 节点状态
+	KubeletVersion   string      `json:"kubelet_version"`     // Kubelet 版本
+	KubeProxyVersion string      `json:"kube_proxy_version"`  // Kube-proxy 版本
+	ContainerRuntime string      `json:"container_runtime"`   // 容器运行时
+	OSImage          string      `json:"os_image"`            // 操作系统镜像
+	KernelVersion    string      `json:"kernel_version"`      // 内核版本
+	AllocatableCPU   string      `json:"allocatable_cpu"`     // 可分配 CPU
+	AllocatableMem   string      `json:"allocatable_mem"`     // 可分配内存
+	AllocatablePods  int         `json:"allocatable_pods"`    // 可分配 Pod 数量
+	Labels           MapString   `json:"labels"`              // 节点标签
+	Taints           []Taint     `json:"taints"`              // 节点污点
+	Conditions       []Condition `json:"conditions"`          // 节点条件
+	JoinedAt         *time.Time  `json:"joined_at"`           // 加入时间
+	LastSeenAt       *time.Time  `json:"last_seen_at"`        // 最后心跳时间
+	CreatedAt        time.Time   `json:"created_at"`          // 创建时间
+	UpdatedAt        time.Time   `json:"updated_at"`          // 更新时间
 }
 
 // MapString 字符串映射类型。
@@ -66,10 +101,10 @@ type Taint struct {
 
 // Condition 节点条件结构。
 type Condition struct {
-	Type               string     `json:"type"`                       // 条件类型
-	Status             string     `json:"status"`                     // 条件状态
-	Reason             string     `json:"reason"`                     // 条件原因
-	Message            string     `json:"message"`                    // 条件消息
+	Type               string     `json:"type"`                           // 条件类型
+	Status             string     `json:"status"`                         // 条件状态
+	Reason             string     `json:"reason"`                         // 条件原因
+	Message            string     `json:"message"`                        // 条件消息
 	LastTransitionTime *time.Time `json:"last_transition_time,omitempty"` // 最后转换时间
 }
 
@@ -384,71 +419,56 @@ func (h *Handler) RemoveClusterNode(c *gin.Context) {
 
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
+	approvalToken := strings.TrimSpace(c.PostForm("approval_token"))
+	if approvalToken == "" {
+		var req NodeHighRiskReq
+		_ = c.ShouldBindJSON(&req)
+		approvalToken = strings.TrimSpace(req.ApprovalToken)
+	}
 
 	if clusterID == 0 || nodeName == "" {
 		httpx.BindErr(c, nil)
 		return
 	}
 
-	// Get cluster
-	var cluster model.Cluster
-	if err := h.svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
-		httpx.NotFound(c, "cluster not found")
-		return
-	}
-
-	// Check if platform managed
-	if cluster.Source != "platform_managed" {
-		httpx.BadRequest(c, "cannot remove nodes from externally managed cluster")
-		return
-	}
-
-	// Get node record
-	var node model.ClusterNode
-	if err := h.svcCtx.DB.Where("cluster_id = ? AND name = ?", clusterID, nodeName).First(&node).Error; err != nil {
-		httpx.NotFound(c, "node not found")
-		return
-	}
-
-	// Check if it's the last control plane node
-	if node.Role == "control-plane" {
-		var cpCount int64
-		h.svcCtx.DB.Model(&model.ClusterNode{}).
-			Where("cluster_id = ? AND role = ?", clusterID, "control-plane").
-			Count(&cpCount)
-		if cpCount <= 1 {
-			httpx.BadRequest(c, "cannot remove the last control plane node")
-			return
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.delete", approvalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		if node.Role == "control-plane" {
+			var cpCount int64
+			if err := h.svcCtx.DB.WithContext(ctx).Model(&model.ClusterNode{}).
+				Where("cluster_id = ? AND role = ?", clusterID, "control-plane").
+				Count(&cpCount).Error; err != nil {
+				return nil, err
+			}
+			if cpCount <= 1 {
+				return nil, fmt.Errorf("cannot remove the last control plane node")
+			}
 		}
-	}
 
-	// Drain and delete node via kubectl
-	err := h.drainAndDeleteNode(c.Request.Context(), cluster.ID, nodeName)
-	if err != nil {
-		// Log error but continue with reset
-		fmt.Printf("Warning: failed to drain node: %v\n", err)
-	}
-
-	// Execute kubeadm reset on the host
-	if node.HostID != nil {
-		var host model.Node
-		if err := h.svcCtx.DB.First(&host, *node.HostID).Error; err == nil {
-			h.executeResetOnHost(c.Request.Context(), &host)
+		if err := h.drainAndDeleteNode(ctx, cluster.ID, nodeName); err != nil {
+			return nil, err
 		}
-	}
 
-	// Delete node record from database
-	h.svcCtx.DB.Delete(&node)
+		if node.HostID != nil {
+			var host model.Node
+			if err := h.svcCtx.DB.WithContext(ctx).First(&host, *node.HostID).Error; err == nil {
+				_ = h.executeResetOnHost(ctx, &host)
+			}
+		}
 
-	// Update host's cluster_id
-	if node.HostID != nil {
-		h.svcCtx.DB.Model(&model.Node{}).Where("id = ?", *node.HostID).Update("cluster_id", nil)
-	}
-	h.invalidateClusterCache(c.Request.Context(), clusterID)
-
-	httpx.OK(c, gin.H{
-		"message": fmt.Sprintf("Node %s removed from cluster", nodeName),
+		if err := h.svcCtx.DB.WithContext(ctx).Delete(&model.ClusterNode{}, node.ID).Error; err != nil {
+			return nil, err
+		}
+		if node.HostID != nil {
+			_ = h.svcCtx.DB.WithContext(ctx).Model(&model.Node{}).Where("id = ?", *node.HostID).Update("cluster_id", nil).Error
+		}
+		h.invalidateClusterCache(ctx, clusterID)
+		return map[string]any{"removed": true, "node_name": nodeName}, nil
 	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
 }
 
 // GetNodeDetail 获取节点详情。
@@ -531,6 +551,425 @@ func (h *Handler) GetNodeDetail(c *gin.Context) {
 	}
 
 	httpx.OK(c, detail)
+}
+
+// CordonNode 标记节点为不可调度。
+func (h *Handler) CordonNode(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var req NodeHighRiskReq
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		httpx.BindErr(c, err)
+		return
+	}
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.cordon", req.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		return h.cordonNode(ctx, client, nodeName, true)
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// UncordonNode 取消节点不可调度标记。
+func (h *Handler) UncordonNode(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var req NodeHighRiskReq
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		httpx.BindErr(c, err)
+		return
+	}
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.uncordon", req.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		return h.cordonNode(ctx, client, nodeName, false)
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// DrainNode 驱逐节点上的工作负载。
+func (h *Handler) DrainNode(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var drainReq NodeDrainReq
+	if err := c.ShouldBindJSON(&drainReq); err != nil && !errors.Is(err, io.EOF) {
+		httpx.BindErr(c, err)
+		return
+	}
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.drain", drainReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		return h.drainNode(ctx, client, nodeName, drainReq)
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// UpdateNodeTaints 更新节点污点。
+func (h *Handler) UpdateNodeTaints(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var taintReq NodeTaintsReq
+	if err := c.ShouldBindJSON(&taintReq); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	if len(taintReq.Taints) == 0 && strings.TrimSpace(taintReq.Key) != "" {
+		taintReq.Taints = []Taint{{
+			Key:    strings.TrimSpace(taintReq.Key),
+			Value:  strings.TrimSpace(taintReq.Value),
+			Effect: strings.TrimSpace(taintReq.Effect),
+		}}
+	}
+	if len(taintReq.Taints) == 0 {
+		httpx.BadRequest(c, "taints required")
+		return
+	}
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints", taintReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		return h.updateNodeTaints(ctx, client, nodeName, taintReq.Taints)
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// UpdateNodeLabels 更新节点标签。
+func (h *Handler) UpdateNodeLabels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var labelReq NodeLabelsReq
+	if err := c.ShouldBindJSON(&labelReq); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	if len(labelReq.Labels) == 0 && strings.TrimSpace(labelReq.Key) != "" {
+		labelReq.Labels = map[string]string{strings.TrimSpace(labelReq.Key): labelReq.Value}
+	}
+	if len(labelReq.Labels) == 0 {
+		httpx.BadRequest(c, "labels required")
+		return
+	}
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels", labelReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		return h.updateNodeLabels(ctx, client, nodeName, labelReq.Labels)
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// RemoveNodeTaints 删除节点污点（按 key/value/effect 匹配，空字段作为通配）。
+func (h *Handler) RemoveNodeTaints(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var taintReq NodeTaintsReq
+	if err := c.ShouldBindJSON(&taintReq); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	key := strings.TrimSpace(taintReq.Key)
+	if key == "" && len(taintReq.Taints) > 0 {
+		key = strings.TrimSpace(taintReq.Taints[0].Key)
+		if taintReq.Value == "" {
+			taintReq.Value = taintReq.Taints[0].Value
+		}
+		if taintReq.Effect == "" {
+			taintReq.Effect = taintReq.Taints[0].Effect
+		}
+	}
+	if key == "" {
+		httpx.BadRequest(c, "taint key required")
+		return
+	}
+
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints.remove", taintReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		nodeObj, getErr := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		next := make([]corev1.Taint, 0, len(nodeObj.Spec.Taints))
+		removed := 0
+		for _, item := range nodeObj.Spec.Taints {
+			match := strings.TrimSpace(item.Key) == key
+			if match && strings.TrimSpace(taintReq.Value) != "" {
+				match = strings.TrimSpace(item.Value) == strings.TrimSpace(taintReq.Value)
+			}
+			if match && strings.TrimSpace(taintReq.Effect) != "" {
+				match = strings.EqualFold(string(item.Effect), strings.TrimSpace(taintReq.Effect))
+			}
+			if match {
+				removed++
+				continue
+			}
+			next = append(next, item)
+		}
+		nodeObj.Spec.Taints = next
+		if _, updateErr := client.CoreV1().Nodes().Update(ctx, nodeObj, v1.UpdateOptions{}); updateErr != nil {
+			return nil, updateErr
+		}
+		return map[string]any{"node_name": nodeName, "removed": removed, "taints": next}, nil
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+// RemoveNodeLabels 删除节点标签（按 key 删除）。
+func (h *Handler) RemoveNodeLabels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cluster:write") {
+		return
+	}
+	var labelReq NodeLabelsReq
+	if err := c.ShouldBindJSON(&labelReq); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	key := strings.TrimSpace(labelReq.Key)
+	if key == "" && len(labelReq.Labels) > 0 {
+		for k := range labelReq.Labels {
+			key = strings.TrimSpace(k)
+			break
+		}
+	}
+	if key == "" {
+		httpx.BadRequest(c, "label key required")
+		return
+	}
+
+	clusterID := httpx.UintFromParam(c, "id")
+	nodeName := strings.TrimSpace(c.Param("name"))
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels.remove", labelReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+		nodeObj, getErr := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if nodeObj.Labels == nil {
+			nodeObj.Labels = map[string]string{}
+		}
+		_, existed := nodeObj.Labels[key]
+		delete(nodeObj.Labels, key)
+		if _, updateErr := client.CoreV1().Nodes().Update(ctx, nodeObj, v1.UpdateOptions{}); updateErr != nil {
+			return nil, updateErr
+		}
+		return map[string]any{"node_name": nodeName, "removed": existed, "key": key}, nil
+	})
+	if err != nil {
+		h.handleHighRiskNodeOperationError(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
+func (h *Handler) executeHighRiskNodeOperation(c *gin.Context, clusterID uint, nodeName, action, approvalToken string, fn func(context.Context, *model.Cluster, *model.ClusterNode, *kubernetes.Clientset) (map[string]any, error)) (ClusterOperationResponse, error) {
+	ctx := c.Request.Context()
+	var cluster model.Cluster
+	if err := h.svcCtx.DB.WithContext(ctx).First(&cluster, clusterID).Error; err != nil {
+		return ClusterOperationResponse{}, fmt.Errorf("cluster not found: %w", err)
+	}
+	if strings.TrimSpace(cluster.Source) != "platform_managed" {
+		return ClusterOperationResponse{}, fmt.Errorf("cannot modify nodes in externally managed cluster")
+	}
+
+	var node model.ClusterNode
+	if err := h.svcCtx.DB.WithContext(ctx).Where("cluster_id = ? AND name = ?", clusterID, nodeName).First(&node).Error; err != nil {
+		return ClusterOperationResponse{}, fmt.Errorf("node not found: %w", err)
+	}
+
+	gate := h.requireHighRiskApproval(ctx, clusterID, "", action, "node", nodeName, approvalToken, httpx.UIDFromCtx(c))
+	if !gate.Allowed {
+		return operationResponseFromGate(clusterID, "node", nodeName, gate), nil
+	}
+
+	client, err := h.getClusterClient(ctx, clusterID)
+	if err != nil {
+		return ClusterOperationResponse{}, err
+	}
+
+	details, opErr := fn(ctx, &cluster, &node, client)
+	operatorID := uint(httpx.UIDFromCtx(c))
+	if opErr != nil {
+		audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, "", action, "node", nodeName, "failed", opErr.Error(), operatorID)
+		return ClusterOperationResponse{
+			Code:        "failed",
+			Message:     sanitizeOperationText(opErr.Error()),
+			ClusterID:   clusterID,
+			Resource:    "node",
+			ResourceID:  nodeName,
+			AuditID:     audit.ID,
+			Diagnostics: sanitizeOperationText(opErr.Error()),
+		}, nil
+	}
+
+	audit, err := h.RecordClusterOperationAudit(ctx, clusterID, "", action, "node", nodeName, "success", action+" executed", operatorID)
+	if err != nil {
+		return operationSuccessResponse(clusterID, "node", nodeName, action+" executed", 0, details), nil
+	}
+	if syncErr := h.SyncClusterNodes(ctx, clusterID); syncErr != nil {
+		if details == nil {
+			details = map[string]any{}
+		}
+		details["sync_warning"] = sanitizeOperationText(syncErr.Error())
+	}
+	return operationSuccessResponse(clusterID, "node", nodeName, action+" executed", audit.ID, details), nil
+}
+
+func (h *Handler) handleHighRiskNodeOperationError(c *gin.Context, err error) {
+	switch {
+	case err == nil:
+		return
+	case strings.Contains(strings.ToLower(err.Error()), "cluster not found"):
+		httpx.NotFound(c, "cluster not found")
+	case strings.Contains(strings.ToLower(err.Error()), "node not found"):
+		httpx.NotFound(c, "node not found")
+	case strings.Contains(strings.ToLower(err.Error()), "cannot modify nodes in externally managed cluster"):
+		httpx.BadRequest(c, err.Error())
+	default:
+		httpx.ServerErr(c, err)
+	}
+}
+
+func (h *Handler) cordonNode(ctx context.Context, client *kubernetes.Clientset, nodeName string, cordon bool) (map[string]any, error) {
+	patch := map[string]any{"spec": map[string]any{"unschedulable": cordon}}
+	raw, _ := json.Marshal(patch)
+	if _, err := client.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, raw, v1.PatchOptions{}); err != nil {
+		return nil, err
+	}
+	return map[string]any{"node_name": nodeName, "unschedulable": cordon}, nil
+}
+
+func (h *Handler) updateNodeLabels(ctx context.Context, client *kubernetes.Clientset, nodeName string, labels map[string]string) (map[string]any, error) {
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("labels required")
+	}
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if node.Labels == nil {
+		node.Labels = map[string]string{}
+	}
+	for k, v := range labels {
+		node.Labels[k] = v
+	}
+	if _, err := client.CoreV1().Nodes().Update(ctx, node, v1.UpdateOptions{}); err != nil {
+		return nil, err
+	}
+	return map[string]any{"node_name": nodeName, "labels": labels}, nil
+}
+
+func (h *Handler) updateNodeTaints(ctx context.Context, client *kubernetes.Clientset, nodeName string, taints []Taint) (map[string]any, error) {
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	next := make([]corev1.Taint, 0, len(taints))
+	for _, taint := range taints {
+		if strings.TrimSpace(taint.Key) == "" {
+			continue
+		}
+		next = append(next, corev1.Taint{Key: taint.Key, Value: taint.Value, Effect: corev1.TaintEffect(taint.Effect)})
+	}
+	node.Spec.Taints = next
+	if _, err := client.CoreV1().Nodes().Update(ctx, node, v1.UpdateOptions{}); err != nil {
+		return nil, err
+	}
+	return map[string]any{"node_name": nodeName, "taints": taints}, nil
+}
+
+func (h *Handler) drainNode(ctx context.Context, client *kubernetes.Clientset, nodeName string, req NodeDrainReq) (map[string]any, error) {
+	if _, err := h.cordonNode(ctx, client, nodeName, true); err != nil {
+		return nil, err
+	}
+
+	pods, err := client.CoreV1().Pods("").List(ctx, v1.ListOptions{FieldSelector: fmt.Sprintf("spec.nodeName=%s", nodeName)})
+	if err != nil {
+		return nil, err
+	}
+
+	evicted := make([]string, 0, len(pods.Items))
+	skipped := make([]string, 0)
+	for _, pod := range pods.Items {
+		if isDaemonSetPod(&pod) && req.IgnoreDaemonSets {
+			skipped = append(skipped, pod.Namespace+"/"+pod.Name)
+			continue
+		}
+
+		if req.Force {
+			grace := req.GracePeriodSeconds
+			if grace < 0 {
+				grace = 0
+			}
+			if err := client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, v1.DeleteOptions{GracePeriodSeconds: &grace}); err != nil && !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			evicted = append(evicted, pod.Namespace+"/"+pod.Name)
+			continue
+		}
+
+		grace := req.GracePeriodSeconds
+		if grace < 0 {
+			grace = 0
+		}
+		eviction := &policyv1.Eviction{
+			ObjectMeta: v1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
+			DeleteOptions: &v1.DeleteOptions{
+				GracePeriodSeconds: &grace,
+			},
+		}
+		if err := client.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil && !apierrors.IsNotFound(err) {
+			if err := client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, v1.DeleteOptions{GracePeriodSeconds: &grace}); err != nil && !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+		}
+		evicted = append(evicted, pod.Namespace+"/"+pod.Name)
+	}
+
+	return map[string]any{
+		"node_name": nodeName,
+		"evicted":   evicted,
+		"skipped":   skipped,
+		"count":     len(evicted),
+	}, nil
+}
+
+func isDaemonSetPod(pod *corev1.Pod) bool {
+	if pod == nil {
+		return false
+	}
+	for _, owner := range pod.OwnerReferences {
+		if strings.EqualFold(owner.Kind, "DaemonSet") {
+			return true
+		}
+	}
+	return false
 }
 
 // Helper methods - 辅助方法

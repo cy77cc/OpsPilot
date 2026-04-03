@@ -1,0 +1,435 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeftOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  EyeOutlined,
+  ClusterOutlined,
+} from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  DatePicker,
+  Descriptions,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  message,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import dayjs from 'dayjs';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Api } from '../../../api';
+import type {
+  Cluster,
+  ClusterOperationDetail,
+  ClusterOperationHistoryItem,
+  ClusterOperationState,
+} from '../../../api/modules/cluster';
+
+const { RangePicker } = DatePicker;
+const { Text, Paragraph, Title } = Typography;
+
+type OperationFilters = {
+  resource?: string;
+  status?: string;
+  operator?: string;
+  from?: string;
+  to?: string;
+};
+
+const statusMeta: Record<ClusterOperationState | string, { color: string; text: string }> = {
+  completed: { color: 'green', text: '已完成' },
+  approval_required: { color: 'orange', text: '待审批' },
+  rejected: { color: 'default', text: '已拒绝' },
+  failed: { color: 'red', text: '失败' },
+};
+
+const resourceOptions = [
+  { value: 'node', label: '节点' },
+  { value: 'workload', label: '工作负载' },
+  { value: 'security', label: '安全/配置' },
+  { value: 'cluster', label: '集群' },
+  { value: 'certificate', label: '证书' },
+];
+
+function formatDate(value?: string) {
+  if (!value) return '-';
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
+}
+
+function buildQuery(filters: OperationFilters, page: number, pageSize: number) {
+  return {
+    page,
+    page_size: pageSize,
+    resource: filters.resource || undefined,
+    status: filters.status || undefined,
+    operator: filters.operator || undefined,
+    from: filters.from || undefined,
+    to: filters.to || undefined,
+  };
+}
+
+const ClusterOperationCenterPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const clusterId = Number(id);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [cluster, setCluster] = useState<Cluster | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [history, setHistory] = useState<ClusterOperationHistoryItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [filters, setFilters] = useState<OperationFilters>({});
+  const [draftRange, setDraftRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
+  const [selectedAuditId, setSelectedAuditId] = useState<string>('');
+  const [selectedDetail, setSelectedDetail] = useState<ClusterOperationDetail | null>(null);
+
+  const loadCluster = useCallback(async () => {
+    if (!clusterId) return;
+    try {
+      const res = await Api.cluster.getClusterDetail(clusterId);
+      setCluster(res.data);
+    } catch {
+      setCluster(null);
+    }
+  }, [clusterId]);
+
+  const loadHistory = useCallback(async (nextPage = page, nextPageSize = pageSize, nextFilters = filters) => {
+    if (!clusterId) return;
+    setLoading(true);
+    try {
+      const res = await Api.cluster.getClusterOperations(clusterId, buildQuery(nextFilters, nextPage, nextPageSize));
+      setHistory(res.data.list || []);
+      setTotal(res.data.total || 0);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '加载操作历史失败');
+      setHistory([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [clusterId, filters, page, pageSize]);
+
+  const loadDetail = useCallback(async (auditId: string | number) => {
+    if (!clusterId || !auditId) return;
+    const auditIDText = String(auditId);
+    setDetailLoading(true);
+    try {
+      const res = await Api.cluster.getClusterOperationDetail(clusterId, auditIDText);
+      setSelectedDetail(res.data);
+      setDetailOpen(true);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('audit_id', auditIDText);
+      setSearchParams(nextParams, { replace: true });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '加载操作详情失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [clusterId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    void loadCluster();
+  }, [loadCluster]);
+
+  useEffect(() => {
+    void loadHistory(page, pageSize, filters);
+  }, [loadHistory, page, pageSize, filters]);
+
+  useEffect(() => {
+    const auditId = searchParams.get('audit_id');
+    if (auditId && auditId !== selectedAuditId) {
+      setSelectedAuditId(auditId);
+      void loadDetail(auditId);
+    }
+  }, [loadDetail, searchParams, selectedAuditId]);
+
+  const submitFilters = async (values: { resource?: string; status?: string; operator?: string; range?: [dayjs.Dayjs | null, dayjs.Dayjs | null] }) => {
+    const nextFilters: OperationFilters = {
+      resource: values.resource || undefined,
+      status: values.status || undefined,
+      operator: values.operator || undefined,
+      from: values.range?.[0] ? values.range[0].toISOString() : undefined,
+      to: values.range?.[1] ? values.range[1].toISOString() : undefined,
+    };
+    setFilters(nextFilters);
+    setPage(1);
+    await loadHistory(1, pageSize, nextFilters);
+  };
+
+  const resetFilters = async () => {
+    setDraftRange([null, null]);
+    setFilters({});
+    setPage(1);
+    await loadHistory(1, pageSize, {});
+  };
+
+  const columns: ColumnsType<ClusterOperationHistoryItem> = useMemo(() => [
+    {
+      title: 'Audit ID',
+      dataIndex: 'audit_id',
+      key: 'audit_id',
+      render: (auditId: string | number) => (
+        <Button type="link" className="px-0" onClick={() => void loadDetail(auditId)}>
+          {auditId}
+        </Button>
+      ),
+    },
+    {
+      title: '操作',
+      dataIndex: 'action',
+      key: 'action',
+      render: (action: string) => <Tag color="blue">{action}</Tag>,
+    },
+    {
+      title: '资源',
+      key: 'resource',
+      render: (_, record) => (
+        <div>
+          <div>{record.resource_name || record.target || record.resource || record.resource_type || '-'}</div>
+          <Text type="secondary">{record.namespace || record.resource_type || '-'}</Text>
+        </div>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => {
+        const meta = statusMeta[status] || { color: 'default', text: status };
+        return <Tag color={meta.color}>{meta.text}</Tag>;
+      },
+    },
+    {
+      title: '操作人',
+      dataIndex: 'operator',
+      key: 'operator',
+      render: (operator?: string) => operator || '-',
+    },
+    {
+      title: '时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (time: string) => formatDate(time),
+    },
+    {
+      title: '消息',
+      dataIndex: 'message',
+      key: 'message',
+      ellipsis: true,
+      render: (messageText?: string) => messageText || '-',
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 120,
+      render: (_, record) => (
+        <Space>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => void loadDetail(record.audit_id)}>
+            详情
+          </Button>
+        </Space>
+      ),
+    },
+  ], [loadDetail]);
+
+  const detail = selectedDetail;
+  const detailApproval = detail?.approval;
+  const detailAuditLink = selectedAuditId || detail?.audit_id;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>
+            返回详情
+          </Button>
+          <div>
+            <Title level={4} className="m-0 flex items-center gap-2">
+              <ClusterOutlined />
+              {cluster?.name || `集群 #${clusterId}`} 操作中心
+            </Title>
+            <Text type="secondary">查看高风险操作审计、审批状态与执行详情</Text>
+          </div>
+        </div>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadHistory(page, pageSize, filters)} loading={loading}>
+            刷新
+          </Button>
+          <Button onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>回到集群详情</Button>
+        </Space>
+      </div>
+
+      <Card>
+        <Form layout="inline" onFinish={submitFilters} initialValues={{ resource: filters.resource, status: filters.status, operator: filters.operator }}>
+          <Space size={12} wrap>
+            <Form.Item name="resource" label="资源">
+              <Select
+                allowClear
+                placeholder="全部"
+                style={{ width: 160 }}
+                options={resourceOptions}
+              />
+            </Form.Item>
+            <Form.Item name="status" label="状态">
+              <Select
+                allowClear
+                placeholder="全部"
+                style={{ width: 160 }}
+                options={[
+                  { value: 'completed', label: '已完成' },
+                  { value: 'approval_required', label: '待审批' },
+                  { value: 'rejected', label: '已拒绝' },
+                  { value: 'failed', label: '失败' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="operator" label="操作人">
+              <Input placeholder="用户 ID / 名称" style={{ width: 180 }} allowClear />
+            </Form.Item>
+            <Form.Item label="时间范围" name="range">
+              <DatePicker.RangePicker
+                showTime
+                value={draftRange}
+                onChange={(values) => setDraftRange((values as [dayjs.Dayjs | null, dayjs.Dayjs | null]) || [null, null])}
+              />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+                  查询
+                </Button>
+                <Button onClick={() => void resetFilters()}>重置</Button>
+              </Space>
+            </Form.Item>
+          </Space>
+        </Form>
+      </Card>
+
+      <Card>
+        <Table
+          dataSource={history}
+          columns={columns}
+          rowKey="audit_id"
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (value) => `共 ${value} 条`,
+            onChange: (nextPage, nextSize) => {
+              setPage(nextPage);
+              setPageSize(nextSize);
+            },
+          }}
+        />
+      </Card>
+
+      <Drawer
+        title={detail ? `操作详情: ${detail.audit_id}` : '操作详情'}
+        width={720}
+        open={detailOpen}
+        onClose={() => {
+          setDetailOpen(false);
+          setSelectedDetail(null);
+        }}
+        extra={detailAuditLink ? (
+          <Button type="link" onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${detailAuditLink}`)}>
+            复制/共享当前审计链接
+          </Button>
+        ) : null}
+      >
+        {detailLoading ? (
+          <div className="py-10 flex items-center justify-center">
+            <Spin />
+          </div>
+        ) : detail ? (
+          <div className="space-y-5">
+            <Descriptions bordered size="small" column={1}>
+              <Descriptions.Item label="Audit ID">{detail.audit_id}</Descriptions.Item>
+              <Descriptions.Item label="动作">{detail.action}</Descriptions.Item>
+              <Descriptions.Item label="资源">
+                {detail.resource_name || detail.target || detail.resource || detail.resource_type || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="资源类型">{detail.resource_type || detail.resource || '-'}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                <Tag color={(statusMeta[detail.status] || { color: 'default' }).color}>
+                  {(statusMeta[detail.status] || { text: detail.status }).text}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="操作人">{detail.operator || '-'}</Descriptions.Item>
+              <Descriptions.Item label="消息">{detail.message || '-'}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">{formatDate(detail.created_at)}</Descriptions.Item>
+            </Descriptions>
+
+            {detailApproval && (
+              <Card size="small" title="审批信息">
+                <Descriptions bordered size="small" column={1}>
+                  <Descriptions.Item label="是否需要审批">{detailApproval.required ? '是' : '否'}</Descriptions.Item>
+                  <Descriptions.Item label="审批票据">{detailApproval.ticket || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="过期时间">{formatDate(detailApproval.expires_at)}</Descriptions.Item>
+                  <Descriptions.Item label="原因">{detailApproval.reason || '-'}</Descriptions.Item>
+                </Descriptions>
+              </Card>
+            )}
+
+            <Card size="small" title="请求参数">
+              <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
+                {JSON.stringify(detail.request || {}, null, 2)}
+              </pre>
+            </Card>
+
+            <Card size="small" title="执行结果">
+              <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
+                {JSON.stringify(detail.response || {}, null, 2)}
+              </pre>
+            </Card>
+
+            <Card size="small" title="诊断信息">
+              {detail.diagnostics?.length ? (
+                <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
+                  {JSON.stringify(detail.diagnostics, null, 2)}
+                </pre>
+              ) : (
+                <Empty description="暂无诊断信息" />
+              )}
+            </Card>
+
+            {detail.timeline?.length ? (
+              <Card size="small" title="时间线">
+                <Space direction="vertical" className="w-full" size={12}>
+                  {detail.timeline.map((item, index) => (
+                    <div key={`${item.at || index}`} className="border rounded p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <Text strong>{item.status || item.level || 'event'}</Text>
+                        <Text type="secondary">{formatDate(item.at)}</Text>
+                      </div>
+                      <Paragraph className="mb-0 mt-2">{item.message || '-'}</Paragraph>
+                    </div>
+                  ))}
+                </Space>
+              </Card>
+            ) : null}
+          </div>
+        ) : (
+          <Empty description="未选择操作" />
+        )}
+      </Drawer>
+    </div>
+  );
+};
+
+export default ClusterOperationCenterPage;

@@ -209,6 +209,102 @@ export interface AddNodeReq {
   role?: string;
 }
 
+export type ClusterOperationState = 'completed' | 'approval_required' | 'rejected' | 'failed';
+
+export interface ClusterOperationApproval {
+  required: boolean;
+  ticket?: string;
+  expires_at?: string;
+  reason?: string;
+}
+
+export interface ClusterOperationResponse<T = unknown> {
+  state: ClusterOperationState;
+  success: boolean;
+  message: string;
+  audit_id?: string | number;
+  approval?: ClusterOperationApproval;
+  error_code?: string;
+  diagnostics?: string[];
+  result?: T;
+  raw?: Record<string, unknown>;
+}
+
+export interface ClusterNodeApprovalPayload {
+  approval_token?: string;
+}
+
+export interface ClusterNodeDrainPayload extends ClusterNodeApprovalPayload {
+  delete_emptydir_data?: boolean;
+  force?: boolean;
+  ignore_daemonsets?: boolean;
+  grace_period_seconds?: number;
+  timeout_seconds?: number;
+}
+
+export interface ClusterNodeTaintPayload extends ClusterNodeApprovalPayload {
+  key: string;
+  value?: string;
+  effect?: string;
+}
+
+export interface ClusterNodeLabelPayload extends ClusterNodeApprovalPayload {
+  key: string;
+  value?: string;
+}
+
+export interface ClusterUpgradePayload extends ClusterNodeApprovalPayload {
+  target_version: string;
+}
+
+export interface ClusterCertificateRenewPayload extends ClusterNodeApprovalPayload {}
+
+export interface ClusterOperationHistoryQuery {
+  page?: number;
+  page_size?: number;
+  resource?: string;
+  status?: string;
+  operator?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface ClusterOperationHistoryItem {
+  audit_id: string | number;
+  resource_type?: string;
+  resource_name?: string;
+  resource?: string;
+  action: string;
+  status: string;
+  operator?: string;
+  message?: string;
+  approval_required?: boolean;
+  approval_ticket?: string;
+  created_at: string;
+  updated_at?: string;
+  namespace?: string;
+  target?: string;
+}
+
+export interface ClusterOperationDetail extends ClusterOperationHistoryItem {
+  approval?: ClusterOperationApproval & {
+    approver?: string;
+    approved_at?: string;
+    rejected_by?: string;
+    rejected_at?: string;
+    ticket?: string;
+  };
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  diagnostics?: unknown[];
+  timeline?: Array<{
+    at?: string;
+    message?: string;
+    status?: string;
+    level?: string;
+  }>;
+}
+
 // Resource types
 export interface NamespaceInfo {
   name: string;
@@ -437,6 +533,133 @@ export interface CertificateInfo {
   alternate_names: string[];
 }
 
+const clusterOperationStates: ClusterOperationState[] = ['completed', 'approval_required', 'rejected', 'failed'];
+
+const isPlainObject = (value: unknown): value is Record<string, any> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const coerceStringArray = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => (typeof item === 'string' ? item : JSON.stringify(item)));
+      }
+    } catch {
+      return [value];
+    }
+    return [value];
+  }
+  return undefined;
+};
+
+const normalizeApprovalPayload = (payload: unknown): ClusterOperationApproval | undefined => {
+  if (!isPlainObject(payload)) {
+    return undefined;
+  }
+  const hasApprovalSignals = Object.prototype.hasOwnProperty.call(payload, 'approval')
+    || Object.prototype.hasOwnProperty.call(payload, 'approval_required')
+    || Object.prototype.hasOwnProperty.call(payload, 'required')
+    || Object.prototype.hasOwnProperty.call(payload, 'is_required')
+    || Object.prototype.hasOwnProperty.call(payload, 'ticket')
+    || Object.prototype.hasOwnProperty.call(payload, 'ticket_id')
+    || Object.prototype.hasOwnProperty.call(payload, 'approval_ticket')
+    || Object.prototype.hasOwnProperty.call(payload, 'approval_reason');
+  const required = Boolean(payload.required ?? payload.approval_required ?? payload.is_required);
+  const ticket = payload.ticket ?? payload.ticket_id ?? payload.approval_ticket;
+  const expires_at = payload.expires_at ?? payload.expiresAt ?? payload.approval_expires_at;
+  const reason = payload.reason ?? payload.approval_reason;
+  if (!hasApprovalSignals) {
+    return undefined;
+  }
+  if (!required && !ticket && !expires_at && !reason) {
+    return undefined;
+  }
+  return {
+    required: required || Boolean(ticket || expires_at || reason),
+    ticket: typeof ticket === 'string' ? ticket : undefined,
+    expires_at: typeof expires_at === 'string' ? expires_at : undefined,
+    reason: typeof reason === 'string' ? reason : undefined,
+  };
+};
+
+export function normalizeClusterOperationResponse<T = unknown>(payload: unknown): ClusterOperationResponse<T> {
+  if (!isPlainObject(payload)) {
+    return {
+      state: 'completed',
+      success: true,
+      message: typeof payload === 'string' ? payload : '操作已完成',
+      result: payload as T,
+      raw: isPlainObject(payload) ? payload : undefined,
+    };
+  }
+
+  const raw = payload;
+  const stateCandidate = raw.state ?? raw.status ?? raw.result_state;
+  const approval = normalizeApprovalPayload(raw.approval) ?? normalizeApprovalPayload(raw);
+  const diagnostics = coerceStringArray(raw.diagnostics ?? raw.diagnostic_messages ?? raw.errors);
+  let state: ClusterOperationState = 'completed';
+
+  if (stateCandidate === 'approval_required' || approval?.required || raw.approval_required) {
+    state = 'approval_required';
+  } else if (stateCandidate === 'rejected' || raw.rejected === true || raw.approval_rejected === true) {
+    state = 'rejected';
+  } else if (
+    stateCandidate === 'failed'
+    || raw.success === false
+    || raw.failed === true
+    || raw.error_code
+    || raw.error
+    || raw.error_message
+  ) {
+    state = 'failed';
+  } else if (stateCandidate && clusterOperationStates.includes(stateCandidate as ClusterOperationState)) {
+    state = stateCandidate as ClusterOperationState;
+  }
+
+  const message = typeof raw.message === 'string'
+    ? raw.message
+    : typeof raw.msg === 'string'
+      ? raw.msg
+      : typeof raw.error_message === 'string'
+        ? raw.error_message
+        : state === 'approval_required'
+          ? '操作需要审批'
+          : state === 'rejected'
+            ? '操作已拒绝'
+            : state === 'failed'
+              ? '操作失败'
+              : '操作已完成';
+
+  const auditId = raw.audit_id ?? raw.auditId ?? raw.operation_id ?? raw.operationId;
+  const result = raw.result ?? raw.data ?? raw.payload ?? raw.response ?? raw.details;
+  return {
+    state,
+    success: state === 'completed',
+    message,
+    audit_id: typeof auditId === 'string' || typeof auditId === 'number' ? auditId : undefined,
+    approval,
+    error_code: typeof raw.error_code === 'string' ? raw.error_code : typeof raw.reason_code === 'string' ? raw.reason_code : undefined,
+    diagnostics,
+    result: result as T,
+    raw,
+  };
+}
+
+const wrapOperationResponse = async <T = unknown>(promise: Promise<ApiResponse<unknown>>): Promise<ApiResponse<ClusterOperationResponse<T>>> => {
+  const response = await promise;
+  return {
+    ...response,
+    data: normalizeClusterOperationResponse<T>(response.data),
+  };
+};
+
 export const clusterApi = {
   // Cluster CRUD
   getClusters(params?: { status?: string; source?: string }): Promise<ApiResponse<PaginatedResponse<Cluster>>> {
@@ -480,8 +703,36 @@ export const clusterApi = {
     return apiService.post(`/clusters/${id}/nodes`, data);
   },
 
-  removeClusterNode(id: number, nodeName: string): Promise<ApiResponse<{ message: string }>> {
-    return apiService.delete(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}`);
+  removeClusterNode(id: number, nodeName: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}`, { data: payload || {} }));
+  },
+
+  cordonNode(id: number, nodeName: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/cordon`, payload || {}));
+  },
+
+  uncordonNode(id: number, nodeName: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/uncordon`, payload || {}));
+  },
+
+  drainNode(id: number, nodeName: string, payload?: ClusterNodeDrainPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/drain`, payload || {}));
+  },
+
+  upsertNodeTaint(id: number, nodeName: string, payload: ClusterNodeTaintPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/taints`, payload));
+  },
+
+  removeNodeTaint(id: number, nodeName: string, payload: ClusterNodeTaintPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/taints`, { data: payload }));
+  },
+
+  upsertNodeLabel(id: number, nodeName: string, payload: ClusterNodeLabelPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/labels`, payload));
+  },
+
+  removeNodeLabel(id: number, nodeName: string, payload: ClusterNodeLabelPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/nodes/${encodeURIComponent(nodeName)}/labels`, { data: payload }));
   },
 
   // Namespaces
@@ -630,27 +881,36 @@ export const clusterApi = {
     return apiService.get(`/clusters/${id}/upgrade-plan`);
   },
 
-  upgradeCluster(id: number, targetVersion: string): Promise<ApiResponse<{
-    cluster_id: number;
-    from_version: string;
-    to_version: string;
-    status: string;
-    message: string;
-    upgrade_steps: string[];
-  }>> {
-    return apiService.post(`/clusters/${id}/upgrade`, { target_version: targetVersion });
+  upgradeCluster(id: number, payload: ClusterUpgradePayload | string): Promise<ApiResponse<ClusterOperationResponse<{
+    cluster_id?: number;
+    from_version?: string;
+    to_version?: string;
+    status?: string;
+    message?: string;
+    upgrade_steps?: string[];
+  }>>> {
+    const requestBody = typeof payload === 'string' ? { target_version: payload } : payload;
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/upgrade`, requestBody));
   },
 
-  renewCertificates(id: number): Promise<ApiResponse<{
-    cluster_id: number;
-    results: Array<{
+  renewCertificates(id: number, payload?: ClusterCertificateRenewPayload): Promise<ApiResponse<ClusterOperationResponse<{
+    cluster_id?: number;
+    results?: Array<{
       node_name: string;
       host_name?: string;
       success: boolean;
       message: string;
     }>;
-    message: string;
-  }>> {
-    return apiService.post(`/clusters/${id}/certificates/renew`);
+    message?: string;
+  }>>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/certificates/renew`, payload || {}));
+  },
+
+  getClusterOperations(id: number, query?: ClusterOperationHistoryQuery): Promise<ApiResponse<PaginatedResponse<ClusterOperationHistoryItem>>> {
+    return apiService.get(`/clusters/${id}/operations/history`, { params: query });
+  },
+
+  getClusterOperationDetail(id: number, auditId: string | number): Promise<ApiResponse<ClusterOperationDetail>> {
+    return apiService.get(`/clusters/${id}/operations/${encodeURIComponent(String(auditId))}`);
   },
 };

@@ -38,6 +38,13 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		clusterGroup.POST("/:id/nodes/sync", h.SyncClusterNodesHandler)
 		clusterGroup.POST("/:id/nodes", h.AddClusterNodes)
 		clusterGroup.GET("/:id/nodes/:name", h.GetNodeDetail)
+		clusterGroup.POST("/:id/nodes/:name/cordon", h.CordonNode)
+		clusterGroup.POST("/:id/nodes/:name/uncordon", h.UncordonNode)
+		clusterGroup.POST("/:id/nodes/:name/drain", h.DrainNode)
+		clusterGroup.POST("/:id/nodes/:name/taints", h.UpdateNodeTaints)
+		clusterGroup.DELETE("/:id/nodes/:name/taints", h.RemoveNodeTaints)
+		clusterGroup.POST("/:id/nodes/:name/labels", h.UpdateNodeLabels)
+		clusterGroup.DELETE("/:id/nodes/:name/labels", h.RemoveNodeLabels)
 		clusterGroup.DELETE("/:id/nodes/:name", h.RemoveClusterNode)
 
 		// 命名空间
@@ -67,6 +74,8 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 高级操作
 		clusterGroup.GET("/:id/events", h.GetEvents)
+		clusterGroup.GET("/:id/operations/history", h.ListOperationHistory)
+		clusterGroup.GET("/:id/operations/:audit_id", h.GetOperationAudit)
 		clusterGroup.GET("/:id/namespaces/:namespace/hpas", h.GetHPAs)
 		clusterGroup.GET("/:id/namespaces/:namespace/resourcequotas", h.GetResourceQuotas)
 		clusterGroup.GET("/:id/namespaces/:namespace/limitranges", h.GetLimitRanges)
