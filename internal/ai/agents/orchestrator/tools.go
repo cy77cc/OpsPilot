@@ -2,17 +2,21 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cy77cc/OpsPilot/internal/config"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	"github.com/cy77cc/OpsPilot/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -466,16 +470,100 @@ func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Cl
 	if err := svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
 		return nil, "", fmt.Errorf("cluster not found: %v", err)
 	}
-	if strings.TrimSpace(cluster.KubeConfig) == "" {
-		return nil, "", fmt.Errorf("cluster %d has no kubeconfig", clusterID)
-	}
-	cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+	cfg, err := buildRestConfigFromClusterOrCredential(svcCtx, &cluster)
 	if err != nil {
-		return nil, "", fmt.Errorf("invalid kubeconfig: %v", err)
+		return nil, "", err
 	}
 	cli, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create k8s client: %v", err)
 	}
 	return cli, cluster.Name, nil
+}
+
+type clusterCredentialMeta struct {
+	SkipTLSVerify bool `json:"skip_tls_verify,omitempty"`
+}
+
+func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *model.Cluster) (*rest.Config, error) {
+	if cluster == nil {
+		return nil, fmt.Errorf("cluster is nil")
+	}
+	if strings.TrimSpace(cluster.KubeConfig) != "" {
+		cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+		if err == nil {
+			return cfg, nil
+		}
+	}
+	if svcCtx == nil || svcCtx.DB == nil {
+		return nil, fmt.Errorf("cluster %d has no kubeconfig and database unavailable", cluster.ID)
+	}
+
+	query := svcCtx.DB.Model(&model.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
+	if cluster.CredentialID != nil && *cluster.CredentialID > 0 {
+		query = query.Where("id = ?", *cluster.CredentialID)
+	}
+	var cred model.ClusterCredential
+	if err := query.Order("id DESC").First(&cred).Error; err != nil {
+		return nil, fmt.Errorf("cluster %d has no kubeconfig or active credential", cluster.ID)
+	}
+	return buildRestConfigFromCredential(&cred)
+}
+
+func buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
+	if enc == "" {
+		return nil, fmt.Errorf("security.encryption_key is required")
+	}
+	if cred == nil {
+		return nil, fmt.Errorf("credential is nil")
+	}
+	if strings.TrimSpace(cred.KubeconfigEnc) != "" {
+		kubeconfig, err := utils.DecryptText(cred.KubeconfigEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt kubeconfig failed: %w", err)
+		}
+		return clientcmd.RESTConfigFromKubeConfig([]byte(kubeconfig))
+	}
+
+	meta := clusterCredentialMeta{}
+	if strings.TrimSpace(cred.MetadataJSON) != "" {
+		_ = json.Unmarshal([]byte(cred.MetadataJSON), &meta)
+	}
+	cfg := &rest.Config{
+		Host: strings.TrimSpace(cred.Endpoint),
+		TLSClientConfig: rest.TLSClientConfig{
+			Insecure: meta.SkipTLSVerify,
+		},
+	}
+	if strings.TrimSpace(cred.CACertEnc) != "" {
+		ca, err := utils.DecryptText(cred.CACertEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt ca cert failed: %w", err)
+		}
+		cfg.TLSClientConfig.CAData = []byte(ca)
+	}
+	if strings.TrimSpace(cred.CertEnc) != "" {
+		cert, err := utils.DecryptText(cred.CertEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt cert failed: %w", err)
+		}
+		key, err := utils.DecryptText(cred.KeyEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt key failed: %w", err)
+		}
+		cfg.TLSClientConfig.CertData = []byte(cert)
+		cfg.TLSClientConfig.KeyData = []byte(key)
+	}
+	if strings.TrimSpace(cred.TokenEnc) != "" {
+		token, err := utils.DecryptText(cred.TokenEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt token failed: %w", err)
+		}
+		cfg.BearerToken = token
+	}
+	if strings.TrimSpace(cfg.Host) == "" {
+		return nil, fmt.Errorf("credential endpoint is empty")
+	}
+	return cfg, nil
 }

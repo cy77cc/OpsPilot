@@ -20,7 +20,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 // =============================================================================
@@ -384,12 +383,9 @@ func resolveK8sClientForWrite(svcCtx *svc.ServiceContext, clusterID int) (*kuber
 	if err := svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
 		return nil, "", fmt.Errorf("cluster not found: %v", err)
 	}
-	if strings.TrimSpace(cluster.KubeConfig) == "" {
-		return nil, "", fmt.Errorf("cluster %d has no kubeconfig", clusterID)
-	}
-	cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+	cfg, _, err := buildRestConfigFromClusterOrCredential(svcCtx, &cluster)
 	if err != nil {
-		return nil, "", fmt.Errorf("invalid kubeconfig: %v", err)
+		return nil, "", err
 	}
 	cli, err := kubernetes.NewForConfig(cfg)
 	if err != nil {

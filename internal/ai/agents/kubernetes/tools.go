@@ -8,17 +8,21 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	"github.com/cy77cc/OpsPilot/internal/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -577,28 +581,110 @@ func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Cl
 		return nil, "missing_cluster_id", fmt.Errorf("k8s client unavailable: cluster_id is required")
 	}
 
-	// 首先尝试从数据库中获取指定集群的客户端
-	if svcCtx.DB != nil {
+	if svcCtx != nil && svcCtx.DB != nil {
 		var cluster model.Cluster
-		// 从数据库中查询集群信息
-		if err := svcCtx.DB.First(&cluster, clusterID).Error; err == nil && strings.TrimSpace(cluster.KubeConfig) != "" {
-			// 使用集群的 KubeConfig 创建 REST 配置
-			cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
-			if err != nil {
-				return nil, "cluster_kubeconfig", err
+		if err := svcCtx.DB.First(&cluster, clusterID).Error; err == nil {
+			cfg, source, err := buildRestConfigFromClusterOrCredential(svcCtx, &cluster)
+			if err == nil {
+				cli, cliErr := kubernetes.NewForConfig(cfg)
+				if cliErr != nil {
+					return nil, source, cliErr
+				}
+				return cli, source, nil
 			}
-
-			// 使用 REST 配置创建 Kubernetes 客户端
-			cli, err := kubernetes.NewForConfig(cfg)
-			if err != nil {
-				return nil, "cluster_kubeconfig", err
-			}
-
-			// 返回从集群配置创建的客户端
-			return cli, "cluster_kubeconfig", nil
 		}
 	}
 
 	// 如果所有尝试都失败，返回错误
 	return nil, "fallback", fmt.Errorf("k8s client unavailable: cluster %d has no usable kubeconfig or db access", clusterID)
+}
+
+type clusterCredentialMeta struct {
+	SkipTLSVerify bool `json:"skip_tls_verify,omitempty"`
+}
+
+func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *model.Cluster) (*rest.Config, string, error) {
+	if cluster == nil {
+		return nil, "fallback", fmt.Errorf("cluster is nil")
+	}
+	if strings.TrimSpace(cluster.KubeConfig) != "" {
+		cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
+		if err == nil {
+			return cfg, "cluster_kubeconfig", nil
+		}
+	}
+	if svcCtx == nil || svcCtx.DB == nil {
+		return nil, "fallback", fmt.Errorf("database unavailable")
+	}
+	query := svcCtx.DB.Model(&model.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
+	if cluster.CredentialID != nil && *cluster.CredentialID > 0 {
+		query = query.Where("id = ?", *cluster.CredentialID)
+	}
+	var cred model.ClusterCredential
+	if err := query.Order("id DESC").First(&cred).Error; err != nil {
+		return nil, "cluster_credential", fmt.Errorf("cluster %d has no active credential", cluster.ID)
+	}
+	cfg, err := buildRestConfigFromCredential(&cred)
+	if err != nil {
+		return nil, "cluster_credential", err
+	}
+	return cfg, "cluster_credential", nil
+}
+
+func buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
+	if enc == "" {
+		return nil, fmt.Errorf("security.encryption_key is required")
+	}
+	if cred == nil {
+		return nil, fmt.Errorf("credential is nil")
+	}
+	if strings.TrimSpace(cred.KubeconfigEnc) != "" {
+		kubeconfig, err := utils.DecryptText(cred.KubeconfigEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt kubeconfig failed: %w", err)
+		}
+		return clientcmd.RESTConfigFromKubeConfig([]byte(kubeconfig))
+	}
+
+	meta := clusterCredentialMeta{}
+	if strings.TrimSpace(cred.MetadataJSON) != "" {
+		_ = json.Unmarshal([]byte(cred.MetadataJSON), &meta)
+	}
+	cfg := &rest.Config{
+		Host: strings.TrimSpace(cred.Endpoint),
+		TLSClientConfig: rest.TLSClientConfig{
+			Insecure: meta.SkipTLSVerify,
+		},
+	}
+	if strings.TrimSpace(cred.CACertEnc) != "" {
+		ca, err := utils.DecryptText(cred.CACertEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt ca cert failed: %w", err)
+		}
+		cfg.TLSClientConfig.CAData = []byte(ca)
+	}
+	if strings.TrimSpace(cred.CertEnc) != "" {
+		cert, err := utils.DecryptText(cred.CertEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt cert failed: %w", err)
+		}
+		key, err := utils.DecryptText(cred.KeyEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt key failed: %w", err)
+		}
+		cfg.TLSClientConfig.CertData = []byte(cert)
+		cfg.TLSClientConfig.KeyData = []byte(key)
+	}
+	if strings.TrimSpace(cred.TokenEnc) != "" {
+		token, err := utils.DecryptText(cred.TokenEnc, enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt token failed: %w", err)
+		}
+		cfg.BearerToken = token
+	}
+	if strings.TrimSpace(cfg.Host) == "" {
+		return nil, fmt.Errorf("credential endpoint is empty")
+	}
+	return cfg, nil
 }
