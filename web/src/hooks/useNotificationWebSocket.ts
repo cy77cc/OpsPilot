@@ -22,9 +22,11 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentReconnectIntervalRef = useRef(reconnectInterval);
   const statusRef = useRef<WSConnectionStatus>('disconnected');
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const intentionalDisconnectRef = useRef(false);
 
   const userIdRef = useRef(userId);
 
@@ -65,13 +67,20 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
     }
   }, []);
 
+  const getAuthToken = useCallback(() => {
+    const token = localStorage.getItem('token');
+    return token ? token.trim() : '';
+  }, []);
+
   // 连接 WebSocket
   const connect = useCallback(() => {
     const currentUserId = userIdRef.current;
-    if (!currentUserId || statusRef.current === 'connecting') {
+    const token = getAuthToken();
+    if (!currentUserId || !token || statusRef.current === 'connecting') {
       return;
     }
 
+    intentionalDisconnectRef.current = false;
     statusRef.current = 'connecting';
 
     // 构建 WebSocket URL
@@ -80,14 +89,14 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
 
     if (import.meta.env.VITE_WS_URL) {
       // 使用配置的 WebSocket URL
-      wsUrl = `${import.meta.env.VITE_WS_URL}/ws/notifications?user_id=${currentUserId}`;
+      wsUrl = `${import.meta.env.VITE_WS_URL}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
     } else if (import.meta.env.DEV) {
       // 开发环境：通过 vite proxy 代理，使用当前 host
       // vite.config.ts 中配置了 /ws 代理到后端
-      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}`;
+      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
     } else {
       // 生产环境：使用当前 host
-      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}`;
+      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
     }
 
     console.log('WebSocket: 正在连接', wsUrl);
@@ -97,6 +106,9 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (wsRef.current !== ws) {
+          return;
+        }
         statusRef.current = 'connected';
         currentReconnectIntervalRef.current = reconnectInterval;
         onConnectRef.current?.();
@@ -104,6 +116,9 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       };
 
       ws.onmessage = (event) => {
+        if (wsRef.current !== ws) {
+          return;
+        }
         try {
           const message: WSMessage = JSON.parse(event.data);
           onMessageRef.current?.(message);
@@ -114,9 +129,16 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       };
 
       ws.onclose = (event) => {
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
         statusRef.current = 'disconnected';
         onDisconnectRef.current?.();
         console.log('WebSocket: 连接关闭', event.code, event.reason);
+
+        if (intentionalDisconnectRef.current) {
+          return;
+        }
 
         // 只有在非正常关闭时才自动重连
         // 1000 = 正常关闭, 1001 = 端点离开, 1005 = 无状态码
@@ -126,6 +148,9 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       };
 
       ws.onerror = (error) => {
+        if (intentionalDisconnectRef.current || wsRef.current !== ws) {
+          return;
+        }
         console.error('WebSocket: 连接错误', error);
         // 注意：不要在这里调用 ws.close()，onclose 会自动触发
       };
@@ -134,10 +159,14 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       statusRef.current = 'disconnected';
       scheduleReconnect();
     }
-  }, [reconnectInterval, broadcast]);
+  }, [reconnectInterval, broadcast, getAuthToken]);
 
   // 安排重连
   const scheduleReconnect = useCallback(() => {
+    if (!userIdRef.current || !getAuthToken() || intentionalDisconnectRef.current) {
+      return;
+    }
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
@@ -152,14 +181,19 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       console.log(`WebSocket: 尝试重连 (延迟 ${delay}ms)`);
       connect();
     }, delay);
-  }, [connect, maxReconnectInterval]);
+  }, [connect, getAuthToken, maxReconnectInterval]);
 
   // 断开连接
   const disconnect = useCallback(() => {
+    intentionalDisconnectRef.current = true;
     // 清除重连定时器
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
     }
     // 正常关闭 WebSocket
     if (wsRef.current) {
@@ -182,16 +216,24 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
     initBroadcastChannel();
 
     if (userId) {
-      connect();
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+      }
+      // 延迟到下一个事件循环，避免 React StrictMode 开发双调用导致“连接前关闭”的噪音
+      connectTimeoutRef.current = setTimeout(() => {
+        connectTimeoutRef.current = null;
+        connect();
+      }, 0);
     }
 
     return () => {
       disconnect();
       if (broadcastChannelRef.current) {
         broadcastChannelRef.current.close();
+        broadcastChannelRef.current = null;
       }
     };
-  }, [userId]);
+  }, [userId, connect, disconnect, initBroadcastChannel]);
 
   return {
     connect,

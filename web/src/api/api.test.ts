@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ApiRequestError, TOKEN_EVENTS } from './api';
+import { ApiRequestError, TOKEN_EVENTS, isAuthBusinessCode } from './api';
 
 describe('ApiRequestError', () => {
   it('creates error with message only', () => {
@@ -156,6 +156,21 @@ describe('API error scenarios', () => {
     const error = new ApiRequestError('Resource not found', 200, 5001);
     expect(error.businessCode).toBe(5001);
     expect(error.message).toBe('Resource not found');
+  });
+});
+
+describe('isAuthBusinessCode', () => {
+  it('returns true for auth-related business codes', () => {
+    expect(isAuthBusinessCode(2003)).toBe(true);
+    expect(isAuthBusinessCode(4005)).toBe(true);
+    expect(isAuthBusinessCode(4006)).toBe(true);
+  });
+
+  it('returns false for non-auth business codes', () => {
+    expect(isAuthBusinessCode(1000)).toBe(false);
+    expect(isAuthBusinessCode(2004)).toBe(false);
+    expect(isAuthBusinessCode(5000)).toBe(false);
+    expect(isAuthBusinessCode(undefined)).toBe(false);
   });
 });
 

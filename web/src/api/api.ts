@@ -18,6 +18,11 @@ export class ApiRequestError extends Error {
   }
 }
 
+const AUTH_BUSINESS_CODES = new Set<number>([2003, 4005, 4006]);
+
+export const isAuthBusinessCode = (code: unknown): code is number =>
+  typeof code === 'number' && AUTH_BUSINESS_CODES.has(code);
+
 // 响应数据结构
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -83,7 +88,7 @@ class ApiService {
         const requestURL = String(originalConfig.url || '');
         // 兼容后端统一结构：{ code, msg/message, data, total }
         if (typeof payload?.code === 'number') {
-          if ((payload.code === 4005 || payload.code === 4006) && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
+          if (isAuthBusinessCode(payload.code) && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
             originalConfig._retry = true;
             return this.tryRefreshAndRetry(originalConfig);
           }

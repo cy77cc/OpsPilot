@@ -21,6 +21,7 @@ const HostTerminalPage: React.FC = () => {
   const resizeObserverRef = React.useRef<ResizeObserver | null>(null);
   const inputListenerRef = React.useRef<{ dispose: () => void } | null>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
+  const terminalInitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const termWrapRef = React.useRef<HTMLDivElement>(null);
   const [status, setStatus] = React.useState<ConnStatus>('idle');
   const [host, setHost] = React.useState<Host | null>(null);
@@ -46,7 +47,10 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const setupTerminal = React.useCallback(() => {
-    if (!termWrapRef.current || xtermRef.current) return;
+    if (!termWrapRef.current || xtermRef.current) return false;
+    if (termWrapRef.current.clientWidth === 0 || termWrapRef.current.clientHeight === 0) {
+      return false;
+    }
     const term = new Terminal({
       cursorBlink: true,
       convertEol: true,
@@ -61,27 +65,65 @@ const HostTerminalPage: React.FC = () => {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(termWrapRef.current);
-    fitAddon.fit();
+    // Use guarded fit to avoid xterm viewport crashes during StrictMode mount/unmount cycles.
+    if (termWrapRef.current.clientWidth > 0 && termWrapRef.current.clientHeight > 0) {
+      try {
+        fitAddon.fit();
+      } catch {
+        // Ignore transient fit errors when terminal is tearing down.
+      }
+    }
     term.writeln('\x1b[90mConnecting to host terminal...\x1b[0m');
     xtermRef.current = term;
     fitRef.current = fitAddon;
+    return true;
+  }, []);
+
+  const safeFit = React.useCallback(() => {
+    const term = xtermRef.current;
+    const fit = fitRef.current;
+    const wrap = termWrapRef.current;
+    if (!term || !fit || !wrap || !wrap.isConnected) return;
+    // Skip fit when container is detached/collapsed to avoid xterm internal dimension errors.
+    if (wrap.clientWidth === 0 || wrap.clientHeight === 0) return;
+    try {
+      fit.fit();
+    } catch {
+      // no-op: fit can throw if terminal is disposed during async layout updates
+    }
   }, []);
 
   React.useEffect(() => {
-    setupTerminal();
-    const onResize = () => fitRef.current?.fit();
+    let cancelled = false;
+    const tryInit = () => {
+      if (cancelled) return;
+      if (!setupTerminal()) {
+        terminalInitTimerRef.current = setTimeout(tryInit, 50);
+      } else {
+        terminalInitTimerRef.current = null;
+      }
+    };
+    terminalInitTimerRef.current = setTimeout(tryInit, 0);
+    const onResize = () => safeFit();
     window.addEventListener('resize', onResize);
     return () => {
+      cancelled = true;
+      if (terminalInitTimerRef.current) {
+        clearTimeout(terminalInitTimerRef.current);
+        terminalInitTimerRef.current = null;
+      }
       window.removeEventListener('resize', onResize);
       wsRef.current?.close();
+      wsRef.current = null;
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
       inputListenerRef.current?.dispose();
       inputListenerRef.current = null;
       xtermRef.current?.dispose();
       xtermRef.current = null;
+      fitRef.current = null;
     };
-  }, [setupTerminal]);
+  }, [safeFit, setupTerminal]);
 
   const wsURLFromPath = (wsPath: string) => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -120,7 +162,7 @@ const HostTerminalPage: React.FC = () => {
       wsRef.current = ws;
       ws.onopen = () => {
         setStatus('connected');
-        fitRef.current?.fit();
+        safeFit();
         const term = xtermRef.current;
         if (!term) return;
         term.focus();
@@ -135,8 +177,11 @@ const HostTerminalPage: React.FC = () => {
         if (fit) {
           resizeObserverRef.current?.disconnect();
           const observer = new ResizeObserver(() => {
-            fit.fit();
-            ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+            if (xtermRef.current !== term) return;
+            safeFit();
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+            }
           });
           resizeObserverRef.current = observer;
           if (termWrapRef.current) observer.observe(termWrapRef.current);
@@ -171,7 +216,7 @@ const HostTerminalPage: React.FC = () => {
       setStatus('error');
       message.error(err instanceof Error ? err.message : '终端连接失败');
     }
-  }, [id, refreshFiles]);
+  }, [id, refreshFiles, safeFit]);
 
   React.useEffect(() => {
     void connect();
@@ -179,10 +224,10 @@ const HostTerminalPage: React.FC = () => {
 
   React.useEffect(() => {
     const raf = window.requestAnimationFrame(() => {
-      fitRef.current?.fit();
+      safeFit();
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [selectedFile, editorSize]);
+  }, [editorSize, safeFit, selectedFile]);
 
   const closeSession = React.useCallback(async () => {
     wsRef.current?.close();

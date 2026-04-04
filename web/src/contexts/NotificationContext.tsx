@@ -7,6 +7,7 @@ import type {
 } from '../types/notification';
 import { notificationApi } from '../api/modules/notification';
 import { aiApi } from '../api/modules/ai';
+import { ApiRequestError, isAuthBusinessCode } from '../api/api';
 import { useNotificationWebSocket } from '../hooks/useNotificationWebSocket';
 import { playNotificationSound } from '../hooks/useNotificationSound';
 import { notify as sendBrowserNotification } from '../utils/browserNotification';
@@ -68,6 +69,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   userId,
   pollInterval = 30000,
 }) => {
+  const hasAuth = Boolean(userId && localStorage.getItem('token'));
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState<UnreadCountResponse>({
     total: 0,
@@ -85,6 +87,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const loadNotificationsRef = useRef<(() => Promise<void>) | null>(null);
 
   loadNotificationsRef.current = async () => {
+    if (!hasAuth) {
+      return;
+    }
     try {
       setLoading(true);
       const [listRes, countRes] = await Promise.all([
@@ -94,6 +99,16 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       setNotifications(listRes.data.list);
       setUnreadCount(countRes.data);
     } catch (error) {
+      if (
+        error instanceof ApiRequestError
+        && (
+          error.statusCode === 401
+          || isAuthBusinessCode(error.businessCode)
+          || /未授权|未认证|登录已过期/.test(error.message)
+        )
+      ) {
+        return;
+      }
       console.error('加载通知失败:', error);
     } finally {
       setLoading(false);
@@ -336,12 +351,23 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // 初始化 - 只加载一次
   useEffect(() => {
+    if (!hasAuth) {
+      return;
+    }
     loadNotifications();
     // 注意：轮询由 WebSocket 状态变化时自动处理，不在这里启动
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 当 WebSocket 状态变化时处理轮询
   useEffect(() => {
+    if (!hasAuth) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
     if (wsStatus === 'connected') {
       // WebSocket 连接成功，停止轮询
       if (pollingRef.current) {
@@ -363,7 +389,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         pollingRef.current = null;
       }
     };
-  }, [wsStatus, pollInterval]); // 移除 loadNotifications 依赖
+  }, [hasAuth, wsStatus, pollInterval]); // 移除 loadNotifications 依赖
 
   // 更新 wsStatus 状态
   useEffect(() => {
