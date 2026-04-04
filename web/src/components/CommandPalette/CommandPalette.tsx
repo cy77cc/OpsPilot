@@ -5,10 +5,11 @@ import {
   HomeOutlined,
   AppstoreOutlined,
   CloudUploadOutlined,
-  DesktopOutlined,
   BarChartOutlined,
   SettingOutlined,
   SearchOutlined,
+  ClockCircleOutlined,
+  FileTextOutlined,
   RightOutlined,
 } from '@ant-design/icons';
 import './CommandPalette.css';
@@ -105,16 +106,16 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/hosts')}
+                    onSelect={() => handleNavigate('/tasks')}
                     className="command-palette-item"
                   >
-                    <DesktopOutlined className="command-palette-item-icon" />
-                    <span>主机管理</span>
-                    <span className="command-palette-item-shortcut">g h</span>
+                    <ClockCircleOutlined className="command-palette-item-icon" />
+                    <span>任务调度</span>
+                    <span className="command-palette-item-shortcut">g t</span>
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/monitoring')}
+                    onSelect={() => handleNavigate('/monitor')}
                     className="command-palette-item"
                   >
                     <BarChartOutlined className="command-palette-item-icon" />
@@ -123,13 +124,21 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/config')}
+                    onSelect={() => handleNavigate('/settings')}
                     className="command-palette-item"
                   >
                     <SettingOutlined className="command-palette-item-icon" />
-                    <span>配置中心</span>
-                    <span className="command-palette-item-shortcut">g c</span>
+                    <span>系统设置</span>
                   </Command.Item>
+
+                  <Command.Item
+                    onSelect={() => handleNavigate('/help')}
+                    className="command-palette-item"
+                  >
+                    <FileTextOutlined className="command-palette-item-icon" />
+                    <span>帮助中心</span>
+                  </Command.Item>
+
                 </Command.Group>
 
                 <Command.Group heading="操作" className="command-palette-group">
@@ -163,10 +172,10 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                 </Command.Item>
 
                 <Command.Item
-                  onSelect={() => handleNavigate('/hosts/onboarding')}
+                  onSelect={() => handleNavigate('/deployment/infrastructure/hosts/onboarding')}
                   className="command-palette-item"
                 >
-                  <DesktopOutlined className="command-palette-item-icon" />
+                  <CloudUploadOutlined className="command-palette-item-icon" />
                   <span>添加主机</span>
                 </Command.Item>
               </Command.Group>

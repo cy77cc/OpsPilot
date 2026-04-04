@@ -186,12 +186,6 @@ export function createMockApi() {
       getList: vi.fn(),
       execute: vi.fn(),
     },
-
-    // Configs
-    configs: {
-      get: vi.fn(),
-      update: vi.fn(),
-    },
   };
 }
 

@@ -121,3 +121,4 @@ bin/
 .github/skills/
 .github/*.md
 openspec/
+.omx/

@@ -4,7 +4,6 @@ const enUS = {
   'menu.services': 'Services',
   'menu.cmdb': 'CMDB',
   'menu.automation': 'Automation',
-  'menu.config': 'Config',
   'menu.tasks': 'Tasks',
   'menu.k8s': 'K8s',
   'menu.monitor': 'Monitoring',

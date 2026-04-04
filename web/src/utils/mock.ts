@@ -21,15 +21,6 @@ export interface Cluster {
   memoryTotal: number;
 }
 
-export interface ConfigItem {
-  id: string;
-  name: string;
-  content: string;  // YAML 格式
-  version: string;  // 版本号
-  commitHash: string;
-  updatedAt: Date;
-}
-
 export interface Task {
   id: string;
   name: string;
@@ -115,28 +106,6 @@ const generateClusters = (): Cluster[] => {
   ];
 };
 
-// 生成配置中心数据
-const generateConfigItems = (): ConfigItem[] => {
-  return [
-    {
-      id: faker.string.uuid(),
-      name: 'application.yml',
-      content: `server:\n  port: 8080\n\nspring:\n  application:\n    name: devops-service\n  profiles:\n    active: prod`,
-      version: 'v1.0.1',
-      commitHash: faker.git.commitSha(),
-      updatedAt: new Date()
-    },
-    {
-      id: faker.string.uuid(),
-      name: 'database.yml',
-      content: `database:\n  url: jdbc:mysql://localhost:3306/devops\n  username: admin\n  password: password`,
-      version: 'v1.0.0',
-      commitHash: faker.git.commitSha(),
-      updatedAt: new Date()
-    }
-  ];
-};
-
 // 生成任务调度数据
 const generateTasks = (): Task[] => {
   const tasks: Task[] = [];
@@ -169,7 +138,6 @@ export const useMockData = () => {
   return {
     generateHosts,
     generateClusters,
-    generateConfigItems,
     generateTasks
   };
 };

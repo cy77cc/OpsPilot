@@ -2,13 +2,11 @@
 //
 // 本文件实现部署操作工具集，包括：
 //   - 部署目标查询和管理
-//   - 配置项读取和对比
 //   - 集群和服务清单查询
 package deployment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -41,27 +39,6 @@ type DeploymentBootstrapStatusInput struct {
 	TargetID int `json:"target_id" jsonschema_description:"required,deployment target id"`
 }
 
-// ConfigAppListInput 配置应用列表查询输入。
-type ConfigAppListInput struct {
-	Keyword string `json:"keyword,omitempty" jsonschema_description:"optional keyword on service name"`
-	Env     string `json:"env,omitempty" jsonschema_description:"optional env filter"`
-	Limit   int    `json:"limit,omitempty" jsonschema_description:"max apps,default=50"`
-}
-
-// ConfigItemGetInput 配置项查询输入。
-type ConfigItemGetInput struct {
-	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
-	Key   string `json:"key" jsonschema_description:"required,config key"`
-	Env   string `json:"env,omitempty" jsonschema_description:"optional env"`
-}
-
-// ConfigDiffInput 配置对比输入。
-type ConfigDiffInput struct {
-	AppID int    `json:"app_id" jsonschema_description:"required,service id as config app id"`
-	EnvA  string `json:"env_a" jsonschema_description:"required,compare env a"`
-	EnvB  string `json:"env_b" jsonschema_description:"required,compare env b"`
-}
-
 // ClusterInventoryInput 集群清单查询输入。
 type ClusterInventoryInput struct {
 	Status  string `json:"status,omitempty" jsonschema_description:"optional cluster status filter"`
@@ -90,7 +67,6 @@ func NewDeploymentTools(ctx context.Context) []tool.InvokableTool {
 // 返回只读工具列表，包括：
 //   - 部署目标查询（deployment_target_list, deployment_target_detail）
 //   - 引导状态查询（deployment_bootstrap_status）
-//   - 配置查询（config_app_list, config_item_get, config_diff）
 //   - 清单查询（cluster_list_inventory, service_list_inventory）
 //
 // 这些工具不修改任何状态，可安全用于诊断和巡检场景。
@@ -99,9 +75,6 @@ func NewDeploymentReadonlyTools(ctx context.Context) []tool.InvokableTool {
 		DeploymentTargetList(ctx),
 		DeploymentTargetDetail(ctx),
 		DeploymentBootstrapStatus(ctx),
-		ConfigAppList(ctx),
-		ConfigItemGet(ctx),
-		ConfigDiff(ctx),
 		ClusterListInventory(ctx),
 		ServiceListInventory(ctx),
 	}
@@ -258,179 +231,6 @@ func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
 				result.Steps = steps
 			}
 			return result, nil
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-type ConfigAppListOutput struct {
-	Total int              `json:"total"`
-	List  []map[string]any `json:"list"`
-}
-
-func ConfigAppList(ctx context.Context) tool.InvokableTool {
-	t, err := utils.InferOptionableTool(
-		"config_app_list",
-		"Query config app list. Optional parameters: keyword/env/limit. Example: {\"env\":\"prod\"}.",
-		func(ctx context.Context, input *ConfigAppListInput, opts ...tool.Option) (*ConfigAppListOutput, error) {
-			svcCtx := depsFromContextOrFallback(ctx)
-			if svcCtx == nil || svcCtx.DB == nil {
-				return nil, fmt.Errorf("service context is nil")
-			}
-			limit := input.Limit
-			if limit <= 0 {
-				limit = 50
-			}
-			if limit > 200 {
-				limit = 200
-			}
-			query := svcCtx.DB.Model(&model.Service{})
-			if kw := strings.TrimSpace(input.Keyword); kw != "" {
-				pattern := "%" + kw + "%"
-				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
-			}
-			if env := strings.TrimSpace(input.Env); env != "" {
-				query = query.Where("env = ?", env)
-			}
-			var services []model.Service
-			if err := query.Order("id desc").Limit(limit).Find(&services).Error; err != nil {
-				return nil, err
-			}
-			list := make([]map[string]any, 0, len(services))
-			for _, svc := range services {
-				list = append(list, map[string]any{"app_id": svc.ID, "name": svc.Name, "env": svc.Env, "owner": svc.Owner})
-			}
-			return &ConfigAppListOutput{
-				Total: len(list),
-				List:  list,
-			}, nil
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-type ConfigItemGetOutput struct {
-	AppID     int    `json:"app_id"`
-	Env       string `json:"env"`
-	Key       string `json:"key"`
-	Value     any    `json:"value"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-func ConfigItemGet(ctx context.Context) tool.InvokableTool {
-	t, err := utils.InferOptionableTool(
-		"config_item_get",
-		"Query config item value. app_id and key are required, optional env. Example: {\"app_id\":12,\"key\":\"DATABASE_URL\"}.",
-		func(ctx context.Context, input *ConfigItemGetInput, opts ...tool.Option) (*ConfigItemGetOutput, error) {
-			svcCtx := depsFromContextOrFallback(ctx)
-			if svcCtx == nil || svcCtx.DB == nil {
-				return nil, fmt.Errorf("service context is nil")
-			}
-			if input.AppID <= 0 {
-				return nil, fmt.Errorf("app_id is required")
-			}
-			key := strings.TrimSpace(input.Key)
-			if key == "" {
-				return nil, fmt.Errorf("key is required")
-			}
-			env := strings.TrimSpace(input.Env)
-			if env == "" {
-				env = "staging"
-			}
-			var set model.ServiceVariableSet
-			if err := svcCtx.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
-				return nil, err
-			}
-			values := map[string]any{}
-			_ = json.Unmarshal([]byte(set.ValuesJSON), &values)
-			return &ConfigItemGetOutput{
-				AppID:     input.AppID,
-				Env:       env,
-				Key:       key,
-				Value:     values[key],
-				UpdatedAt: set.UpdatedAt.Format("2006-01-02 15:04:05"),
-			}, nil
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-type ConfigDiffOutput struct {
-	AppID     int              `json:"app_id"`
-	EnvA      string           `json:"env_a"`
-	EnvB      string           `json:"env_b"`
-	DiffCount int              `json:"diff_count"`
-	Diff      []map[string]any `json:"diff"`
-}
-
-func ConfigDiff(ctx context.Context) tool.InvokableTool {
-	t, err := utils.InferOptionableTool(
-		"config_diff",
-		"Compare config difference. app_id, env_a, env_b are required. Example: {\"app_id\":12,\"env_a\":\"staging\",\"env_b\":\"prod\"}.",
-		func(ctx context.Context, input *ConfigDiffInput, opts ...tool.Option) (*ConfigDiffOutput, error) {
-			svcCtx := depsFromContextOrFallback(ctx)
-			if svcCtx == nil || svcCtx.DB == nil {
-				return nil, fmt.Errorf("service context is nil")
-			}
-			if input.AppID <= 0 {
-				return nil, fmt.Errorf("app_id is required")
-			}
-			envA := strings.TrimSpace(input.EnvA)
-			envB := strings.TrimSpace(input.EnvB)
-			if envA == "" {
-				return nil, fmt.Errorf("env_a is required")
-			}
-			if envB == "" {
-				return nil, fmt.Errorf("env_b is required")
-			}
-			readEnv := func(env string) (map[string]any, error) {
-				var set model.ServiceVariableSet
-				if err := svcCtx.DB.Where("service_id = ? AND env = ?", input.AppID, env).Order("updated_at desc").First(&set).Error; err != nil {
-					return nil, err
-				}
-				out := map[string]any{}
-				_ = json.Unmarshal([]byte(set.ValuesJSON), &out)
-				return out, nil
-			}
-			a, err := readEnv(envA)
-			if err != nil {
-				return nil, err
-			}
-			b, err := readEnv(envB)
-			if err != nil {
-				return nil, err
-			}
-			diff := make([]map[string]any, 0)
-			seen := map[string]struct{}{}
-			for k, av := range a {
-				seen[k] = struct{}{}
-				bv := b[k]
-				if fmt.Sprintf("%v", av) != fmt.Sprintf("%v", bv) {
-					diff = append(diff, map[string]any{"key": k, "env_a": av, "env_b": bv})
-				}
-			}
-			for k, bv := range b {
-				if _, ok := seen[k]; ok {
-					continue
-				}
-				diff = append(diff, map[string]any{"key": k, "env_a": nil, "env_b": bv})
-			}
-			return &ConfigDiffOutput{
-				AppID:     input.AppID,
-				EnvA:      envA,
-				EnvB:      envB,
-				DiffCount: len(diff),
-				Diff:      diff,
-			}, nil
 		},
 	)
 	if err != nil {

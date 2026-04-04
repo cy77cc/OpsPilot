@@ -18,7 +18,6 @@ interface KeyboardShortcutsOptions {
  * - g+s : 跳转到服务管理
  * - g+d : 跳转到部署管理
  * - g+m : 跳转到监控中心
- * - g+c : 跳转到配置中心
  * - g+t : 跳转到任务中心
  * - j : 列表向下
  * - k : 列表向上
@@ -44,8 +43,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => 
         h: '/',
         s: '/services',
         d: '/deployment',
-        m: '/monitoring',
-        c: '/config',
+        m: '/monitor',
         t: '/tasks',
       };
 

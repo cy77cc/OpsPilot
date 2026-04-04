@@ -4,7 +4,6 @@
   "menu.services": "服务管理",
   "menu.cmdb": "CMDB",
   "menu.automation": "自动化",
-  "menu.config": "配置中心",
   "menu.tasks": "任务调度",
   "menu.k8s": "K8s集群",
   "menu.monitor": "监控告警",

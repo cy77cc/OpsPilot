@@ -16,7 +16,6 @@ const HostTerminalPage = lazy(() => import('./pages/Hosts/HostTerminalPage'));
 const HostKeysPage = lazy(() => import('./pages/Hosts/HostKeysPage'));
 const HostCloudImportPage = lazy(() => import('./pages/Hosts/HostCloudImportPage'));
 const HostVirtualizationPage = lazy(() => import('./pages/Hosts/HostVirtualizationPage'));
-const ConfigPage = lazy(() => import('./pages/Config/ConfigPage'));
 const TasksPage = lazy(() => import('./pages/Tasks/TasksPage'));
 const K8sPage = lazy(() => import('./pages/K8s/K8sPage'));
 const DeploymentListPage = lazy(() => import('./pages/Deployment/DeploymentListPage'));
@@ -58,11 +57,6 @@ const JobListPage = lazy(() => import('./pages/Jobs/JobListPage'));
 const JobCreationPage = lazy(() => import('./pages/Jobs/JobCreationPage'));
 const ExecutionHistoryPage = lazy(() => import('./pages/Jobs/ExecutionHistoryPage'));
 const JobCalendarPage = lazy(() => import('./pages/Jobs/JobCalendarPage'));
-const ConfigAppsPage = lazy(() => import('./pages/ConfigCenter/ConfigAppsPage'));
-const ConfigListPage = lazy(() => import('./pages/ConfigCenter/ConfigListPage'));
-const ConfigDiffPage = lazy(() => import('./pages/ConfigCenter/ConfigDiffPage'));
-const ConfigMultiEnvPage = lazy(() => import('./pages/ConfigCenter/ConfigMultiEnvPage'));
-const ConfigCenterAuditLogsPage = lazy(() => import('./pages/ConfigCenter/AuditLogsPage'));
 const HelpCenterPage = lazy(() => import('./pages/Help/HelpCenterPage'));
 
 const RouteFallback: React.FC = () => (
@@ -86,13 +80,6 @@ export default function ProtectedApp() {
             <PageTransition>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/config" element={withAuth('config', 'read', <ConfigPage />)} />
-                <Route path="/config/:id" element={withAuth('config', 'write', <ConfigPage />)} />
-                <Route path="/configcenter/apps" element={withAuth('config', 'read', <ConfigAppsPage />)} />
-                <Route path="/configcenter/list" element={withAuth('config', 'read', <ConfigListPage />)} />
-                <Route path="/configcenter/diff" element={withAuth('config', 'read', <ConfigDiffPage />)} />
-                <Route path="/configcenter/multienv" element={withAuth('config', 'write', <ConfigMultiEnvPage />)} />
-                <Route path="/configcenter/logs" element={withAuth('config', 'read', <ConfigCenterAuditLogsPage />)} />
                 <Route path="/tasks" element={withAuth('task', 'read', <TasksPage />)} />
                 <Route path="/tasks/create" element={withAuth('task', 'write', <TasksPage />)} />
                 <Route path="/tasks/:id" element={withAuth('task', 'read', <TasksPage />)} />

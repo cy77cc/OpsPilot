@@ -37,8 +37,29 @@ type MenuItem = Required<MenuProps>['items'][number];
 
 const menuRouteOverrides: Record<string, string> = {
   '/services/all': '/services',
-  '/deployment/history': '/deployment',
 };
+
+type MenuLeaf = {
+  key: string;
+  icon?: React.ReactNode;
+  label: string;
+};
+
+type MenuSection = {
+  key: string;
+  title: string;
+  items: MenuLeaf[];
+};
+
+function findSectionPath(sections: MenuSection[], targetKey: string): { title: string; key?: string }[] {
+  for (const section of sections) {
+    const item = section.items.find((entry) => entry.key === targetKey);
+    if (item) {
+      return [{ title: section.title }, { title: item.label, key: item.key }];
+    }
+  }
+  return [];
+}
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -89,126 +110,119 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
-  const baseMenuItems: MenuItem[] = [
-    { key: '/', icon: <DashboardOutlined />, label: t('menu.dashboard') },
+  const menuSections: MenuSection[] = [
     {
-      key: '/services',
-      icon: <CloudServerOutlined />,
-      label: t('menu.services'),
-      children: [
-        { key: '/services/all', label: '全部服务' },
-        { key: '/services?service_kind=middleware', label: '中间件服务' },
-        { key: '/services?service_kind=business', label: '业务服务' },
+      key: 'overview',
+      title: '总览',
+      items: [
+        { key: '/', icon: <DashboardOutlined />, label: t('menu.dashboard') },
       ],
     },
-    { key: '/cmdb', icon: <CloudServerOutlined />, label: t('menu.cmdb') },
-    { key: '/automation', icon: <ToolOutlined />, label: t('menu.automation') },
-    { key: '/cicd', icon: <ToolOutlined />, label: 'CI/CD' },
-    { key: '/help', icon: <FileTextOutlined />, label: '帮助中心' },
-    { key: '/config', icon: <SettingOutlined />, label: t('menu.config') },
-    { key: '/tasks', icon: <ClockCircleOutlined />, label: t('menu.tasks') },
     {
-      key: '/deployment',
-      icon: <CloudOutlined />,
-      label: '部署管理',
-      children: [
-        {
-          key: 'infrastructure',
-          label: '基础设施',
-          children: [
-            { key: '/deployment/infrastructure/clusters', label: '集群管理' },
-            { key: '/deployment/infrastructure/credentials', label: '凭证管理' },
-            { key: '/deployment/infrastructure/hosts', label: '主机管理' },
-          ],
-        },
-        {
-          key: 'targets',
-          label: '部署目标',
-          children: [
-            { key: '/deployment/targets', label: '目标列表' },
-            { key: '/deployment/targets/create', label: '创建目标' },
-          ],
-        },
-        {
-          key: 'releases',
-          label: '发布管理',
-          children: [
-            { key: '/deployment/overview', label: '发布概览' },
-            { key: '/deployment/create', label: '创建发布' },
-            { key: '/deployment/history', label: '发布历史' },
-            { key: '/deployment/approvals', label: '审批中心' },
-          ],
-        },
-        {
-          key: 'observability',
-          label: '可观测性',
-          children: [
-            { key: '/deployment/observability/topology', label: '部署拓扑' },
-            { key: '/deployment/observability/metrics', label: '指标仪表板' },
-            { key: '/deployment/observability/audit-logs', label: '审计日志' },
-            { key: '/deployment/observability/policies', label: '策略管理' },
-            { key: '/deployment/observability/aiops', label: 'AIOps 洞察' },
-          ],
-        },
+      key: 'delivery',
+      title: '研发交付',
+      items: [
+        { key: '/services', icon: <CloudServerOutlined />, label: t('menu.services') },
+        { key: '/deployment', icon: <CloudOutlined />, label: '发布中心' },
+        { key: '/deployment/targets', icon: <CloudOutlined />, label: '发布目标' },
+        { key: '/cicd', icon: <ToolOutlined />, label: 'CI/CD' },
       ],
     },
-    { key: '/monitor', icon: <AlertOutlined />, label: t('menu.monitor') },
-    { key: '/tools', icon: <ToolOutlined />, label: t('menu.tools') },
     {
-      key: 'settings-root',
-      icon: <SettingOutlined />,
-      label: '系统设置',
-      children: [
-        { key: '/settings', label: '基础设置' },
-        { key: '/settings/ai-models', label: 'AI 模型配置' },
+      key: 'infrastructure',
+      title: '基础设施',
+      items: [
+        { key: '/deployment/infrastructure/clusters', icon: <CloudOutlined />, label: '集群管理' },
+        { key: '/deployment/infrastructure/hosts', icon: <DesktopOutlined />, label: '主机管理' },
+      ],
+    },
+    {
+      key: 'observability',
+      title: '观测治理',
+      items: [
+        { key: '/monitor', icon: <AlertOutlined />, label: t('menu.monitor') },
+        { key: '/deployment/observability/topology', icon: <CloudOutlined />, label: '部署拓扑' },
+        { key: '/deployment/observability/audit-logs', icon: <AlertOutlined />, label: '审计日志' },
+        { key: '/deployment/observability/policies', icon: <AlertOutlined />, label: '策略管理' },
+        { key: '/deployment/observability/aiops', icon: <AlertOutlined />, label: 'AIOps 洞察' },
+      ],
+    },
+    {
+      key: 'ops',
+      title: '运维运营',
+      items: [
+        { key: '/automation', icon: <ToolOutlined />, label: t('menu.automation') },
+        { key: '/tasks', icon: <ClockCircleOutlined />, label: t('menu.tasks') },
+        { key: '/cmdb', icon: <CloudServerOutlined />, label: t('menu.cmdb') },
+      ],
+    },
+    {
+      key: 'support',
+      title: '平台与支持',
+      items: [
+        { key: '/settings', icon: <SettingOutlined />, label: '基础设置' },
+        { key: '/settings/ai-models', icon: <SettingOutlined />, label: 'AI 模型配置' },
         ...(!governanceMenuEnabled ? [
-          { key: '/settings/users', label: '用户管理' },
-          { key: '/settings/roles', label: '角色管理' },
-          { key: '/settings/permissions', label: '权限列表' },
+          { key: '/settings/users', icon: <UserOutlined />, label: '用户管理' },
+          { key: '/settings/roles', icon: <UserOutlined />, label: '角色管理' },
+          { key: '/settings/permissions', icon: <UserOutlined />, label: '权限列表' },
         ] : []),
+        ...(governanceMenuEnabled && canReadGovernance
+          ? [
+              { key: '/governance/users', icon: <UserOutlined />, label: '访问治理' },
+            ]
+          : []),
+        { key: '/tools', icon: <ToolOutlined />, label: t('menu.tools') },
+        { key: '/help', icon: <FileTextOutlined />, label: '帮助中心' },
       ],
     },
   ];
-
-  const governanceMenuItems: MenuItem[] =
-    governanceMenuEnabled && canReadGovernance
-      ? [
-          {
-            key: '/governance',
-            icon: <UserOutlined />,
-            label: '访问治理',
-            children: [
-              { key: '/governance/users', label: '用户管理' },
-              { key: '/governance/roles', label: '角色管理' },
-              { key: '/governance/permissions', label: '权限列表' },
-            ],
-          },
-        ]
-      : [];
-
-  const menuItems = [...baseMenuItems, ...governanceMenuItems];
+  const menuItems: MenuItem[] = menuSections.map((section) => ({
+    type: 'group',
+    key: section.key,
+    label: section.title,
+    children: section.items.map((item) => ({
+      key: item.key,
+      icon: item.icon,
+      label: item.label,
+    })),
+  }));
 
   const activeMenuKey = React.useMemo(() => {
-    // 任务相关页面映射到任务中心
     if (location.pathname.startsWith('/jobs')) return '/tasks';
-    // 配置中心旧路由映射
-    if (location.pathname.startsWith('/configcenter')) return '/config';
-    // K8s 相关页面映射到部署管理
     if (location.pathname.startsWith('/k8s')) return '/deployment';
-    // 主机相关页面映射到部署管理>基础设施>主机管理
+    if (location.pathname.startsWith('/deployment/overview')) return '/deployment';
+    if (location.pathname.startsWith('/deployment/create')) return '/deployment';
+    if (location.pathname.startsWith('/deployment/approvals')) return '/deployment';
+    if (location.pathname.startsWith('/deployment/targets')) return '/deployment/targets';
+    if (location.pathname.startsWith('/deployment/infrastructure/clusters')) return '/deployment/infrastructure/clusters';
+    if (location.pathname.startsWith('/deployment/infrastructure/credentials')) return '/deployment/infrastructure/clusters';
     if (location.pathname.startsWith('/deployment/infrastructure/hosts')) return '/deployment/infrastructure/hosts';
-    // 旧主机路由重定向
     if (location.pathname.startsWith('/hosts')) return '/deployment/infrastructure/hosts';
-    // 帮助中心
-    if (location.pathname.startsWith('/help')) return '/help';
+    if (location.pathname.startsWith('/deployment/observability/metrics')) return '/monitor';
+    if (location.pathname.startsWith('/deployment/observability/topology')) return '/deployment/observability/topology';
+    if (location.pathname.startsWith('/deployment/observability/audit-logs')) return '/deployment/observability/audit-logs';
+    if (location.pathname.startsWith('/deployment/observability/policies')) return '/deployment/observability/policies';
+    if (location.pathname.startsWith('/deployment/observability/aiops')) return '/deployment/observability/aiops';
+    if (location.pathname.startsWith('/monitoring')) return '/monitor';
+    if (location.pathname.startsWith('/monitor')) return '/monitor';
+    if (location.pathname.startsWith('/automation')) return '/automation';
+    if (location.pathname.startsWith('/cicd')) return '/cicd';
+    if (location.pathname.startsWith('/cmdb')) return '/cmdb';
+    if (location.pathname.startsWith('/tools')) return '/tools';
     if (location.pathname.startsWith('/services')) return '/services';
-    // 访问治理子菜单
-    if (location.pathname.startsWith('/governance/users')) return '/governance/users';
-    if (location.pathname.startsWith('/governance/roles')) return '/governance/roles';
-    if (location.pathname.startsWith('/governance/permissions')) return '/governance/permissions';
     if (location.pathname.startsWith('/settings/ai-models')) return '/settings/ai-models';
+    if (location.pathname.startsWith('/governance')) return '/governance/users';
+    if (location.pathname.startsWith('/settings/users')) return '/settings/users';
+    if (location.pathname.startsWith('/settings/roles')) return '/settings/roles';
+    if (location.pathname.startsWith('/settings/permissions')) return '/settings/permissions';
+    if (location.pathname.startsWith('/settings')) return '/settings';
+    if (location.pathname.startsWith('/help')) return '/help';
+    if (location.pathname.startsWith('/deployment/') && location.pathname !== '/deployment/targets') return '/deployment';
     return location.pathname;
   }, [location.pathname]);
+
+  const menuPath = React.useMemo(() => findSectionPath(menuSections, activeMenuKey), [menuSections, activeMenuKey]);
 
   const userMenuItems = [
     { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
@@ -218,25 +232,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   ];
 
   const getBreadcrumbItems = () => {
-    const paths = location.pathname.split('/').filter(Boolean);
     const items = [{ title: '首页', path: '/' }];
-    let currentPath = '';
-
-    paths.forEach((path) => {
-      currentPath += `/${path}`;
-      const menuItem = menuItems.find((item) => item && (item as any).key === currentPath) as any;
-      if (menuItem?.label) {
-        items.push({ title: String(menuItem.label), path: currentPath });
-      }
-      const governanceRoot = menuItems.find((item) => item && (item as any).key === '/governance') as any;
-      if (governanceRoot?.children && Array.isArray(governanceRoot.children)) {
-        const child = governanceRoot.children.find((sub: any) => sub && sub.key === currentPath);
-        if (child?.label) {
-          items.push({ title: String(child.label), path: currentPath });
-        }
-      }
-    });
-
+    for (const entry of menuPath) {
+      items.push({ title: entry.title, path: entry.key });
+    }
     return items;
   };
 
@@ -254,8 +253,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo 区域 */}
-      <div className="h-16 flex-shrink-0 flex items-center justify-center border-b border-gray-200 px-4">
-        <div className="flex items-center gap-3">
+      <div className="h-14 flex-shrink-0 flex items-center justify-center border-b border-gray-200 px-3">
+        <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-sm">
             <CloudOutlined className="text-white text-base" />
           </div>
@@ -266,21 +265,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       </div>
 
       {/* 菜单 - 可滚动区域 */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
         <Menu
           theme="light"
           mode="inline"
           selectedKeys={[activeMenuKey]}
           items={menuItems}
           onClick={({ key }) => handleMenuClick(key)}
-          className="border-none mt-2"
+          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-1 [&_.ant-menu-item-group-title]:pt-2.5 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0.5 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-0 [&_.ant-menu-item]:h-9 [&_.ant-menu-item]:leading-9 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2.5"
           style={{ background: 'transparent' }}
         />
       </div>
 
       {/* 折叠按钮 (仅桌面端) */}
       {!isMobile && (
-        <div className="flex-shrink-0 p-4 border-t border-gray-200">
+        <div className="flex-shrink-0 px-3 py-2.5 border-t border-gray-200">
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -367,6 +366,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   title:
                     index === getBreadcrumbItems().length - 1 ? (
                       <span className="text-gray-900 font-medium">{item.title}</span>
+                    ) : !item.path ? (
+                      <span className="text-gray-600">{item.title}</span>
                     ) : (
                       <a
                         onClick={() => navigate(item.path!)}

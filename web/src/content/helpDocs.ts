@@ -54,15 +54,6 @@ export const helpDocuments: HelpDocument[] = [
     difficulty: 'intermediate',
   },
   {
-    id: 'service-config',
-    title: '配置中心发布与回滚',
-    content:
-      '1. 在配置中心编辑配置并保存草稿。\n2. 通过 Diff 对比确认变更内容。\n3. 发布到目标环境后观察应用状态。\n4. 异常时使用历史版本一键回滚。',
-    category: '配置中心',
-    tags: ['配置', 'diff', '回滚'],
-    difficulty: 'intermediate',
-  },
-  {
     id: 'job-schedule',
     title: '如何创建定时任务？',
     content:

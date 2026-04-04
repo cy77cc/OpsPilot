@@ -37,7 +37,6 @@ const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({ open, onC
         { keys: ['g', 's'], description: '跳转到服务管理' },
         { keys: ['g', 'd'], description: '跳转到部署管理' },
         { keys: ['g', 'm'], description: '跳转到监控中心' },
-        { keys: ['g', 'c'], description: '跳转到配置中心' },
         { keys: ['g', 't'], description: '跳转到任务中心' },
       ],
     },

@@ -57,9 +57,6 @@ import { kubernetesApi } from './modules/kubernetes';
 export * from './modules/monitoring';
 import { monitoringApi } from './modules/monitoring';
 
-export * from './modules/configs';
-import { configApi } from './modules/configs';
-
 export * from './modules/rbac';
 import { rbacApi } from './modules/rbac';
 
@@ -110,7 +107,6 @@ export const Api = {
   tasks: taskApi,
   kubernetes: kubernetesApi,
   monitoring: monitoringApi,
-  configs: configApi,
   rbac: rbacApi,
   auth: authApi,
   projects: projectApi,
