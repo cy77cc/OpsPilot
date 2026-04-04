@@ -166,6 +166,7 @@ func TestRequireHighRiskApproval_BypassesApprovalForApprovePermissions(t *testin
 		permissionCode string
 	}{
 		{name: "exact approve permission", username: "approver1", roleCode: "cluster-approver", permissionCode: "k8s:approve"},
+		{name: "legacy approve permission alias", username: "approver-legacy", roleCode: "cluster-approver-legacy", permissionCode: "kubernetes:approve"},
 		{name: "wildcard approve permission", username: "approver2", roleCode: "cluster-operator", permissionCode: "k8s:*"},
 		{name: "admin role", username: "adminusr", roleCode: "admin", permissionCode: ""},
 	}
