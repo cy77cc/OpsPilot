@@ -21,6 +21,17 @@ const (
 	OperationStateFailed = "failed"
 )
 
+const (
+	// OperationCodeSuccess 是已完成操作的规范业务码。
+	OperationCodeSuccess = "success"
+	// OperationCodeApprovalRequired 是审批待定操作的规范业务码。
+	OperationCodeApprovalRequired = "approval_required"
+	// OperationCodeApprovalRejected 是审批拒绝操作的规范业务码。
+	OperationCodeApprovalRejected = "approval_rejected"
+	// OperationCodeFailed 是失败操作的规范业务码。
+	OperationCodeFailed = "failed"
+)
+
 // OperationApproval 描述写操作相关的审批信息。
 type OperationApproval struct {
 	Ticket        string     `json:"ticket,omitempty"`
@@ -64,23 +75,23 @@ func NewOperationResponse(state string, approval *OperationApproval, auditID uin
 
 // NewCompletedOperationResponse 构建已完成状态的响应信封。
 func NewCompletedOperationResponse(auditID uint, data any) OperationResponse {
-	return NewOperationResponse(OperationStateCompleted, nil, auditID, OperationStateCompleted, "", data)
+	return NewOperationResponse(OperationStateCompleted, nil, auditID, OperationCodeSuccess, "", data)
 }
 
 // NewApprovalRequiredOperationResponse 构建审批待定状态的响应信封。
 func NewApprovalRequiredOperationResponse(approval *OperationApproval, auditID uint, message string, data any) OperationResponse {
-	return NewOperationResponse(OperationStateApprovalRequired, approval, auditID, OperationStateApprovalRequired, message, data)
+	return NewOperationResponse(OperationStateApprovalRequired, approval, auditID, OperationCodeApprovalRequired, message, data)
 }
 
 // NewRejectedOperationResponse 构建已拒绝状态的响应信封。
 func NewRejectedOperationResponse(auditID uint, message string, data any) OperationResponse {
-	return NewOperationResponse(OperationStateRejected, nil, auditID, OperationStateRejected, message, data)
+	return NewOperationResponse(OperationStateRejected, nil, auditID, OperationCodeApprovalRejected, message, data)
 }
 
 // NewFailedOperationResponse 构建失败状态的响应信封。
 func NewFailedOperationResponse(auditID uint, code, message string, data any) OperationResponse {
 	if code == "" {
-		code = OperationStateFailed
+		code = OperationCodeFailed
 	}
 	return NewOperationResponse(OperationStateFailed, nil, auditID, code, message, data)
 }

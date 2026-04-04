@@ -89,4 +89,54 @@ describe('cluster operation envelope normalization', () => {
     expect(normalized.approval?.expires_at).toBe('2026-04-03T12:00:00Z');
     expect(normalized.result).toEqual({ recovered: false });
   });
+
+  it('normalizes legacy rejected code into canonical rejected envelope', () => {
+    const normalized = normalizeClusterOperationResponse({
+      code: 'rejected',
+      message: 'policy denied',
+      operationId: 'audit-legacy-reject',
+    });
+
+    expect(normalized.state).toBe('rejected');
+    expect(normalized.success).toBe(false);
+    expect(normalized.code).toBe('approval_rejected');
+    expect(normalized.error_code).toBe('approval_rejected');
+    expect(normalized.audit_id).toBe('audit-legacy-reject');
+  });
+
+  it('normalizes legacy pending approval failures into approval required envelope', () => {
+    const normalized = normalizeClusterOperationResponse({
+      state: 'failed',
+      code: 'token_not_approved',
+      message: 'needs approval retry',
+      operationId: 'audit-pending-1',
+      approval_ticket: 'k8s-appr-pending',
+      approval_expires_at: '2026-04-03T12:00:00Z',
+    });
+
+    expect(normalized.state).toBe('approval_required');
+    expect(normalized.success).toBe(false);
+    expect(normalized.code).toBe('approval_required');
+    expect(normalized.error_code).toBe('approval_required');
+    expect(normalized.audit_id).toBe('audit-pending-1');
+    expect(normalized.approval?.required).toBe(true);
+    expect(normalized.approval?.ticket).toBe('k8s-appr-pending');
+    expect(normalized.approval?.expires_at).toBe('2026-04-03T12:00:00Z');
+    expect(normalized.approval?.reason).toBe('needs approval retry');
+  });
+
+  it('normalizes failed state with approval rejected code into canonical rejected state', () => {
+    const normalized = normalizeClusterOperationResponse({
+      state: 'failed',
+      code: 'approval_rejected',
+      message: 'request was rejected',
+      auditId: 'audit-rejected-1',
+    });
+
+    expect(normalized.state).toBe('rejected');
+    expect(normalized.success).toBe(false);
+    expect(normalized.code).toBe('approval_rejected');
+    expect(normalized.error_code).toBe('approval_rejected');
+    expect(normalized.audit_id).toBe('audit-rejected-1');
+  });
 });
