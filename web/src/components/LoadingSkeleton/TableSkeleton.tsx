@@ -1,5 +1,6 @@
 import React from 'react';
 import { Skeleton } from 'antd';
+import LoadingSkeletonSection from './LoadingSkeletonSection';
 
 export interface TableSkeletonProps {
   toolbar?: boolean;
@@ -17,7 +18,7 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
   const gridTemplateColumns = `repeat(${safeColumns}, minmax(0, 1fr))`;
 
   return (
-    <section data-testid="table-skeleton" aria-busy="true" className="loading-skeleton-grid">
+    <LoadingSkeletonSection testId="table-skeleton" className="loading-skeleton-grid">
       {toolbar ? (
         <div className="loading-skeleton-surface loading-skeleton-toolbar">
           <Skeleton.Input active block className="!h-10 !w-full" />
@@ -36,7 +37,11 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
         </div>
         <div className="loading-skeleton-grid">
           {Array.from({ length: safeRows }).map((_, rowIndex) => (
-            <div key={rowIndex} data-testid="table-skeleton-row" className="loading-skeleton-table-row">
+            <div
+              key={rowIndex}
+              data-testid="table-skeleton-row"
+              className="loading-skeleton-table-row"
+            >
               <div className="loading-skeleton-table-row-grid" style={{ gridTemplateColumns }}>
                 {Array.from({ length: safeColumns }).map((_, columnIndex) => (
                   <Skeleton.Input
@@ -51,7 +56,7 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
           ))}
         </div>
       </div>
-    </section>
+    </LoadingSkeletonSection>
   );
 };
 

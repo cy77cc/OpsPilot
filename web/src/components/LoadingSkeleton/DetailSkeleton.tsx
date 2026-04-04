@@ -1,5 +1,6 @@
 import React from 'react';
 import { Skeleton } from 'antd';
+import LoadingSkeletonSection from './LoadingSkeletonSection';
 
 export interface DetailSkeletonProps {
   summaryCards?: number;
@@ -14,7 +15,7 @@ const DetailSkeleton: React.FC<DetailSkeletonProps> = ({
   const safeSections = Math.max(0, sections);
 
   return (
-    <section data-testid="detail-skeleton" aria-busy="true" className="loading-skeleton-detail">
+    <LoadingSkeletonSection testId="detail-skeleton" className="loading-skeleton-detail">
       <div className="loading-skeleton-surface">
         <Skeleton.Input active block className="!h-10 !w-72" />
         <div className="mt-4">
@@ -35,7 +36,7 @@ const DetailSkeleton: React.FC<DetailSkeletonProps> = ({
           </div>
         ))}
       </div>
-    </section>
+    </LoadingSkeletonSection>
   );
 };
 

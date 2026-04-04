@@ -1,5 +1,6 @@
 import React from 'react';
 import { Skeleton } from 'antd';
+import LoadingSkeletonSection from './LoadingSkeletonSection';
 
 export interface CardGridSkeletonProps {
   cards?: number;
@@ -12,7 +13,7 @@ const CardGridSkeleton: React.FC<CardGridSkeletonProps> = ({ cards = 6, columns 
   const gridTemplateColumns = `repeat(${safeColumns}, minmax(0, 1fr))`;
 
   return (
-    <section data-testid="card-grid-skeleton" aria-busy="true" className="loading-skeleton-grid">
+    <LoadingSkeletonSection testId="card-grid-skeleton" className="loading-skeleton-grid">
       <div className="loading-skeleton-grid" style={{ gridTemplateColumns }}>
         {Array.from({ length: safeCards }).map((_, index) => (
           <article
@@ -25,7 +26,7 @@ const CardGridSkeleton: React.FC<CardGridSkeletonProps> = ({ cards = 6, columns 
           </article>
         ))}
       </div>
-    </section>
+    </LoadingSkeletonSection>
   );
 };
 
