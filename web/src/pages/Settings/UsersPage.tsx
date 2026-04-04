@@ -5,6 +5,7 @@ import { Api } from '../../api';
 import type { Role, User } from '../../api/modules/rbac';
 import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 import { usePermission } from '../../components/RBAC/PermissionContext';
 
 const UsersPage: React.FC = () => {
@@ -160,6 +161,8 @@ const UsersPage: React.FC = () => {
     return <AccessDeniedPage />;
   }
 
+  const isInitialLoading = loading && list.length === 0;
+
   return (
     <Card
       title="用户管理"
@@ -173,95 +176,99 @@ const UsersPage: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)}
             style={{ width: 260 }}
           />
-          <Button className="governance-action-btn" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+          <Button className="governance-action-btn" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
           {canWrite ? (
             <Button className="governance-action-btn" type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新增用户</Button>
           ) : null}
         </Space>
       )}
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        locale={{ emptyText: <Empty description="暂无用户数据" /> }}
-        dataSource={filtered}
-        onRow={(record) => ({
-          onClick: () => setActive(record),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setActive(record);
-            }
-          },
-          tabIndex: 0,
-          role: 'button',
-          className: 'governance-interactive-row',
-          'aria-label': `查看用户 ${record.username} 详情`,
-        })}
-        columns={[
-          { title: '用户名', dataIndex: 'username' },
-          { title: '姓名', dataIndex: 'name' },
-          { title: '邮箱', dataIndex: 'email' },
-          {
-            title: '角色',
-            dataIndex: 'roles',
-            render: (items: string[]) => <>{items?.map((role) => <Tag key={role}>{role}</Tag>)}</>,
-          },
-          {
-            title: '状态',
-            dataIndex: 'status',
-            render: (value: string) => <Tag color={value === 'active' ? 'success' : 'default'}>{value}</Tag>,
-          },
-          {
-            title: '操作',
-            width: 260,
-            render: (_: unknown, row: User) => (
-              <Space>
-                <Button
-                  type="link"
-                  className="governance-action-btn"
-                  aria-label={`查看用户 ${row.username} 详情`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setActive(row);
-                  }}
-                >
-                  详情
-                </Button>
-                {canWrite ? (
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={5} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          locale={{ emptyText: <Empty description="暂无用户数据" /> }}
+          dataSource={filtered}
+          onRow={(record) => ({
+            onClick: () => setActive(record),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setActive(record);
+              }
+            },
+            tabIndex: 0,
+            role: 'button',
+            className: 'governance-interactive-row',
+            'aria-label': `查看用户 ${record.username} 详情`,
+          })}
+          columns={[
+            { title: '用户名', dataIndex: 'username' },
+            { title: '姓名', dataIndex: 'name' },
+            { title: '邮箱', dataIndex: 'email' },
+            {
+              title: '角色',
+              dataIndex: 'roles',
+              render: (items: string[]) => <>{items?.map((role) => <Tag key={role}>{role}</Tag>)}</>,
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              render: (value: string) => <Tag color={value === 'active' ? 'success' : 'default'}>{value}</Tag>,
+            },
+            {
+              title: '操作',
+              width: 260,
+              render: (_: unknown, row: User) => (
+                <Space>
                   <Button
                     type="link"
-                    icon={<EditOutlined />}
                     className="governance-action-btn"
-                    aria-label={`编辑用户 ${row.username}`}
+                    aria-label={`查看用户 ${row.username} 详情`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setEditingUser(row);
-                      setEditOpen(true);
+                      setActive(row);
                     }}
                   >
-                    编辑
+                    详情
                   </Button>
-                ) : null}
-                {canWrite ? (
-                  <Button
-                    className="governance-action-btn"
-                    danger
-                    type="link"
-                    aria-label={`删除用户 ${row.username}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void remove(row);
-                    }}
-                  >
-                    删除
-                  </Button>
-                ) : null}
-              </Space>
-            ),
-          },
-        ]}
-      />
+                  {canWrite ? (
+                    <Button
+                      type="link"
+                      icon={<EditOutlined />}
+                      className="governance-action-btn"
+                      aria-label={`编辑用户 ${row.username}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditingUser(row);
+                        setEditOpen(true);
+                      }}
+                    >
+                      编辑
+                    </Button>
+                  ) : null}
+                  {canWrite ? (
+                    <Button
+                      className="governance-action-btn"
+                      danger
+                      type="link"
+                      aria-label={`删除用户 ${row.username}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void remove(row);
+                      }}
+                    >
+                      删除
+                    </Button>
+                  ) : null}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      )}
 
       <Modal title="新增用户" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} okButtonProps={{ disabled: !canWrite }}>
         <Form form={form} layout="vertical" initialValues={{ roles: ['viewer'], status: 'active' }}>

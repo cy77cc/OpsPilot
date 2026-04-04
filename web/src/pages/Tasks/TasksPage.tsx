@@ -3,6 +3,7 @@ import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message } 
 import { PlayCircleOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { Task } from '../../api/modules/tasks';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 
 const TasksPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -59,21 +60,26 @@ const TasksPage: React.FC = () => {
     setLogOpen(true);
   };
 
+  const isInitialLoading = loading && jobs.length === 0;
+
   return (
     <Card
       title="任务调度"
       extra={
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>刷新</Button>
           <Button type="primary" onClick={() => setCreateOpen(true)}>创建任务</Button>
         </Space>
       }
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={jobs}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={5} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          dataSource={jobs}
+          columns={[
           { title: '名称', dataIndex: 'name' },
           { title: '类型', dataIndex: 'type' },
           { title: 'Cron', dataIndex: 'schedule' },
@@ -89,8 +95,9 @@ const TasksPage: React.FC = () => {
               </Space>
             ),
           },
-        ]}
-      />
+          ]}
+        />
+      )}
 
       <Modal title="创建任务" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createJob}>
         <Form form={form} layout="vertical">
@@ -117,4 +124,3 @@ const TasksPage: React.FC = () => {
 };
 
 export default TasksPage;
-

@@ -4,6 +4,7 @@ import { AlertOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Api } from '../../api';
 import type { Alert, AlertRule, MetricData, AlertChannel } from '../../api/modules/monitoring';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const MonitorPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -53,13 +54,23 @@ const MonitorPage: React.FC = () => {
   const criticalCount = useMemo(() => alerts.filter((a) => a.severity === 'critical' && a.status === 'firing').length, [alerts]);
   const cpuAvg = useMemo(() => (cpuMetrics.length ? cpuMetrics.reduce((s, i) => s + Number(i.value), 0) / cpuMetrics.length : 0), [cpuMetrics]);
   const memAvg = useMemo(() => (memMetrics.length ? memMetrics.reduce((s, i) => s + Number(i.value), 0) / memMetrics.length : 0), [memMetrics]);
+  const isInitialLoading = loading
+    && alerts.length === 0
+    && rules.length === 0
+    && cpuMetrics.length === 0
+    && memMetrics.length === 0
+    && channels.length === 0;
+
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <Space>
           <Button onClick={handleSyncRules}>同步规则</Button>
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>刷新</Button>
+          <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
         </Space>
       </div>
       <Row gutter={[16, 16]}>
@@ -94,7 +105,7 @@ const MonitorPage: React.FC = () => {
             children: (
               <Table
                 rowKey="id"
-                loading={loading}
+                loading={false}
                 dataSource={alerts}
                 columns={[
                   { title: '消息', dataIndex: 'title', render: (_: string, r: any) => r.message || r.title || '-' },
@@ -112,7 +123,7 @@ const MonitorPage: React.FC = () => {
             children: (
               <Table
                 rowKey="id"
-                loading={loading}
+                loading={false}
                 dataSource={rules}
                 columns={[
                   { title: '名称', dataIndex: 'name' },
@@ -129,7 +140,7 @@ const MonitorPage: React.FC = () => {
             children: (
               <Table
                 rowKey="id"
-                loading={loading}
+                loading={false}
                 dataSource={channels}
                 columns={[
                   { title: '名称', dataIndex: 'name' },

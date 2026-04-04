@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message } from 'antd';
 import { Api } from '../../api';
 import type { CMDBAsset } from '../../api/modules/cmdb';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 
 const CMDBPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -51,6 +52,8 @@ const CMDBPage: React.FC = () => {
     }
   };
 
+  const isInitialLoading = loading && assets.length === 0;
+
   return (
     <Card
       title="CMDB 资产台账"
@@ -62,19 +65,23 @@ const CMDBPage: React.FC = () => {
         </Space>
       }
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={assets}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={6} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          dataSource={assets}
+          columns={[
           { title: 'ID', dataIndex: 'id', width: 80 },
           { title: '名称', dataIndex: 'name' },
           { title: '类型', dataIndex: 'assetType' },
           { title: '来源', dataIndex: 'source' },
           { title: '状态', dataIndex: 'status' },
           { title: 'Owner', dataIndex: 'owner' },
-        ]}
-      />
+          ]}
+        />
+      )}
       <Modal title="新增资产" open={open} onCancel={() => setOpen(false)} onOk={create}>
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="资产名称" rules={[{ required: true }]}><Input /></Form.Item>

@@ -32,6 +32,7 @@ import {
 } from '../../api';
 import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -286,6 +287,8 @@ const AIModelSettingsPage: React.FC = () => {
     return <AccessDeniedPage />;
   }
 
+  const isInitialLoading = loading && rows.length === 0;
+
   return (
     <div className="space-y-6">
       <Card
@@ -310,7 +313,7 @@ const AIModelSettingsPage: React.FC = () => {
             </Space>
           </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
             <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>JSON 导入</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增模型</Button>
           </Space>
@@ -333,13 +336,16 @@ const AIModelSettingsPage: React.FC = () => {
       </Row>
 
       <Card title="模型清单" extra={<Text type="secondary">后端接口：/api/v1/admin/ai/models</Text>}>
-        <Table<AILLMProvider>
-          rowKey="id"
-          loading={loading}
-          dataSource={rows}
-          locale={{ emptyText: <Empty description="暂无模型配置" /> }}
-          pagination={{ pageSize: 8 }}
-          columns={[
+        {isInitialLoading ? (
+          <TableSkeleton toolbar={false} rows={8} columns={5} />
+        ) : (
+          <Table<AILLMProvider>
+            rowKey="id"
+            loading={false}
+            dataSource={rows}
+            locale={{ emptyText: <Empty description="暂无模型配置" /> }}
+            pagination={{ pageSize: 8 }}
+            columns={[
             {
               title: '模型名称',
               dataIndex: 'name',
@@ -411,8 +417,9 @@ const AIModelSettingsPage: React.FC = () => {
                 </Space>
               ),
             },
-          ]}
-        />
+            ]}
+          />
+        )}
       </Card>
 
       <Drawer

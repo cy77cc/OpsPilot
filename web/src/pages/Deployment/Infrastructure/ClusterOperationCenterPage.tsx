@@ -18,7 +18,6 @@ import {
   message,
   Select,
   Space,
-  Spin,
   Table,
   Tag,
   Typography,
@@ -27,6 +26,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Api } from '../../../api';
+import { DetailSkeleton, TableSkeleton } from '../../../components/LoadingSkeleton';
 import type {
   Cluster,
   ClusterOperationDetail,
@@ -248,6 +248,7 @@ const ClusterOperationCenterPage: React.FC = () => {
   const detail = selectedDetail;
   const detailApproval = detail?.approval;
   const detailAuditLink = selectedAuditId || detail?.audit_id;
+  const isInitialLoading = loading && history.length === 0;
 
   return (
     <div className="space-y-6">
@@ -265,7 +266,7 @@ const ClusterOperationCenterPage: React.FC = () => {
           </div>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => void loadHistory(page, pageSize, filters)} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadHistory(page, pageSize, filters)} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Button onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>回到集群详情</Button>
@@ -319,23 +320,27 @@ const ClusterOperationCenterPage: React.FC = () => {
       </Card>
 
       <Card>
-        <Table
-          dataSource={history}
-          columns={columns}
-          rowKey="audit_id"
-          loading={loading}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (value) => `共 ${value} 条`,
-            onChange: (nextPage, nextSize) => {
-              setPage(nextPage);
-              setPageSize(nextSize);
-            },
-          }}
-        />
+        {isInitialLoading ? (
+          <TableSkeleton toolbar={false} rows={10} columns={7} />
+        ) : (
+          <Table
+            dataSource={history}
+            columns={columns}
+            rowKey="audit_id"
+            loading={false}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              showTotal: (value) => `共 ${value} 条`,
+              onChange: (nextPage, nextSize) => {
+                setPage(nextPage);
+                setPageSize(nextSize);
+              },
+            }}
+          />
+        )}
       </Card>
 
       <Drawer
@@ -353,9 +358,7 @@ const ClusterOperationCenterPage: React.FC = () => {
         ) : null}
       >
         {detailLoading ? (
-          <div className="py-10 flex items-center justify-center">
-            <Spin />
-          </div>
+          <DetailSkeleton summaryCards={1} sections={3} />
         ) : detail ? (
           <div className="space-y-5">
             <Descriptions bordered size="small" column={1}>

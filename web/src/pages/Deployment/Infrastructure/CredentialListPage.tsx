@@ -4,6 +4,7 @@ import { PlusOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined,
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { ClusterCredential } from '../../../api/modules/deployment';
+import { TableSkeleton } from '../../../components/LoadingSkeleton';
 import RegisterPlatformCredentialModal from './RegisterPlatformCredentialModal';
 import ImportExternalCredentialModal from './ImportExternalCredentialModal';
 
@@ -134,6 +135,8 @@ const CredentialListPage: React.FC = () => {
     },
   ];
 
+  const isInitialLoading = loading && credentials.length === 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -142,7 +145,7 @@ const CredentialListPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">管理 Kubernetes 集群访问凭证</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Button
@@ -175,16 +178,20 @@ const CredentialListPage: React.FC = () => {
         />
       </div>
 
-      <Table
-        columns={columns}
-        dataSource={credentials}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+      {isInitialLoading ? (
+        <TableSkeleton rows={8} columns={8} />
+      ) : (
+        <Table
+          columns={columns}
+          dataSource={credentials}
+          rowKey="id"
+          loading={false}
+          pagination={{
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+          }}
+        />
+      )}
 
       <RegisterPlatformCredentialModal
         visible={registerModalVisible}

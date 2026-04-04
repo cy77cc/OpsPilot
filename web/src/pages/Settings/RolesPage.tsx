@@ -6,6 +6,7 @@ import { Api } from '../../api';
 import type { Permission, Role } from '../../api/modules/rbac';
 import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 import { usePermission } from '../../components/RBAC/PermissionContext';
 import {
   filterPermissions,
@@ -203,6 +204,8 @@ const RolesPage: React.FC = () => {
     return <AccessDeniedPage />;
   }
 
+  const isInitialLoading = loading && roles.length === 0;
+
   return (
     <Card
       title="角色管理"
@@ -216,32 +219,35 @@ const RolesPage: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)}
             style={{ width: 260 }}
           />
-          <Button className="governance-action-btn" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+          <Button className="governance-action-btn" icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
           {canWrite ? (
             <Button className="governance-action-btn" type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新增角色</Button>
           ) : null}
         </Space>
       )}
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        locale={{ emptyText: <Empty description="暂无角色数据" /> }}
-        dataSource={filteredRoles}
-        onRow={(record) => ({
-          onClick: () => openRoleDetail(record),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              openRoleDetail(record);
-            }
-          },
-          tabIndex: 0,
-          role: 'button',
-          className: 'governance-interactive-row',
-          'aria-label': `查看角色 ${record.name} 详情`,
-        })}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={4} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          locale={{ emptyText: <Empty description="暂无角色数据" /> }}
+          dataSource={filteredRoles}
+          onRow={(record) => ({
+            onClick: () => openRoleDetail(record),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openRoleDetail(record);
+              }
+            },
+            tabIndex: 0,
+            role: 'button',
+            className: 'governance-interactive-row',
+            'aria-label': `查看角色 ${record.name} 详情`,
+          })}
+          columns={[
           { title: '角色', dataIndex: 'name' },
           { title: '描述', dataIndex: 'description' },
           {
@@ -302,8 +308,9 @@ const RolesPage: React.FC = () => {
               </Space>
             ),
           },
-        ]}
-      />
+          ]}
+        />
+      )}
 
       <Modal title="新增角色" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} width={760} okButtonProps={{ disabled: !canWrite }}>
         <Form form={form} layout="vertical">

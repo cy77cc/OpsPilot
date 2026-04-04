@@ -5,6 +5,7 @@ import { Api } from '../../api';
 import type { Permission } from '../../api/modules/rbac';
 import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 
 const PermissionsPage: React.FC = () => {
   const [list, setList] = React.useState<Permission[]>([]);
@@ -63,6 +64,8 @@ const PermissionsPage: React.FC = () => {
     return <AccessDeniedPage />;
   }
 
+  const isInitialLoading = loading && list.length === 0;
+
   return (
     <Card
       title="权限管理"
@@ -84,29 +87,32 @@ const PermissionsPage: React.FC = () => {
             options={categories.map((value) => ({ value, label: value }))}
             onChange={(value) => setCategory(value || '')}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
         </Space>
       )}
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        locale={{ emptyText: <Empty description="暂无权限数据" /> }}
-        dataSource={filtered}
-        onRow={(record) => ({
-          onClick: () => setActive(record),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setActive(record);
-            }
-          },
-          tabIndex: 0,
-          role: 'button',
-          className: 'governance-interactive-row',
-          'aria-label': `查看权限 ${record.code} 详情`,
-        })}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={10} columns={5} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          locale={{ emptyText: <Empty description="暂无权限数据" /> }}
+          dataSource={filtered}
+          onRow={(record) => ({
+            onClick: () => setActive(record),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setActive(record);
+              }
+            },
+            tabIndex: 0,
+            role: 'button',
+            className: 'governance-interactive-row',
+            'aria-label': `查看权限 ${record.code} 详情`,
+          })}
+          columns={[
           { title: 'Code', dataIndex: 'code', render: (value: string) => <code>{value}</code> },
           { title: '名称', dataIndex: 'name' },
           { title: '分类', dataIndex: 'category', render: (value: string) => <Tag>{value || '-'}</Tag> },
@@ -140,8 +146,9 @@ const PermissionsPage: React.FC = () => {
               </Space>
             ),
           },
-        ]}
-      />
+          ]}
+        />
+      )}
 
       <Drawer title="权限详情" open={Boolean(active)} onClose={() => setActive(null)} width={420}>
         {!active ? null : (

@@ -37,6 +37,7 @@ import { Api } from '../../api';
 import type { Host, HostHealthSnapshot } from '../../api/modules/hosts';
 import { useNavigate } from 'react-router-dom';
 import { StaggerList, StaggerItem } from '../../components/Motion';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const HostListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -382,6 +383,12 @@ const HostListPage: React.FC = () => {
     );
   };
 
+  const isInitialLoading = loading && hosts.length === 0;
+
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
@@ -391,7 +398,7 @@ const HostListPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">管理和监控所有主机资源</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Dropdown

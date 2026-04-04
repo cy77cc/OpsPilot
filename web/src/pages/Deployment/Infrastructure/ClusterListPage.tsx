@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { Cluster } from '../../../api/modules/cluster';
+import { CardGridSkeleton } from '../../../components/LoadingSkeleton';
 
 const ClusterListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -123,6 +124,8 @@ const ClusterListPage: React.FC = () => {
     },
   ];
 
+  const isInitialLoading = loading && clusters.length === 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -131,7 +134,7 @@ const ClusterListPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">管理 Kubernetes 集群，支持自建和导入</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Dropdown menu={{ items: createMenuItems }} placement="bottomRight">
@@ -142,64 +145,68 @@ const ClusterListPage: React.FC = () => {
         </Space>
       </div>
 
-      <Row gutter={[16, 16]}>
-        {clusters.map((cluster) => (
-          <Col xs={24} sm={12} lg={8} xl={6} key={cluster.id}>
-            <Card
-              hoverable
-              className="h-full"
-              onClick={() => navigate(`/deployment/infrastructure/clusters/${cluster.id}`)}
-            >
-              <div className="flex flex-col h-full">
-                <div className="flex items-center justify-between mb-3">
-                  <Space>
-                    <ClusterOutlined className="text-2xl text-blue-500" />
-                    <span className="text-lg font-semibold truncate max-w-[150px]">{cluster.name}</span>
-                  </Space>
-                  <Dropdown menu={{ items: getClusterMenuItems(cluster) }} trigger={['click']} placement="bottomRight">
-                    <Button type="text" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
-                  </Dropdown>
-                </div>
-
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">状态:</span>
+      {isInitialLoading ? (
+        <CardGridSkeleton cards={8} columns={4} />
+      ) : (
+        <Row gutter={[16, 16]}>
+          {clusters.map((cluster) => (
+            <Col xs={24} sm={12} lg={8} xl={6} key={cluster.id}>
+              <Card
+                hoverable
+                className="h-full"
+                onClick={() => navigate(`/deployment/infrastructure/clusters/${cluster.id}`)}
+              >
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-3">
                     <Space>
-                      {getStatusIcon(cluster.status)}
-                      <Tag color={getStatusColor(cluster.status)}>{cluster.status}</Tag>
+                      <ClusterOutlined className="text-2xl text-blue-500" />
+                      <span className="text-lg font-semibold truncate max-w-[150px]">{cluster.name}</span>
                     </Space>
+                    <Dropdown menu={{ items: getClusterMenuItems(cluster) }} trigger={['click']} placement="bottomRight">
+                      <Button type="text" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
+                    </Dropdown>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">来源:</span>
-                    <Tag color={getSourceColor(cluster.source)}>
-                      {cluster.source === 'platform_managed' ? '平台托管' : '外部导入'}
-                    </Tag>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">版本:</span>
-                    <span className="text-sm">{cluster.k8s_version || cluster.version || '-'}</span>
-                  </div>
-                  {cluster.node_count !== undefined && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">节点数:</span>
-                      <span className="font-semibold">{cluster.node_count}</span>
-                    </div>
-                  )}
-                </div>
 
-                <div className="pt-3 mt-3 border-t border-gray-200">
-                  <div className="text-xs text-gray-500 truncate">
-                    {cluster.endpoint || '-'}
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">状态:</span>
+                      <Space>
+                        {getStatusIcon(cluster.status)}
+                        <Tag color={getStatusColor(cluster.status)}>{cluster.status}</Tag>
+                      </Space>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">来源:</span>
+                      <Tag color={getSourceColor(cluster.source)}>
+                        {cluster.source === 'platform_managed' ? '平台托管' : '外部导入'}
+                      </Tag>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">版本:</span>
+                      <span className="text-sm">{cluster.k8s_version || cluster.version || '-'}</span>
+                    </div>
+                    {cluster.node_count !== undefined && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">节点数:</span>
+                        <span className="font-semibold">{cluster.node_count}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    创建于: {new Date(cluster.created_at).toLocaleDateString()}
+
+                  <div className="pt-3 mt-3 border-t border-gray-200">
+                    <div className="text-xs text-gray-500 truncate">
+                      {cluster.endpoint || '-'}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      创建于: {new Date(cluster.created_at).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
 
       {clusters.length === 0 && !loading && (
         <Card className="text-center py-16">

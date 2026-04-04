@@ -3,6 +3,7 @@ import { Button, Card, Input, Modal, Space, Table, Tag, message } from 'antd';
 import { PlayCircleOutlined, ReloadOutlined, ToolOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { ToolExecution, ToolItem } from '../../api/modules/tools';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 
 const { Search } = Input;
 
@@ -38,6 +39,7 @@ const ToolsPage: React.FC = () => {
   };
 
   const filtered = tools.filter((t) => t.name.toLowerCase().includes(keyword.toLowerCase()));
+  const isInitialLoading = loading && tools.length === 0;
 
   return (
     <Card
@@ -45,15 +47,18 @@ const ToolsPage: React.FC = () => {
       extra={
         <Space>
           <Search placeholder="搜索工具" value={keyword} onChange={(e) => setKeyword(e.target.value)} style={{ width: 220 }} />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>刷新</Button>
         </Space>
       }
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={filtered}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={5} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          dataSource={filtered}
+          columns={[
           { title: '名称', dataIndex: 'name' },
           { title: '类型', dataIndex: 'type', render: (v: string) => <Tag>{v}</Tag> },
           { title: '路径', dataIndex: 'path', ellipsis: true },
@@ -66,8 +71,9 @@ const ToolsPage: React.FC = () => {
               </Button>
             ),
           },
-        ]}
-      />
+          ]}
+        />
+      )}
 
       <Modal
         title={`执行记录 - ${selectedTool?.name || ''}`}
@@ -94,4 +100,3 @@ const ToolsPage: React.FC = () => {
 };
 
 export default ToolsPage;
-

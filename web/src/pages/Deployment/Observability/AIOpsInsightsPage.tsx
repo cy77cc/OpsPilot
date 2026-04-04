@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { Api } from '../../../api';
 import type { RiskFinding, Anomaly, Suggestion } from '../../../api/modules/aiops';
+import { CardGridSkeleton, PageSkeleton } from '../../../components/LoadingSkeleton';
 
 const { Panel } = Collapse;
 
@@ -77,6 +78,12 @@ const AIOpsInsightsPage: React.FC = () => {
     }
   };
 
+  const isInitialLoading = loading && riskFindings.length === 0 && anomalies.length === 0 && suggestions.length === 0;
+
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -86,7 +93,7 @@ const AIOpsInsightsPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">智能运维分析与优化建议</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
         </Space>
@@ -191,7 +198,9 @@ const AIOpsInsightsPage: React.FC = () => {
 
       {/* Suggestions */}
       <Card title="优化建议">
-        {suggestions.length > 0 ? (
+        {loading && suggestions.length === 0 ? (
+          <CardGridSkeleton cards={3} columns={3} />
+        ) : suggestions.length > 0 ? (
           <Row gutter={[16, 16]}>
             {suggestions.map((suggestion) => (
               <Col xs={24} md={8} key={suggestion.id}>

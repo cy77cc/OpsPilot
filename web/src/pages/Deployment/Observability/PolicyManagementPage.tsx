@@ -4,6 +4,7 @@ import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant
 import type { ColumnsType } from 'antd/es/table';
 import { Api } from '../../../api';
 import type { Policy } from '../../../api/modules/deployment';
+import { TableSkeleton } from '../../../components/LoadingSkeleton';
 
 const PolicyManagementPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -195,6 +196,8 @@ const PolicyManagementPage: React.FC = () => {
     return acc;
   }, {} as Record<string, Policy[]>);
 
+  const isInitialLoading = loading && policies.length === 0;
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -218,7 +221,7 @@ const PolicyManagementPage: React.FC = () => {
             ]}
             onChange={setTypeFilter}
           />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
@@ -229,7 +232,9 @@ const PolicyManagementPage: React.FC = () => {
 
       {/* Policies grouped by type */}
       <Card>
-        {Object.keys(groupedPolicies).length > 0 ? (
+        {isInitialLoading ? (
+          <TableSkeleton toolbar={false} rows={8} columns={5} />
+        ) : Object.keys(groupedPolicies).length > 0 ? (
           <Tabs
             items={Object.entries(groupedPolicies).map(([type, typePolicies]) => ({
               key: type,

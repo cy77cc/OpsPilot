@@ -23,6 +23,7 @@ import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, DeleteOutlined } from 
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Host, HostAuditItem, HostHealthSnapshot, HostMetricPoint, SSHKeyItem } from '../../api/modules/hosts';
+import { DetailSkeleton } from '../../components/LoadingSkeleton';
 
 type HostEditFormValues = {
   name: string;
@@ -208,6 +209,12 @@ const HostDetailPage: React.FC = () => {
     }
   };
 
+  const isInitialLoading = loading && !host;
+
+  if (isInitialLoading) {
+    return <DetailSkeleton summaryCards={4} sections={4} />;
+  }
+
   return (
     <div>
       <Breadcrumb
@@ -219,11 +226,10 @@ const HostDetailPage: React.FC = () => {
       />
 
       <Card
-        loading={loading}
         title={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts')}>返回</Button><span>{host?.name || '主机详情'}</span></Space>}
         extra={(
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
             <Button icon={<EditOutlined />} onClick={openEditModal}>编辑主机</Button>
             <Button onClick={() => navigate(`/deployment/infrastructure/hosts/${id}/terminal`)}>终端</Button>
             <Button onClick={() => void runHealthCheck()}>健康检查</Button>

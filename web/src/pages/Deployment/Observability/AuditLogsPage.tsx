@@ -11,6 +11,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { Api } from '../../../api';
 import type { AuditLog } from '../../../api/modules/deployment';
+import { TableSkeleton } from '../../../components/LoadingSkeleton';
 
 const { RangePicker } = DatePicker;
 
@@ -205,6 +206,8 @@ const AuditLogsPage: React.FC = () => {
     },
   ];
 
+  const isInitialLoading = loading && logs.length === 0;
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -214,7 +217,7 @@ const AuditLogsPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">查看所有系统操作记录</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
           <Button icon={<DownloadOutlined />} onClick={() => handleExport('csv')}>
@@ -279,23 +282,27 @@ const AuditLogsPage: React.FC = () => {
 
       {/* Audit log table */}
       <Card>
-        <Table
-          dataSource={getFilteredLogs()}
-          columns={columns}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
-        />
+        {isInitialLoading ? (
+          <TableSkeleton toolbar={false} rows={10} columns={6} />
+        ) : (
+          <Table
+            dataSource={getFilteredLogs()}
+            columns={columns}
+            rowKey="id"
+            loading={false}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              showTotal: (t) => `共 ${t} 条`,
+              onChange: (p, ps) => {
+                setPage(p);
+                setPageSize(ps);
+              },
+            }}
+          />
+        )}
       </Card>
 
       {/* Detail modal */}

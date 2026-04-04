@@ -3,6 +3,7 @@ import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Space, Table, Ta
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { Cluster, Node } from '../../api/modules/kubernetes';
+import { TableSkeleton } from '../../components/LoadingSkeleton';
 import ClusterOverview from '../../components/K8s/ClusterOverview';
 import NamespacePolicyPanel from '../../components/K8s/NamespacePolicyPanel';
 import RolloutPanel from '../../components/K8s/RolloutPanel';
@@ -104,28 +105,34 @@ const K8sPage: React.FC = () => {
     setTopologyOpen(true);
   };
 
+  const isInitialLoading = loading && clusters.length === 0;
+
   return (
     <Card
       title="Kubernetes 集群"
       extra={
         <Space>
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>刷新</Button>
+          <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>添加集群</Button>
         </Space>
       }
     >
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={clusters}
-        columns={[
+      {isInitialLoading ? (
+        <TableSkeleton toolbar={false} rows={8} columns={5} />
+      ) : (
+        <Table
+          rowKey="id"
+          loading={false}
+          dataSource={clusters}
+          columns={[
           { title: '名称', dataIndex: 'name' },
           { title: '版本', dataIndex: 'version' },
           { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={v === 'connected' ? 'success' : 'default'}>{v}</Tag> },
           { title: '创建时间', dataIndex: 'createdAt', render: (v: string) => (v ? new Date(v).toLocaleString() : '-') },
           { title: '操作', render: (_: unknown, r: Cluster) => <Space><Button type="link" onClick={() => openDetail(r)}>详情</Button><Button type="link" onClick={() => connectTest(r)}>连接测试</Button><Button type="link" onClick={() => openTopology(r)}>拓扑</Button><Button type="link" onClick={() => { setSelectedCluster(r); setDeployOpen(true); }}>部署向导</Button></Space> },
-        ]}
-      />
+          ]}
+        />
+      )}
 
       <Drawer title={`集群详情 - ${selectedCluster?.name || ''}`} open={drawerOpen} onClose={() => setDrawerOpen(false)} width={980}>
         {dataSourceHint ? <Tag color={dataSourceHint.includes('live') ? 'success' : 'warning'}>data_source: {dataSourceHint}</Tag> : null}

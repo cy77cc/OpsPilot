@@ -4,6 +4,7 @@ import { ReloadOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { TopologyService } from '../../../api/modules/deployment';
+import { CardGridSkeleton, PageSkeleton } from '../../../components/LoadingSkeleton';
 
 const DeploymentTopologyPage: React.FC = () => {
   const navigate = useNavigate();
@@ -96,6 +97,12 @@ const DeploymentTopologyPage: React.FC = () => {
     }
   };
 
+  const isInitialLoading = loading && services.length === 0;
+
+  if (isInitialLoading && envFilter === 'all') {
+    return <PageSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -118,14 +125,16 @@ const DeploymentTopologyPage: React.FC = () => {
               setEnvFilter(v);
             }}
           />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
         </Space>
       </div>
 
       {/* Topology visualization */}
-      {Object.keys(groupedByEnv).length > 0 ? (
+      {isInitialLoading ? (
+        <CardGridSkeleton cards={8} columns={4} />
+      ) : Object.keys(groupedByEnv).length > 0 ? (
         Object.entries(groupedByEnv).map(([env, envServices]) => (
           <Card
             key={env}

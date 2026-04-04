@@ -9,6 +9,7 @@ import {
 import { Line } from '@ant-design/charts';
 import { Api } from '../../../api';
 import type { MetricsSummary, MetricsTrend } from '../../../api/modules/deployment';
+import { PageSkeleton } from '../../../components/LoadingSkeleton';
 
 const MetricsDashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -117,6 +118,12 @@ const MetricsDashboardPage: React.FC = () => {
     return labels[env] || env;
   };
 
+  const isInitialLoading = loading && !summary && trends.length === 0;
+
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -136,7 +143,7 @@ const MetricsDashboardPage: React.FC = () => {
             ]}
             onChange={setTimeRange}
           />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
         </Space>
