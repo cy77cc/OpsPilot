@@ -191,7 +191,10 @@ func (h *Handler) requireHighRiskApproval(ctx context.Context, clusterID uint, n
 	if err != nil {
 		approvalErr, ok := IsApprovalError(err)
 		if !ok {
-			audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, "failed", err.Error(), uint(operatorID))
+			audit, auditErr := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, "failed", err.Error(), uint(operatorID))
+			if auditErr != nil {
+				return OperationGateResult{Allowed: false, Code: OperationCodeFailed, Message: sanitizeOperationText(err.Error())}
+			}
 			return OperationGateResult{Allowed: false, Code: OperationCodeFailed, Message: sanitizeOperationText(err.Error()), AuditID: audit.ID}
 		}
 		status := "failed"
@@ -201,7 +204,10 @@ func (h *Handler) requireHighRiskApproval(ctx context.Context, clusterID uint, n
 		case clusterOperationCodeApprovalRejected:
 			status = "rejected"
 		}
-		audit, _ := h.recordClusterOperationAuditWithCode(ctx, clusterID, namespace, action, resource, resourceID, status, approvalErr.Code, approvalErr.Error(), uint(operatorID))
+		audit, auditErr := h.recordClusterOperationAuditWithCode(ctx, clusterID, namespace, action, resource, resourceID, status, approvalErr.Code, approvalErr.Error(), uint(operatorID))
+		if auditErr != nil || audit == nil {
+			return OperationGateResult{Allowed: false, Code: approvalErr.Code, Message: approvalErr.Error()}
+		}
 		return OperationGateResult{Allowed: false, Code: approvalErr.Code, Message: approvalErr.Error(), AuditID: audit.ID}
 	}
 	return OperationGateResult{Allowed: true, Code: clusterOperationCodeSuccess}

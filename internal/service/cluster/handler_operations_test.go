@@ -158,6 +158,30 @@ func TestRequireHighRiskApproval_RejectedTokenReturnsRejectedState(t *testing.T)
 	assertAuditRecord(t, db, result.AuditID, OperationStateRejected, clusterOperationCodeApprovalRejected)
 }
 
+func TestRequireHighRiskApproval_LegacyEmptyContextApprovalStillConsumable(t *testing.T) {
+	handler, db := newHighRiskApprovalTestHandler(t)
+	scope := ApprovalScope{
+		ClusterID:  42,
+		Action:     "node.drain",
+		Resource:   "node",
+		ResourceID: "node-1",
+	}
+	token := issueApprovalTicket(t, db, scope, 1001, time.Now().UTC().Add(5*time.Minute), true)
+
+	// Simulate pre-sentinel tickets that were issued with empty scope context.
+	if err := db.Model(&model.OperationApproval{}).Where("ticket = ?", token).Update("context_json", "").Error; err != nil {
+		t.Fatalf("clear approval context_json: %v", err)
+	}
+
+	result := handler.requireHighRiskApproval(context.Background(), scope.ClusterID, scope.Namespace, scope.Action, scope.Resource, scope.ResourceID, token, 1001)
+	if !result.Allowed {
+		t.Fatalf("expected legacy-context approval ticket to be consumable, got %+v", result)
+	}
+	if result.Code != clusterOperationCodeSuccess {
+		t.Fatalf("expected code %q, got %q", clusterOperationCodeSuccess, result.Code)
+	}
+}
+
 func TestRequireHighRiskApproval_BypassesApprovalForApprovePermissions(t *testing.T) {
 	cases := []struct {
 		name           string

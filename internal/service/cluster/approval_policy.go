@@ -120,6 +120,16 @@ func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket strin
 		Scope:         govScope,
 	}
 	err := svc.Consume(ctx, intent)
+	if err != nil {
+		// Backward compatibility: approvals issued before context sentinel
+		// rollout used empty scope context. Retry once with legacy scope when
+		// the first attempt fails due to scope mismatch.
+		if govErr, ok := governance.IsGovError(err); ok && govErr.Code == governance.CodeApprovalScopeMismatch {
+			legacyIntent := intent
+			legacyIntent.Scope = governanceScopeFromApprovalScopeLegacy(scope)
+			err = svc.Consume(ctx, legacyIntent)
+		}
+	}
 	rec := model.ClusterDeployApproval{
 		Ticket:     strings.TrimSpace(ticket),
 		ClusterID:  govScope.ClusterID,
@@ -193,6 +203,18 @@ func governanceScopeFromApprovalScope(scope ApprovalScope) governance.Scope {
 		Context: map[string]any{
 			"approval_scope": "cluster",
 		},
+	}
+}
+
+func governanceScopeFromApprovalScopeLegacy(scope ApprovalScope) governance.Scope {
+	scope = NormalizeApprovalScope(scope)
+	return governance.Scope{
+		Domain:     "cluster",
+		ClusterID:  scope.ClusterID,
+		Namespace:  scope.Namespace,
+		Resource:   scope.Resource,
+		ResourceID: scope.ResourceID,
+		Action:     scope.Action,
 	}
 }
 
