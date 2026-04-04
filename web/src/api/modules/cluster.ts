@@ -646,22 +646,22 @@ const normalizeOperationState = (raw: Record<string, any>): ClusterOperationStat
     return 'rejected';
   }
   if (stateCandidate === 'failed') {
-    if (approvalRequired) {
-      return 'approval_required';
-    }
     if (rejected) {
       return 'rejected';
+    }
+    if (approvalRequired) {
+      return 'approval_required';
     }
     return 'failed';
   }
   if (stateCandidate === 'completed') {
-    return approvalRequired ? 'approval_required' : rejected ? 'rejected' : failed ? 'failed' : 'completed';
-  }
-  if (approvalRequired) {
-    return 'approval_required';
+    return rejected ? 'rejected' : approvalRequired ? 'approval_required' : failed ? 'failed' : 'completed';
   }
   if (rejected) {
     return 'rejected';
+  }
+  if (approvalRequired) {
+    return 'approval_required';
   }
   if (failed) {
     return 'failed';
@@ -708,6 +708,27 @@ const normalizeAuditID = (raw: Record<string, any>): string | number | undefined
   return undefined;
 };
 
+const normalizeOperationMessage = (
+  raw: Record<string, any>,
+  approvalRequired: boolean,
+  rejected: boolean,
+  failed: boolean,
+): string => (
+  typeof raw.message === 'string'
+    ? raw.message
+    : typeof raw.msg === 'string'
+      ? raw.msg
+      : typeof raw.error_message === 'string'
+        ? raw.error_message
+        : approvalRequired
+          ? '操作需要审批'
+          : rejected
+            ? '操作已拒绝'
+            : failed
+              ? '操作失败'
+              : '操作已完成'
+);
+
 const normalizeOperationApproval = (state: ClusterOperationState, raw: Record<string, any>, message: string): ClusterOperationApproval | undefined => {
   const approval = normalizeApprovalPayload(raw.approval) ?? normalizeApprovalPayload(raw);
   if (approval) {
@@ -743,34 +764,23 @@ export function normalizeClusterOperationResponse<T = unknown>(payload: unknown)
   const raw = payload;
   const state = normalizeOperationState(raw);
   const code = normalizeOperationCode(state, raw);
-  const approval = normalizeOperationApproval(state, raw, typeof raw.message === 'string' ? raw.message : '');
-  const diagnostics = coerceStringArray(raw.diagnostics ?? raw.diagnostic_messages ?? raw.errors);
-  const approvalRequired = state === 'approval_required'
-    || approval?.required
-    || raw.approval_required === true
-    || raw.is_required === true;
   const rejected = state === 'rejected'
     || raw.rejected === true
     || raw.approval_rejected === true;
+  const approvalRequired = !rejected && (
+    state === 'approval_required'
+    || raw.approval_required === true
+    || raw.is_required === true
+  );
   const failed = state === 'failed'
     || raw.success === false
     || raw.failed === true
     || Boolean(raw.error)
     || Boolean(raw.error_message)
     || Boolean(raw.error_code);
-  const message = typeof raw.message === 'string'
-    ? raw.message
-    : typeof raw.msg === 'string'
-      ? raw.msg
-      : typeof raw.error_message === 'string'
-        ? raw.error_message
-        : approvalRequired
-          ? '操作需要审批'
-          : rejected
-            ? '操作已拒绝'
-            : failed
-              ? '操作失败'
-              : '操作已完成';
+  const message = normalizeOperationMessage(raw, approvalRequired, rejected, failed);
+  const approval = normalizeOperationApproval(state, raw, message);
+  const diagnostics = coerceStringArray(raw.diagnostics ?? raw.diagnostic_messages ?? raw.errors);
 
   const auditId = normalizeAuditID(raw);
   const result = raw.result ?? raw.data ?? raw.payload ?? raw.response ?? raw.details;

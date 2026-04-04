@@ -139,4 +139,33 @@ describe('cluster operation envelope normalization', () => {
     expect(normalized.error_code).toBe('approval_rejected');
     expect(normalized.audit_id).toBe('audit-rejected-1');
   });
+
+  it('prefers rejected state over approval metadata when rejection signals are present', () => {
+    const normalized = normalizeClusterOperationResponse({
+      code: 'approval_rejected',
+      approval: {
+        ticket: 'ticket-1',
+        reason: 'denied',
+      },
+    });
+
+    expect(normalized.state).toBe('rejected');
+    expect(normalized.success).toBe(false);
+    expect(normalized.code).toBe('approval_rejected');
+    expect(normalized.error_code).toBe('approval_rejected');
+    expect(normalized.approval?.ticket).toBe('ticket-1');
+    expect(normalized.approval?.reason).toBe('denied');
+  });
+
+  it('uses normalized message fallbacks for approval reason', () => {
+    const normalized = normalizeClusterOperationResponse({
+      approval_required: true,
+      approval_ticket: 'ticket-fallback',
+      msg: 'needs approval from fallback message',
+    });
+
+    expect(normalized.state).toBe('approval_required');
+    expect(normalized.message).toBe('needs approval from fallback message');
+    expect(normalized.approval?.reason).toBe('needs approval from fallback message');
+  });
 });
