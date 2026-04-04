@@ -115,6 +115,30 @@
 - 高风险动作提供补救指引（runbook）
 - Phase 1 不承诺全自动回滚
 
+### 4.2.1 操作响应契约冻结（Phase 1）
+
+为避免前后端在审批与失败语义上发生漂移，Phase 1 固定以下响应契约：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `state` | string | 传输状态，固定为 `completed` / `approval_required` / `rejected` / `failed` |
+| `code` | string | 业务码，固定为 `success` / `approval_required` / `approval_rejected` / `failed`（或明确的错误码） |
+| `approval` | object? | 审批信息，`state=approval_required` 时必有 `required=true` 或可推导审批信息 |
+| `audit_id` | string\\|number? | 审计记录 ID，用于跳转操作中心追踪 |
+| `message` | string | 面向用户的结果说明 |
+
+状态与业务码映射：
+
+- `state=completed` -> `code=success`
+- `state=approval_required` -> `code=approval_required`
+- `state=rejected` -> `code=approval_rejected`
+- `state=failed` -> `code=failed` 或具体失败码（如 token/permission 相关）
+
+兼容性约束：
+
+- 历史返回中的 `approval_rejected` 仍必须归一化为 `state=rejected`，即便同时包含 approval 元数据。
+- 前端允许从 `audit_id|auditId|operation_id|operationId` 兼容提取审计标识，但输出字段统一为 `audit_id`。
+
 ## 4.3 非目标（Phase 1 不做）
 
 - Service Mesh 深度能力（灰度、熔断、限流等）
