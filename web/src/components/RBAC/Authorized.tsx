@@ -1,8 +1,8 @@
 import React from 'react';
 import type { ReactNode } from 'react';
-import { Spin } from 'antd';
 import { usePermission } from './PermissionContext';
 import AccessDeniedPage from '../Auth/AccessDeniedPage';
+import { PageSkeleton } from '../LoadingSkeleton';
 
 // 权限验证属性
 export interface AuthorizedProps {
@@ -22,7 +22,7 @@ const Authorized: React.FC<AuthorizedProps> = ({
   const { loading, hasPermission } = usePermission();
 
   if (loading) {
-    return <Spin size="large" className="flex justify-center items-center py-8" />;
+    return <PageSkeleton />;
   }
 
   if (!hasPermission(resource, action)) {

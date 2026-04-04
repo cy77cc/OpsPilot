@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Col, Row, message } from 'antd';
 import { useInterval } from 'ahooks';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import HostMetricsCard from '../../components/Dashboard/HostMetricsCard';
 import AlertPanel from '../../components/Dashboard/AlertPanel';
 import EventStream from '../../components/Dashboard/EventStream';
 import AIActivityCard from '../../components/Dashboard/AIActivityCard';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const emptyOverview: OverviewResponseV2 = {
   health: {
@@ -48,20 +49,32 @@ const emptyOverview: OverviewResponseV2 = {
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const initialLoadRef = useRef(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [overview, setOverview] = useState<OverviewResponseV2>(emptyOverview);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const firstLoad = initialLoadRef.current;
+    if (firstLoad) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const response = await Api.dashboard.getOverviewV2(timeRange);
       setOverview(response.data || emptyOverview);
     } catch (error) {
       message.error('加载主控台概览失败');
     } finally {
-      setLoading(false);
+      if (firstLoad) {
+        initialLoadRef.current = false;
+        setIsInitialLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   }, [timeRange]);
 
@@ -81,6 +94,10 @@ const Dashboard: React.FC = () => {
     load();
   }, autoRefresh ? 60000 : undefined);
 
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -91,7 +108,7 @@ const Dashboard: React.FC = () => {
         <TimeRangeSelector
           value={timeRange}
           autoRefresh={autoRefresh}
-          loading={loading}
+          loading={isRefreshing}
           onChange={setTimeRange}
           onRefresh={load}
           onAutoRefreshChange={setAutoRefresh}
@@ -110,7 +127,7 @@ const Dashboard: React.FC = () => {
           <HealthCard title="应用健康" data={overview.health.applications} onClick={() => navigate('/services')} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <WorkloadHealthCard data={overview.health.workloads} loading={loading} />
+          <WorkloadHealthCard data={overview.health.workloads} />
         </Col>
       </Row>
 
@@ -120,31 +137,30 @@ const Dashboard: React.FC = () => {
           <HostMetricsCard
             cpuSeries={overview.resources.cpuUsage}
             memorySeries={overview.resources.memoryUsage}
-            loading={loading}
           />
         </Col>
         <Col xs={24} xl={12}>
-          <ClusterResourceCard data={overview.resources.clusters} loading={loading} />
+          <ClusterResourceCard data={overview.resources.clusters} />
         </Col>
       </Row>
 
       {/* 运行状态 + 告警 + AI - 3 列 */}
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
-          <OperationsCard data={overview.operations} loading={loading} />
+          <OperationsCard data={overview.operations} />
         </Col>
         <Col xs={24} md={8}>
-          <AlertPanel alerts={overview.alerts.recent} loading={loading} />
+          <AlertPanel alerts={overview.alerts.recent} />
         </Col>
         <Col xs={24} md={8}>
-          <AIActivityCard data={overview.ai} loading={loading} />
+          <AIActivityCard data={overview.ai} />
         </Col>
       </Row>
 
       {/* 事件流 - 全宽 */}
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <EventStream events={overview.events} loading={loading} />
+          <EventStream events={overview.events} />
         </Col>
       </Row>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Card, Tabs, Table, Tag, Button, Space, Descriptions, Spin, message,
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../../api';
+import { DetailSkeleton } from '../../../components/LoadingSkeleton';
 import type {
   Cluster, ClusterNode, NamespaceInfo, DeploymentInfo,
   StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo,
@@ -30,9 +31,10 @@ const ClusterDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const clusterId = Number(id);
+  const initialLoadRef = useRef(true);
 
   // Basic state
-  const [loading, setLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [nodesLoading, setNodesLoading] = useState(false);
@@ -91,14 +93,20 @@ const ClusterDetailPage: React.FC = () => {
 
   const loadCluster = useCallback(async () => {
     if (!clusterId) return;
-    setLoading(true);
+    const firstLoad = initialLoadRef.current;
+    if (firstLoad) {
+      setIsInitialLoading(true);
+    }
     try {
       const res = await Api.cluster.getClusterDetail(clusterId);
       setCluster(res.data);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载集群信息失败');
     } finally {
-      setLoading(false);
+      if (firstLoad) {
+        initialLoadRef.current = false;
+        setIsInitialLoading(false);
+      }
     }
   }, [clusterId]);
 
@@ -744,7 +752,7 @@ const ClusterDetailPage: React.FC = () => {
     { title: '最后部署', dataIndex: 'last_deploy_at', key: 'last_deploy_at' },
   ];
 
-  if (loading) return <div className="flex items-center justify-center h-64"><Spin size="large" /></div>;
+  if (isInitialLoading) return <DetailSkeleton summaryCards={3} sections={4} />;
   if (!cluster) return <div className="text-center py-16"><ClusterOutlined className="text-6xl text-gray-300 mb-4" /><p className="text-gray-500">集群不存在</p><Button onClick={() => navigate('/deployment/infrastructure/clusters')}>返回列表</Button></div>;
 
   return (

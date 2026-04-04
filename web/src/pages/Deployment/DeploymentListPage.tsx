@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Button,
   Card,
@@ -29,10 +29,13 @@ import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { DeployRelease } from '../../api/modules/deployment';
 import { StaggerList, StaggerItem } from '../../components/Motion';
+import { CardGridSkeleton, LoadingSkeleton } from '../../components/LoadingSkeleton';
 
 const DeploymentListPage: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const initialLoadRef = useRef(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [releases, setReleases] = useState<DeployRelease[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [targets, setTargets] = useState<any[]>([]);
@@ -43,7 +46,12 @@ const DeploymentListPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const firstLoad = initialLoadRef.current;
+    if (firstLoad) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const [releasesRes, servicesRes, targetsRes] = await Promise.all([
         Api.deployment.getReleasesByRuntime({
@@ -60,7 +68,12 @@ const DeploymentListPage: React.FC = () => {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载部署记录失败');
     } finally {
-      setLoading(false);
+      if (firstLoad) {
+        initialLoadRef.current = false;
+        setIsInitialLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   }, [runtimeFilter, serviceFilter, targetFilter]);
 
@@ -181,7 +194,7 @@ const DeploymentListPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">管理和监控所有部署发布</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={isRefreshing}>
             刷新
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/create')}>
@@ -190,239 +203,241 @@ const DeploymentListPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* 统计卡片 */}
-      <StaggerList staggerDelay={0.05}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('all')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">总部署次数</span>}
-                  value={stats.total}
-                  prefix={<CloudUploadOutlined className="text-primary-500" />}
-                  valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('succeeded')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">成功部署</span>}
-                  value={stats.succeeded}
-                  prefix={<CheckCircleOutlined className="text-success" />}
-                  valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
-                />
-                <div className="mt-2 text-sm text-gray-500">成功率 {stats.successRate}%</div>
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('failed')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">失败部署</span>}
-                  value={stats.failed}
-                  prefix={<CloseCircleOutlined className="text-error" />}
-                  valueStyle={{ color: '#ef4444', fontSize: '28px', fontWeight: 600 }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('pending_approval')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">待审批</span>}
-                  value={stats.pending}
-                  prefix={<ClockCircleOutlined className="text-warning" />}
-                  valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-        </Row>
-      </StaggerList>
-
-      {/* 筛选和搜索 */}
-      <Card>
-        <div className="flex flex-wrap gap-3">
-          <Input
-            placeholder="搜索 Release ID、Service ID、Target ID"
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: 300 }}
-            allowClear
-          />
-          <Select
-            value={statusFilter}
-            style={{ width: 140 }}
-            options={[
-              { value: 'all', label: '全部状态' },
-              { value: 'succeeded', label: '成功' },
-              { value: 'failed', label: '失败' },
-              { value: 'pending_approval', label: '待审批' },
-              { value: 'running', label: '进行中' },
-            ]}
-            onChange={setStatusFilter}
-          />
-          <Select
-            value={runtimeFilter}
-            style={{ width: 140 }}
-            options={[
-              { value: 'all', label: '全部运行时' },
-              { value: 'k8s', label: 'Kubernetes' },
-              { value: 'compose', label: 'Compose' },
-            ]}
-            onChange={setRuntimeFilter}
-          />
-          <Select
-            value={serviceFilter}
-            style={{ width: 180 }}
-            options={[
-              { value: 'all', label: '全部服务' },
-              ...services.map((s) => ({ value: String(s.id), label: s.name })),
-            ]}
-            onChange={setServiceFilter}
-          />
-          <Select
-            value={targetFilter}
-            style={{ width: 180 }}
-            options={[
-              { value: 'all', label: '全部目标' },
-              ...targets.map((t) => ({ value: String(t.id), label: t.name })),
-            ]}
-            onChange={setTargetFilter}
-          />
+      {isInitialLoading ? (
+        <div className="space-y-6" aria-busy="true">
+          <CardGridSkeleton cards={4} columns={4} />
+          <LoadingSkeleton type="list" count={6} />
         </div>
-      </Card>
-
-      {/* 部署时间线 */}
-      {loading ? (
-        <Card>
-          <div className="text-center py-12">
-            <ReloadOutlined spin className="text-4xl text-primary-500 mb-4" />
-            <p className="text-gray-500">加载中...</p>
-          </div>
-        </Card>
-      ) : filteredReleases.length === 0 ? (
-        <Card>
-          <Empty
-            description={
-              <span className="text-gray-500">
-                {searchQuery || statusFilter !== 'all' || runtimeFilter !== 'all'
-                  ? '没有找到匹配的部署记录'
-                  : '还没有任何部署记录'}
-              </span>
-            }
-          >
-            {!searchQuery && statusFilter === 'all' && runtimeFilter === 'all' && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/create')}>
-                创建第一个部署
-              </Button>
-            )}
-          </Empty>
-        </Card>
       ) : (
-        <Card title={<span className="text-base font-semibold">部署时间线</span>}>
-          <Timeline
-            mode="left"
-            items={filteredReleases.map((release) => {
-              const statusConfig = getStatusConfig(release.status);
-              return {
-                key: release.id,
-                dot: (
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: statusConfig.dotColor }}
-                  />
-                ),
-                color: statusConfig.dotColor,
-                children: (
-                  <StaggerItem>
-                    <Card
-                      size="small"
-                      className="hover:shadow-md transition-shadow"
-                      style={{ marginBottom: 16 }}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-base font-semibold text-gray-900">
-                              Release #{release.id}
-                            </span>
-                            <Tag color={statusConfig.color} icon={statusConfig.icon}>
-                              {statusConfig.text}
-                            </Tag>
-                            <Tag color="blue">{release.runtime_type}</Tag>
-                            {release.trigger_source && (
-                              <Tag color={release.trigger_source === 'ci' ? 'purple' : 'geekblue'}>
-                                {release.trigger_source === 'ci' ? 'CI' : 'Manual'}
-                              </Tag>
-                            )}
-                            {release.strategy && <Tag>{release.strategy}</Tag>}
-                          </div>
-                          <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                            <span>服务: #{release.service_id}</span>
-                            <span>目标: #{release.target_id}</span>
-                            <span className="text-gray-400">
-                              {new Date(release.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          {release.diagnostics_json && (
-                            <div className="mt-2 text-sm text-gray-500">
-                              {(() => {
-                                try {
-                                  const parsed = JSON.parse(release.diagnostics_json);
-                                  const first = Array.isArray(parsed) ? parsed[0] : parsed;
-                                  return first?.summary || '';
-                                } catch {
-                                  return '';
-                                }
-                              })()}
+        <>
+          {/* 统计卡片 */}
+          <StaggerList staggerDelay={0.05}>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    <Statistic
+                      title={<span className="text-gray-600">总部署次数</span>}
+                      value={stats.total}
+                      prefix={<CloudUploadOutlined className="text-primary-500" />}
+                      valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => setStatusFilter('succeeded')}
+                  >
+                    <Statistic
+                      title={<span className="text-gray-600">成功部署</span>}
+                      value={stats.succeeded}
+                      prefix={<CheckCircleOutlined className="text-success" />}
+                      valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
+                    />
+                    <div className="mt-2 text-sm text-gray-500">成功率 {stats.successRate}%</div>
+                  </Card>
+                </StaggerItem>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => setStatusFilter('failed')}
+                  >
+                    <Statistic
+                      title={<span className="text-gray-600">失败部署</span>}
+                      value={stats.failed}
+                      prefix={<CloseCircleOutlined className="text-error" />}
+                      valueStyle={{ color: '#ef4444', fontSize: '28px', fontWeight: 600 }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => setStatusFilter('pending_approval')}
+                  >
+                    <Statistic
+                      title={<span className="text-gray-600">待审批</span>}
+                      value={stats.pending}
+                      prefix={<ClockCircleOutlined className="text-warning" />}
+                      valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+            </Row>
+          </StaggerList>
+
+          {/* 筛选和搜索 */}
+          <Card>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                placeholder="搜索 Release ID、Service ID、Target ID"
+                prefix={<SearchOutlined className="text-gray-400" />}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ width: 300 }}
+                allowClear
+              />
+              <Select
+                value={statusFilter}
+                style={{ width: 140 }}
+                options={[
+                  { value: 'all', label: '全部状态' },
+                  { value: 'succeeded', label: '成功' },
+                  { value: 'failed', label: '失败' },
+                  { value: 'pending_approval', label: '待审批' },
+                  { value: 'running', label: '进行中' },
+                ]}
+                onChange={setStatusFilter}
+              />
+              <Select
+                value={runtimeFilter}
+                style={{ width: 140 }}
+                options={[
+                  { value: 'all', label: '全部运行时' },
+                  { value: 'k8s', label: 'Kubernetes' },
+                  { value: 'compose', label: 'Compose' },
+                ]}
+                onChange={setRuntimeFilter}
+              />
+              <Select
+                value={serviceFilter}
+                style={{ width: 180 }}
+                options={[
+                  { value: 'all', label: '全部服务' },
+                  ...services.map((s) => ({ value: String(s.id), label: s.name })),
+                ]}
+                onChange={setServiceFilter}
+              />
+              <Select
+                value={targetFilter}
+                style={{ width: 180 }}
+                options={[
+                  { value: 'all', label: '全部目标' },
+                  ...targets.map((t) => ({ value: String(t.id), label: t.name })),
+                ]}
+                onChange={setTargetFilter}
+              />
+            </div>
+          </Card>
+
+          {/* 部署时间线 */}
+          {filteredReleases.length === 0 ? (
+            <Card>
+              <Empty
+                description={
+                  <span className="text-gray-500">
+                    {searchQuery || statusFilter !== 'all' || runtimeFilter !== 'all'
+                      ? '没有找到匹配的部署记录'
+                      : '还没有任何部署记录'}
+                  </span>
+                }
+              >
+                {!searchQuery && statusFilter === 'all' && runtimeFilter === 'all' && (
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/create')}>
+                    创建第一个部署
+                  </Button>
+                )}
+              </Empty>
+            </Card>
+          ) : (
+            <Card title={<span className="text-base font-semibold">部署时间线</span>}>
+              <Timeline
+                mode="left"
+                items={filteredReleases.map((release) => {
+                  const statusConfig = getStatusConfig(release.status);
+                  return {
+                    key: release.id,
+                    dot: (
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: statusConfig.dotColor }}
+                      />
+                    ),
+                    color: statusConfig.dotColor,
+                    children: (
+                      <StaggerItem>
+                        <Card
+                          size="small"
+                          className="hover:shadow-md transition-shadow"
+                          style={{ marginBottom: 16 }}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="text-base font-semibold text-gray-900">
+                                  Release #{release.id}
+                                </span>
+                                <Tag color={statusConfig.color} icon={statusConfig.icon}>
+                                  {statusConfig.text}
+                                </Tag>
+                                <Tag color="blue">{release.runtime_type}</Tag>
+                                {release.trigger_source && (
+                                  <Tag color={release.trigger_source === 'ci' ? 'purple' : 'geekblue'}>
+                                    {release.trigger_source === 'ci' ? 'CI' : 'Manual'}
+                                  </Tag>
+                                )}
+                                {release.strategy && <Tag>{release.strategy}</Tag>}
+                              </div>
+                              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                                <span>服务: #{release.service_id}</span>
+                                <span>目标: #{release.target_id}</span>
+                                <span className="text-gray-400">
+                                  {new Date(release.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                              {release.diagnostics_json && (
+                                <div className="mt-2 text-sm text-gray-500">
+                                  {(() => {
+                                    try {
+                                      const parsed = JSON.parse(release.diagnostics_json);
+                                      const first = Array.isArray(parsed) ? parsed[0] : parsed;
+                                      return first?.summary || '';
+                                    } catch {
+                                      return '';
+                                    }
+                                  })()}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        <Space>
-                          <Tooltip title="查看详情">
-                            <Button
-                              type="text"
-                              icon={<EyeOutlined />}
-                              onClick={() => navigate(`/deployment/${release.id}`)}
-                            />
-                          </Tooltip>
-                          {(release.status === 'succeeded' || release.status === 'applied') && (
-                            <Tooltip title="回滚">
-                              <Button
-                                type="text"
-                                icon={<RollbackOutlined />}
-                                onClick={() => handleRollback(release.id)}
-                              />
-                            </Tooltip>
-                          )}
-                        </Space>
-                      </div>
-                    </Card>
-                  </StaggerItem>
-                ),
-              };
-            })}
-          />
-        </Card>
+                            <Space>
+                              <Tooltip title="查看详情">
+                                <Button
+                                  type="text"
+                                  icon={<EyeOutlined />}
+                                  onClick={() => navigate(`/deployment/${release.id}`)}
+                                />
+                              </Tooltip>
+                              {(release.status === 'succeeded' || release.status === 'applied') && (
+                                <Tooltip title="回滚">
+                                  <Button
+                                    type="text"
+                                    icon={<RollbackOutlined />}
+                                    onClick={() => handleRollback(release.id)}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Space>
+                          </div>
+                        </Card>
+                      </StaggerItem>
+                    ),
+                  };
+                })}
+              />
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

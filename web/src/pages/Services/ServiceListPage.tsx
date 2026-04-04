@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Button,
   Card,
@@ -38,6 +38,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
 import { StaggerList, StaggerItem } from '../../components/Motion';
+import { CardGridSkeleton, TableSkeleton } from '../../components/LoadingSkeleton';
 
 const VIEW_MODE_KEY = 'service-list-view-mode';
 const AUTO_SWITCH_THRESHOLD = 8;
@@ -45,7 +46,9 @@ const AUTO_SWITCH_THRESHOLD = 8;
 const ServiceListPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(false);
+  const initialLoadRef = useRef(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [list, setList] = useState<ServiceItem[]>([]);
   const [query, setQuery] = useState('');
   const [env, setEnv] = useState<string>('all');
@@ -63,7 +66,12 @@ const ServiceListPage: React.FC = () => {
   });
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const firstLoad = initialLoadRef.current;
+    if (firstLoad) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const res = await Api.services.getList({
         page: 1,
@@ -78,7 +86,12 @@ const ServiceListPage: React.FC = () => {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载服务失败');
     } finally {
-      setLoading(false);
+      if (firstLoad) {
+        initialLoadRef.current = false;
+        setIsInitialLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   }, [env, runtime, serviceKind, labelSelector, query]);
 
@@ -357,7 +370,7 @@ const ServiceListPage: React.FC = () => {
               { value: 'list', icon: <UnorderedListOutlined />, label: '列表' },
             ]}
           />
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={isRefreshing}>
             刷新
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/services/provision')}>
@@ -366,196 +379,198 @@ const ServiceListPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* 统计卡片 */}
-      <StaggerList staggerDelay={0.05}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('all')}>
-                <Statistic
-                  title={<span className="text-gray-600">服务总数</span>}
-                  value={stats.total}
-                  styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('running')}>
-                <Statistic
-                  title={<span className="text-gray-600">运行中</span>}
-                  value={stats.running}
-                  prefix={<CheckCircleOutlined className="text-success" />}
-                  styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('deploying')}>
-                <Statistic
-                  title={<span className="text-gray-600">部署中</span>}
-                  value={stats.deploying}
-                  prefix={<ClockCircleOutlined className="text-primary-500" />}
-                  styles={{ content: { color: '#6366f1', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('error')}>
-                <Statistic
-                  title={<span className="text-gray-600">错误</span>}
-                  value={stats.error}
-                  prefix={<ExclamationCircleOutlined className="text-error" />}
-                  styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-        </Row>
-      </StaggerList>
-
-      {/* 筛选和搜索 */}
-      <Card>
-        <Space orientation="vertical" size="middle" className="w-full">
-          <div className="flex flex-wrap gap-3">
-            <Input
-              placeholder="搜索服务名称或负责人"
-              prefix={<SearchOutlined className="text-gray-400" />}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{ width: 240 }}
-              allowClear
-            />
-            <Select
-              value={env}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部环境' },
-                { value: 'development', label: 'Development' },
-                { value: 'staging', label: 'Staging' },
-                { value: 'production', label: 'Production' },
-              ]}
-              onChange={setEnv}
-            />
-            <Select
-              value={runtime}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部运行时' },
-                { value: 'k8s', label: 'Kubernetes' },
-                { value: 'compose', label: 'Compose' },
-                { value: 'helm', label: 'Helm' },
-              ]}
-              onChange={setRuntime}
-            />
-            <Select
-              value={serviceKind}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部分类' },
-                { value: 'middleware', label: '中间件' },
-                { value: 'business', label: '业务服务' },
-              ]}
-              onChange={setServiceKind}
-            />
-            <Select
-              value={statusFilter}
-              style={{ width: 120 }}
-              options={[
-                { value: 'all', label: '全部状态' },
-                { value: 'running', label: '运行中' },
-                { value: 'deploying', label: '部署中' },
-                { value: 'error', label: '错误' },
-                { value: 'draft', label: '草稿' },
-              ]}
-              onChange={setStatusFilter}
-            />
-            <Input
-              placeholder="标签选择器 (app=user)"
-              value={labelSelector}
-              onChange={(e) => setLabelSelector(e.target.value)}
-              style={{ width: 200 }}
-              allowClear
-            />
-          </div>
-
-          {/* 批量操作 */}
-          {selectedIds.length > 0 && (
-            <div className="flex items-center justify-between p-3 bg-primary-50 rounded-lg border border-primary-200">
-              <span className="text-sm text-gray-700">
-                已选择 <Badge count={selectedIds.length} showZero className="mx-1" /> 个服务
-              </span>
-              <Space>
-                <Button size="small" onClick={() => setSelectedIds([])}>
-                  取消选择
-                </Button>
-                <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleBatchAction('启动')}>
-                  批量启动
-                </Button>
-                <Button size="small" icon={<PauseCircleOutlined />} onClick={() => handleBatchAction('停止')}>
-                  批量停止
-                </Button>
-                <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleBatchAction('删除')}>
-                  批量删除
-                </Button>
-              </Space>
-            </div>
-          )}
-        </Space>
-      </Card>
-
-      {/* 服务列表 */}
-      {loading ? (
-        <Card>
-          <div className="text-center py-12">
-            <ReloadOutlined spin className="text-4xl text-primary-500 mb-4" />
-            <p className="text-gray-500">加载中...</p>
-          </div>
-        </Card>
-      ) : filteredList.length === 0 ? (
-        <Card>
-          <Empty
-            description={
-              <span className="text-gray-500">
-                {query || env !== 'all' || runtime !== 'all' || statusFilter !== 'all'
-                  ? '没有找到匹配的服务'
-                  : '还没有创建任何服务'}
-              </span>
-            }
-          >
-            {!query && env === 'all' && runtime === 'all' && statusFilter === 'all' && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/services/provision')}>
-                创建第一个服务
-              </Button>
-            )}
-          </Empty>
-        </Card>
-      ) : viewMode === 'list' ? (
-        <Card>
-          <Table
-            dataSource={filteredList}
-            columns={columns}
-            rowKey="id"
-            pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true, showTotal: (total) => `共 ${total} 条记录` }}
-          />
-        </Card>
+      {isInitialLoading ? (
+        <div className="space-y-6" aria-busy="true">
+          <CardGridSkeleton cards={4} columns={4} />
+          <TableSkeleton toolbar rows={8} columns={6} />
+        </div>
       ) : (
-        <StaggerList staggerDelay={0.05}>
-          <Row gutter={[16, 16]}>
-            {filteredList.map((service) => (
-              <Col xs={24} sm={12} lg={8} xl={6} key={service.id}>
+        <>
+          {/* 统计卡片 */}
+          <StaggerList staggerDelay={0.05}>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} lg={6}>
                 <StaggerItem>
-                  <ServiceCard service={service} />
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('all')}>
+                    <Statistic
+                      title={<span className="text-gray-600">服务总数</span>}
+                      value={stats.total}
+                      styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
+                    />
+                  </Card>
                 </StaggerItem>
               </Col>
-            ))}
-          </Row>
-        </StaggerList>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('running')}>
+                    <Statistic
+                      title={<span className="text-gray-600">运行中</span>}
+                      value={stats.running}
+                      prefix={<CheckCircleOutlined className="text-success" />}
+                      styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('deploying')}>
+                    <Statistic
+                      title={<span className="text-gray-600">部署中</span>}
+                      value={stats.deploying}
+                      prefix={<ClockCircleOutlined className="text-primary-500" />}
+                      styles={{ content: { color: '#6366f1', fontSize: '28px', fontWeight: 600 } }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <StaggerItem>
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setStatusFilter('error')}>
+                    <Statistic
+                      title={<span className="text-gray-600">错误</span>}
+                      value={stats.error}
+                      prefix={<ExclamationCircleOutlined className="text-error" />}
+                      styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
+                    />
+                  </Card>
+                </StaggerItem>
+              </Col>
+            </Row>
+          </StaggerList>
+
+          {/* 筛选和搜索 */}
+          <Card>
+            <Space orientation="vertical" size="middle" className="w-full">
+              <div className="flex flex-wrap gap-3">
+                <Input
+                  placeholder="搜索服务名称或负责人"
+                  prefix={<SearchOutlined className="text-gray-400" />}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  style={{ width: 240 }}
+                  allowClear
+                />
+                <Select
+                  value={env}
+                  style={{ width: 140 }}
+                  options={[
+                    { value: 'all', label: '全部环境' },
+                    { value: 'development', label: 'Development' },
+                    { value: 'staging', label: 'Staging' },
+                    { value: 'production', label: 'Production' },
+                  ]}
+                  onChange={setEnv}
+                />
+                <Select
+                  value={runtime}
+                  style={{ width: 140 }}
+                  options={[
+                    { value: 'all', label: '全部运行时' },
+                    { value: 'k8s', label: 'Kubernetes' },
+                    { value: 'compose', label: 'Compose' },
+                    { value: 'helm', label: 'Helm' },
+                  ]}
+                  onChange={setRuntime}
+                />
+                <Select
+                  value={serviceKind}
+                  style={{ width: 140 }}
+                  options={[
+                    { value: 'all', label: '全部分类' },
+                    { value: 'middleware', label: '中间件' },
+                    { value: 'business', label: '业务服务' },
+                  ]}
+                  onChange={setServiceKind}
+                />
+                <Select
+                  value={statusFilter}
+                  style={{ width: 120 }}
+                  options={[
+                    { value: 'all', label: '全部状态' },
+                    { value: 'running', label: '运行中' },
+                    { value: 'deploying', label: '部署中' },
+                    { value: 'error', label: '错误' },
+                    { value: 'draft', label: '草稿' },
+                  ]}
+                  onChange={setStatusFilter}
+                />
+                <Input
+                  placeholder="标签选择器 (app=user)"
+                  value={labelSelector}
+                  onChange={(e) => setLabelSelector(e.target.value)}
+                  style={{ width: 200 }}
+                  allowClear
+                />
+              </div>
+
+              {/* 批量操作 */}
+              {selectedIds.length > 0 && (
+                <div className="flex items-center justify-between p-3 bg-primary-50 rounded-lg border border-primary-200">
+                  <span className="text-sm text-gray-700">
+                    已选择 <Badge count={selectedIds.length} showZero className="mx-1" /> 个服务
+                  </span>
+                  <Space>
+                    <Button size="small" onClick={() => setSelectedIds([])}>
+                      取消选择
+                    </Button>
+                    <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleBatchAction('启动')}>
+                      批量启动
+                    </Button>
+                    <Button size="small" icon={<PauseCircleOutlined />} onClick={() => handleBatchAction('停止')}>
+                      批量停止
+                    </Button>
+                    <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleBatchAction('删除')}>
+                      批量删除
+                    </Button>
+                  </Space>
+                </div>
+              )}
+            </Space>
+          </Card>
+
+          {/* 服务列表 */}
+          {filteredList.length === 0 ? (
+            <Card>
+              <Empty
+                description={
+                  <span className="text-gray-500">
+                    {query || env !== 'all' || runtime !== 'all' || statusFilter !== 'all'
+                      ? '没有找到匹配的服务'
+                      : '还没有创建任何服务'}
+                  </span>
+                }
+              >
+                {!query && env === 'all' && runtime === 'all' && statusFilter === 'all' && (
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/services/provision')}>
+                    创建第一个服务
+                  </Button>
+                )}
+              </Empty>
+            </Card>
+          ) : viewMode === 'list' ? (
+            <Card>
+              <Table
+                dataSource={filteredList}
+                columns={columns}
+                rowKey="id"
+                pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true, showTotal: (total) => `共 ${total} 条记录` }}
+              />
+            </Card>
+          ) : (
+            <StaggerList staggerDelay={0.05}>
+              <Row gutter={[16, 16]}>
+                {filteredList.map((service) => (
+                  <Col xs={24} sm={12} lg={8} xl={6} key={service.id}>
+                    <StaggerItem>
+                      <ServiceCard service={service} />
+                    </StaggerItem>
+                  </Col>
+                ))}
+              </Row>
+            </StaggerList>
+          )}
+        </>
       )}
     </div>
   );
