@@ -4,6 +4,17 @@
 
 Unify frontend loading behavior so route changes do not blank the entire app shell, and data-loading states consistently use skeletons instead of mixed full-page fallbacks, spinners, and Ant Design default loading placeholders.
 
+## Current State
+
+The current frontend stack and loading ownership shape the implementation:
+
+- routing uses `react-router-dom` with explicit `<Routes>` and `<Route>` definitions in `ProtectedApp.tsx`
+- route components are loaded with `React.lazy`
+- route transition animation is handled by `PageTransition`
+- most page data loading is owned by local component state via `useState`
+- a shared `useAsync` hook exists, but the codebase is not standardized on it
+- the app does not currently use React Query, SWR, or another centralized server-state library
+
 ## Problems
 
 The current frontend has three user-facing loading problems:
@@ -85,7 +96,46 @@ Recommended structure:
 - `AppLayout` owns the content slot
 - routed page content is wrapped with a route-level fallback such as `PageSkeleton`
 
-If needed, a small helper can wrap route elements so the same fallback pattern is reused across routes.
+Because routing currently uses explicit `<Routes>` and `<Route>` declarations rather than route-object config or `useRoutes`, the implementation should stay in that model. The change is structural, not architectural:
+
+- keep `Routes` in `ProtectedApp.tsx`
+- keep the lazy-loaded page elements
+- wrap routed page elements in a reusable content-area suspense boundary so the fallback renders inside the layout content region
+
+If needed, a small helper can wrap route elements so the same fallback pattern is reused across routes without rewriting each route by hand.
+
+## Loading State Ownership
+
+This migration does not introduce a new top-level loading state abstraction such as `usePageLoading`.
+
+State ownership remains close to where data is fetched:
+
+- pages using local `useState` loading flags keep that ownership
+- call sites already using `useAsync` may keep using it
+- no new global loading store is introduced
+
+What changes is the rendering contract around those states.
+
+Each content-bearing screen should distinguish at least these phases:
+
+- `initialLoading`: no usable content has rendered yet, so show skeletons
+- `refreshing`: existing content is already on screen, so prefer keeping content visible and use lighter refresh affordances
+- `submitting`: preserve `Button loading` or equivalent action feedback
+
+The implementation should prefer explicit phase names over a single ambiguous `loading` boolean when a page has both first-load and refresh behavior.
+
+## Skeleton Persistence and Timing
+
+The goal is to avoid both layout flash and unnecessary skeleton flicker.
+
+Rules:
+
+- route-level skeletons appear immediately when the route chunk is not yet resolved
+- first-load page skeletons appear when a screen has no usable content yet
+- refreshes should not drop already rendered content back to a full-page skeleton unless the page truly has no valid stale content to show
+- no artificial minimum display duration is required by default
+
+A minimum display duration or delayed reveal should only be introduced for a specific interaction if profiling shows a visible flicker problem. It should not be part of the default loading contract.
 
 ## Replacement Rules
 
@@ -144,6 +194,53 @@ Form submission keeps button-level loading.
 
 The fallback should match the page region, not the whole viewport.
 
+## Accessibility
+
+Loading UI should remain perceivable to assistive technology.
+
+Requirements:
+
+- content regions under load should expose `aria-busy="true"` while awaiting data
+- skeleton containers should use a consistent status wrapper where appropriate
+- purely decorative skeleton blocks should not create noisy screen-reader output
+- route-content loading should preserve navigation landmarks so header and sidebar remain stable for assistive tech users
+
+The implementation should favor a small shared accessibility wrapper around semantic skeleton components rather than ad hoc ARIA attributes on each page.
+
+## Component API Sketch
+
+The loading kit should stay small and predictable. A representative API shape:
+
+```tsx
+<PageSkeleton
+  header
+  sections={[
+    { type: 'stats', count: 4 },
+    { type: 'chart', count: 2 },
+  ]}
+/>
+
+<TableSkeleton
+  toolbar
+  columns={6}
+  rows={8}
+/>
+
+<DetailSkeleton
+  header
+  summaryCards={3}
+  sections={4}
+/>
+
+<FormSkeleton
+  title
+  groups={3}
+  actions
+/>
+```
+
+These props are illustrative. The implementation should prefer a few stable variants and counts, not a fully generic layout language.
+
 ## Migration Strategy
 
 Implement in four passes.
@@ -175,6 +272,19 @@ Replace the most visible loading patterns across major pages:
 
 - remove obsolete spinner-based patterns
 - normalize remaining outliers in drawers, tabs, and detail sections
+
+## Automated Testing
+
+Manual verification is necessary but not sufficient. Add focused automated coverage for the loading system.
+
+Recommended coverage:
+
+- component tests for semantic skeleton components to ensure expected regions render
+- route-boundary tests proving the app shell remains mounted while routed content is suspended
+- page-level tests for representative list, detail, dashboard, and form pages verifying skeleton-first render behavior
+- targeted tests that existing content remains visible during refresh-oriented loading states where that behavior is intentional
+
+Do not add brittle snapshot-only coverage for large skeleton trees. Prefer behavior assertions and small structural assertions.
 
 ## Verification
 
