@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	clusterOperationCodeSuccess          = "success"
-	clusterOperationCodeApprovalRequired = "approval_required"
-	clusterOperationCodeApprovalRejected = "approval_rejected"
+	// 与 operation_response.go 保持同一业务码来源，避免契约漂移。
+	clusterOperationCodeSuccess          = OperationCodeSuccess
+	clusterOperationCodeApprovalRequired = OperationCodeApprovalRequired
+	clusterOperationCodeApprovalRejected = OperationCodeApprovalRejected
 	clusterOperationCodeTokenNotApproved = "token_not_approved"
 )
 
