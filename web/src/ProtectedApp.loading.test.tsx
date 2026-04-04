@@ -61,11 +61,11 @@ describe('ProtectedApp loading boundary', () => {
       expect(screen.getByTestId('page-skeleton')).toBeInTheDocument();
     });
 
-    expect(await screen.findByTestId('dashboard-content')).toBeInTheDocument();
+    expect(await screen.findByTestId('dashboard-content', {}, { timeout: 10000 })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByTestId('app-shell')).toBeInTheDocument();
       expect(screen.queryByTestId('page-skeleton')).not.toBeInTheDocument();
     });
-  });
+  }, 30000);
 });

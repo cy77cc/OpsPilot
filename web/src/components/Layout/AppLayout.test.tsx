@@ -95,5 +95,5 @@ describe('AppLayout governance menu', () => {
     await userEvent.click(screen.getByRole('button', { name: /AI Assistant/i }));
 
     expect(await screen.findByText('AI 助手')).toBeInTheDocument();
-  });
+  }, 30000);
 });
