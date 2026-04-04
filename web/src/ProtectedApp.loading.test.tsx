@@ -41,7 +41,7 @@ vi.mock('./components/Layout/AppLayout', () => ({
 
 vi.mock('./pages/Dashboard/Dashboard', async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
-  return { default: () => <div>dashboard-content</div> };
+  return { default: () => <div data-testid="dashboard-content">dashboard-content</div> };
 });
 
 import ProtectedApp from './ProtectedApp';
@@ -59,6 +59,13 @@ describe('ProtectedApp loading boundary', () => {
     await waitFor(() => {
       expect(screen.getByTestId('app-shell')).toBeInTheDocument();
       expect(screen.getByTestId('page-skeleton')).toBeInTheDocument();
+    });
+
+    expect(await screen.findByTestId('dashboard-content')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+      expect(screen.queryByTestId('page-skeleton')).not.toBeInTheDocument();
     });
   });
 });
