@@ -483,13 +483,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         )}
 
         <Content
-          className="p-4 md:p-6 bg-gray-50"
+          className="bg-gray-50"
           style={{
             minHeight: isMobile ? 'calc(100vh - 128px)' : 'calc(100vh - 64px)',
           }}
         >
-          {/* 4.2.1 页面切换动画 */}
-          <PageTransition>{children}</PageTransition>
+          <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col p-4 md:p-6">
+            {/* 4.2.1 页面切换动画 */}
+            <PageTransition>{children}</PageTransition>
+          </div>
         </Content>
       </Layout>
 
