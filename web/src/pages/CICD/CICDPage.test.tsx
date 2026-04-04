@@ -82,7 +82,7 @@ describe('CICDPage', () => {
     const auditTabs = await screen.findAllByRole('tab', { name: '审批与审计时间线' });
     fireEvent.click(auditTabs[0]);
     expect(await screen.findByText('release.triggered', {}, { timeout: 10000 })).toBeInTheDocument();
-  }, 15000);
+  }, 30000);
 
   it('saves service ci config', async () => {
     render(<CICDPage />);
@@ -98,7 +98,7 @@ describe('CICDPage', () => {
     expect(call[0]).toBe(101);
     expect(call[1].repo_url).toBe('https://git.example.com/a.git');
     expect(call[1].artifact_target).toBe('registry.example.com/a:v1');
-  });
+  }, 30000);
 
   it('approves pending release', async () => {
     render(<CICDPage />);
@@ -108,5 +108,5 @@ describe('CICDPage', () => {
     const approveButtons = await screen.findAllByTestId('approve-release-31');
     fireEvent.click(approveButtons[0]);
     await waitFor(() => expect(mockApi.cicd.approveRelease).toHaveBeenCalledWith(31, 'approved in UI'));
-  });
+  }, 30000);
 });

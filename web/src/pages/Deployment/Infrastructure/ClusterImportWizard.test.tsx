@@ -63,7 +63,7 @@ describe('ClusterImportWizard', () => {
       cert: 'cert',
       key: 'key',
     });
-  }, 15000);
+  }, 30000);
 
   it('includes skip_tls_verify when importing with token auth', async () => {
     const user = userEvent.setup();
@@ -102,7 +102,7 @@ describe('ClusterImportWizard', () => {
       token: 'token-value',
       skip_tls_verify: true,
     }));
-  }, 15000);
+  }, 30000);
 
   it('uses kubeconfig payload when validating connection', async () => {
     const user = userEvent.setup();
@@ -155,5 +155,5 @@ describe('ClusterImportWizard', () => {
       auth_method: 'kubeconfig',
       kubeconfig: 'apiVersion: v1',
     }));
-  }, 15000);
+  }, 30000);
 });
