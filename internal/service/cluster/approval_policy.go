@@ -23,7 +23,6 @@ const (
 	approvalTokenInvalidCode  = "approval_token_invalid"
 	approvalTokenExpiredCode  = "approval_token_expired"
 	approvalTokenScopeCode    = "approval_token_scope_mismatch"
-	approvalTokenPendingCode  = "approval_token_not_approved"
 )
 
 // ApprovalScope 描述审批票据绑定的作用域。
@@ -188,6 +187,12 @@ func governanceScopeFromApprovalScope(scope ApprovalScope) governance.Scope {
 		Resource:   scope.Resource,
 		ResourceID: scope.ResourceID,
 		Action:     scope.Action,
+		// Keep cluster approval scopes comparable through the governance approval
+		// service, which currently treats an empty context payload as mismatch on
+		// consume. The sentinel is internal-only and stable across issue/consume.
+		Context: map[string]any{
+			"approval_scope": "cluster",
+		},
 	}
 }
 
@@ -209,8 +214,10 @@ func toClusterApprovalError(err error) error {
 		code = approvalTokenExpiredCode
 	case governance.CodeApprovalScopeMismatch:
 		code = approvalTokenScopeCode
-	case governance.CodeApprovalNotApproved, governance.CodeApprovalRejected:
-		code = approvalTokenPendingCode
+	case governance.CodeApprovalNotApproved:
+		code = OperationCodeApprovalRequired
+	case governance.CodeApprovalRejected:
+		code = OperationCodeApprovalRejected
 	}
 	return &ApprovalError{Code: code, Message: code}
 }

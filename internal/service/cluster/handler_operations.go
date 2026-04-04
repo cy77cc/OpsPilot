@@ -15,6 +15,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/governance"
+	governanceaudit "github.com/cy77cc/OpsPilot/internal/service/governance/audit"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +25,6 @@ const (
 	clusterOperationCodeSuccess          = OperationCodeSuccess
 	clusterOperationCodeApprovalRequired = OperationCodeApprovalRequired
 	clusterOperationCodeApprovalRejected = OperationCodeApprovalRejected
-	clusterOperationCodeTokenNotApproved = "token_not_approved"
 )
 
 var sensitiveOperationPatterns = []*regexp.Regexp{
@@ -96,11 +97,59 @@ type OperationGateResult struct {
 
 // RecordClusterOperationAudit 写入集群操作审计。
 func (h *Handler) RecordClusterOperationAudit(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, message string, operatorID uint) (model.ClusterOperationAudit, error) {
-	rec, err := PersistClusterOperationAudit(ctx, h.svcCtx.DB, clusterID, namespace, action, resource, resourceID, status, operatorID, truncateOperationText(sanitizeOperationText(message), 255))
+	rec, err := h.recordClusterOperationAuditWithCode(ctx, clusterID, namespace, action, resource, resourceID, status, "", message, operatorID)
 	if err != nil {
 		return model.ClusterOperationAudit{}, err
 	}
 	return *rec, nil
+}
+
+func (h *Handler) recordClusterOperationAuditWithCode(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, code, message string, operatorID uint) (*model.ClusterOperationAudit, error) {
+	msg := truncateOperationText(sanitizeOperationText(message), 255)
+	finalCode := strings.TrimSpace(code)
+	if finalCode == "" {
+		finalCode = clusterStatusToGovernanceCode(status)
+	}
+
+	govAudit := governanceaudit.NewService(h.svcCtx.DB, nil)
+	id, err := govAudit.Record(ctx, governance.FinalizeInput{
+		Intent: governance.OperationIntent{
+			OperatorID: operatorID,
+			Scope: governance.Scope{
+				Domain:     "cluster",
+				ClusterID:  clusterID,
+				Namespace:  strings.TrimSpace(namespace),
+				Resource:   strings.TrimSpace(resource),
+				ResourceID: strings.TrimSpace(resourceID),
+				Action:     strings.TrimSpace(action),
+			},
+		},
+		Decision: governance.Decision{
+			State:   clusterStatusToGovernanceState(status),
+			Code:    finalCode,
+			Message: msg,
+		},
+		ExecutionCode: finalCode,
+		ExecutionMsg:  msg,
+		Diagnostics: map[string]any{
+			"message": msg,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.ClusterOperationAudit{
+		ID:         id,
+		ClusterID:  clusterID,
+		Namespace:  strings.TrimSpace(namespace),
+		Action:     strings.TrimSpace(action),
+		Resource:   strings.TrimSpace(resource),
+		ResourceID: strings.TrimSpace(resourceID),
+		Status:     strings.TrimSpace(status),
+		Message:    msg,
+		OperatorID: operatorID,
+	}, nil
 }
 
 // requireHighRiskApproval 统一处理高风险操作的审批门禁。
@@ -143,25 +192,16 @@ func (h *Handler) requireHighRiskApproval(ctx context.Context, clusterID uint, n
 		approvalErr, ok := IsApprovalError(err)
 		if !ok {
 			audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, "failed", err.Error(), uint(operatorID))
-			return OperationGateResult{Allowed: false, Code: clusterOperationCodeTokenNotApproved, Message: sanitizeOperationText(err.Error()), AuditID: audit.ID}
+			return OperationGateResult{Allowed: false, Code: OperationCodeFailed, Message: sanitizeOperationText(err.Error()), AuditID: audit.ID}
 		}
 		status := "failed"
 		switch approvalErr.Code {
-		case ApprovalTokenReplayedCode:
-			status = "failed"
-		case approvalTokenExpiredCode:
-			status = "failed"
-		case approvalTokenScopeCode:
-			status = "failed"
-		case approvalTokenInvalidCode:
-			status = "failed"
-		case approvalTokenPendingCode:
+		case clusterOperationCodeApprovalRequired:
 			status = "pending"
+		case clusterOperationCodeApprovalRejected:
+			status = "rejected"
 		}
-		audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, namespace, action, resource, resourceID, status, approvalErr.Error(), uint(operatorID))
-		if approvalErr.Code == ApprovalTokenReplayedCode {
-			return OperationGateResult{Allowed: false, Code: ApprovalTokenReplayedCode, Message: ApprovalTokenReplayedCode, AuditID: audit.ID}
-		}
+		audit, _ := h.recordClusterOperationAuditWithCode(ctx, clusterID, namespace, action, resource, resourceID, status, approvalErr.Code, approvalErr.Error(), uint(operatorID))
 		return OperationGateResult{Allowed: false, Code: approvalErr.Code, Message: approvalErr.Error(), AuditID: audit.ID}
 	}
 	return OperationGateResult{Allowed: true, Code: clusterOperationCodeSuccess}
