@@ -2,9 +2,12 @@ import React from 'react';
 import { Skeleton } from 'antd';
 import './LoadingSkeleton.css';
 
-interface LoadingSkeletonProps {
-  type?: 'card' | 'list' | 'table' | 'detail';
+export type LoadingSkeletonType = 'card' | 'list' | 'table' | 'detail';
+
+export interface LoadingSkeletonProps {
+  type?: LoadingSkeletonType;
   count?: number;
+  'data-testid'?: string;
 }
 
 /**
@@ -16,12 +19,18 @@ interface LoadingSkeletonProps {
  * - table: 表格布局骨架屏
  * - detail: 详情页布局骨架屏
  */
-const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type = 'card', count = 3 }) => {
+const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
+  type = 'card',
+  count = 3,
+  'data-testid': dataTestId,
+}) => {
+  const safeCount = Math.max(0, count);
+
   if (type === 'card') {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {Array.from({ length: count }).map((_, index) => (
-          <div key={index} className="loading-skeleton-card">
+      <div data-testid={dataTestId} className="loading-skeleton-grid loading-skeleton-card-grid">
+        {Array.from({ length: safeCount }).map((_, index) => (
+          <div key={index} className="loading-skeleton-card loading-skeleton-surface">
             <Skeleton.Avatar active size="large" shape="square" className="mb-4" />
             <Skeleton active paragraph={{ rows: 3 }} />
           </div>
@@ -32,9 +41,9 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type = 'card', count 
 
   if (type === 'list') {
     return (
-      <div className="space-y-4">
-        {Array.from({ length: count }).map((_, index) => (
-          <div key={index} className="loading-skeleton-list-item">
+      <div data-testid={dataTestId} className="loading-skeleton-grid">
+        {Array.from({ length: safeCount }).map((_, index) => (
+          <div key={index} className="loading-skeleton-list-item loading-skeleton-surface">
             <Skeleton.Avatar active size="large" />
             <div className="flex-1">
               <Skeleton active paragraph={{ rows: 2 }} />
@@ -47,9 +56,9 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type = 'card', count 
 
   if (type === 'table') {
     return (
-      <div className="loading-skeleton-table">
+      <div data-testid={dataTestId} className="loading-skeleton-table loading-skeleton-surface">
         <Skeleton.Input active size="large" block className="mb-4" />
-        {Array.from({ length: count }).map((_, index) => (
+        {Array.from({ length: safeCount }).map((_, index) => (
           <div key={index} className="loading-skeleton-table-row">
             <Skeleton active paragraph={{ rows: 1 }} />
           </div>
@@ -60,14 +69,14 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type = 'card', count 
 
   if (type === 'detail') {
     return (
-      <div className="space-y-6">
-        <div className="loading-skeleton-detail-header">
+      <div data-testid={dataTestId} className="loading-skeleton-detail">
+        <div className="loading-skeleton-detail-header loading-skeleton-surface">
           <Skeleton.Avatar active size={64} />
           <div className="flex-1">
             <Skeleton active paragraph={{ rows: 2 }} />
           </div>
         </div>
-        <div className="loading-skeleton-detail-content">
+        <div className="loading-skeleton-detail-content loading-skeleton-surface">
           <Skeleton active paragraph={{ rows: 8 }} />
         </div>
       </div>
