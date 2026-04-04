@@ -74,6 +74,8 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 高级操作
 		clusterGroup.GET("/:id/events", h.GetEvents)
+		clusterGroup.POST("/:id/approvals", h.CreateApproval)
+		clusterGroup.POST("/:id/approvals/:ticket/confirm", h.ConfirmApproval)
 		clusterGroup.GET("/:id/operations/history", h.ListOperationHistory)
 		clusterGroup.GET("/:id/operations/:audit_id", h.GetOperationAudit)
 		clusterGroup.GET("/:id/namespaces/:namespace/hpas", h.GetHPAs)

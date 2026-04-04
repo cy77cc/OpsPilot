@@ -221,6 +221,7 @@ export interface ClusterOperationApproval {
 export interface ClusterOperationResponse<T = unknown> {
   state: ClusterOperationState;
   success: boolean;
+  code: string;
   message: string;
   audit_id?: string | number;
   approval?: ClusterOperationApproval;
@@ -534,6 +535,18 @@ export interface CertificateInfo {
 }
 
 const clusterOperationStates: ClusterOperationState[] = ['completed', 'approval_required', 'rejected', 'failed'];
+const SUCCESS_CODE = 'success';
+const APPROVAL_REQUIRED_CODE = 'approval_required';
+const APPROVAL_REJECTED_CODE = 'approval_rejected';
+const FAILED_CODES = new Set([
+  'failed',
+  'approval_token_invalid',
+  'approval_token_expired',
+  'approval_token_replayed',
+  'approval_token_scope_mismatch',
+  'permission_denied',
+  'internal_error',
+]);
 
 const isPlainObject = (value: unknown): value is Record<string, any> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -589,11 +602,112 @@ const normalizeApprovalPayload = (payload: unknown): ClusterOperationApproval | 
   };
 };
 
+const normalizeOperationState = (raw: Record<string, any>): ClusterOperationState => {
+  const stateCandidate = raw.state ?? raw.status ?? raw.result_state;
+  const codeCandidate = typeof raw.code === 'string'
+    ? raw.code.trim()
+    : typeof raw.error_code === 'string'
+      ? raw.error_code.trim()
+      : typeof raw.reason_code === 'string'
+        ? raw.reason_code.trim()
+        : typeof raw.result_code === 'string'
+          ? raw.result_code.trim()
+          : typeof raw.status_code === 'string'
+            ? raw.status_code.trim()
+            : '';
+  const approvalSignals = normalizeApprovalPayload(raw.approval) ?? normalizeApprovalPayload(raw);
+  const approvalRequired = Boolean(raw.approval_required ?? raw.is_required ?? approvalSignals?.required);
+  const rejected = raw.rejected === true || raw.approval_rejected === true;
+  const failed = raw.success === false
+    || raw.failed === true
+    || Boolean(raw.error)
+    || Boolean(raw.error_message)
+    || Boolean(raw.error_code)
+    || FAILED_CODES.has(codeCandidate);
+
+  if (stateCandidate === 'approval_required') {
+    return 'approval_required';
+  }
+  if (stateCandidate === 'rejected') {
+    return 'rejected';
+  }
+  if (stateCandidate === 'failed') {
+    return 'failed';
+  }
+  if (stateCandidate === 'completed') {
+    return approvalRequired ? 'approval_required' : rejected ? 'rejected' : failed ? 'failed' : 'completed';
+  }
+  if (approvalRequired || codeCandidate === APPROVAL_REQUIRED_CODE) {
+    return 'approval_required';
+  }
+  if (rejected || codeCandidate === APPROVAL_REJECTED_CODE) {
+    return 'rejected';
+  }
+  if (failed) {
+    return 'failed';
+  }
+  if (codeCandidate === SUCCESS_CODE) {
+    return 'completed';
+  }
+  if (stateCandidate && clusterOperationStates.includes(stateCandidate as ClusterOperationState)) {
+    return stateCandidate as ClusterOperationState;
+  }
+  return 'completed';
+};
+
+const normalizeOperationCode = (state: ClusterOperationState, raw: Record<string, any>): string => {
+  const code = typeof raw.code === 'string'
+    ? raw.code.trim()
+    : typeof raw.error_code === 'string'
+      ? raw.error_code.trim()
+      : typeof raw.reason_code === 'string'
+        ? raw.reason_code.trim()
+        : typeof raw.result_code === 'string'
+          ? raw.result_code.trim()
+          : typeof raw.status_code === 'string'
+            ? raw.status_code.trim()
+            : '';
+
+  if (state === 'completed') return SUCCESS_CODE;
+  if (state === 'approval_required') return APPROVAL_REQUIRED_CODE;
+  if (state === 'rejected') return APPROVAL_REJECTED_CODE;
+  if (state === 'failed') {
+    if (code && code !== SUCCESS_CODE && code !== APPROVAL_REQUIRED_CODE && code !== APPROVAL_REJECTED_CODE) {
+      return code;
+    }
+    return 'failed';
+  }
+  return SUCCESS_CODE;
+};
+
+const normalizeAuditID = (raw: Record<string, any>): string | number | undefined => {
+  const auditId = raw.audit_id ?? raw.auditId ?? raw.operation_id ?? raw.operationId;
+  if (typeof auditId === 'string' || typeof auditId === 'number') {
+    return auditId;
+  }
+  return undefined;
+};
+
+const normalizeOperationApproval = (state: ClusterOperationState, raw: Record<string, any>, message: string): ClusterOperationApproval | undefined => {
+  const approval = normalizeApprovalPayload(raw.approval) ?? normalizeApprovalPayload(raw);
+  if (approval) {
+    return approval;
+  }
+  if (state !== 'approval_required') {
+    return undefined;
+  }
+  return {
+    required: true,
+    reason: message || '操作需要审批',
+  };
+};
+
 export function normalizeClusterOperationResponse<T = unknown>(payload: unknown): ClusterOperationResponse<T> {
   if (!isPlainObject(payload)) {
     return {
       state: 'completed',
       success: true,
+      code: SUCCESS_CODE,
       message: typeof payload === 'string' ? payload : '操作已完成',
       result: payload as T,
       raw: isPlainObject(payload) ? payload : undefined,
@@ -601,51 +715,47 @@ export function normalizeClusterOperationResponse<T = unknown>(payload: unknown)
   }
 
   const raw = payload;
-  const stateCandidate = raw.state ?? raw.status ?? raw.result_state;
-  const approval = normalizeApprovalPayload(raw.approval) ?? normalizeApprovalPayload(raw);
+  const state = normalizeOperationState(raw);
+  const code = normalizeOperationCode(state, raw);
+  const approval = normalizeOperationApproval(state, raw, typeof raw.message === 'string' ? raw.message : '');
   const diagnostics = coerceStringArray(raw.diagnostics ?? raw.diagnostic_messages ?? raw.errors);
-  let state: ClusterOperationState = 'completed';
-
-  if (stateCandidate === 'approval_required' || approval?.required || raw.approval_required) {
-    state = 'approval_required';
-  } else if (stateCandidate === 'rejected' || raw.rejected === true || raw.approval_rejected === true) {
-    state = 'rejected';
-  } else if (
-    stateCandidate === 'failed'
+  const approvalRequired = state === 'approval_required'
+    || approval?.required
+    || raw.approval_required === true
+    || raw.is_required === true;
+  const rejected = state === 'rejected'
+    || raw.rejected === true
+    || raw.approval_rejected === true;
+  const failed = state === 'failed'
     || raw.success === false
     || raw.failed === true
-    || raw.error_code
-    || raw.error
-    || raw.error_message
-  ) {
-    state = 'failed';
-  } else if (stateCandidate && clusterOperationStates.includes(stateCandidate as ClusterOperationState)) {
-    state = stateCandidate as ClusterOperationState;
-  }
-
+    || Boolean(raw.error)
+    || Boolean(raw.error_message)
+    || Boolean(raw.error_code);
   const message = typeof raw.message === 'string'
     ? raw.message
     : typeof raw.msg === 'string'
       ? raw.msg
       : typeof raw.error_message === 'string'
         ? raw.error_message
-        : state === 'approval_required'
+        : approvalRequired
           ? '操作需要审批'
-          : state === 'rejected'
+          : rejected
             ? '操作已拒绝'
-            : state === 'failed'
+            : failed
               ? '操作失败'
               : '操作已完成';
 
-  const auditId = raw.audit_id ?? raw.auditId ?? raw.operation_id ?? raw.operationId;
+  const auditId = normalizeAuditID(raw);
   const result = raw.result ?? raw.data ?? raw.payload ?? raw.response ?? raw.details;
   return {
     state,
     success: state === 'completed',
+    code,
     message,
-    audit_id: typeof auditId === 'string' || typeof auditId === 'number' ? auditId : undefined,
+    audit_id: auditId,
     approval,
-    error_code: typeof raw.error_code === 'string' ? raw.error_code : typeof raw.reason_code === 'string' ? raw.reason_code : undefined,
+    error_code: code === SUCCESS_CODE ? undefined : code,
     diagnostics,
     result: result as T,
     raw,

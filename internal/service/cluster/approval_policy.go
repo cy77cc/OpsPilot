@@ -5,13 +5,16 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/governance"
+	governanceapproval "github.com/cy77cc/OpsPilot/internal/service/governance/approval"
+	governanceaudit "github.com/cy77cc/OpsPilot/internal/service/governance/audit"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -75,114 +78,183 @@ func NormalizeApprovalScope(scope ApprovalScope) ApprovalScope {
 
 // IssueClusterDeployApproval 创建审批票据记录。
 func IssueClusterDeployApproval(ctx context.Context, db *gorm.DB, scope ApprovalScope, requestedBy uint, expiresAt time.Time) (*model.ClusterDeployApproval, error) {
-	scope = NormalizeApprovalScope(scope)
-	if scope.ClusterID == 0 {
-		return nil, &ApprovalError{Code: approvalTokenInvalidCode, Message: approvalTokenInvalidCode}
-	}
-	if strings.TrimSpace(scope.Namespace) == "" || strings.TrimSpace(scope.Action) == "" {
-		return nil, &ApprovalError{Code: approvalTokenInvalidCode, Message: approvalTokenInvalidCode}
-	}
+	govScope := governanceScopeFromApprovalScope(scope)
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().UTC().Add(30 * time.Minute)
 	}
+	svc := governanceapproval.NewServiceWithOptions(db, func() time.Time { return time.Now().UTC() }, time.Until(expiresAt))
+	info, err := svc.Issue(ctx, governance.OperationIntent{
+		OperatorID: requestedBy,
+		Scope:      govScope,
+	}, "")
+	if err != nil {
+		return nil, toClusterApprovalError(err)
+	}
 	rec := model.ClusterDeployApproval{
-		Ticket:     fmt.Sprintf("k8s-appr-%d", time.Now().UnixNano()),
-		ClusterID:  scope.ClusterID,
-		Namespace:  scope.Namespace,
-		Action:     scope.Action,
-		Resource:   scope.Resource,
-		ResourceID: scope.ResourceID,
+		Ticket:     info.Ticket,
+		ClusterID:  govScope.ClusterID,
+		Namespace:  govScope.Namespace,
+		Action:     govScope.Action,
+		Resource:   govScope.Resource,
+		ResourceID: govScope.ResourceID,
 		Status:     "pending",
 		RequestBy:  requestedBy,
-		ExpiresAt:  expiresAt,
 	}
-	if err := db.WithContext(ctx).Create(&rec).Error; err != nil {
-		return nil, err
+	if info.ExpiresAt != nil {
+		rec.ExpiresAt = *info.ExpiresAt
 	}
 	return &rec, nil
 }
 
 // ConsumeClusterDeployApproval 校验并单次消费审批票据。
 func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket string, scope ApprovalScope, consumedBy uint, now time.Time) (*model.ClusterDeployApproval, error) {
-	ticket = strings.TrimSpace(ticket)
-	if ticket == "" {
-		return nil, &ApprovalError{Code: approvalTokenInvalidCode, Message: approvalTokenInvalidCode}
+	svc := governanceapproval.NewServiceWithOptions(db, func() time.Time {
+		if now.IsZero() {
+			return time.Now().UTC()
+		}
+		return now.UTC()
+	}, 30*time.Minute)
+	govScope := governanceScopeFromApprovalScope(scope)
+	intent := governance.OperationIntent{
+		OperatorID:    consumedBy,
+		ApprovalToken: strings.TrimSpace(ticket),
+		Scope:         govScope,
 	}
-	scope = NormalizeApprovalScope(scope)
-	if now.IsZero() {
-		now = time.Now().UTC()
+	err := svc.Consume(ctx, intent)
+	rec := model.ClusterDeployApproval{
+		Ticket:     strings.TrimSpace(ticket),
+		ClusterID:  govScope.ClusterID,
+		Namespace:  govScope.Namespace,
+		Action:     govScope.Action,
+		Resource:   govScope.Resource,
+		ResourceID: govScope.ResourceID,
 	}
-
-	var rec model.ClusterDeployApproval
-	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("ticket = ?", ticket).
-			First(&rec).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return &ApprovalError{Code: approvalTokenInvalidCode, Message: approvalTokenInvalidCode}
-			}
-			return err
-		}
-		if rec.ClusterID != scope.ClusterID || !strings.EqualFold(strings.TrimSpace(rec.Namespace), scope.Namespace) || !strings.EqualFold(strings.TrimSpace(rec.Action), scope.Action) || !strings.EqualFold(strings.TrimSpace(rec.Resource), scope.Resource) || strings.TrimSpace(rec.ResourceID) != scope.ResourceID {
-			return &ApprovalError{Code: approvalTokenScopeCode, Message: approvalTokenScopeCode}
-		}
-		if !rec.ExpiresAt.IsZero() && now.After(rec.ExpiresAt) {
-			return &ApprovalError{Code: approvalTokenExpiredCode, Message: approvalTokenExpiredCode}
-		}
-		switch strings.ToLower(strings.TrimSpace(rec.Status)) {
-		case "rejected":
-			return &ApprovalError{Code: approvalTokenPendingCode, Message: approvalTokenPendingCode}
-		case "approved":
-			if rec.ConsumedAt != nil {
-				replayAt := now
-				rec.ReplayCount++
-				rec.ReplayAt = &replayAt
-				rec.ReplayBy = consumedBy
-				rec.ReplayCode = ApprovalTokenReplayedCode
-				rec.ReplayMessage = ApprovalTokenReplayedCode
-				if err := tx.Save(&rec).Error; err != nil {
-					return err
-				}
-				return &ApprovalError{Code: ApprovalTokenReplayedCode, Message: ApprovalTokenReplayedCode}
-			}
-			consumedAt := now
-			rec.ConsumedAt = &consumedAt
-			rec.ConsumedBy = consumedBy
-			rec.ReplayCount = 0
-			rec.ReplayAt = nil
-			rec.ReplayBy = 0
-			rec.ReplayCode = ""
-			rec.ReplayMessage = ""
-			if err := tx.Save(&rec).Error; err != nil {
-				return err
-			}
-			return nil
-		default:
-			return &ApprovalError{Code: approvalTokenPendingCode, Message: approvalTokenPendingCode}
-		}
-	}); err != nil {
-		if approvalErr, ok := IsApprovalError(err); ok {
-			return &rec, approvalErr
-		}
-		return nil, err
+	if err != nil {
+		return &rec, toClusterApprovalError(err)
 	}
 	return &rec, nil
 }
 
 // PersistClusterOperationAudit 持久化集群操作审计，并对 message 进行脱敏。
 func PersistClusterOperationAudit(ctx context.Context, db *gorm.DB, clusterID uint, namespace, action, resource, resourceID, status string, operatorID uint, message any) (*model.ClusterOperationAudit, error) {
-	rec := model.ClusterOperationAudit{
+	govAudit := governanceaudit.NewService(db, nil)
+	msg := strings.TrimSpace(stringifyAuditMessage(message))
+	finalize := governance.FinalizeInput{
+		Intent: governance.OperationIntent{
+			OperatorID: operatorID,
+			Scope: governance.Scope{
+				Domain:     "cluster",
+				ClusterID:  clusterID,
+				Namespace:  strings.TrimSpace(namespace),
+				Resource:   strings.TrimSpace(resource),
+				ResourceID: strings.TrimSpace(resourceID),
+				Action:     strings.TrimSpace(action),
+			},
+		},
+		Decision: governance.Decision{
+			State:   clusterStatusToGovernanceState(status),
+			Code:    clusterStatusToGovernanceCode(status),
+			Message: msg,
+		},
+		ExecutionCode: clusterStatusToGovernanceCode(status),
+		ExecutionMsg:  msg,
+		Diagnostics: map[string]any{
+			"message": RedactAuditPayload(message),
+		},
+	}
+	id, err := govAudit.Record(ctx, finalize)
+	if err != nil {
+		return nil, err
+	}
+	return &model.ClusterOperationAudit{
+		ID:         id,
 		ClusterID:  clusterID,
 		Namespace:  strings.TrimSpace(namespace),
 		Action:     strings.TrimSpace(action),
 		Resource:   strings.TrimSpace(resource),
 		ResourceID: strings.TrimSpace(resourceID),
 		Status:     strings.TrimSpace(status),
-		Message:    RedactAuditPayload(message),
+		Message:    msg,
 		OperatorID: operatorID,
+	}, nil
+}
+
+func governanceScopeFromApprovalScope(scope ApprovalScope) governance.Scope {
+	scope = NormalizeApprovalScope(scope)
+	return governance.Scope{
+		Domain:     "cluster",
+		ClusterID:  scope.ClusterID,
+		Namespace:  scope.Namespace,
+		Resource:   scope.Resource,
+		ResourceID: scope.ResourceID,
+		Action:     scope.Action,
 	}
-	if err := db.WithContext(ctx).Create(&rec).Error; err != nil {
-		return nil, err
+}
+
+func toClusterApprovalError(err error) error {
+	if err == nil {
+		return nil
 	}
-	return &rec, nil
+	govErr, ok := governance.IsGovError(err)
+	if !ok {
+		return err
+	}
+	code := govErr.Code
+	switch code {
+	case governance.CodeApprovalTokenReplay:
+		code = ApprovalTokenReplayedCode
+	case governance.CodeApprovalTokenInvalid:
+		code = approvalTokenInvalidCode
+	case governance.CodeApprovalTokenExpired:
+		code = approvalTokenExpiredCode
+	case governance.CodeApprovalScopeMismatch:
+		code = approvalTokenScopeCode
+	case governance.CodeApprovalNotApproved, governance.CodeApprovalRejected:
+		code = approvalTokenPendingCode
+	}
+	return &ApprovalError{Code: code, Message: code}
+}
+
+func clusterStatusToGovernanceState(status string) governance.OperationState {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pending":
+		return governance.StateApprovalRequired
+	case "failed":
+		return governance.StateFailed
+	case "rejected":
+		return governance.StateRejected
+	default:
+		return governance.StateCompleted
+	}
+}
+
+func clusterStatusToGovernanceCode(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pending":
+		return governance.CodeApprovalRequired
+	case "failed":
+		return governance.CodeInternalError
+	case "rejected":
+		return governance.CodeApprovalRejected
+	default:
+		return governance.CodeSuccess
+	}
+}
+
+func stringifyAuditMessage(message any) string {
+	if message == nil {
+		return ""
+	}
+	switch value := message.(type) {
+	case string:
+		return sanitizeOperationText(value)
+	case []byte:
+		return sanitizeOperationText(string(value))
+	default:
+		buf, err := json.Marshal(RedactAuditPayload(value))
+		if err != nil {
+			return sanitizeOperationText(fmt.Sprint(RedactAuditPayload(value)))
+		}
+		return sanitizeOperationText(string(buf))
+	}
 }

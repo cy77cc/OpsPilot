@@ -5,6 +5,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -47,18 +48,22 @@ type ClusterOperationResponse struct {
 
 // OperationHistoryItem 是操作历史列表项。
 type OperationHistoryItem struct {
-	AuditID     uint      `json:"audit_id"`
-	ClusterID   uint      `json:"cluster_id"`
-	Namespace   string    `json:"namespace"`
-	Action      string    `json:"action"`
-	Resource    string    `json:"resource"`
-	ResourceID  string    `json:"resource_id"`
-	Status      string    `json:"status"`
-	Message     string    `json:"message"`
-	Diagnostics string    `json:"diagnostics,omitempty"`
-	OperatorID  uint      `json:"operator_id"`
-	Operator    string    `json:"operator"`
-	CreatedAt   time.Time `json:"created_at"`
+	AuditID      uint      `json:"audit_id"`
+	ClusterID    uint      `json:"cluster_id"`
+	Namespace    string    `json:"namespace"`
+	Action       string    `json:"action"`
+	ResourceType string    `json:"resource_type,omitempty"`
+	ResourceName string    `json:"resource_name,omitempty"`
+	Resource     string    `json:"resource"`
+	ResourceID   string    `json:"resource_id"`
+	Target       string    `json:"target,omitempty"`
+	Status       string    `json:"status"`
+	Message      string    `json:"message"`
+	Diagnostics  string    `json:"diagnostics,omitempty"`
+	OperatorID   uint      `json:"operator_id"`
+	Operator     string    `json:"operator"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
 }
 
 // OperationHistoryResponse 是操作历史分页响应。
@@ -68,6 +73,15 @@ type OperationHistoryResponse struct {
 	Page       int                    `json:"page"`
 	PageSize   int                    `json:"page_size"`
 	TotalPages int                    `json:"total_pages"`
+}
+
+// OperationAuditDetail 是集群操作审计详情响应。
+type OperationAuditDetail struct {
+	OperationHistoryItem
+	Approval    *OperationApproval `json:"approval,omitempty"`
+	Request     map[string]any     `json:"request,omitempty"`
+	Response    map[string]any     `json:"response,omitempty"`
+	Diagnostics []any              `json:"diagnostics,omitempty"`
 }
 
 // OperationGateResult 表示高风险操作的审批门禁结果。
@@ -191,7 +205,8 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 		return
 	}
 
-	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.ClusterOperationAudit{}).Where("cluster_id = ?", clusterID)
+	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.OperationAudit{}).
+		Where("domain = ? AND scope_cluster_id = ?", "cluster", clusterID)
 	if resource != "" {
 		query = query.Where("resource = ?", resource)
 	}
@@ -208,7 +223,7 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 		if operatorID, parseErr := strconv.ParseUint(operator, 10, 64); parseErr == nil {
 			query = query.Where("operator_id = ?", operatorID)
 		} else {
-			query = query.Joins("LEFT JOIN users ON users.id = cluster_operation_audits.operator_id").Where("users.username = ?", operator)
+			query = query.Joins("LEFT JOIN users ON users.id = operation_audits.operator_id").Where("users.username = ?", operator)
 		}
 	}
 
@@ -219,13 +234,13 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 	}
 
 	offset := int((page - 1) * pageSize)
-	var rows []model.ClusterOperationAudit
-	if err := query.Order("cluster_operation_audits.id DESC").Offset(offset).Limit(int(pageSize)).Find(&rows).Error; err != nil {
+	var rows []model.OperationAudit
+	if err := query.Order("operation_audits.id DESC").Offset(offset).Limit(int(pageSize)).Find(&rows).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return
 	}
 
-	items := h.clusterOperationAuditsToHistoryItems(c.Request.Context(), rows)
+	items := h.operationAuditsToHistoryItems(c.Request.Context(), rows)
 	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
 	httpx.OK(c, OperationHistoryResponse{
 		List:       items,
@@ -245,23 +260,23 @@ func (h *Handler) GetOperationAudit(c *gin.Context) {
 		return
 	}
 
-	var row model.ClusterOperationAudit
+	var row model.OperationAudit
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
-		Where("cluster_id = ? AND id = ?", clusterID, auditID).
+		Where("domain = ? AND scope_cluster_id = ? AND id = ?", "cluster", clusterID, auditID).
 		First(&row).Error; err != nil {
 		httpx.NotFound(c, "operation audit not found")
 		return
 	}
 
-	item := h.clusterOperationAuditsToHistoryItems(c.Request.Context(), []model.ClusterOperationAudit{row})
-	if len(item) == 0 {
-		httpx.NotFound(c, "operation audit not found")
+	detail := h.operationAuditToDetail(c.Request.Context(), row)
+	if detail == nil {
+		httpx.ServerErr(c, fmt.Errorf("build operation audit detail"))
 		return
 	}
-	httpx.OK(c, item[0])
+	httpx.OK(c, detail)
 }
 
-func (h *Handler) clusterOperationAuditsToHistoryItems(ctx context.Context, rows []model.ClusterOperationAudit) []OperationHistoryItem {
+func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []model.OperationAudit) []OperationHistoryItem {
 	operatorIDs := make([]uint, 0, len(rows))
 	seen := make(map[uint]struct{}, len(rows))
 	for _, row := range rows {
@@ -299,23 +314,122 @@ func (h *Handler) clusterOperationAuditsToHistoryItems(ctx context.Context, rows
 		message := sanitizeOperationText(row.Message)
 		item := OperationHistoryItem{
 			AuditID:    row.ID,
-			ClusterID:  row.ClusterID,
+			ClusterID:  uintValue(row.ScopeClusterID),
 			Namespace:  row.Namespace,
 			Action:     row.Action,
 			Resource:   row.Resource,
 			ResourceID: row.ResourceID,
-			Status:     row.Status,
+			Status:     normalizeOperationAuditStatus(row.Status),
 			Message:    message,
 			OperatorID: row.OperatorID,
 			Operator:   operator,
 			CreatedAt:  row.CreatedAt,
+			UpdatedAt:  row.UpdatedAt,
 		}
-		if row.Status != "success" && message != "" {
+		item.Target = row.ResourceID
+		item.ResourceName = row.ResourceID
+		item.ResourceType = row.Resource
+		if item.Status != OperationStateCompleted && message != "" {
 			item.Diagnostics = message
 		}
 		items = append(items, item)
 	}
 	return items
+}
+
+func (h *Handler) operationAuditToDetail(ctx context.Context, row model.OperationAudit) *OperationAuditDetail {
+	item := h.operationAuditsToHistoryItems(ctx, []model.OperationAudit{row})
+	if len(item) == 0 {
+		return nil
+	}
+	detail := &OperationAuditDetail{
+		OperationHistoryItem: item[0],
+		Request:              decodeJSONStringMap(row.RequestSummaryJSON),
+		Response:             decodeJSONStringMap(row.ResultSummaryJSON),
+		Diagnostics:          decodeJSONStringSlice(row.DiagnosticsJSON),
+	}
+	if strings.TrimSpace(row.ApprovalTicket) != "" {
+		var approvalRow model.OperationApproval
+		if err := h.svcCtx.DB.WithContext(ctx).Where("ticket = ?", row.ApprovalTicket).First(&approvalRow).Error; err == nil {
+			detail.Approval = operationApprovalFromGovernanceRecord(&approvalRow)
+		} else {
+			detail.Approval = &OperationApproval{Ticket: row.ApprovalTicket}
+		}
+	}
+	return detail
+}
+
+func operationApprovalFromGovernanceRecord(rec *model.OperationApproval) *OperationApproval {
+	if rec == nil {
+		return nil
+	}
+	return &OperationApproval{
+		Ticket:        rec.Ticket,
+		ClusterID:     uintValue(rec.ScopeClusterID),
+		Namespace:     rec.Namespace,
+		Action:        rec.Action,
+		Resource:      rec.Resource,
+		ResourceID:    rec.ResourceID,
+		ExpiresAt:     rec.ExpiresAt,
+		ConsumedAt:    rec.ConsumedAt,
+		ConsumedBy:    rec.ConsumedBy,
+		ReplayCount:   rec.ReplayCount,
+		ReplayAt:      rec.ReplayAt,
+		ReplayBy:      rec.ReplayBy,
+		ReplayCode:    rec.ReplayCode,
+		ReplayMessage: rec.ReplayMessage,
+		Status:        rec.Status,
+	}
+}
+
+func normalizeOperationAuditStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "approval_required", "pending":
+		return OperationStateApprovalRequired
+	case "rejected":
+		return OperationStateRejected
+	case "failed":
+		return OperationStateFailed
+	case "success":
+		return OperationStateCompleted
+	default:
+		return strings.TrimSpace(status)
+	}
+}
+
+func decodeJSONStringMap(raw string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return map[string]any{"raw": sanitizeOperationText(raw)}
+	}
+	return out
+}
+
+func decodeJSONStringSlice(raw string) []any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out []any
+	if err := json.Unmarshal([]byte(raw), &out); err == nil {
+		return out
+	}
+	var single any
+	if err := json.Unmarshal([]byte(raw), &single); err == nil {
+		return []any{single}
+	}
+	return []any{sanitizeOperationText(raw)}
+}
+
+func uintValue(v *uint) uint {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func parseOperationHistoryTime(raw string) (*time.Time, error) {

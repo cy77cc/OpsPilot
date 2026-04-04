@@ -49,6 +49,8 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&model.ClusterQuotaPolicy{},
 		&model.ClusterDeployApproval{},
 		&model.ClusterOperationAudit{},
+		&model.OperationApproval{},
+		&model.OperationAudit{},
 		&model.CMDBCI{},
 		&model.CMDBRelation{},
 		&model.CMDBSyncJob{},
