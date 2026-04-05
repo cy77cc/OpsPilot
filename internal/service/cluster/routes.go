@@ -90,6 +90,10 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		// 高级操作
 		clusterGroup.GET("/:id/events", h.GetEvents)
 		clusterGroup.GET("/:id/cni-info", h.GetCNIInfo)
+		clusterGroup.POST("/:id/admission/policies", h.UpsertAdmissionPolicy)
+		clusterGroup.GET("/:id/admission/results", h.ListAdmissionResults)
+		clusterGroup.POST("/:id/admission/exemptions", h.CreateAdmissionExemption)
+		clusterGroup.POST("/:id/admission/exemptions/:exemption_id/revoke", h.RevokeAdmissionExemption)
 		clusterGroup.POST("/:id/policies/:namespace/:name/releases", h.CreatePolicyRelease)
 		clusterGroup.GET("/:id/releases/:release_id", h.GetPolicyRelease)
 		clusterGroup.POST("/:id/releases/:release_id/apply", h.ApplyPolicyRelease)

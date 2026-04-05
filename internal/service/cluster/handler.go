@@ -23,6 +23,7 @@ import (
 type Handler struct {
 	svcCtx *svc.ServiceContext // 服务上下文
 	repo   *Repository         // 数据访问层
+	trivy  TrivyClient
 }
 
 // NewHandler 创建集群服务处理器。
