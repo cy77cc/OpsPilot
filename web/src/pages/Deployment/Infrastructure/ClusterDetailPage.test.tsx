@@ -97,6 +97,8 @@ const defaultNodes = [
   },
 ];
 
+const HIGH_RISK_RUNBOOK_PATH = '/docs/runbooks/cluster-high-risk-operations.md';
+
 function mockBaselineLoads() {
   mockApi.cluster.getClusterDetail.mockResolvedValue({ data: defaultCluster });
   mockApi.cluster.getClusterNodes.mockResolvedValue({ data: { list: defaultNodes } });
@@ -300,6 +302,13 @@ async function openMaintenanceTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(tab);
 }
 
+async function expectHighRiskRunbookGuidance(summary: string | RegExp) {
+  expect(await screen.findByText(summary)).toBeInTheDocument();
+  expect(screen.getAllByRole('link', { name: '查看运行手册' }).some((link) => (
+    link.getAttribute('href') === HIGH_RISK_RUNBOOK_PATH
+  ))).toBe(true);
+}
+
 describe('ClusterDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -307,6 +316,7 @@ describe('ClusterDetailPage', () => {
   });
 
   afterEach(() => {
+    message.destroy();
     Modal.destroyAll();
     cleanup();
   });
@@ -923,6 +933,155 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=116',
     );
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('shows drain recovery guidance when node drain fails', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.drainNode.mockResolvedValueOnce({
+      data: {
+        state: 'failed',
+        success: false,
+        code: 'drain_failed',
+        message: '节点排空失败：仍有 Pod 因 PDB 无法驱逐',
+        audit_id: 701,
+      },
+    });
+
+    renderPage();
+
+    await screen.findAllByText('worker-1');
+    await openNodeActions(user);
+    await user.click(await screen.findByText('Drain'));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.drainNode).toHaveBeenCalledWith(42, 'worker-1', {
+        approval_token: undefined,
+        ignore_daemonsets: true,
+        delete_emptydir_data: false,
+        force: false,
+        grace_period_seconds: 30,
+        timeout_seconds: 300,
+      });
+    });
+
+    await expectHighRiskRunbookGuidance(/核对未驱逐 Pod、PDB 与 DaemonSet 阻塞/i);
+  });
+
+  it('shows remove recovery guidance when node removal fails', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.removeClusterNode.mockResolvedValueOnce({
+      data: {
+        state: 'failed',
+        success: false,
+        code: 'remove_failed',
+        message: '节点移除失败：节点仍处于 Ready',
+        audit_id: 702,
+      },
+    });
+
+    renderPage();
+
+    await screen.findAllByText('worker-1');
+    await openNodeActions(user);
+    await user.click(await screen.findByText('Remove'));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.removeClusterNode).toHaveBeenCalledWith(42, 'worker-1', { approval_token: undefined });
+    });
+
+    await expectHighRiskRunbookGuidance(/确认节点已完成 drain、已从流量与自动伸缩池摘除/i);
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('shows certificate renewal recovery guidance when renew fails', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getCertificates.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'apiserver',
+          ca: false,
+          expires_at: '2026-08-01T00:00:00Z',
+          days_left: 90,
+        }],
+      },
+    });
+    mockApi.cluster.renewCertificates.mockResolvedValueOnce({
+      data: {
+        state: 'failed',
+        success: false,
+        code: 'renew_failed',
+        message: '证书续期失败：controller-manager 未恢复',
+        audit_id: 703,
+      },
+    });
+
+    renderPage();
+
+    await openMaintenanceTab(user);
+    await user.click(await screen.findByRole('button', { name: /续期证书/ }));
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.renewCertificates).toHaveBeenCalledWith(42, { approval_token: undefined });
+    });
+
+    await expectHighRiskRunbookGuidance(/逐项核对 apiserver、controller-manager、scheduler 证书与静态 Pod 重启情况/i);
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('shows upgrade recovery guidance when cluster upgrade fails', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getUpgradePlan.mockResolvedValue({
+      data: {
+        current_version: 'v1.28.0',
+        upgradable: true,
+        warnings: [],
+        steps: [],
+      },
+    });
+    mockApi.cluster.upgradeCluster.mockResolvedValueOnce({
+      data: {
+        state: 'failed',
+        success: false,
+        code: 'upgrade_failed',
+        message: '集群升级失败：升级前检查未通过',
+        audit_id: 704,
+      },
+    });
+
+    renderPage();
+
+    await openMaintenanceTab(user);
+    await user.click(await screen.findByRole('button', { name: /升级集群/ }));
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.upgradeCluster).toHaveBeenCalledWith(42, {
+        target_version: '1.29.0',
+        approval_token: undefined,
+      });
+    });
+
+    await expectHighRiskRunbookGuidance(/先冻结变更并确认 etcd 与控制平面备份可恢复/i);
     confirmSpy.mockRestore();
   }, 45000);
 });

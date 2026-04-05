@@ -26,6 +26,55 @@ import type {
 } from '../../../api/modules/cluster';
 
 const { Text, Title } = Typography;
+const HIGH_RISK_RUNBOOK_PATH = '/docs/runbooks/cluster-high-risk-operations.md';
+
+type HighRiskFailureGuidance = {
+  summary: string;
+  href: string;
+};
+
+const getHighRiskFailureGuidance = (actionKey: string): HighRiskFailureGuidance | undefined => {
+  if (actionKey.includes('drain')) {
+    return {
+      summary: '核对未驱逐 Pod、PDB 与 DaemonSet 阻塞，必要时先补齐疏散窗口或人工迁移后再重试。',
+      href: HIGH_RISK_RUNBOOK_PATH,
+    };
+  }
+  if (actionKey.includes('remove')) {
+    return {
+      summary: '确认节点已完成 drain、已从流量与自动伸缩池摘除，再核对 kubelet 与云主机状态后重试移除。',
+      href: HIGH_RISK_RUNBOOK_PATH,
+    };
+  }
+  if (actionKey.includes('renew')) {
+    return {
+      summary: '逐项核对 apiserver、controller-manager、scheduler 证书与静态 Pod 重启情况，再决定回滚或重签。',
+      href: HIGH_RISK_RUNBOOK_PATH,
+    };
+  }
+  if (actionKey.includes('upgrade')) {
+    return {
+      summary: '先冻结变更并确认 etcd 与控制平面备份可恢复，再按失败阶段逐项修复后重新生成升级计划。',
+      href: HIGH_RISK_RUNBOOK_PATH,
+    };
+  }
+  return undefined;
+};
+
+const buildFailureFeedbackMessage = (messageText: string, guidance?: HighRiskFailureGuidance) => {
+  if (!guidance) {
+    return messageText;
+  }
+  return (
+    <span>
+      {messageText}
+      {' '}处置建议：{guidance.summary}{' '}
+      <a href={guidance.href} target="_blank" rel="noopener noreferrer">
+        查看运行手册
+      </a>
+    </span>
+  );
+};
 
 const ClusterDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -106,6 +155,7 @@ const ClusterDetailPage: React.FC = () => {
     state: ClusterOperationState;
     message: string;
     audit_id?: string | number;
+    guidance?: HighRiskFailureGuidance;
   }>>({});
   const [editForm] = Form.useForm();
   const [addNodeForm] = Form.useForm();
@@ -264,6 +314,7 @@ const ClusterDetailPage: React.FC = () => {
     state: ClusterOperationState;
     message: string;
     audit_id?: string | number;
+    guidance?: HighRiskFailureGuidance;
   }) => {
     setOperationFeedback((prev) => ({
       ...prev,
@@ -299,11 +350,15 @@ const ClusterDetailPage: React.FC = () => {
     setNodeMutationLoadingKey(loadingKey);
     try {
       const result = await runner(undefined);
+      const failureGuidance = result.state === 'failed'
+        ? getHighRiskFailureGuidance(actionKey)
+        : undefined;
       recordOperationFeedback(feedbackKey, {
         action: actionLabel,
         state: result.state,
         message: result.message,
         audit_id: result.audit_id,
+        guidance: failureGuidance,
       });
 
       if (result.state === 'approval_required') {
@@ -325,7 +380,8 @@ const ClusterDetailPage: React.FC = () => {
       if (result.state === 'rejected') {
         message.error(result.message || `${actionLabel} 已拒绝`);
       } else if (result.state === 'failed') {
-        message.error(result.message || `${actionLabel} 失败`);
+        const failureMessage = result.message || `${actionLabel} 失败`;
+        message.error(buildFailureFeedbackMessage(failureMessage, failureGuidance));
       } else {
         message.success(result.message || `${actionLabel} 成功`);
       }
@@ -348,7 +404,15 @@ const ClusterDetailPage: React.FC = () => {
       }
       return result;
     } catch (err) {
-      message.error(err instanceof Error ? err.message : `${actionLabel} 失败`);
+      const failureMessage = err instanceof Error ? err.message : `${actionLabel} 失败`;
+      const failureGuidance = getHighRiskFailureGuidance(actionKey);
+      recordOperationFeedback(feedbackKey, {
+        action: actionLabel,
+        state: 'failed',
+        message: failureMessage,
+        guidance: failureGuidance,
+      });
+      message.error(buildFailureFeedbackMessage(failureMessage, failureGuidance));
       throw err;
     } finally {
       setNodeMutationLoadingKey('');
@@ -366,11 +430,15 @@ const ClusterDetailPage: React.FC = () => {
       }
       setNodeMutationLoadingKey(pendingApprovalOperation.loadingKey);
       const result = await pendingApprovalOperation.retry(token);
+      const failureGuidance = result.state === 'failed'
+        ? getHighRiskFailureGuidance(pendingApprovalOperation.actionKey)
+        : undefined;
       recordOperationFeedback(pendingApprovalOperation.feedbackKey, {
         action: pendingApprovalOperation.title,
         state: result.state,
         message: result.message,
         audit_id: result.audit_id,
+        guidance: failureGuidance,
       });
       setApprovalModalVisible(false);
       setPendingApprovalOperation(null);
@@ -412,7 +480,8 @@ const ClusterDetailPage: React.FC = () => {
       if (result.state === 'rejected') {
         message.error(result.message || `${pendingApprovalOperation.title} 已拒绝`);
       } else if (result.state === 'failed') {
-        message.error(result.message || `${pendingApprovalOperation.title} 失败`);
+        const failureMessage = result.message || `${pendingApprovalOperation.title} 失败`;
+        message.error(buildFailureFeedbackMessage(failureMessage, failureGuidance));
       }
       if (pendingApprovalOperation.refresh) {
         await pendingApprovalOperation.refresh();
@@ -422,7 +491,18 @@ const ClusterDetailPage: React.FC = () => {
         await loadNodes();
       }
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '提交审批失败');
+      if (err instanceof Error && pendingApprovalOperation) {
+        const failureGuidance = getHighRiskFailureGuidance(pendingApprovalOperation.actionKey);
+        recordOperationFeedback(pendingApprovalOperation.feedbackKey, {
+          action: pendingApprovalOperation.title,
+          state: 'failed',
+          message: err.message,
+          guidance: failureGuidance,
+        });
+        message.error(buildFailureFeedbackMessage(err.message, failureGuidance));
+      } else {
+        message.error(err instanceof Error ? err.message : '提交审批失败');
+      }
     } finally {
       setNodeMutationLoadingKey('');
     }
@@ -533,6 +613,14 @@ const ClusterDetailPage: React.FC = () => {
         <Text type={feedback.state === 'completed' ? 'secondary' : 'danger'}>
           {feedback.message}
         </Text>
+        {feedback.guidance && (
+          <Text type="secondary">
+            处置建议：{feedback.guidance.summary}{' '}
+            <a href={feedback.guidance.href} target="_blank" rel="noopener noreferrer">
+              查看运行手册
+            </a>
+          </Text>
+        )}
       </Space>
     );
   }, [buildOperationLink, operationFeedback]);
