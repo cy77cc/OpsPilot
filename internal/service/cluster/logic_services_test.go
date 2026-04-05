@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -20,6 +21,77 @@ func TestValidateServiceMutationReq_RejectsMissingPorts(t *testing.T) {
 	})
 	if err == nil || err.Error() != "ports required" {
 		t.Fatalf("expected ports required validation error, got %v", err)
+	}
+}
+
+func TestValidateServiceMutationReq_RejectsNodePortOnClusterIP(t *testing.T) {
+	err := validateServiceMutationReq(ServiceMutationReq{
+		Name:     "web",
+		Type:     string(corev1.ServiceTypeClusterIP),
+		Selector: map[string]string{"app": "web"},
+		Ports: []ServiceMutationPort{{
+			Port:       80,
+			TargetPort: "8080",
+			NodePort:   30080,
+		}},
+	})
+	if err == nil || err.Error() != "node_port is only supported for NodePort or LoadBalancer services" {
+		t.Fatalf("expected clusterIP nodePort validation error, got %v", err)
+	}
+}
+
+func TestValidateIngressMutationReq_RejectsMissingRules(t *testing.T) {
+	err := validateIngressMutationReq(IngressMutationReq{Name: "web"})
+	if err == nil || err.Error() != "rules required" {
+		t.Fatalf("expected rules required validation error, got %v", err)
+	}
+}
+
+func TestIngressMutationRequiresApproval_HighRiskRules(t *testing.T) {
+	if ingressMutationRequiresApproval(IngressMutationReq{
+		Name: "web",
+		Rules: []IngressMutationRule{{
+			Host: "app.example.com",
+			Paths: []IngressMutationPath{{
+				Path:        "/",
+				PathType:    string(networkingv1.PathTypePrefix),
+				ServiceName: "web",
+				ServicePort: 80,
+			}},
+		}},
+	}) {
+		t.Fatalf("expected low-risk ingress to skip approval")
+	}
+
+	if !ingressMutationRequiresApproval(IngressMutationReq{
+		Name: "web",
+		Rules: []IngressMutationRule{{
+			Host: "*.example.com",
+			Paths: []IngressMutationPath{{
+				Path:        "/",
+				PathType:    string(networkingv1.PathTypePrefix),
+				ServiceName: "web",
+				ServicePort: 80,
+			}},
+		}},
+	}) {
+		t.Fatalf("expected wildcard host ingress to require approval")
+	}
+
+	if !ingressMutationRequiresApproval(IngressMutationReq{
+		Name: "web",
+		Rules: []IngressMutationRule{{
+			Host: "app.example.com",
+			Paths: []IngressMutationPath{{
+				Path:        "/",
+				PathType:    string(networkingv1.PathTypePrefix),
+				ServiceName: "web",
+				ServicePort: 80,
+			}},
+		}},
+		TLS: []IngressMutationTLS{{SecretName: "tls-web", Hosts: []string{"app.example.com"}}},
+	}) {
+		t.Fatalf("expected tls ingress to require approval")
 	}
 }
 
@@ -202,6 +274,80 @@ func TestExecuteServiceIngressMutation_ApprovedIngressUpdateCompletesAndAudits(t
 	if len(ing.Spec.Rules) != 1 || ing.Spec.Rules[0].Host != "app.example.com" {
 		t.Fatalf("expected ingress host to be updated, got %+v", ing.Spec.Rules)
 	}
+}
+
+func TestExecuteServiceIngressMutation_LowRiskIngressCreateSkipsApproval(t *testing.T) {
+	handler, db := newWorkloadOperationTestHandler(t)
+	ctx := newWorkloadOperationGinContext(1001)
+	client := k8sfake.NewSimpleClientset()
+	req := IngressMutationReq{
+		Name: "web",
+		Rules: []IngressMutationRule{{
+			Host: "app.example.com",
+			Paths: []IngressMutationPath{{
+				Path:        "/",
+				PathType:    string(networkingv1.PathTypePrefix),
+				ServiceName: "web",
+				ServicePort: 80,
+			}},
+		}},
+	}
+
+	resp, err := handler.executeServiceIngressMutationWithClient(
+		ctx,
+		42,
+		serviceIngressMutationTarget{
+			Namespace:       "default",
+			Resource:        "ingress",
+			Name:            "web",
+			Action:          "ingress.create",
+			RequireApproval: ingressMutationRequiresApproval(req),
+		},
+		"",
+		client,
+		func(ctx context.Context, kubeClient kubernetesServiceIngressClient) (map[string]any, error) {
+			return handler.upsertIngress(ctx, kubeClient, "default", req)
+		},
+	)
+	if err != nil {
+		t.Fatalf("execute ingress create: %v", err)
+	}
+	if resp.State != OperationStateCompleted {
+		t.Fatalf("expected state %q, got %q", OperationStateCompleted, resp.State)
+	}
+	assertAuditRecord(t, db, resp.AuditID, OperationStateCompleted, OperationCodeSuccess)
+}
+
+func TestExecuteServiceIngressMutation_FailurePathAuditsWithFailedCode(t *testing.T) {
+	handler, db := newWorkloadOperationTestHandler(t)
+	ctx := newWorkloadOperationGinContext(1001)
+	client := k8sfake.NewSimpleClientset()
+
+	resp, err := handler.executeServiceIngressMutationWithClient(
+		ctx,
+		42,
+		serviceIngressMutationTarget{
+			Namespace: "default",
+			Resource:  "service",
+			Name:      "broken",
+			Action:    "service.update",
+		},
+		"",
+		client,
+		func(context.Context, kubernetesServiceIngressClient) (map[string]any, error) {
+			return nil, errors.New("mutation failed")
+		},
+	)
+	if err != nil {
+		t.Fatalf("execute service mutation: %v", err)
+	}
+	if resp.State != OperationStateFailed {
+		t.Fatalf("expected state %q, got %q", OperationStateFailed, resp.State)
+	}
+	if resp.Code != OperationCodeFailed {
+		t.Fatalf("expected code %q, got %q", OperationCodeFailed, resp.Code)
+	}
+	assertAuditRecord(t, db, resp.AuditID, OperationStateFailed, OperationCodeFailed)
 }
 
 func intstrFromInt(v int) intstr.IntOrString {

@@ -353,7 +353,7 @@ func (h *Handler) CreateIngress(c *gin.Context) {
 		Resource:        "ingress",
 		Name:            req.Name,
 		Action:          "ingress.create",
-		RequireApproval: true,
+		RequireApproval: ingressMutationRequiresApproval(req),
 	}
 	result, err := h.executeServiceIngressMutationWithClient(c, clusterID, target, req.ApprovalToken, client, func(ctx context.Context, kubeClient kubernetesServiceIngressClient) (map[string]any, error) {
 		return h.createIngress(ctx, kubeClient, namespace, req)
@@ -409,7 +409,7 @@ func (h *Handler) UpdateIngress(c *gin.Context) {
 		Resource:        "ingress",
 		Name:            name,
 		Action:          "ingress.update",
-		RequireApproval: true,
+		RequireApproval: ingressMutationRequiresApproval(req),
 	}
 	result, err := h.executeServiceIngressMutationWithClient(c, clusterID, target, req.ApprovalToken, client, func(ctx context.Context, kubeClient kubernetesServiceIngressClient) (map[string]any, error) {
 		return h.updateIngress(ctx, kubeClient, namespace, req)
@@ -582,7 +582,11 @@ func (h *Handler) executeServiceIngressMutationWithClient(c *gin.Context, cluste
 	details, opErr := fn(ctx, client)
 	operatorID := uint(httpx.UIDFromCtx(c))
 	if opErr != nil {
-		audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, target.Namespace, target.Action, target.Resource, target.Name, "failed", opErr.Error(), operatorID)
+		audit, _ := h.recordClusterOperationAuditWithCode(ctx, clusterID, target.Namespace, target.Action, target.Resource, target.Name, "failed", OperationCodeFailed, opErr.Error(), operatorID)
+		var auditID uint
+		if audit != nil {
+			auditID = audit.ID
+		}
 		return ClusterOperationResponse{
 			State:       OperationStateFailed,
 			Code:        OperationCodeFailed,
@@ -590,7 +594,7 @@ func (h *Handler) executeServiceIngressMutationWithClient(c *gin.Context, cluste
 			ClusterID:   clusterID,
 			Resource:    target.Resource,
 			ResourceID:  target.Name,
-			AuditID:     audit.ID,
+			AuditID:     auditID,
 			Diagnostics: sanitizeOperationText(opErr.Error()),
 		}, nil
 	}
@@ -718,6 +722,19 @@ func serviceMutationRequiresApproval(req ServiceMutationReq) bool {
 	}
 	for _, port := range req.Ports {
 		if port.NodePort > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func ingressMutationRequiresApproval(req IngressMutationReq) bool {
+	if len(req.TLS) > 0 {
+		return true
+	}
+	for _, rule := range req.Rules {
+		host := strings.TrimSpace(strings.ToLower(rule.Host))
+		if strings.Contains(host, "*") {
 			return true
 		}
 	}

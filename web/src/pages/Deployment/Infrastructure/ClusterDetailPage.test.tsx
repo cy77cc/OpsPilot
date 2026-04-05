@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { Modal } from 'antd';
+import { message, Modal } from 'antd';
 import ClusterDetailPage from './ClusterDetailPage';
 
 const mockApi = vi.hoisted(() => ({
@@ -730,5 +730,99 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=602',
     );
+  }, 45000);
+
+  it('creates a service from services tab', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: { list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }] },
+    });
+    mockApi.cluster.getServices.mockResolvedValue({ data: { list: [] } });
+
+    renderPage();
+
+    await openServicesTab(user);
+    await user.click(await screen.findByRole('button', { name: '新建 Service' }));
+    await user.type(screen.getByLabelText('service_name'), 'edge');
+    await user.type(screen.getByLabelText('selector'), 'app=edge');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'service_port' }), { target: { value: '80' } });
+    await user.type(screen.getByLabelText('target_port'), '8080');
+    await user.click(screen.getByRole('button', { name: '保存 Service' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.createService).toHaveBeenCalledWith(42, 'default', expect.objectContaining({
+        name: 'edge',
+        approval_token: undefined,
+      }));
+    });
+  }, 45000);
+
+  it('updates and deletes an ingress from services tab', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: { list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }] },
+    });
+    mockApi.cluster.getServices.mockResolvedValue({ data: { list: [] } });
+    mockApi.cluster.getIngresses.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'web',
+          namespace: 'default',
+          hosts: [{ host: 'old.example.com', paths: ['/'] }],
+          age: '1d',
+          created_at: '2026-04-04T00:00:00Z',
+        }],
+      },
+    });
+
+    renderPage();
+
+    await openServicesTab(user);
+    await user.click(await screen.findByRole('button', { name: '编辑 Ingress web' }));
+    fireEvent.change(screen.getByLabelText('ingress_host'), { target: { value: 'new.example.com' } });
+    await user.type(screen.getByLabelText('backend_service_name'), 'web');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'backend_service_port' }), { target: { value: '8080' } });
+    await user.click(screen.getByRole('button', { name: '保存 Ingress' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.updateIngress).toHaveBeenCalledWith(42, 'default', 'web', expect.objectContaining({
+        name: 'web',
+        approval_token: undefined,
+      }));
+    });
+
+    await user.click(await screen.findByRole('button', { name: '删除 Ingress web' }));
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    await latestConfig?.onOk?.();
+    await waitFor(() => {
+      expect(mockApi.cluster.deleteIngress).toHaveBeenCalledWith(42, 'default', 'web', { approval_token: undefined });
+    });
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('shows error feedback when service create fails', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => null as any);
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: { list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }] },
+    });
+    mockApi.cluster.getServices.mockResolvedValue({ data: { list: [] } });
+    mockApi.cluster.createService.mockRejectedValueOnce(new Error('create failed'));
+
+    renderPage();
+
+    await openServicesTab(user);
+    await user.click(await screen.findByRole('button', { name: '新建 Service' }));
+    await user.type(screen.getByLabelText('service_name'), 'edge');
+    await user.type(screen.getByLabelText('selector'), 'app=edge');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'service_port' }), { target: { value: '80' } });
+    await user.type(screen.getByLabelText('target_port'), '8080');
+    await user.click(screen.getByRole('button', { name: '保存 Service' }));
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith('create failed');
+    });
+    errorSpy.mockRestore();
   }, 45000);
 });
