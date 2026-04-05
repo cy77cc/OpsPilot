@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,13 @@ const (
 	approvalTokenInvalidCode  = "approval_token_invalid"
 	approvalTokenExpiredCode  = "approval_token_expired"
 	approvalTokenScopeCode    = "approval_token_scope_mismatch"
+
+	// PolicyReleaseApprovalResource 是策略发布审批记录绑定的资源类型。
+	PolicyReleaseApprovalResource = "policy_release"
+	// PolicyReleaseApprovalActionApply 是策略发布应用动作的审批 action。
+	PolicyReleaseApprovalActionApply = "policy.apply"
+	// PolicyReleaseApprovalActionRollback 是策略发布回滚动作的审批 action。
+	PolicyReleaseApprovalActionRollback = "policy.rollback"
 )
 
 // ApprovalScope 描述审批票据绑定的作用域。
@@ -73,6 +81,31 @@ func NormalizeApprovalScope(scope ApprovalScope) ApprovalScope {
 		scope.ResourceID = scope.Namespace
 	}
 	return scope
+}
+
+// PolicyReleaseApprovalScope 构造策略发布审批绑定作用域。
+func PolicyReleaseApprovalScope(clusterID uint, namespace string, releaseID uint, action string) ApprovalScope {
+	action = strings.TrimSpace(action)
+	if action == "" {
+		action = PolicyReleaseApprovalActionApply
+	}
+	return NormalizeApprovalScope(ApprovalScope{
+		ClusterID:  clusterID,
+		Namespace:  namespace,
+		Action:     action,
+		Resource:   PolicyReleaseApprovalResource,
+		ResourceID: strconv.FormatUint(uint64(releaseID), 10),
+	})
+}
+
+// IssuePolicyReleaseApproval 创建策略发布审批票据。
+func IssuePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action string, requestedBy uint, expiresAt time.Time) (*model.ClusterDeployApproval, error) {
+	return IssueClusterDeployApproval(ctx, db, PolicyReleaseApprovalScope(clusterID, namespace, releaseID, action), requestedBy, expiresAt)
+}
+
+// ConsumePolicyReleaseApproval 校验并消费策略发布审批票据。
+func ConsumePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action, ticket string, consumedBy uint, now time.Time) (*model.ClusterDeployApproval, error) {
+	return ConsumeClusterDeployApproval(ctx, db, ticket, PolicyReleaseApprovalScope(clusterID, namespace, releaseID, action), consumedBy, now)
 }
 
 // IssueClusterDeployApproval 创建审批票据记录。
