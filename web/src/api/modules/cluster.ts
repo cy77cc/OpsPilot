@@ -590,6 +590,114 @@ export interface CertificateInfo {
   alternate_names: string[];
 }
 
+export interface ClusterCNIInfo {
+  cluster_id: number;
+  cni_type?: string;
+  cni_version?: string;
+  capabilities: Record<string, boolean>;
+  constraints?: Record<string, unknown>;
+}
+
+export interface ClusterPolicyIssue {
+  code?: string;
+  message: string;
+  severity?: string;
+  suggestion?: string;
+}
+
+export interface ClusterPolicyWarning {
+  code?: string;
+  message: string;
+}
+
+export interface ClusterPolicyImpactSummary {
+  affected_pods: number;
+  affected_namespaces: string[];
+  new_denied_flows: string[];
+}
+
+export interface ClusterPolicySimulationStatus {
+  job_id?: string;
+  passed_at?: string;
+  blocking_issues: ClusterPolicyIssue[];
+  warnings: ClusterPolicyWarning[];
+  impact_summary?: ClusterPolicyImpactSummary;
+}
+
+export interface ClusterPolicySimulationResult extends ClusterPolicySimulationStatus {
+  passed: boolean;
+  risk_score?: number;
+  risk_level?: string;
+}
+
+export interface ClusterPolicyReference {
+  api_version?: string;
+  kind?: string;
+  name?: string;
+  namespace?: string;
+}
+
+export interface ClusterPolicyTargetCluster {
+  cluster_id?: number;
+  cni_type?: string;
+  cni_version?: string;
+}
+
+export interface ClusterPolicyReleaseStatus {
+  phase?: string;
+  risk_score?: number;
+  risk_level?: string;
+}
+
+export interface ClusterPolicyApprovalStatus {
+  required?: boolean;
+  approvers?: string[];
+  approved_at?: string;
+  approval_token?: string;
+}
+
+export interface ClusterPolicyAuditStatus {
+  created_at?: string;
+  created_by?: number;
+  applied_at?: string;
+  rollback_at?: string;
+}
+
+export interface ClusterPolicyRelease {
+  release_id: number;
+  version: string;
+  previous_stable_version?: string;
+  rollback_target_version?: string;
+  policy?: ClusterPolicyReference;
+  target_cluster?: ClusterPolicyTargetCluster;
+  status?: ClusterPolicyReleaseStatus;
+  simulation?: ClusterPolicySimulationStatus;
+  approval?: ClusterPolicyApprovalStatus;
+  audit?: ClusterPolicyAuditStatus;
+  last_error_code?: string;
+  last_error_message?: string;
+}
+
+export interface ClusterPolicySimulationPayload {
+  base_version?: string;
+  candidate_version: string;
+  cluster?: {
+    cni_type?: string;
+    namespaces?: string[];
+  };
+}
+
+export interface ClusterPolicyReleaseCreatePayload {
+  version: string;
+  previous_stable_version?: string;
+}
+
+export interface ClusterPolicyReleaseActionPayload {
+  version?: string;
+  approval_token?: string;
+  rollback_target_version?: string;
+}
+
 const clusterOperationStates: ClusterOperationState[] = ['completed', 'approval_required', 'rejected', 'failed'];
 const SUCCESS_CODE = 'success';
 const APPROVAL_REQUIRED_CODE = 'approval_required';
@@ -617,6 +725,19 @@ const isPlainObject = (value: unknown): value is Record<string, any> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 );
 
+const coerceNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+};
+
 const coerceStringArray = (value: unknown): string[] | undefined => {
   if (Array.isArray(value)) {
     return value
@@ -635,6 +756,280 @@ const coerceStringArray = (value: unknown): string[] | undefined => {
     return [value];
   }
   return undefined;
+};
+
+const coerceBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+};
+
+const coerceObject = (value: unknown): Record<string, unknown> | undefined => {
+  if (isPlainObject(value)) {
+    return value;
+  }
+  return undefined;
+};
+
+const coerceString = (value: unknown): string | undefined => (
+  typeof value === 'string' && value.trim() ? value : undefined
+);
+
+const normalizePolicyWarning = (payload: unknown): ClusterPolicyWarning | undefined => {
+  if (typeof payload === 'string' && payload.trim()) {
+    return {
+      message: payload,
+    };
+  }
+  if (!isPlainObject(payload)) {
+    return undefined;
+  }
+
+  const message = coerceString(payload.message ?? payload.msg ?? payload.warning_message ?? payload.error_message);
+  if (!message) {
+    return undefined;
+  }
+
+  return {
+    code: coerceString(payload.code ?? payload.warning_code ?? payload.error_code ?? payload.reason_code),
+    message,
+  };
+};
+
+const normalizePolicyWarnings = (payload: unknown): ClusterPolicyWarning[] => {
+  if (!Array.isArray(payload)) {
+    const warning = normalizePolicyWarning(payload);
+    return warning ? [warning] : [];
+  }
+
+  return payload
+    .map((item) => normalizePolicyWarning(item))
+    .filter((item): item is ClusterPolicyWarning => Boolean(item));
+};
+
+const normalizePolicyIssue = (payload: unknown): ClusterPolicyIssue | undefined => {
+  if (typeof payload === 'string' && payload.trim()) {
+    return {
+      message: payload,
+    };
+  }
+  if (!isPlainObject(payload)) {
+    return undefined;
+  }
+
+  const message = coerceString(payload.message ?? payload.msg ?? payload.error_message ?? payload.warning_message);
+  if (!message) {
+    return undefined;
+  }
+
+  const severity = coerceString(payload.severity ?? payload.level)?.toUpperCase();
+  return {
+    code: coerceString(payload.code ?? payload.error_code ?? payload.reason_code),
+    message,
+    severity,
+    suggestion: coerceString(payload.suggestion ?? payload.remediation),
+  };
+};
+
+const normalizePolicyIssues = (payload: unknown): ClusterPolicyIssue[] => {
+  if (!Array.isArray(payload)) {
+    const issue = normalizePolicyIssue(payload);
+    return issue ? [issue] : [];
+  }
+
+  return payload
+    .map((item) => normalizePolicyIssue(item))
+    .filter((item): item is ClusterPolicyIssue => Boolean(item));
+};
+
+const normalizePolicyImpactSummary = (payload: unknown): ClusterPolicyImpactSummary | undefined => {
+  if (!isPlainObject(payload)) {
+    return undefined;
+  }
+
+  return {
+    affected_pods: coerceNumber(payload.affected_pods ?? payload.affectedPods) ?? 0,
+    affected_namespaces: coerceStringArray(payload.affected_namespaces ?? payload.affectedNamespaces) ?? [],
+    new_denied_flows: coerceStringArray(payload.new_denied_flows ?? payload.newDeniedFlows) ?? [],
+  };
+};
+
+const hasOwn = (payload: Record<string, unknown>, key: string): boolean => (
+  Object.prototype.hasOwnProperty.call(payload, key)
+);
+
+const normalizeClusterPolicySimulationStatus = (payload: unknown): ClusterPolicySimulationStatus | undefined => {
+  if (!isPlainObject(payload)) {
+    return undefined;
+  }
+
+  const source = isPlainObject(payload.simulation_result) ? payload.simulation_result : payload;
+  const blocking_issues = normalizePolicyIssues(source.blocking_issues ?? source.blockingIssues ?? source.errors ?? source.issues);
+  const warnings = normalizePolicyWarnings(source.warnings ?? source.warning_messages ?? source.warningMessages);
+  const impact_summary = normalizePolicyImpactSummary(source.impact_summary ?? source.impactSummary);
+  const job_id = coerceString(source.job_id ?? source.jobId);
+  const passed_at = coerceString(source.passed_at ?? source.passedAt);
+
+  const hasSignals = hasOwn(source, 'job_id')
+    || hasOwn(source, 'jobId')
+    || hasOwn(source, 'passed_at')
+    || hasOwn(source, 'passedAt')
+    || hasOwn(source, 'blocking_issues')
+    || hasOwn(source, 'blockingIssues')
+    || hasOwn(source, 'errors')
+    || hasOwn(source, 'issues')
+    || hasOwn(source, 'warnings')
+    || hasOwn(source, 'warning_messages')
+    || hasOwn(source, 'warningMessages')
+    || hasOwn(source, 'impact_summary')
+    || hasOwn(source, 'impactSummary');
+
+  if (!hasSignals) {
+    return undefined;
+  }
+
+  return {
+    ...(job_id ? { job_id } : {}),
+    ...(passed_at ? { passed_at } : {}),
+    blocking_issues,
+    warnings,
+    ...(impact_summary ? { impact_summary } : {}),
+  };
+};
+
+const normalizeClusterPolicySimulationResult = (payload: unknown): ClusterPolicySimulationResult => {
+  const source = isPlainObject(payload) && isPlainObject(payload.simulation_result)
+    ? payload.simulation_result
+    : payload;
+  const normalizedStatus = normalizeClusterPolicySimulationStatus(source);
+  const sourceRecord = isPlainObject(source) ? source : {};
+
+  return {
+    passed: coerceBoolean(sourceRecord.passed) ?? ((normalizedStatus?.blocking_issues.length ?? 0) === 0),
+    blocking_issues: normalizedStatus?.blocking_issues ?? [],
+    warnings: normalizedStatus?.warnings ?? [],
+    ...(normalizedStatus?.job_id ? { job_id: normalizedStatus.job_id } : {}),
+    ...(normalizedStatus?.passed_at ? { passed_at: normalizedStatus.passed_at } : {}),
+    ...(normalizedStatus?.impact_summary ? { impact_summary: normalizedStatus.impact_summary } : {}),
+    ...(coerceNumber(sourceRecord.risk_score ?? sourceRecord.riskScore) !== undefined
+      ? { risk_score: coerceNumber(sourceRecord.risk_score ?? sourceRecord.riskScore) }
+      : {}),
+    ...(coerceString(sourceRecord.risk_level ?? sourceRecord.riskLevel)
+      ? { risk_level: coerceString(sourceRecord.risk_level ?? sourceRecord.riskLevel) }
+      : {}),
+  };
+};
+
+const normalizeClusterPolicyRelease = (payload: unknown): ClusterPolicyRelease | undefined => {
+  const source = isPlainObject(payload) && isPlainObject(payload.release)
+    ? payload.release
+    : payload;
+  if (!isPlainObject(source)) {
+    return undefined;
+  }
+
+  const release_id = coerceNumber(source.release_id ?? source.releaseId);
+  const version = coerceString(source.version);
+  if (release_id === undefined || !version) {
+    return undefined;
+  }
+
+  const policy = coerceObject(source.policy);
+  const targetCluster = coerceObject(source.target_cluster ?? source.targetCluster);
+  const status = coerceObject(source.status);
+  const approval = coerceObject(source.approval);
+  const audit = coerceObject(source.audit);
+  const simulation = normalizeClusterPolicySimulationStatus(source.simulation ?? source.Simulation ?? source.simulation_result ?? source.simulationResult);
+
+  return {
+    release_id,
+    version,
+    ...(coerceString(source.previous_stable_version ?? source.previousStableVersion)
+      ? { previous_stable_version: coerceString(source.previous_stable_version ?? source.previousStableVersion) }
+      : {}),
+    ...(coerceString(source.rollback_target_version ?? source.rollbackTargetVersion)
+      ? { rollback_target_version: coerceString(source.rollback_target_version ?? source.rollbackTargetVersion) }
+      : {}),
+    ...(policy ? {
+      policy: {
+        ...(coerceString(policy.api_version ?? policy.apiVersion) ? { api_version: coerceString(policy.api_version ?? policy.apiVersion) } : {}),
+        ...(coerceString(policy.kind) ? { kind: coerceString(policy.kind) } : {}),
+        ...(coerceString(policy.name) ? { name: coerceString(policy.name) } : {}),
+        ...(coerceString(policy.namespace) ? { namespace: coerceString(policy.namespace) } : {}),
+      },
+    } : {}),
+    ...(targetCluster ? {
+      target_cluster: {
+        ...(coerceNumber(targetCluster.cluster_id ?? targetCluster.clusterId) !== undefined
+          ? { cluster_id: coerceNumber(targetCluster.cluster_id ?? targetCluster.clusterId) }
+          : {}),
+        ...(coerceString(targetCluster.cni_type ?? targetCluster.cniType)
+          ? { cni_type: coerceString(targetCluster.cni_type ?? targetCluster.cniType) }
+          : {}),
+        ...(coerceString(targetCluster.cni_version ?? targetCluster.cniVersion)
+          ? { cni_version: coerceString(targetCluster.cni_version ?? targetCluster.cniVersion) }
+          : {}),
+      },
+    } : {}),
+    ...(status ? {
+      status: {
+        ...(coerceString(status.phase) ? { phase: coerceString(status.phase) } : {}),
+        ...(coerceNumber(status.risk_score ?? status.riskScore) !== undefined
+          ? { risk_score: coerceNumber(status.risk_score ?? status.riskScore) }
+          : {}),
+        ...(coerceString(status.risk_level ?? status.riskLevel)
+          ? { risk_level: coerceString(status.risk_level ?? status.riskLevel) }
+          : {}),
+      },
+    } : {}),
+    ...(simulation ? { simulation } : {}),
+    ...(approval ? {
+      approval: {
+        ...(coerceBoolean(approval.required) !== undefined ? { required: coerceBoolean(approval.required) } : {}),
+        ...(coerceStringArray(approval.approvers) ? { approvers: coerceStringArray(approval.approvers) } : {}),
+        ...(coerceString(approval.approved_at ?? approval.approvedAt)
+          ? { approved_at: coerceString(approval.approved_at ?? approval.approvedAt) }
+          : {}),
+        ...(coerceString(approval.approval_token ?? approval.approvalToken)
+          ? { approval_token: coerceString(approval.approval_token ?? approval.approvalToken) }
+          : {}),
+      },
+    } : {}),
+    ...(audit ? {
+      audit: {
+        ...(coerceString(audit.created_at ?? audit.createdAt) ? { created_at: coerceString(audit.created_at ?? audit.createdAt) } : {}),
+        ...(coerceNumber(audit.created_by ?? audit.createdBy) !== undefined ? { created_by: coerceNumber(audit.created_by ?? audit.createdBy) } : {}),
+        ...(coerceString(audit.applied_at ?? audit.appliedAt) ? { applied_at: coerceString(audit.applied_at ?? audit.appliedAt) } : {}),
+        ...(coerceString(audit.rollback_at ?? audit.rollbackAt) ? { rollback_at: coerceString(audit.rollback_at ?? audit.rollbackAt) } : {}),
+      },
+    } : {}),
+    ...(coerceString(source.last_error_code ?? source.lastErrorCode)
+      ? { last_error_code: coerceString(source.last_error_code ?? source.lastErrorCode) }
+      : {}),
+    ...(coerceString(source.last_error_message ?? source.lastErrorMessage)
+      ? { last_error_message: coerceString(source.last_error_message ?? source.lastErrorMessage) }
+      : {}),
+  };
+};
+
+const normalizeClusterCNIInfo = (payload: unknown): ClusterCNIInfo => {
+  const source = isPlainObject(payload) ? payload : {};
+
+  return {
+    cluster_id: coerceNumber(source.cluster_id ?? source.clusterId) ?? 0,
+    ...(coerceString(source.cni_type ?? source.cniType) ? { cni_type: coerceString(source.cni_type ?? source.cniType) } : {}),
+    ...(coerceString(source.cni_version ?? source.cniVersion) ? { cni_version: coerceString(source.cni_version ?? source.cniVersion) } : {}),
+    capabilities: Object.fromEntries(
+      Object.entries(coerceObject(source.capabilities) ?? {}).map(([key, value]) => [key, Boolean(value)]),
+    ),
+    ...(coerceObject(source.constraints) ? { constraints: coerceObject(source.constraints) } : {}),
+  };
 };
 
 const normalizeApprovalPayload = (payload: unknown): ClusterOperationApproval | undefined => {
@@ -854,11 +1249,18 @@ export function normalizeClusterOperationResponse<T = unknown>(payload: unknown)
   };
 }
 
-const wrapOperationResponse = async <T = unknown>(promise: Promise<ApiResponse<unknown>>): Promise<ApiResponse<ClusterOperationResponse<T>>> => {
+const wrapOperationResponse = async <T = unknown>(
+  promise: Promise<ApiResponse<unknown>>,
+  normalizeResult?: (payload: unknown) => T | undefined,
+): Promise<ApiResponse<ClusterOperationResponse<T>>> => {
   const response = await promise;
+  const normalized = normalizeClusterOperationResponse<T>(response.data);
   return {
     ...response,
-    data: normalizeClusterOperationResponse<T>(response.data),
+    data: {
+      ...normalized,
+      result: normalizeResult ? normalizeResult(normalized.result) : normalized.result,
+    },
   };
 };
 
@@ -1022,6 +1424,96 @@ export const clusterApi = {
 
   deleteIngress(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
     return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/ingresses/${encodeURIComponent(name)}`, { data: payload || {} }));
+  },
+
+  getClusterCNIInfo(id: number): Promise<ApiResponse<ClusterCNIInfo>> {
+    return apiService.get(`/clusters/${id}/cni-info`).then((response) => ({
+      ...response,
+      data: normalizeClusterCNIInfo(response.data),
+    }));
+  },
+
+  simulatePolicy(
+    id: number,
+    namespace: string,
+    name: string,
+    payload: ClusterPolicySimulationPayload,
+  ): Promise<ApiResponse<ClusterPolicySimulationResult>> {
+    return apiService.post(
+      `/clusters/${id}/policies/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/simulate`,
+      payload,
+    ).then((response) => ({
+      ...response,
+      data: normalizeClusterPolicySimulationResult(response.data),
+    }));
+  },
+
+  createPolicyRelease(
+    id: number,
+    namespace: string,
+    name: string,
+    payload: ClusterPolicyReleaseCreatePayload,
+  ): Promise<ApiResponse<ClusterOperationResponse<{ release?: ClusterPolicyRelease }>>> {
+    return wrapOperationResponse(
+      apiService.post(`/clusters/${id}/policies/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/releases`, payload),
+      (result) => {
+        if (!isPlainObject(result)) {
+          return undefined;
+        }
+        return {
+          release: normalizeClusterPolicyRelease(result.release),
+        };
+      },
+    );
+  },
+
+  getPolicyRelease(id: number, releaseId: number): Promise<ApiResponse<ClusterPolicyRelease>> {
+    return apiService.get(`/clusters/${id}/releases/${releaseId}`).then((response) => {
+      const release = normalizeClusterPolicyRelease(response.data);
+      if (!release) {
+        throw new Error('invalid policy release response');
+      }
+      return {
+        ...response,
+        data: release,
+      };
+    });
+  },
+
+  applyPolicyRelease(
+    id: number,
+    releaseId: number,
+    payload?: ClusterPolicyReleaseActionPayload,
+  ): Promise<ApiResponse<ClusterOperationResponse<{ release?: ClusterPolicyRelease }>>> {
+    return wrapOperationResponse(
+      apiService.post(`/clusters/${id}/releases/${releaseId}/apply`, payload || {}),
+      (result) => {
+        if (!isPlainObject(result)) {
+          return undefined;
+        }
+        return {
+          release: normalizeClusterPolicyRelease(result.release),
+        };
+      },
+    );
+  },
+
+  rollbackPolicyRelease(
+    id: number,
+    releaseId: number,
+    payload?: ClusterPolicyReleaseActionPayload,
+  ): Promise<ApiResponse<ClusterOperationResponse<{ release?: ClusterPolicyRelease }>>> {
+    return wrapOperationResponse(
+      apiService.post(`/clusters/${id}/releases/${releaseId}/rollback`, payload || {}),
+      (result) => {
+        if (!isPlainObject(result)) {
+          return undefined;
+        }
+        return {
+          release: normalizeClusterPolicyRelease(result.release),
+        };
+      },
+    );
   },
 
   // Config
