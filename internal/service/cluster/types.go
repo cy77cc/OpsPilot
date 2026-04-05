@@ -164,7 +164,7 @@ type BootstrapProfileUpdateReq struct {
 	RepoURL              string                        `json:"repo_url"`                // 仓库地址
 	ImageRepository      string                        `json:"image_repository"`        // 镜像仓库
 	EndpointMode         string                        `json:"endpoint_mode"`           // 端点模式
-	ControlPlaneEndpoint string                        `json:"control_plane_endpoint"`  // 控制面端点
+	ControlPlaneEndpoint string                        `json:"control_plane_endpoint"` // 控制面端点
 	VIPProvider          string                        `json:"vip_provider"`            // VIP 提供者
 	EtcdMode             string                        `json:"etcd_mode"`               // etcd 模式
 	ExternalEtcd         *BootstrapProfileExternalEtcd `json:"external_etcd"`           // 外部 etcd 配置
@@ -187,4 +187,72 @@ type BootstrapProfileItem struct {
 	ExternalEtcd         interface{} `json:"external_etcd,omitempty"` // 外部 etcd 配置
 	CreatedAt            time.Time   `json:"created_at"`            // 创建时间
 	UpdatedAt            time.Time   `json:"updated_at"`            // 更新时间
+}
+
+// PolicyReference 表示发布记录中的策略引用。
+type PolicyReference struct {
+	APIVersion string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"` // API 版本
+	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`             // 资源类型
+	Name       string `json:"name,omitempty" yaml:"name,omitempty"`             // 策略名称
+	Namespace  string `json:"namespace,omitempty" yaml:"namespace,omitempty"`   // 策略命名空间
+}
+
+// PolicyTargetCluster 表示目标集群信息。
+type PolicyTargetCluster struct {
+	ClusterID  uint   `json:"clusterId,omitempty" yaml:"clusterId,omitempty"`   // 集群 ID
+	CNIType    string `json:"cniType,omitempty" yaml:"cniType,omitempty"`       // CNI 类型
+	CNIVersion string `json:"cniVersion,omitempty" yaml:"cniVersion,omitempty"` // CNI 版本
+}
+
+// PolicyReleaseStatus 表示发布状态与风险信息。
+type PolicyReleaseStatus struct {
+	Phase     PolicyReleaseState `json:"phase,omitempty" yaml:"phase,omitempty"`         // 发布阶段
+	RiskScore int                `json:"riskScore,omitempty" yaml:"riskScore,omitempty"` // 风险分
+	RiskLevel PolicyRiskLevel    `json:"riskLevel,omitempty" yaml:"riskLevel,omitempty"` // 风险等级
+}
+
+// PolicyIssue 表示仿真发现的问题。
+type PolicyIssue struct {
+	Code       string              `json:"code,omitempty" yaml:"code,omitempty"`             // 问题码
+	Message    string              `json:"message,omitempty" yaml:"message,omitempty"`       // 问题说明
+	Severity   PolicyIssueSeverity `json:"severity,omitempty" yaml:"severity,omitempty"`     // 严重级别
+	Suggestion string              `json:"suggestion,omitempty" yaml:"suggestion,omitempty"` // 修复建议
+}
+
+// PolicyWarning 表示非阻断告警。
+type PolicyWarning struct {
+	Code    string `json:"code,omitempty" yaml:"code,omitempty"`       // 告警码
+	Message string `json:"message,omitempty" yaml:"message,omitempty"` // 告警说明
+}
+
+// PolicyImpactSummary 表示仿真的影响面摘要。
+type PolicyImpactSummary struct {
+	AffectedPods       int      `json:"affectedPods,omitempty" yaml:"affectedPods,omitempty"`             // 受影响 Pod 数
+	AffectedNamespaces []string `json:"affectedNamespaces,omitempty" yaml:"affectedNamespaces,omitempty"` // 受影响命名空间
+	NewDeniedFlows     []string `json:"newDeniedFlows,omitempty" yaml:"newDeniedFlows,omitempty"`         // 新增阻断流量
+}
+
+// PolicySimulationStatus 表示仿真结果摘要。
+type PolicySimulationStatus struct {
+	JobID          string              `json:"jobId,omitempty" yaml:"jobId,omitempty"`                   // 仿真任务 ID
+	PassedAt       *time.Time          `json:"passedAt,omitempty" yaml:"passedAt,omitempty"`             // 通过时间
+	BlockingIssues []PolicyIssue       `json:"blockingIssues,omitempty" yaml:"blockingIssues,omitempty"` // 阻断问题
+	Warnings       []PolicyWarning     `json:"warnings,omitempty" yaml:"warnings,omitempty"`             // 告警列表
+	ImpactSummary  PolicyImpactSummary `json:"impactSummary,omitempty" yaml:"impactSummary,omitempty"`   // 影响面摘要
+}
+
+// PolicyApprovalStatus 表示审批阶段摘要。
+type PolicyApprovalStatus struct {
+	Required      bool       `json:"required,omitempty" yaml:"required,omitempty"`           // 是否需要审批
+	Approvers     []string   `json:"approvers,omitempty" yaml:"approvers,omitempty"`         // 审批人列表
+	ApprovedAt    *time.Time `json:"approvedAt,omitempty" yaml:"approvedAt,omitempty"`       // 审批通过时间
+	ApprovalToken string     `json:"approvalToken,omitempty" yaml:"approvalToken,omitempty"` // 审批令牌
+}
+
+// PolicyAuditStatus 表示发布审计时间线。
+type PolicyAuditStatus struct {
+	CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`   // 创建时间
+	CreatedBy  uint       `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`   // 创建人
+	AppliedAt  *time.Time `json:"appliedAt,omitempty" yaml:"appliedAt,omitempty"`   // 应用时间
+	RollbackAt *time.Time `json:"rollbackAt,omitempty" yaml:"rollbackAt,omitempty"` // 回滚时间
 }
