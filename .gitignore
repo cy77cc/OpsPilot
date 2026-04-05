@@ -122,3 +122,4 @@ bin/
 .github/*.md
 openspec/
 .omx/
+.tmp/
