@@ -86,6 +86,38 @@ func TestPolicyReleaseApproval_MissingTokenTransitionsToApprovalRequired(t *test
 	}
 }
 
+func TestPolicyReleaseApproval_MissingTokenRetryReusesPendingApproval(t *testing.T) {
+	_, db := newHighRiskApprovalTestHandler(t)
+	now := time.Date(2026, time.April, 5, 10, 20, 0, 0, time.UTC)
+	release := newPolicyReleaseForTest(t, now)
+
+	if err := release.EnsureApproval(context.Background(), db, "", 1001, now); err != nil {
+		t.Fatalf("first ensure approval: %v", err)
+	}
+	firstToken := release.Approval.ApprovalToken
+	if firstToken == "" {
+		t.Fatal("expected approval ticket to be issued")
+	}
+
+	retryAt := now.Add(2 * time.Minute)
+	if err := release.EnsureApproval(context.Background(), db, "", 1001, retryAt); err != nil {
+		t.Fatalf("retry ensure approval: %v", err)
+	}
+	if release.Approval.ApprovalToken != firstToken {
+		t.Fatalf("expected retry to reuse approval token %q, got %q", firstToken, release.Approval.ApprovalToken)
+	}
+
+	var approvalCount int64
+	if err := db.Model(&model.OperationApproval{}).
+		Where("scope_cluster_id = ? AND namespace = ? AND action = ? AND resource = ? AND resource_id = ? AND status = ?", release.TargetCluster.ClusterID, release.Policy.Namespace, PolicyReleaseApprovalActionApply, PolicyReleaseApprovalResource, "101", "pending").
+		Count(&approvalCount).Error; err != nil {
+		t.Fatalf("count approvals: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Fatalf("expected 1 pending approval record, got %d", approvalCount)
+	}
+}
+
 func TestPolicyReleaseApproval_ApprovedTokenTransitionsToApplying(t *testing.T) {
 	_, db := newHighRiskApprovalTestHandler(t)
 	now := time.Date(2026, time.April, 5, 10, 30, 0, 0, time.UTC)
@@ -139,6 +171,26 @@ func TestPolicyReleaseApproval_RejectedTokenTransitionsToApprovalRejected(t *tes
 	}
 	if release.Status.Phase != PolicyReleaseStateApprovalRejected {
 		t.Fatalf("expected phase %q, got %q", PolicyReleaseStateApprovalRejected, release.Status.Phase)
+	}
+}
+
+func TestPolicyReleaseStateMachine_ApprovalRequiredNeedsValidatedTokenBeforeApplying(t *testing.T) {
+	_, db := newHighRiskApprovalTestHandler(t)
+	now := time.Date(2026, time.April, 5, 11, 5, 0, 0, time.UTC)
+	release := newPolicyReleaseForTest(t, now)
+
+	if err := release.EnsureApproval(context.Background(), db, "", 1001, now); err != nil {
+		t.Fatalf("ensure approval: %v", err)
+	}
+	if release.Status.Phase != PolicyReleaseStateApprovalRequired {
+		t.Fatalf("expected phase %q, got %q", PolicyReleaseStateApprovalRequired, release.Status.Phase)
+	}
+
+	if err := release.MarkApplying(now.Add(time.Minute)); err == nil {
+		t.Fatal("expected applying transition to require a validated approval token")
+	}
+	if release.Status.Phase != PolicyReleaseStateApprovalRequired {
+		t.Fatalf("expected phase to remain %q, got %q", PolicyReleaseStateApprovalRequired, release.Status.Phase)
 	}
 }
 

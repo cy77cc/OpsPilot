@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
 )
 
@@ -90,6 +91,18 @@ func (r *PolicyReleaseRecord) EnsureApproval(ctx context.Context, db *gorm.DB, a
 	r.Approval.Required = true
 
 	if token == "" {
+		pendingApproval, err := findPendingPolicyReleaseApproval(db, r, now)
+		if err != nil {
+			return err
+		}
+		if pendingApproval != nil {
+			r.Status.Phase = PolicyReleaseStateApprovalRequired
+			r.Approval.ApprovalToken = pendingApproval.Ticket
+			r.Approval.ApprovedAt = nil
+			r.clearLastError()
+			return nil
+		}
+
 		rec, err := IssuePolicyReleaseApproval(
 			ctx,
 			db,
@@ -149,12 +162,54 @@ func (r *PolicyReleaseRecord) MarkApplying(_ time.Time) error {
 		return fmt.Errorf("policy release is nil")
 	}
 	switch r.Status.Phase {
-	case PolicyReleaseStateSimulationPassed, PolicyReleaseStateApprovalRequired:
-		r.Status.Phase = PolicyReleaseStateApplying
-		return nil
+	case PolicyReleaseStateSimulationPassed:
+		if r.Approval.Required && !r.hasValidatedApproval() {
+			return fmt.Errorf("cannot transition from %q to %q without validated approval", r.Status.Phase, PolicyReleaseStateApplying)
+		}
+	case PolicyReleaseStateApprovalRequired:
+		if !r.hasValidatedApproval() {
+			return fmt.Errorf("cannot transition from %q to %q without validated approval", r.Status.Phase, PolicyReleaseStateApplying)
+		}
 	default:
 		return fmt.Errorf("cannot transition from %q to %q", r.Status.Phase, PolicyReleaseStateApplying)
 	}
+
+	r.Status.Phase = PolicyReleaseStateApplying
+	return nil
+}
+
+func (r *PolicyReleaseRecord) hasValidatedApproval() bool {
+	return strings.TrimSpace(r.Approval.ApprovalToken) != "" && r.Approval.ApprovedAt != nil
+}
+
+func findPendingPolicyReleaseApproval(db *gorm.DB, release *PolicyReleaseRecord, now time.Time) (*model.OperationApproval, error) {
+	if db == nil || release == nil {
+		return nil, nil
+	}
+
+	now = normalizePolicyReleaseTime(now)
+
+	var approval model.OperationApproval
+	err := db.
+		Where("scope_cluster_id = ? AND namespace = ? AND action = ? AND resource = ? AND resource_id = ? AND status = ? AND consumed_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+			release.TargetCluster.ClusterID,
+			release.Policy.Namespace,
+			PolicyReleaseApprovalActionApply,
+			PolicyReleaseApprovalResource,
+			fmt.Sprintf("%d", release.ReleaseID),
+			"pending",
+			now,
+		).
+		Order("updated_at DESC, id DESC").
+		First(&approval).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &approval, nil
 }
 
 // MarkApplied 将发布推进到 applied 并记录应用时间。
