@@ -54,8 +54,11 @@ const statusMeta: Record<ClusterOperationState | string, { color: string; text: 
 
 const resourceOptions = [
   { value: 'node', label: '节点' },
-  { value: 'workload', label: '工作负载' },
-  { value: 'security', label: '安全/配置' },
+  { value: 'deployment', label: 'Deployment' },
+  { value: 'statefulset', label: 'StatefulSet' },
+  { value: 'pod', label: 'Pod' },
+  { value: 'service', label: 'Service' },
+  { value: 'ingress', label: 'Ingress' },
   { value: 'cluster', label: '集群' },
   { value: 'certificate', label: '证书' },
 ];
@@ -77,11 +80,51 @@ function buildQuery(filters: OperationFilters, page: number, pageSize: number) {
   };
 }
 
+function formatSummaryValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length ? value.map((entry) => formatSummaryValue(entry)).join(', ') : '-';
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function summarizeObject(payload?: Record<string, unknown> | null) {
+  if (!payload) return '-';
+  const entries = Object.entries(payload).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) return '-';
+  return entries.slice(0, 4).map(([key, value]) => `${key}: ${formatSummaryValue(value)}`).join(' | ');
+}
+
+function summarizeDiagnostics(items?: unknown[] | null) {
+  if (!items?.length) return '-';
+  return items.slice(0, 3).map((item) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>;
+      const level = formatSummaryValue(record.level);
+      const messageText = formatSummaryValue(record.message);
+      if (level !== '-' || messageText !== '-') {
+        return [level !== '-' ? level : '', messageText !== '-' ? messageText : '']
+          .filter(Boolean)
+          .join(': ');
+      }
+    }
+    return formatSummaryValue(item);
+  }).join(' | ');
+}
+
 const ClusterOperationCenterPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const clusterId = Number(id);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [filterForm] = Form.useForm();
 
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +135,6 @@ const ClusterOperationCenterPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useState<OperationFilters>({});
-  const [draftRange, setDraftRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [selectedDetail, setSelectedDetail] = useState<ClusterOperationDetail | null>(null);
 
@@ -106,13 +148,21 @@ const ClusterOperationCenterPage: React.FC = () => {
     }
   }, [clusterId]);
 
-  const loadHistory = useCallback(async (nextPage = page, nextPageSize = pageSize, nextFilters = filters) => {
+  const loadHistory = useCallback(async (nextPage: number, nextPageSize: number, nextFilters: OperationFilters) => {
     if (!clusterId) return;
     setLoading(true);
     try {
       const res = await Api.cluster.getClusterOperations(clusterId, buildQuery(nextFilters, nextPage, nextPageSize));
+      const resolvedPage = typeof (res.data as { page?: number }).page === 'number' && (res.data as { page?: number }).page! > 0
+        ? (res.data as { page: number }).page
+        : nextPage;
+      const resolvedPageSize = typeof (res.data as { page_size?: number }).page_size === 'number' && (res.data as { page_size?: number }).page_size! > 0
+        ? (res.data as { page_size: number }).page_size
+        : nextPageSize;
       setHistory(res.data.list || []);
       setTotal(res.data.total || 0);
+      setPage(resolvedPage);
+      setPageSize(resolvedPageSize);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载操作历史失败');
       setHistory([]);
@@ -120,11 +170,12 @@ const ClusterOperationCenterPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [clusterId, filters, page, pageSize]);
+  }, [clusterId]);
 
   const loadDetail = useCallback(async (auditId: string | number) => {
     if (!clusterId || !auditId) return;
     const auditIDText = String(auditId);
+    setSelectedAuditId(auditIDText);
     setDetailLoading(true);
     try {
       const res = await Api.cluster.getClusterOperationDetail(clusterId, auditIDText);
@@ -145,8 +196,8 @@ const ClusterOperationCenterPage: React.FC = () => {
   }, [loadCluster]);
 
   useEffect(() => {
-    void loadHistory(page, pageSize, filters);
-  }, [loadHistory, page, pageSize, filters]);
+    void loadHistory(1, 20, {});
+  }, [clusterId, loadHistory]);
 
   useEffect(() => {
     const auditId = searchParams.get('audit_id');
@@ -160,7 +211,7 @@ const ClusterOperationCenterPage: React.FC = () => {
     const nextFilters: OperationFilters = {
       resource: values.resource || undefined,
       status: values.status || undefined,
-      operator: values.operator || undefined,
+      operator: values.operator?.trim() || undefined,
       from: values.range?.[0] ? values.range[0].toISOString() : undefined,
       to: values.range?.[1] ? values.range[1].toISOString() : undefined,
     };
@@ -170,7 +221,7 @@ const ClusterOperationCenterPage: React.FC = () => {
   };
 
   const resetFilters = async () => {
-    setDraftRange([null, null]);
+    filterForm.resetFields();
     setFilters({});
     setPage(1);
     await loadHistory(1, pageSize, {});
@@ -249,6 +300,10 @@ const ClusterOperationCenterPage: React.FC = () => {
   const detailApproval = detail?.approval;
   const detailAuditLink = selectedAuditId || detail?.audit_id;
   const isInitialLoading = loading && history.length === 0;
+  const detailApprovalRequired = detailApproval?.required ?? Boolean(detailApproval?.ticket || detail?.status === 'approval_required');
+  const requestSummary = summarizeObject(detail?.request);
+  const responseSummary = summarizeObject(detail?.response);
+  const diagnosticsSummary = summarizeDiagnostics(detail?.diagnostics);
 
   return (
     <div className="space-y-6">
@@ -274,7 +329,12 @@ const ClusterOperationCenterPage: React.FC = () => {
       </div>
 
       <Card>
-        <Form layout="inline" onFinish={submitFilters} initialValues={{ resource: filters.resource, status: filters.status, operator: filters.operator }}>
+        <Form
+          form={filterForm}
+          layout="inline"
+          onFinish={submitFilters}
+          initialValues={{ resource: filters.resource, status: filters.status, operator: filters.operator }}
+        >
           <Space size={12} wrap>
             <Form.Item name="resource" label="资源">
               <Select
@@ -301,11 +361,7 @@ const ClusterOperationCenterPage: React.FC = () => {
               <Input placeholder="用户 ID / 名称" style={{ width: 180 }} allowClear />
             </Form.Item>
             <Form.Item label="时间范围" name="range">
-              <DatePicker.RangePicker
-                showTime
-                value={draftRange}
-                onChange={(values) => setDraftRange((values as [dayjs.Dayjs | null, dayjs.Dayjs | null]) || [null, null])}
-              />
+              <DatePicker.RangePicker showTime />
             </Form.Item>
             <Form.Item>
               <Space>
@@ -335,8 +391,7 @@ const ClusterOperationCenterPage: React.FC = () => {
               showSizeChanger: true,
               showTotal: (value) => `共 ${value} 条`,
               onChange: (nextPage, nextSize) => {
-                setPage(nextPage);
-                setPageSize(nextSize);
+                void loadHistory(nextPage, nextSize || pageSize, filters);
               },
             }}
           />
@@ -381,33 +436,59 @@ const ClusterOperationCenterPage: React.FC = () => {
             {detailApproval && (
               <Card size="small" title="审批信息">
                 <Descriptions bordered size="small" column={1}>
-                  <Descriptions.Item label="是否需要审批">{detailApproval.required ? '是' : '否'}</Descriptions.Item>
+                  <Descriptions.Item label="是否需要审批">{detailApprovalRequired ? '是' : '否'}</Descriptions.Item>
+                  <Descriptions.Item label="审批状态">{detailApproval.status || '-'}</Descriptions.Item>
                   <Descriptions.Item label="审批票据">{detailApproval.ticket || '-'}</Descriptions.Item>
                   <Descriptions.Item label="过期时间">{formatDate(detailApproval.expires_at)}</Descriptions.Item>
                   <Descriptions.Item label="原因">{detailApproval.reason || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="已消费时间">{formatDate(detailApproval.consumed_at)}</Descriptions.Item>
+                  <Descriptions.Item label="重放信息">
+                    {detailApproval.replay_count
+                      ? `${detailApproval.replay_code || '-'} | ${detailApproval.replay_message || '-'}`
+                      : '-'}
+                  </Descriptions.Item>
                 </Descriptions>
               </Card>
             )}
 
-            <Card size="small" title="请求参数">
-              <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
-                {JSON.stringify(detail.request || {}, null, 2)}
-              </pre>
-            </Card>
-
-            <Card size="small" title="执行结果">
-              <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
-                {JSON.stringify(detail.response || {}, null, 2)}
-              </pre>
-            </Card>
-
-            <Card size="small" title="诊断信息">
-              {detail.diagnostics?.length ? (
+            <Card size="small" title="请求摘要">
+              <Descriptions bordered size="small" column={1} className="mb-3">
+                <Descriptions.Item label="请求摘要">{requestSummary}</Descriptions.Item>
+              </Descriptions>
+              {detail.request ? (
                 <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
-                  {JSON.stringify(detail.diagnostics, null, 2)}
+                  {JSON.stringify(detail.request, null, 2)}
                 </pre>
               ) : (
-                <Empty description="暂无诊断信息" />
+                <Empty description="暂无请求摘要" />
+              )}
+            </Card>
+
+            <Card size="small" title="响应摘要">
+              <Descriptions bordered size="small" column={1} className="mb-3">
+                <Descriptions.Item label="响应摘要">{responseSummary}</Descriptions.Item>
+              </Descriptions>
+              {detail.response ? (
+                <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
+                  {JSON.stringify(detail.response, null, 2)}
+                </pre>
+              ) : (
+                <Empty description="暂无响应摘要" />
+              )}
+            </Card>
+
+            <Card size="small" title="诊断摘要">
+              {detail.diagnostics?.length ? (
+                <>
+                  <Descriptions bordered size="small" column={1} className="mb-3">
+                    <Descriptions.Item label="诊断摘要">{diagnosticsSummary}</Descriptions.Item>
+                  </Descriptions>
+                  <pre className="bg-gray-950 text-gray-100 rounded p-4 overflow-auto max-h-80 text-xs">
+                    {JSON.stringify(detail.diagnostics, null, 2)}
+                  </pre>
+                </>
+              ) : (
+                <Empty description="暂无诊断摘要" />
               )}
             </Card>
 

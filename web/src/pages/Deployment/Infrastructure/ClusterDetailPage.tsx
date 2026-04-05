@@ -919,6 +919,46 @@ const ClusterDetailPage: React.FC = () => {
     ));
   }, [clusterId, performNodeOperation]);
 
+  const handleRenewCertificates = useCallback(() => {
+    Modal.confirm({
+      title: '续期证书',
+      content: '确定要续期所有证书吗？此操作将重启控制平面组件。',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => executeClusterOperation(
+        'renew-certificates',
+        'cluster:certificates',
+        'cluster:certificates',
+        '证书续期',
+        (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
+      ),
+    });
+  }, [clusterId, executeClusterOperation]);
+
+  const handleClusterUpgrade = useCallback(() => {
+    if (!upgradePlan) return;
+    const currentParts = upgradePlan.current_version.replace('v', '').split('.');
+    const nextMinor = parseInt(currentParts[1], 10) + 1;
+    const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
+
+    Modal.confirm({
+      title: '升级集群',
+      content: '确定要升级集群吗？建议先备份数据。',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => executeClusterOperation(
+        'upgrade',
+        `cluster:upgrade:${targetVersion}`,
+        'cluster:upgrade',
+        '集群升级',
+        (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
+          target_version: targetVersion,
+          approval_token: approvalToken,
+        }).then((resp) => resp.data),
+      ),
+    });
+  }, [clusterId, executeClusterOperation, upgradePlan]);
+
   const handleDeploymentRestart = useCallback((deployment: DeploymentInfo) => {
     if (!clusterId) return Promise.resolve();
     return executeWorkloadOperation(
@@ -1557,25 +1597,10 @@ const ClusterDetailPage: React.FC = () => {
               </Card>
               <Card title="证书信息" size="small" className="mb-4" extra={
                 cluster?.source === 'platform_managed' && (
-                  <Popconfirm
-                    title="续期证书"
-                    description="确定要续期所有证书吗？此操作将重启控制平面组件。"
-                    onConfirm={async () => {
-                      await executeClusterOperation(
-                        'renew-certificates',
-                        'cluster:certificates',
-                        'cluster:certificates',
-                        '证书续期',
-                        (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
-                      );
-                    }}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button size="small" icon={<SyncOutlined />}>续期证书</Button>
-                  </Popconfirm>
+                  <Button size="small" icon={<SyncOutlined />} onClick={handleRenewCertificates}>续期证书</Button>
                 )
               }>
+                {renderFeedback('cluster:certificates')}
                 <Table
                   columns={[
                     { title: '名称', dataIndex: 'name', key: 'name' },
@@ -1589,36 +1614,14 @@ const ClusterDetailPage: React.FC = () => {
               {upgradePlan && cluster?.source === 'platform_managed' && (
                 <Card title="升级计划" size="small" extra={
                   upgradePlan.upgradable && (
-                    <Popconfirm
-                      title="升级集群"
-                      description="确定要升级集群吗？建议先备份数据。"
-                      onConfirm={async () => {
-                        // Extract version number from current version (e.g., v1.28.0 -> 1.29.0)
-                        const currentParts = upgradePlan.current_version.replace('v', '').split('.');
-                        const nextMinor = parseInt(currentParts[1], 10) + 1;
-                        const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
-                        await executeClusterOperation(
-                          'upgrade',
-                          `cluster:upgrade:${targetVersion}`,
-                          `cluster:upgrade:${targetVersion}`,
-                          '集群升级',
-                          (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
-                            target_version: targetVersion,
-                            approval_token: approvalToken,
-                          }).then((resp) => resp.data),
-                        );
-                      }}
-                      okText="确定"
-                      cancelText="取消"
-                    >
-                      <Button size="small" type="primary">升级集群</Button>
-                    </Popconfirm>
+                    <Button size="small" type="primary" onClick={handleClusterUpgrade}>升级集群</Button>
                   )
                 }>
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="当前版本">{upgradePlan.current_version}</Descriptions.Item>
                     <Descriptions.Item label="可升级">{upgradePlan.upgradable ? <Tag color="green">是</Tag> : <Tag color="red">否</Tag>}</Descriptions.Item>
                   </Descriptions>
+                  {renderFeedback('cluster:upgrade')}
                   {upgradePlan.warnings?.length > 0 && (
                     <div className="mt-4">
                       <Text type="warning">警告:</Text>

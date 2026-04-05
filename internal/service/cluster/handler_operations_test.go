@@ -2,13 +2,17 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
 	governanceapproval "github.com/cy77cc/OpsPilot/internal/service/governance/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -227,6 +231,228 @@ func TestRequireHighRiskApproval_BypassesApprovalForApprovePermissions(t *testin
 	}
 }
 
+func TestListOperationHistory_FiltersCanonicalStatusAndOtherConditions(t *testing.T) {
+	handler, db := newOperationHistoryTestHandler(t)
+	base := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
+	clusterID := uint(42)
+
+	if err := db.Create(&model.User{
+		ID:           2002,
+		Username:     "alice01",
+		PasswordHash: "hash",
+		Status:       1,
+	}).Error; err != nil {
+		t.Fatalf("seed alice user: %v", err)
+	}
+	if err := db.Create(&model.User{
+		ID:           2003,
+		Username:     "bobuser",
+		PasswordHash: "hash",
+		Status:       1,
+	}).Error; err != nil {
+		t.Fatalf("seed bob user: %v", err)
+	}
+
+	fixtures := []model.OperationAudit{
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-approve",
+			Action:         "node.drain",
+			OperatorID:     2002,
+			Status:         "pending",
+			Code:           OperationCodeApprovalRequired,
+			Message:        "approval requested",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-done",
+			Action:         "node.cordon",
+			OperatorID:     2002,
+			Status:         "success",
+			Code:           OperationCodeSuccess,
+			Message:        "done",
+			CreatedAt:      base.Add(30 * time.Minute),
+			UpdatedAt:      base.Add(30 * time.Minute),
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "service",
+			ResourceID:     "svc-1",
+			Action:         "service.delete",
+			OperatorID:     2002,
+			Status:         "pending",
+			Code:           OperationCodeApprovalRequired,
+			Message:        "wrong resource",
+			CreatedAt:      base.Add(10 * time.Minute),
+			UpdatedAt:      base.Add(10 * time.Minute),
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-other-user",
+			Action:         "node.drain",
+			OperatorID:     2003,
+			Status:         "pending",
+			Code:           OperationCodeApprovalRequired,
+			Message:        "wrong operator",
+			CreatedAt:      base.Add(15 * time.Minute),
+			UpdatedAt:      base.Add(15 * time.Minute),
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-outside-window",
+			Action:         "node.drain",
+			OperatorID:     2002,
+			Status:         "pending",
+			Code:           OperationCodeApprovalRequired,
+			Message:        "outside time window",
+			CreatedAt:      base.Add(-2 * time.Hour),
+			UpdatedAt:      base.Add(-2 * time.Hour),
+		},
+	}
+	if err := db.Create(&fixtures).Error; err != nil {
+		t.Fatalf("seed audits: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/clusters/42/operations/history?resource=node&status=approval_required&operator=alice01&from=2026-04-05T09:00:00Z&to=2026-04-05T11:00:00Z",
+		nil,
+	)
+	ctx.Params = gin.Params{{Key: "id", Value: "42"}}
+
+	handler.ListOperationHistory(ctx)
+
+	payload := decodeOperationHistoryResponse(t, recorder)
+	if payload.Page != 1 {
+		t.Fatalf("expected page 1, got %d", payload.Page)
+	}
+	if payload.Total != 1 {
+		t.Fatalf("expected 1 filtered row, got %d", payload.Total)
+	}
+	if len(payload.List) != 1 {
+		t.Fatalf("expected 1 history item, got %d", len(payload.List))
+	}
+	if payload.List[0].ResourceID != "worker-approve" {
+		t.Fatalf("expected approval-required row, got %q", payload.List[0].ResourceID)
+	}
+	if payload.List[0].Status != OperationStateApprovalRequired {
+		t.Fatalf("expected canonical approval_required status, got %q", payload.List[0].Status)
+	}
+
+	recorder = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/clusters/42/operations/history?resource=node&status=completed&operator=2002",
+		nil,
+	)
+	ctx.Params = gin.Params{{Key: "id", Value: "42"}}
+
+	handler.ListOperationHistory(ctx)
+
+	payload = decodeOperationHistoryResponse(t, recorder)
+	if payload.Total != 1 {
+		t.Fatalf("expected 1 completed row, got %d", payload.Total)
+	}
+	if len(payload.List) != 1 || payload.List[0].ResourceID != "worker-done" {
+		t.Fatalf("expected completed row worker-done, got %+v", payload.List)
+	}
+	if payload.List[0].Status != OperationStateCompleted {
+		t.Fatalf("expected canonical completed status, got %q", payload.List[0].Status)
+	}
+}
+
+func TestListOperationHistory_ClampsPaginationToValidBounds(t *testing.T) {
+	handler, db := newOperationHistoryTestHandler(t)
+	clusterID := uint(42)
+	base := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
+
+	fixtures := []model.OperationAudit{
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-1",
+			Action:         "node.cordon",
+			OperatorID:     1001,
+			Status:         "success",
+			Code:           OperationCodeSuccess,
+			Message:        "done 1",
+			CreatedAt:      base,
+			UpdatedAt:      base,
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-2",
+			Action:         "node.cordon",
+			OperatorID:     1001,
+			Status:         "success",
+			Code:           OperationCodeSuccess,
+			Message:        "done 2",
+			CreatedAt:      base.Add(time.Minute),
+			UpdatedAt:      base.Add(time.Minute),
+		},
+		{
+			Domain:         "cluster",
+			ScopeClusterID: &clusterID,
+			Resource:       "node",
+			ResourceID:     "worker-3",
+			Action:         "node.cordon",
+			OperatorID:     1001,
+			Status:         "success",
+			Code:           OperationCodeSuccess,
+			Message:        "done 3",
+			CreatedAt:      base.Add(2 * time.Minute),
+			UpdatedAt:      base.Add(2 * time.Minute),
+		},
+	}
+	if err := db.Create(&fixtures).Error; err != nil {
+		t.Fatalf("seed audits: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/clusters/42/operations/history?page=9&page_size=2", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "42"}}
+
+	handler.ListOperationHistory(ctx)
+
+	payload := decodeOperationHistoryResponse(t, recorder)
+	if payload.Page != 2 {
+		t.Fatalf("expected page to clamp to 2, got %d", payload.Page)
+	}
+	if payload.PageSize != 2 {
+		t.Fatalf("expected page size 2, got %d", payload.PageSize)
+	}
+	if payload.TotalPages != 2 {
+		t.Fatalf("expected 2 total pages, got %d", payload.TotalPages)
+	}
+	if payload.Total != 3 {
+		t.Fatalf("expected total 3, got %d", payload.Total)
+	}
+	if len(payload.List) != 1 {
+		t.Fatalf("expected final page to contain 1 row, got %d", len(payload.List))
+	}
+	if payload.List[0].ResourceID != "worker-1" {
+		t.Fatalf("expected final page to include oldest row worker-1, got %q", payload.List[0].ResourceID)
+	}
+}
+
 func newHighRiskApprovalTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 
@@ -258,6 +484,45 @@ func newHighRiskApprovalTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	return &Handler{
 		svcCtx: &svc.ServiceContext{DB: db},
 	}, db
+}
+
+func newOperationHistoryTestHandler(t *testing.T) (*Handler, *gorm.DB) {
+	t.Helper()
+
+	handler, db := newHighRiskApprovalTestHandler(t)
+	if err := db.AutoMigrate(&model.Cluster{}); err != nil {
+		t.Fatalf("migrate cluster schema: %v", err)
+	}
+	if err := db.Create(&model.Cluster{
+		ID:         42,
+		Name:       "cluster-42",
+		Status:     "active",
+		Type:       "kubernetes",
+		Source:     "platform_managed",
+		EnvType:    "production",
+		AuthMethod: "token",
+		Endpoint:   "https://127.0.0.1",
+	}).Error; err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+	handler.repo = NewRepository(db)
+	return handler, db
+}
+
+func decodeOperationHistoryResponse(t *testing.T, recorder *httptest.ResponseRecorder) OperationHistoryResponse {
+	t.Helper()
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	var body struct {
+		Data OperationHistoryResponse `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	return body.Data
 }
 
 func issueApprovalTicket(t *testing.T, db *gorm.DB, scope ApprovalScope, requestedBy uint, expiresAt time.Time, approved bool) string {

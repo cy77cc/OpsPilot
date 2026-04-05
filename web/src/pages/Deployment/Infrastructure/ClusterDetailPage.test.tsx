@@ -42,6 +42,8 @@ const mockApi = vi.hoisted(() => ({
     getClusterVersion: vi.fn(),
     getCertificates: vi.fn(),
     getUpgradePlan: vi.fn(),
+    renewCertificates: vi.fn(),
+    upgradeCluster: vi.fn(),
     syncClusterNodes: vi.fn(),
     testCluster: vi.fn(),
     updateCluster: vi.fn(),
@@ -117,6 +119,24 @@ function mockBaselineLoads() {
   mockApi.cluster.getClusterVersion.mockResolvedValue({ data: null });
   mockApi.cluster.getCertificates.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getUpgradePlan.mockResolvedValue({ data: null });
+  mockApi.cluster.renewCertificates.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '证书已续期',
+      audit_id: 115,
+    },
+  });
+  mockApi.cluster.upgradeCluster.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '集群已升级',
+      audit_id: 116,
+    },
+  });
   mockApi.cluster.cordonNode.mockResolvedValue({
     data: {
       state: 'completed',
@@ -273,6 +293,11 @@ async function openServicesTab(user: ReturnType<typeof userEvent.setup>) {
     throw new Error('services tab not found');
   }
   await user.click(servicesTab);
+}
+
+async function openMaintenanceTab(user: ReturnType<typeof userEvent.setup>) {
+  const tab = await screen.findByRole('tab', { name: /运维/i });
+  await user.click(tab);
 }
 
 describe('ClusterDetailPage', () => {
@@ -824,5 +849,80 @@ describe('ClusterDetailPage', () => {
       expect(errorSpy).toHaveBeenCalledWith('create failed');
     });
     errorSpy.mockRestore();
+  }, 45000);
+
+  it('renders an operation-center audit link after renewing certificates', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getCertificates.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'apiserver',
+          ca: false,
+          expires_at: '2026-08-01T00:00:00Z',
+          days_left: 90,
+        }],
+      },
+    });
+
+    renderPage();
+
+    await openMaintenanceTab(user);
+    await user.click(await screen.findByRole('button', { name: /续期证书/ }));
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    expect(latestConfig?.title).toBe('续期证书');
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.renewCertificates).toHaveBeenCalledWith(42, { approval_token: undefined });
+    });
+
+    expect(await screen.findByText('证书续期')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations?audit_id=115',
+    );
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('renders an operation-center audit link after cluster upgrade', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getUpgradePlan.mockResolvedValue({
+      data: {
+        current_version: 'v1.28.0',
+        upgradable: true,
+        warnings: [],
+        steps: [],
+      },
+    });
+
+    renderPage();
+
+    await openMaintenanceTab(user);
+    await user.click(await screen.findByRole('button', { name: /升级集群/ }));
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    expect(latestConfig?.title).toBe('升级集群');
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.upgradeCluster).toHaveBeenCalledWith(42, {
+        target_version: '1.29.0',
+        approval_token: undefined,
+      });
+    });
+
+    expect(await screen.findByText('集群升级')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations?audit_id=116',
+    );
+    confirmSpy.mockRestore();
   }, 45000);
 });

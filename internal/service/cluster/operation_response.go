@@ -34,12 +34,14 @@ const (
 
 // OperationApproval 描述写操作相关的审批信息。
 type OperationApproval struct {
+	Required      bool       `json:"required,omitempty"`
 	Ticket        string     `json:"ticket,omitempty"`
 	ClusterID     uint       `json:"cluster_id,omitempty"`
 	Namespace     string     `json:"namespace,omitempty"`
 	Action        string     `json:"action,omitempty"`
 	Resource      string     `json:"resource,omitempty"`
 	ResourceID    string     `json:"resource_id,omitempty"`
+	Reason        string     `json:"reason,omitempty"`
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 	ConsumedAt    *time.Time `json:"consumed_at,omitempty"`
 	ConsumedBy    uint       `json:"consumed_by,omitempty"`
@@ -102,6 +104,7 @@ func OperationApprovalFromRecord(rec *model.ClusterDeployApproval) *OperationApp
 		return nil
 	}
 	return &OperationApproval{
+		Required:      true,
 		Ticket:        rec.Ticket,
 		ClusterID:     rec.ClusterID,
 		Namespace:     rec.Namespace,

@@ -255,16 +255,16 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.OperationAudit{}).
 		Where("domain = ? AND scope_cluster_id = ?", "cluster", clusterID)
 	if resource != "" {
-		query = query.Where("resource = ?", resource)
+		query = query.Where("operation_audits.resource = ?", resource)
 	}
 	if status != "" {
-		query = query.Where("status = ?", status)
+		query = query.Where("LOWER(operation_audits.status) IN ?", operationHistoryStatusesForFilter(status))
 	}
 	if from != nil {
-		query = query.Where("created_at >= ?", *from)
+		query = query.Where("operation_audits.created_at >= ?", *from)
 	}
 	if to != nil {
-		query = query.Where("created_at <= ?", *to)
+		query = query.Where("operation_audits.created_at <= ?", *to)
 	}
 	if operator != "" {
 		if operatorID, parseErr := strconv.ParseUint(operator, 10, 64); parseErr == nil {
@@ -280,7 +280,18 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 		return
 	}
 
-	offset := int((page - 1) * pageSize)
+	totalPages := 0
+	if total > 0 {
+		totalPages = int(math.Ceil(float64(total) / float64(pageSize)))
+	}
+	currentPage := int(page)
+	if totalPages == 0 {
+		currentPage = 1
+	} else if currentPage > totalPages {
+		currentPage = totalPages
+	}
+
+	offset := (currentPage - 1) * int(pageSize)
 	var rows []model.OperationAudit
 	if err := query.Order("operation_audits.id DESC").Offset(offset).Limit(int(pageSize)).Find(&rows).Error; err != nil {
 		httpx.ServerErr(c, err)
@@ -288,11 +299,10 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 	}
 
 	items := h.operationAuditsToHistoryItems(c.Request.Context(), rows)
-	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
 	httpx.OK(c, OperationHistoryResponse{
 		List:       items,
 		Total:      total,
-		Page:       int(page),
+		Page:       currentPage,
 		PageSize:   int(pageSize),
 		TotalPages: totalPages,
 	})
@@ -441,6 +451,21 @@ func normalizeOperationAuditStatus(status string) string {
 		return OperationStateCompleted
 	default:
 		return strings.TrimSpace(status)
+	}
+}
+
+func operationHistoryStatusesForFilter(status string) []string {
+	switch normalizeOperationAuditStatus(status) {
+	case OperationStateApprovalRequired:
+		return []string{"approval_required", "pending"}
+	case OperationStateCompleted:
+		return []string{"completed", "success"}
+	case OperationStateRejected:
+		return []string{"rejected"}
+	case OperationStateFailed:
+		return []string{"failed"}
+	default:
+		return []string{strings.ToLower(strings.TrimSpace(status))}
 	}
 }
 

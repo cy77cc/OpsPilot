@@ -214,8 +214,21 @@ export type ClusterOperationState = 'completed' | 'approval_required' | 'rejecte
 export interface ClusterOperationApproval {
   required: boolean;
   ticket?: string;
+  cluster_id?: number;
+  namespace?: string;
+  action?: string;
+  resource?: string;
+  resource_id?: string;
   expires_at?: string;
   reason?: string;
+  status?: string;
+  consumed_at?: string;
+  consumed_by?: number;
+  replay_count?: number;
+  replay_at?: string;
+  replay_by?: number;
+  replay_code?: string;
+  replay_message?: string;
 }
 
 export interface ClusterOperationResponse<T = unknown> {
