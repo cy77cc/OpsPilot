@@ -260,6 +260,10 @@ export interface ClusterUpgradePayload extends ClusterNodeApprovalPayload {
 
 export interface ClusterCertificateRenewPayload extends ClusterNodeApprovalPayload {}
 
+export interface ClusterWorkloadScalePayload extends ClusterNodeApprovalPayload {
+  replicas: number;
+}
+
 export interface ClusterOperationHistoryQuery {
   page?: number;
   page_size?: number;
@@ -891,12 +895,40 @@ export const clusterApi = {
     return apiService.get(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/pods`);
   },
 
+  deletePod(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`, { data: payload || {} }));
+  },
+
   getDeployments(id: number, namespace: string): Promise<ApiResponse<PaginatedResponse<DeploymentInfo>>> {
     return apiService.get(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/deployments`);
   },
 
+  restartDeployment(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(name)}/restart`, payload || {}));
+  },
+
+  scaleDeployment(id: number, namespace: string, name: string, payload: ClusterWorkloadScalePayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(name)}/scale`, payload));
+  },
+
+  deleteDeployment(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(name)}`, { data: payload || {} }));
+  },
+
   getStatefulSets(id: number, namespace: string): Promise<ApiResponse<PaginatedResponse<StatefulSetInfo>>> {
     return apiService.get(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/statefulsets`);
+  },
+
+  restartStatefulSet(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/statefulsets/${encodeURIComponent(name)}/restart`, payload || {}));
+  },
+
+  scaleStatefulSet(id: number, namespace: string, name: string, payload: ClusterWorkloadScalePayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/statefulsets/${encodeURIComponent(name)}/scale`, payload));
+  },
+
+  deleteStatefulSet(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/statefulsets/${encodeURIComponent(name)}`, { data: payload || {} }));
   },
 
   getDaemonSets(id: number, namespace: string): Promise<ApiResponse<PaginatedResponse<DaemonSetInfo>>> {

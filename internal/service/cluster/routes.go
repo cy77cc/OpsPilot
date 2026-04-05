@@ -52,8 +52,15 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 工作负载
 		clusterGroup.GET("/:id/namespaces/:namespace/pods", h.GetPods)
+		clusterGroup.DELETE("/:id/namespaces/:namespace/pods/:name", h.DeletePod)
 		clusterGroup.GET("/:id/namespaces/:namespace/deployments", h.GetDeployments)
+		clusterGroup.POST("/:id/namespaces/:namespace/deployments/:name/restart", h.RestartDeployment)
+		clusterGroup.POST("/:id/namespaces/:namespace/deployments/:name/scale", h.ScaleDeployment)
+		clusterGroup.DELETE("/:id/namespaces/:namespace/deployments/:name", h.DeleteDeployment)
 		clusterGroup.GET("/:id/namespaces/:namespace/statefulsets", h.GetStatefulSets)
+		clusterGroup.POST("/:id/namespaces/:namespace/statefulsets/:name/restart", h.RestartStatefulSet)
+		clusterGroup.POST("/:id/namespaces/:namespace/statefulsets/:name/scale", h.ScaleStatefulSet)
+		clusterGroup.DELETE("/:id/namespaces/:namespace/statefulsets/:name", h.DeleteStatefulSet)
 		clusterGroup.GET("/:id/namespaces/:namespace/daemonsets", h.GetDaemonSets)
 		clusterGroup.GET("/:id/namespaces/:namespace/jobs", h.GetJobs)
 

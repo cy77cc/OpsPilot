@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Card, Tabs, Table, Tag, Button, Space, Descriptions, Spin, message,
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
-  Select, Dropdown
+  Select, Dropdown, InputNumber
 } from 'antd';
 import type { FormInstance } from 'antd';
 import {
@@ -73,9 +73,20 @@ const ClusterDetailPage: React.FC = () => {
   const [pendingApprovalOperation, setPendingApprovalOperation] = useState<null | {
     title: string;
     actionKey: string;
-    resourceKey: string;
+    loadingKey: string;
+    feedbackKey: string;
     approval?: ClusterOperationApproval;
     retry: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>;
+    refresh?: () => Promise<void>;
+  }>(null);
+  const [scaleModalVisible, setScaleModalVisible] = useState(false);
+  const [pendingScaleOperation, setPendingScaleOperation] = useState<null | {
+    title: string;
+    actionKey: string;
+    loadingKey: string;
+    feedbackKey: string;
+    currentReplicas: number;
+    execute: (replicas: number, approvalToken?: string) => Promise<ClusterOperationResponse<any>>;
   }>(null);
   const [nodeMutationLoadingKey, setNodeMutationLoadingKey] = useState<string>('');
   const [nodeMetadataLoadingKey, setNodeMetadataLoadingKey] = useState<string>('');
@@ -88,6 +99,7 @@ const ClusterDetailPage: React.FC = () => {
   const [editForm] = Form.useForm();
   const [addNodeForm] = Form.useForm();
   const [approvalForm] = Form.useForm();
+  const [scaleForm] = Form.useForm();
   const [nodeLabelForm] = Form.useForm();
   const [nodeTaintForm] = Form.useForm();
 
@@ -238,10 +250,9 @@ const ClusterDetailPage: React.FC = () => {
     message: string;
     audit_id?: string | number;
   }) => {
-    const feedbackKey = String(resourceKey || '').split(':')[0];
     setOperationFeedback((prev) => ({
       ...prev,
-      [feedbackKey]: feedback,
+      [resourceKey]: feedback,
     }));
   }, []);
 
@@ -249,9 +260,11 @@ const ClusterDetailPage: React.FC = () => {
     operation: {
       title: string;
       actionKey: string;
-      resourceKey: string;
+      loadingKey: string;
+      feedbackKey: string;
       approval?: ClusterOperationApproval;
       retry: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>;
+      refresh?: () => Promise<void>;
     },
   ) => {
     setPendingApprovalOperation(operation);
@@ -262,14 +275,16 @@ const ClusterDetailPage: React.FC = () => {
 
   const executeClusterOperation = useCallback(async <T,>(
     actionKey: string,
-    resourceKey: string,
+    loadingKey: string,
+    feedbackKey: string,
     actionLabel: string,
     runner: (approvalToken?: string) => Promise<ClusterOperationResponse<T>>,
+    refresh?: () => Promise<void>,
   ) => {
-    setNodeMutationLoadingKey(resourceKey);
+    setNodeMutationLoadingKey(loadingKey);
     try {
       const result = await runner(undefined);
-      recordOperationFeedback(resourceKey, {
+      recordOperationFeedback(feedbackKey, {
         action: actionLabel,
         state: result.state,
         message: result.message,
@@ -280,9 +295,11 @@ const ClusterDetailPage: React.FC = () => {
         openApprovalModal({
           title: actionLabel,
           actionKey,
-          resourceKey,
+          loadingKey,
+          feedbackKey,
           approval: result.approval,
           retry: runner,
+          refresh,
         });
         message.warning(result.approval?.ticket
           ? `${actionLabel} 已进入审批，ticket: ${result.approval.ticket}`
@@ -307,7 +324,9 @@ const ClusterDetailPage: React.FC = () => {
         );
       }
 
-      if (actionKey.includes('upgrade') || actionKey.includes('renew')) {
+      if (refresh) {
+        await refresh();
+      } else if (actionKey.includes('upgrade') || actionKey.includes('renew')) {
         await loadClusterInfo();
       } else {
         await loadNodes();
@@ -319,7 +338,7 @@ const ClusterDetailPage: React.FC = () => {
     } finally {
       setNodeMutationLoadingKey('');
     }
-  }, [buildOperationLink, loadNodes, openApprovalModal, recordOperationFeedback]);
+  }, [buildOperationLink, loadClusterInfo, loadNodes, openApprovalModal, recordOperationFeedback]);
 
   const submitApprovalToken = useCallback(async () => {
     if (!pendingApprovalOperation) return;
@@ -330,9 +349,9 @@ const ClusterDetailPage: React.FC = () => {
         message.warning('请输入 approval_token');
         return;
       }
-      setNodeMutationLoadingKey(pendingApprovalOperation.resourceKey);
+      setNodeMutationLoadingKey(pendingApprovalOperation.loadingKey);
       const result = await pendingApprovalOperation.retry(token);
-      recordOperationFeedback(pendingApprovalOperation.resourceKey, {
+      recordOperationFeedback(pendingApprovalOperation.feedbackKey, {
         action: pendingApprovalOperation.title,
         state: result.state,
         message: result.message,
@@ -351,7 +370,9 @@ const ClusterDetailPage: React.FC = () => {
             </span>,
           );
         }
-        if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
+        if (pendingApprovalOperation.refresh) {
+          await pendingApprovalOperation.refresh();
+        } else if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
           await loadClusterInfo();
         } else {
           await loadNodes();
@@ -362,9 +383,11 @@ const ClusterDetailPage: React.FC = () => {
         openApprovalModal({
           title: pendingApprovalOperation.title,
           actionKey: pendingApprovalOperation.actionKey,
-          resourceKey: pendingApprovalOperation.resourceKey,
+          loadingKey: pendingApprovalOperation.loadingKey,
+          feedbackKey: pendingApprovalOperation.feedbackKey,
           approval: result.approval,
           retry: pendingApprovalOperation.retry,
+          refresh: pendingApprovalOperation.refresh,
         });
         message.warning(result.approval?.ticket
           ? `${pendingApprovalOperation.title} 仍需审批，ticket: ${result.approval.ticket}`
@@ -376,7 +399,9 @@ const ClusterDetailPage: React.FC = () => {
       } else if (result.state === 'failed') {
         message.error(result.message || `${pendingApprovalOperation.title} 失败`);
       }
-      if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
+      if (pendingApprovalOperation.refresh) {
+        await pendingApprovalOperation.refresh();
+      } else if (pendingApprovalOperation.actionKey.includes('upgrade') || pendingApprovalOperation.actionKey.includes('renew')) {
         await loadClusterInfo();
       } else {
         await loadNodes();
@@ -386,7 +411,7 @@ const ClusterDetailPage: React.FC = () => {
     } finally {
       setNodeMutationLoadingKey('');
     }
-  }, [approvalForm, buildOperationLink, loadNodes, openApprovalModal, pendingApprovalOperation, recordOperationFeedback]);
+  }, [approvalForm, buildOperationLink, loadClusterInfo, loadNodes, openApprovalModal, pendingApprovalOperation, recordOperationFeedback]);
 
   const performNodeOperation = useCallback(async (
     actionKey: string,
@@ -400,7 +425,7 @@ const ClusterDetailPage: React.FC = () => {
       remove: '节点移除',
     };
     const actionLabel = actionLabels[actionKey] || actionKey;
-    await executeClusterOperation(actionKey, `${node.name}:${actionKey}`, actionLabel, runner);
+    await executeClusterOperation(actionKey, `${node.name}:${actionKey}`, node.name, actionLabel, runner);
   }, [executeClusterOperation]);
 
   const handleNodeMetadataOperation = useCallback(async (
@@ -446,6 +471,7 @@ const ClusterDetailPage: React.FC = () => {
       const result = await executeClusterOperation(
         `${kind}:${mode}`,
         resourceKey,
+        node.name,
         `${kind === 'label' ? '标签' : '污点'}${mode === 'upsert' ? '更新' : '删除'}`,
         runner,
       );
@@ -459,6 +485,93 @@ const ClusterDetailPage: React.FC = () => {
       setNodeMetadataLoadingKey('');
     }
   }, [clusterId, executeClusterOperation, nodeLabelForm, nodeTaintForm]);
+
+  const refreshSelectedNamespaceResources = useCallback(async () => {
+    if (!selectedNamespace) return;
+    await loadResources(selectedNamespace);
+  }, [loadResources, selectedNamespace]);
+
+  const renderFeedback = useCallback((feedbackKey: string) => {
+    const feedback = operationFeedback[feedbackKey];
+    if (!feedback) {
+      return null;
+    }
+
+    return (
+      <Space size={6} wrap>
+        <Tag color={
+          feedback.state === 'completed'
+            ? 'green'
+            : feedback.state === 'approval_required'
+              ? 'orange'
+              : 'red'
+        }>
+          {feedback.action}
+        </Tag>
+        {feedback.audit_id && (
+          <Link to={buildOperationLink(feedback.audit_id)}>
+            审计
+          </Link>
+        )}
+      </Space>
+    );
+  }, [buildOperationLink, operationFeedback]);
+
+  const executeWorkloadOperation = useCallback(async (
+    actionKey: string,
+    feedbackKey: string,
+    actionLabel: string,
+    runner: (approvalToken?: string) => Promise<ClusterOperationResponse<any>>,
+  ) => {
+    await executeClusterOperation(
+      actionKey,
+      `${feedbackKey}:${actionKey}`,
+      feedbackKey,
+      actionLabel,
+      runner,
+      refreshSelectedNamespaceResources,
+    );
+  }, [executeClusterOperation, refreshSelectedNamespaceResources]);
+
+  const openScaleOperation = useCallback((
+    title: string,
+    actionKey: string,
+    feedbackKey: string,
+    currentReplicas: number,
+    execute: (replicas: number, approvalToken?: string) => Promise<ClusterOperationResponse<any>>,
+  ) => {
+    setPendingScaleOperation({
+      title,
+      actionKey,
+      loadingKey: `${feedbackKey}:${actionKey}`,
+      feedbackKey,
+      currentReplicas,
+      execute,
+    });
+    scaleForm.setFieldsValue({ replicas: currentReplicas });
+    setScaleModalVisible(true);
+  }, [scaleForm]);
+
+  const submitScaleOperation = useCallback(async () => {
+    if (!pendingScaleOperation) return;
+    try {
+      const values = await scaleForm.validateFields();
+      const replicas = Number(values.replicas);
+      await executeClusterOperation(
+        pendingScaleOperation.actionKey,
+        pendingScaleOperation.loadingKey,
+        pendingScaleOperation.feedbackKey,
+        pendingScaleOperation.title,
+        (approvalToken) => pendingScaleOperation.execute(replicas, approvalToken),
+        refreshSelectedNamespaceResources,
+      );
+      setScaleModalVisible(false);
+      setPendingScaleOperation(null);
+      scaleForm.resetFields();
+    } catch {
+      // executeClusterOperation already handles user-visible feedback
+    }
+  }, [executeClusterOperation, pendingScaleOperation, refreshSelectedNamespaceResources, scaleForm]);
 
   useEffect(() => {
     loadCluster();
@@ -578,6 +691,105 @@ const ClusterDetailPage: React.FC = () => {
     ));
   }, [clusterId, performNodeOperation]);
 
+  const handleDeploymentRestart = useCallback((deployment: DeploymentInfo) => {
+    if (!clusterId) return Promise.resolve();
+    return executeWorkloadOperation(
+      'deployment.restart',
+      `deployment:${deployment.name}`,
+      'Deployment 重启',
+      (approvalToken) => Api.cluster.restartDeployment(clusterId, selectedNamespace, deployment.name, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
+  }, [clusterId, executeWorkloadOperation, selectedNamespace]);
+
+  const handleDeploymentScale = useCallback((deployment: DeploymentInfo) => {
+    if (!clusterId) return;
+    openScaleOperation(
+      'Deployment 扩缩容',
+      'deployment.scale',
+      `deployment:${deployment.name}`,
+      deployment.replicas,
+      (replicas, approvalToken) => Api.cluster.scaleDeployment(clusterId, selectedNamespace, deployment.name, {
+        replicas,
+        approval_token: approvalToken,
+      }).then((resp) => resp.data),
+    );
+  }, [clusterId, openScaleOperation, selectedNamespace]);
+
+  const handleDeploymentDelete = useCallback((deployment: DeploymentInfo) => {
+    if (!clusterId) return;
+    Modal.confirm({
+      title: '删除 Deployment',
+      content: `确定要删除 Deployment ${deployment.name} 吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => executeWorkloadOperation(
+        'deployment.delete',
+        `deployment:${deployment.name}`,
+        'Deployment 删除',
+        (approvalToken) => Api.cluster.deleteDeployment(clusterId, selectedNamespace, deployment.name, { approval_token: approvalToken }).then((resp) => resp.data),
+      ),
+    });
+  }, [clusterId, executeWorkloadOperation, selectedNamespace]);
+
+  const handleStatefulSetRestart = useCallback((statefulset: StatefulSetInfo) => {
+    if (!clusterId) return Promise.resolve();
+    return executeWorkloadOperation(
+      'statefulset.restart',
+      `statefulset:${statefulset.name}`,
+      'StatefulSet 重启',
+      (approvalToken) => Api.cluster.restartStatefulSet(clusterId, selectedNamespace, statefulset.name, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
+  }, [clusterId, executeWorkloadOperation, selectedNamespace]);
+
+  const handleStatefulSetScale = useCallback((statefulset: StatefulSetInfo) => {
+    if (!clusterId) return;
+    openScaleOperation(
+      'StatefulSet 扩缩容',
+      'statefulset.scale',
+      `statefulset:${statefulset.name}`,
+      statefulset.replicas,
+      (replicas, approvalToken) => Api.cluster.scaleStatefulSet(clusterId, selectedNamespace, statefulset.name, {
+        replicas,
+        approval_token: approvalToken,
+      }).then((resp) => resp.data),
+    );
+  }, [clusterId, openScaleOperation, selectedNamespace]);
+
+  const handleStatefulSetDelete = useCallback((statefulset: StatefulSetInfo) => {
+    if (!clusterId) return;
+    Modal.confirm({
+      title: '删除 StatefulSet',
+      content: `确定要删除 StatefulSet ${statefulset.name} 吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => executeWorkloadOperation(
+        'statefulset.delete',
+        `statefulset:${statefulset.name}`,
+        'StatefulSet 删除',
+        (approvalToken) => Api.cluster.deleteStatefulSet(clusterId, selectedNamespace, statefulset.name, { approval_token: approvalToken }).then((resp) => resp.data),
+      ),
+    });
+  }, [clusterId, executeWorkloadOperation, selectedNamespace]);
+
+  const handlePodDelete = useCallback((pod: PodInfo) => {
+    if (!clusterId) return;
+    Modal.confirm({
+      title: '删除 Pod',
+      content: `确定要删除 Pod ${pod.name} 吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => executeWorkloadOperation(
+        'pod.delete',
+        `pod:${pod.name}`,
+        'Pod 删除',
+        (approvalToken) => Api.cluster.deletePod(clusterId, selectedNamespace, pod.name, { approval_token: approvalToken }).then((resp) => resp.data),
+      ),
+    });
+  }, [clusterId, executeWorkloadOperation, selectedNamespace]);
+
   const getStatusColor = (status: string) => {
     const statusMap: Record<string, string> = {
       active: 'success', inactive: 'default', error: 'error', provisioning: 'processing',
@@ -639,24 +851,7 @@ const ClusterDetailPage: React.FC = () => {
       render: (name: string, record: ClusterNode) => (
         <Space direction="vertical" size={0}>
           <Button type="link" className="p-0 h-auto" onClick={() => { setSelectedNode(record); setNodeDrawerVisible(true); }}>{name}</Button>
-          {operationFeedback[record.name] && (
-            <Space size={6} wrap>
-              <Tag color={
-                operationFeedback[record.name].state === 'completed'
-                  ? 'green'
-                  : operationFeedback[record.name].state === 'approval_required'
-                    ? 'orange'
-                    : 'red'
-              }>
-                {operationFeedback[record.name].action}
-              </Tag>
-              {operationFeedback[record.name].audit_id && (
-                <Link to={buildOperationLink(operationFeedback[record.name].audit_id)}>
-                  审计
-                </Link>
-              )}
-            </Space>
-          )}
+          {renderFeedback(record.name)}
         </Space>
       ),
     },
@@ -707,19 +902,92 @@ const ClusterDetailPage: React.FC = () => {
     },
   ];
 
-  const workloadColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: 'Ready', key: 'ready', render: (_: any, r: DeploymentInfo) => `${r.ready}/${r.replicas}` },
+  const buildWorkloadColumns = (
+    kind: 'deployment' | 'statefulset',
+    onRestart: (record: DeploymentInfo | StatefulSetInfo) => Promise<void> | void,
+    onScale: (record: DeploymentInfo | StatefulSetInfo) => void,
+    onDelete: (record: DeploymentInfo | StatefulSetInfo) => void,
+  ) => [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => (
+        <Space direction="vertical" size={0}>
+          <Text>{name}</Text>
+          {renderFeedback(`${kind}:${name}`)}
+        </Space>
+      ),
+    },
+    { title: 'Ready', key: 'ready', render: (_: any, r: DeploymentInfo | StatefulSetInfo) => `${r.ready}/${r.replicas}` },
     { title: 'Age', dataIndex: 'age', key: 'age' },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: any, record: DeploymentInfo | StatefulSetInfo) => (
+        <Space size={4} wrap>
+          <Button
+            size="small"
+            aria-label={`重启 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'} ${record.name}`}
+            loading={nodeMutationLoadingKey === `${kind}:${record.name}:${kind}.restart`}
+            onClick={() => { void onRestart(record); }}
+          >
+            重启
+          </Button>
+          <Button
+            size="small"
+            aria-label={`扩缩容 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'} ${record.name}`}
+            loading={nodeMutationLoadingKey === `${kind}:${record.name}:${kind}.scale`}
+            onClick={() => { onScale(record); }}
+          >
+            扩缩容
+          </Button>
+          <Button
+            size="small"
+            danger
+            aria-label={`删除 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'} ${record.name}`}
+            loading={nodeMutationLoadingKey === `${kind}:${record.name}:${kind}.delete`}
+            onClick={() => { onDelete(record); }}
+          >
+            删除
+          </Button>
+        </Space>
+      ),
+    },
   ];
 
   const podColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => (
+        <Space direction="vertical" size={0}>
+          <Text>{name}</Text>
+          {renderFeedback(`pod:${name}`)}
+        </Space>
+      ),
+    },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'Running' ? 'green' : 'blue'}>{s}</Tag> },
     { title: 'Ready', dataIndex: 'ready', key: 'ready' },
     { title: '节点', dataIndex: 'node_name', key: 'node_name' },
     { title: 'IP', dataIndex: 'pod_ip', key: 'pod_ip' },
     { title: 'Age', dataIndex: 'age', key: 'age' },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: any, record: PodInfo) => (
+        <Button
+          size="small"
+          danger
+          aria-label={`删除 Pod ${record.name}`}
+          loading={nodeMutationLoadingKey === `pod:${record.name}:pod.delete`}
+          onClick={() => { handlePodDelete(record); }}
+        >
+          删除
+        </Button>
+      ),
+    },
   ];
 
   const serviceColumns = [
@@ -818,10 +1086,22 @@ const ClusterDetailPage: React.FC = () => {
               <Select style={{ width: 200 }} value={selectedNamespace} onChange={setSelectedNamespace} options={namespaces.map(ns => ({ label: ns.name, value: ns.name }))} loading={resourceLoading} />
               <Spin spinning={resourceLoading}>
                 <Card title="Deployments" size="small" className="mb-4">
-                  <Table columns={workloadColumns} dataSource={deployments} rowKey="name" pagination={false} size="small" />
+                  <Table
+                    columns={buildWorkloadColumns('deployment', handleDeploymentRestart, handleDeploymentScale, handleDeploymentDelete)}
+                    dataSource={deployments}
+                    rowKey="name"
+                    pagination={false}
+                    size="small"
+                  />
                 </Card>
                 <Card title="StatefulSets" size="small" className="mb-4">
-                  <Table columns={workloadColumns} dataSource={statefulsets} rowKey="name" pagination={false} size="small" />
+                  <Table
+                    columns={buildWorkloadColumns('statefulset', handleStatefulSetRestart, handleStatefulSetScale, handleStatefulSetDelete)}
+                    dataSource={statefulsets}
+                    rowKey="name"
+                    pagination={false}
+                    size="small"
+                  />
                 </Card>
                 <Card title="DaemonSets" size="small" className="mb-4">
                   <Table columns={[{ title: '名称', dataIndex: 'name' }, { title: 'Desired', dataIndex: 'desired' }, { title: 'Ready', dataIndex: 'ready' }, { title: 'Age', dataIndex: 'age' }]} dataSource={daemonsets} rowKey="name" pagination={false} size="small" />
@@ -984,6 +1264,7 @@ const ClusterDetailPage: React.FC = () => {
                       await executeClusterOperation(
                         'renew-certificates',
                         'cluster:certificates',
+                        'cluster:certificates',
                         '证书续期',
                         (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
                       );
@@ -1018,6 +1299,7 @@ const ClusterDetailPage: React.FC = () => {
                         const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
                         await executeClusterOperation(
                           'upgrade',
+                          `cluster:upgrade:${targetVersion}`,
                           `cluster:upgrade:${targetVersion}`,
                           '集群升级',
                           (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
@@ -1086,6 +1368,32 @@ const ClusterDetailPage: React.FC = () => {
       </Modal>
 
       <Modal
+        title="调整副本数"
+        open={scaleModalVisible}
+        onCancel={() => {
+          setScaleModalVisible(false);
+          setPendingScaleOperation(null);
+          scaleForm.resetFields();
+        }}
+        onOk={submitScaleOperation}
+        okText="提交扩缩容"
+        cancelText="取消"
+        confirmLoading={Boolean(pendingScaleOperation && nodeMutationLoadingKey === pendingScaleOperation.loadingKey)}
+        destroyOnHidden
+      >
+        <Form form={scaleForm} layout="vertical">
+          <Form.Item
+            name="replicas"
+            label="replicas"
+            rules={[{ required: true, message: '请输入副本数' }]}
+            initialValue={pendingScaleOperation?.currentReplicas}
+          >
+            <InputNumber min={0} className="w-full" aria-label="replicas" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title="审批确认"
         open={approvalModalVisible}
         onCancel={() => {
@@ -1096,7 +1404,7 @@ const ClusterDetailPage: React.FC = () => {
         onOk={submitApprovalToken}
         okText="提交审批"
         cancelText="取消"
-        confirmLoading={Boolean(pendingApprovalOperation && nodeMutationLoadingKey === pendingApprovalOperation.resourceKey)}
+        confirmLoading={Boolean(pendingApprovalOperation && nodeMutationLoadingKey === pendingApprovalOperation.loadingKey)}
         destroyOnHidden
       >
         <Space direction="vertical" className="w-full" size={12}>

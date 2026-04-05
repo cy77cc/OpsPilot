@@ -15,6 +15,13 @@ const mockApi = vi.hoisted(() => ({
     getStatefulSets: vi.fn(),
     getDaemonSets: vi.fn(),
     getPods: vi.fn(),
+    restartDeployment: vi.fn(),
+    scaleDeployment: vi.fn(),
+    deleteDeployment: vi.fn(),
+    restartStatefulSet: vi.fn(),
+    scaleStatefulSet: vi.fn(),
+    deleteStatefulSet: vi.fn(),
+    deletePod: vi.fn(),
     getServices: vi.fn(),
     getConfigMaps: vi.fn(),
     getSecrets: vi.fn(),
@@ -380,5 +387,122 @@ describe('ClusterDetailPage', () => {
         approval_token: undefined,
       });
     });
-  }, 30000);
+  }, 45000);
+
+  it('runs a deployment restart from the workloads tab and renders audit feedback', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: {
+        list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }],
+      },
+    });
+    mockApi.cluster.getDeployments.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'web',
+          namespace: 'default',
+          replicas: 3,
+          ready: 3,
+          updated: 3,
+          available: 3,
+          age: '1d',
+          created_at: '2026-04-04T00:00:00Z',
+        }],
+      },
+    });
+    mockApi.cluster.restartDeployment.mockResolvedValue({
+      data: {
+        state: 'completed',
+        success: true,
+        code: 'success',
+        message: 'Deployment 已重启',
+        audit_id: 301,
+      },
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: /工作负载/i }));
+    await screen.findByText('web');
+    await user.click(screen.getByRole('button', { name: '重启 Deployment web' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.restartDeployment).toHaveBeenCalledWith(42, 'default', 'web', { approval_token: undefined });
+    });
+
+    expect(await screen.findByText('Deployment 重启')).toBeInTheDocument();
+    expect(await screen.findByText('审计')).toBeInTheDocument();
+  }, 45000);
+
+  it('opens the scale modal for statefulsets and retries with approval_token', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: {
+        list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }],
+      },
+    });
+    mockApi.cluster.getStatefulSets.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'db',
+          namespace: 'default',
+          replicas: 2,
+          ready: 2,
+          age: '1d',
+          created_at: '2026-04-04T00:00:00Z',
+        }],
+      },
+    });
+    mockApi.cluster.scaleStatefulSet
+      .mockResolvedValueOnce({
+        data: {
+          state: 'approval_required',
+          success: false,
+          code: 'approval_required',
+          message: '需要审批',
+          audit_id: 401,
+          approval: {
+            required: true,
+            ticket: 'ticket-401',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          state: 'completed',
+          success: true,
+          code: 'success',
+          message: 'StatefulSet 已扩缩容',
+          audit_id: 402,
+        },
+      });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: /工作负载/i }));
+    await screen.findByText('db');
+    await user.click(screen.getByRole('button', { name: '扩缩容 StatefulSet db' }));
+
+    expect(await screen.findByText('调整副本数')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'replicas' }), { target: { value: '5' } });
+    await user.click(screen.getByRole('button', { name: '提交扩缩容' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.scaleStatefulSet).toHaveBeenNthCalledWith(1, 42, 'default', 'db', {
+        replicas: 5,
+        approval_token: undefined,
+      });
+    });
+
+    expect(await screen.findByLabelText('approval_token')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('approval_token'), 'approved-token');
+    await user.click(screen.getByRole('button', { name: '提交审批' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.scaleStatefulSet).toHaveBeenNthCalledWith(2, 42, 'default', 'db', {
+        replicas: 5,
+        approval_token: 'approved-token',
+      });
+    });
+  }, 45000);
 });
