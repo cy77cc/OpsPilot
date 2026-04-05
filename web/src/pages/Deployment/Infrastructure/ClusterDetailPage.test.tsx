@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Modal } from 'antd';
@@ -138,6 +138,42 @@ function mockBaselineLoads() {
       audit_id: 104,
     },
   });
+  mockApi.cluster.upsertNodeLabel.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '标签已更新',
+      audit_id: 105,
+    },
+  });
+  mockApi.cluster.removeNodeLabel.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '标签已删除',
+      audit_id: 106,
+    },
+  });
+  mockApi.cluster.upsertNodeTaint.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '污点已更新',
+      audit_id: 107,
+    },
+  });
+  mockApi.cluster.removeNodeTaint.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: '污点已删除',
+      audit_id: 108,
+    },
+  });
 }
 
 function renderPage() {
@@ -198,6 +234,19 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('节点隔离')).toBeInTheDocument();
     const auditLink = await screen.findByRole('link', { name: '审计' });
     expect(auditLink).toHaveAttribute('href', '/deployment/infrastructure/clusters/42/operations?audit_id=101');
+  });
+
+  it('runs uncordon action from row dropdown', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findAllByText('worker-1');
+    await openNodeActions(user);
+    await user.click(await screen.findByText('Uncordon'));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.uncordonNode).toHaveBeenCalledWith(42, 'worker-1', { approval_token: undefined });
+    });
   });
 
   it('opens the approval modal for approval_required actions and retries with approval_token', async () => {
@@ -278,4 +327,58 @@ describe('ClusterDetailPage', () => {
 
     confirmSpy.mockRestore();
   });
+
+  it('updates and removes node label/taint from node drawer', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'worker-1' }));
+
+    fireEvent.change(screen.getByPlaceholderText('app.kubernetes.io/name'), { target: { value: 'app' } });
+    fireEvent.change(screen.getByPlaceholderText('frontend'), { target: { value: 'frontend' } });
+    await user.click(screen.getByRole('button', { name: '保存标签' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.upsertNodeLabel).toHaveBeenCalledWith(42, 'worker-1', {
+        key: 'app',
+        value: 'frontend',
+        approval_token: undefined,
+      });
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('app.kubernetes.io/name'), { target: { value: 'app' } });
+    fireEvent.change(screen.getByPlaceholderText('frontend'), { target: { value: 'frontend' } });
+    await user.click(screen.getByRole('button', { name: '删除标签' }));
+    await waitFor(() => {
+      expect(mockApi.cluster.removeNodeLabel).toHaveBeenCalledWith(42, 'worker-1', {
+        key: 'app',
+        value: 'frontend',
+        approval_token: undefined,
+      });
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('node-role.kubernetes.io/worker'), { target: { value: 'node-role' } });
+    fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'dedicated' } });
+    await user.click(screen.getByRole('button', { name: '保存污点' }));
+    await waitFor(() => {
+      expect(mockApi.cluster.upsertNodeTaint).toHaveBeenCalledWith(42, 'worker-1', {
+        key: 'node-role',
+        value: 'dedicated',
+        effect: undefined,
+        approval_token: undefined,
+      });
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('node-role.kubernetes.io/worker'), { target: { value: 'node-role' } });
+    fireEvent.change(screen.getByPlaceholderText('value'), { target: { value: 'dedicated' } });
+    await user.click(screen.getByRole('button', { name: '删除污点' }));
+    await waitFor(() => {
+      expect(mockApi.cluster.removeNodeTaint).toHaveBeenCalledWith(42, 'worker-1', {
+        key: 'node-role',
+        value: 'dedicated',
+        effect: undefined,
+        approval_token: undefined,
+      });
+    });
+  }, 30000);
 });
