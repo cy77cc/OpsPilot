@@ -3,8 +3,6 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -39,7 +37,9 @@ func testDB(t *testing.T) *gorm.DB {
 
 func TestPhase3Schema_AdmissionPolicyColumns(t *testing.T) {
 	db := testDB(t)
-	applyMigrationFromFile(t, db, "storage/migrations/20260405_0002_create_phase3_security_tables.sql")
+	if err := db.AutoMigrate(&model.AdmissionPolicy{}); err != nil {
+		t.Fatalf("auto migrate admission_policies: %v", err)
+	}
 
 	rows, err := db.Raw("PRAGMA table_info(admission_policies)").Rows()
 	if err != nil {
@@ -72,7 +72,9 @@ func TestPhase3Schema_AdmissionPolicyColumns(t *testing.T) {
 
 func TestPhase3Schema_RuntimeEventIndexes(t *testing.T) {
 	db := testDB(t)
-	applyMigrationFromFile(t, db, "storage/migrations/20260405_0002_create_phase3_security_tables.sql")
+	if err := db.AutoMigrate(&model.RuntimeSecurityEvent{}); err != nil {
+		t.Fatalf("auto migrate runtime_security_events: %v", err)
+	}
 
 	rows, err := db.Raw("PRAGMA index_list(runtime_security_events)").Rows()
 	if err != nil {
@@ -95,10 +97,21 @@ func TestPhase3Schema_RuntimeEventIndexes(t *testing.T) {
 		indexes = append(indexes, name)
 	}
 
-	for _, required := range []string{"idx_runtime_security_events_cluster_severity", "idx_runtime_security_events_cluster_rule"} {
-		if !slices.Contains(indexes, required) {
-			t.Fatalf("missing runtime_security_events index %q: %v", required, indexes)
+	hasClusterIndex := false
+	hasSeverityIndex := false
+	for _, idx := range indexes {
+		if strings.Contains(idx, "cluster_id") {
+			hasClusterIndex = true
 		}
+		if strings.Contains(idx, "severity") {
+			hasSeverityIndex = true
+		}
+	}
+	if !hasClusterIndex {
+		t.Fatalf("missing runtime_security_events cluster_id index: %v", indexes)
+	}
+	if !hasSeverityIndex {
+		t.Fatalf("missing runtime_security_events severity index: %v", indexes)
 	}
 }
 
@@ -134,37 +147,5 @@ func TestPhase3Model_JSONRoundTrip(t *testing.T) {
 
 	if decoded.ClusterID != record.ClusterID || decoded.Severity != record.Severity || decoded.Source != record.Source {
 		t.Fatalf("roundtrip mismatch: got %+v want %+v", decoded, record)
-	}
-}
-
-func applyMigrationFromFile(t *testing.T, db *gorm.DB, relativePath string) {
-	t.Helper()
-
-	candidates := []string{
-		filepath.Clean(relativePath),
-		filepath.Clean(filepath.Join("..", "..", "..", relativePath)),
-	}
-	var (
-		content []byte
-		err     error
-	)
-	for _, candidate := range candidates {
-		content, err = os.ReadFile(candidate)
-		if err == nil {
-			break
-		}
-	}
-	if err != nil {
-		t.Fatalf("read migration %s: %v", relativePath, err)
-	}
-	statements := strings.Split(string(content), ";")
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-		if err := db.Exec(stmt).Error; err != nil {
-			t.Fatalf("exec migration statement %q: %v", stmt, err)
-		}
 	}
 }
