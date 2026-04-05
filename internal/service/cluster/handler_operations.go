@@ -386,6 +386,16 @@ func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []mode
 		item.Target = row.ResourceID
 		item.ResourceName = row.ResourceID
 		item.ResourceType = row.Resource
+		if row.Resource == PolicyReleaseApprovalResource {
+			if resourceName, target := policyReleaseAuditDisplay(row); resourceName != "" || target != "" {
+				if resourceName != "" {
+					item.ResourceName = resourceName
+				}
+				if target != "" {
+					item.Target = target
+				}
+			}
+		}
 		if item.Status != OperationStateCompleted && message != "" {
 			item.Diagnostics = message
 		}
@@ -495,6 +505,41 @@ func decodeJSONStringSlice(raw string) []any {
 		return []any{single}
 	}
 	return []any{sanitizeOperationText(raw)}
+}
+
+func policyReleaseAuditDisplay(row model.OperationAudit) (string, string) {
+	resourceName, version := policyReleaseAuditFields(decodeJSONStringMap(row.ResultSummaryJSON))
+	if resourceName != "" || version != "" {
+		return resourceName, version
+	}
+	return policyReleaseAuditFields(decodeJSONStringMap(row.RequestSummaryJSON))
+}
+
+func policyReleaseAuditFields(payload map[string]any) (string, string) {
+	if len(payload) == 0 {
+		return "", ""
+	}
+
+	releaseValue, ok := payload["release"]
+	if !ok {
+		return stringValue(payload["policy_name"]), stringValue(payload["version"])
+	}
+
+	releaseMap, ok := releaseValue.(map[string]any)
+	if !ok {
+		return stringValue(payload["policy_name"]), stringValue(payload["version"])
+	}
+
+	policyMap, _ := releaseMap["policy"].(map[string]any)
+	return stringValue(policyMap["name"]), stringValue(releaseMap["version"])
+}
+
+func stringValue(v any) string {
+	value, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func uintValue(v *uint) uint {

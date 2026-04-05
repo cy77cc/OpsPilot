@@ -5,7 +5,10 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
@@ -21,6 +24,13 @@ type Repository struct {
 	db *gorm.DB // GORM 数据库实例
 }
 
+type clusterCNIInfoRecord struct {
+	ClusterID     uint
+	CNIType       string
+	CNIVersion    string
+	NetpolEnabled bool
+}
+
 // NewRepository 创建集群服务数据访问层实例。
 //
 // 参数:
@@ -29,6 +39,106 @@ type Repository struct {
 // 返回: Repository 实例
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
+}
+
+// GetClusterCNIInfo 返回集群的 CNI 发现结果。
+func (r *Repository) GetClusterCNIInfo(ctx context.Context, clusterID uint) (clusterCNIInfoRecord, error) {
+	if r == nil || r.db == nil {
+		return clusterCNIInfoRecord{}, gorm.ErrInvalidDB
+	}
+
+	if _, err := r.GetClusterModel(ctx, clusterID); err != nil {
+		return clusterCNIInfoRecord{}, err
+	}
+
+	info := clusterCNIInfoRecord{ClusterID: clusterID}
+	var task model.ClusterBootstrapTask
+	err := r.db.WithContext(ctx).
+		Where("cluster_id = ?", clusterID).
+		Order("updated_at DESC, created_at DESC, id DESC").
+		First(&task).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return info, nil
+		}
+		return clusterCNIInfoRecord{}, err
+	}
+
+	info.CNIType = strings.ToLower(strings.TrimSpace(task.CNI))
+	config := decodeJSONStringMap(task.ResolvedConfigJSON)
+	if version, ok := config["cniVersion"].(string); ok {
+		info.CNIVersion = strings.TrimSpace(version)
+	}
+	info.NetpolEnabled = decodeNestedBool(config, "flannel", "netpol", "enabled")
+	return info, nil
+}
+
+// GetPolicyReleaseRecord 从治理审计中恢复最新的策略发布快照。
+func (r *Repository) GetPolicyReleaseRecord(ctx context.Context, clusterID, releaseID uint) (*PolicyReleaseRecord, error) {
+	if r == nil || r.db == nil {
+		return nil, gorm.ErrInvalidDB
+	}
+
+	releaseKey := strconv.FormatUint(uint64(releaseID), 10)
+	var rows []model.OperationAudit
+	if err := r.db.WithContext(ctx).
+		Where("domain = ? AND scope_cluster_id = ? AND resource = ? AND resource_id = ?", "cluster", clusterID, PolicyReleaseApprovalResource, releaseKey).
+		Order("id DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		if release := decodePolicyReleaseRecord(row.ResultSummaryJSON); release != nil {
+			return release, nil
+		}
+		if release := decodePolicyReleaseRecord(row.RequestSummaryJSON); release != nil {
+			return release, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func decodePolicyReleaseRecord(raw string) *PolicyReleaseRecord {
+	payload := decodeJSONStringMap(raw)
+	if len(payload) == 0 {
+		return nil
+	}
+
+	releasePayload, ok := payload["release"]
+	if !ok {
+		return nil
+	}
+
+	buf, err := json.Marshal(releasePayload)
+	if err != nil {
+		return nil
+	}
+
+	var release PolicyReleaseRecord
+	if err := json.Unmarshal(buf, &release); err != nil {
+		return nil
+	}
+	if release.ReleaseID == 0 {
+		return nil
+	}
+	return &release
+}
+
+func decodeNestedBool(payload map[string]any, path ...string) bool {
+	current := any(payload)
+	for _, key := range path {
+		next, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current, ok = next[key]
+		if !ok {
+			return false
+		}
+	}
+	value, ok := current.(bool)
+	return ok && value
 }
 
 // ListClusters 查询集群列表。

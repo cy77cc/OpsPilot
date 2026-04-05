@@ -20,8 +20,10 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHandler(svcCtx)
 
 	// 启动集群指标采集器
-	collector := NewCollector(svcCtx)
-	collector.Start()
+	if svcCtx != nil && svcCtx.MetricsPusher != nil {
+		collector := NewCollector(svcCtx)
+		collector.Start()
+	}
 
 	clusterGroup := v1.Group("/clusters", middleware.JWTAuth())
 	{
@@ -87,6 +89,11 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 高级操作
 		clusterGroup.GET("/:id/events", h.GetEvents)
+		clusterGroup.GET("/:id/cni-info", h.GetCNIInfo)
+		clusterGroup.POST("/:id/policies/:namespace/:name/releases", h.CreatePolicyRelease)
+		clusterGroup.GET("/:id/releases/:release_id", h.GetPolicyRelease)
+		clusterGroup.POST("/:id/releases/:release_id/apply", h.ApplyPolicyRelease)
+		clusterGroup.POST("/:id/releases/:release_id/rollback", h.RollbackPolicyRelease)
 		clusterGroup.POST("/:id/approvals", h.CreateApproval)
 		clusterGroup.POST("/:id/approvals/:ticket/confirm", h.ConfirmApproval)
 		clusterGroup.GET("/:id/operations/history", h.ListOperationHistory)
