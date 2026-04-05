@@ -244,3 +244,18 @@ Phase 3 不重新发明审批/审计模型，复用现有能力：
 - Phase 3 主题：安全与交付平台化
 - 核心目标：准入/镜像扫描、运行时安全、GitOps/应用市场
 - 在主题不变前提下，明确顺序 `A -> C -> B`，并增加可落地 API、数据模型、部署与量化 DoD。
+
+## 13. Runbook 映射
+
+Phase 3 值班与操作手册落地在：
+
+- `docs/runbooks/phase3-security-delivery-runtime-operations.md`
+
+该 Runbook 至少覆盖：
+
+- `Prerequisites`
+- `Release Flow`
+- `Rollback Flow`
+- `Runtime Containment`
+- `external_managed Downgrade`
+- `SLO/SLA Verification`
