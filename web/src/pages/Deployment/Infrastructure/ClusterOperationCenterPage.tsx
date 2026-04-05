@@ -247,12 +247,11 @@ const ClusterOperationCenterPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await Api.cluster.getClusterOperations(clusterId, buildQuery(nextFilters, nextPage, nextPageSize));
-      const resolvedPage = typeof (res.data as { page?: number }).page === 'number' && (res.data as { page?: number }).page! > 0
-        ? (res.data as { page: number }).page
-        : nextPage;
-      const resolvedPageSize = typeof (res.data as { page_size?: number }).page_size === 'number' && (res.data as { page_size?: number }).page_size! > 0
-        ? (res.data as { page_size: number }).page_size
-        : nextPageSize;
+      const responseMeta = res.data as unknown as Record<string, unknown>;
+      const pageCandidate = Number(responseMeta.page);
+      const pageSizeCandidate = Number(responseMeta.page_size);
+      const resolvedPage = Number.isFinite(pageCandidate) && pageCandidate > 0 ? pageCandidate : nextPage;
+      const resolvedPageSize = Number.isFinite(pageSizeCandidate) && pageSizeCandidate > 0 ? pageSizeCandidate : nextPageSize;
       setHistory(res.data.list || []);
       setTotal(res.data.total || 0);
       setPage(resolvedPage);

@@ -104,15 +104,14 @@ gantt
 
 ## 6. 当前执行状态（2026-04-05）
 
-- Phase 1 任务进度：`8/8`（其中 Task 8 已完成收口记录与发布控制判断）
-- 已闭环能力：
-  - 节点操作（cordon/uncordon/drain/remove + 标签/污点）
-  - 工作负载基础操作（重启/扩缩容/删除）
-  - Service/Ingress 基础治理
-  - 操作中心追踪与详情回链
-  - 高风险失败恢复指引 + runbook
-- 发布判定：
-  - Phase 1 聚焦回归：通过
-  - 仓库全量回归/构建：存在既有非 Phase 1 阻塞，需独立治理
-- 对应验收记录：
-  - `docs/superpowers/specs/2026-04-05-k8s-phase1-release-readiness.md`
+- Phase 1：`8/8` 已完成并验收归档。
+- Phase 2：核心链路已落地（Policy Center、Operation Center 回链、指标桥接、E2E lite）。
+- 网络与流量路线状态：
+  - `Gateway API` 为主线（`Ingress` 仅兼容过渡）。
+  - `NetworkPolicy` 以 `Cilium` 为主，兼容 `Calico` 与 `Flannel`。
+- Phase 2 发布控制资产：
+  - 运行手册：`docs/runbooks/cluster-policy-release-and-rollback.md`
+  - 设计与验收记录：`docs/superpowers/specs/2026-04-05-k8s-phase2-networkpolicy-design.md`
+- 门禁结论：
+  - Phase 2 聚焦回归：通过
+  - 仓库全量门禁：存在既有非 Phase 2 阻塞（已在 Phase 2 验收记录中登记）

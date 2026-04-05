@@ -750,3 +750,31 @@ egress.ports                 -> spec.egress[].ports
 | `/api/v1/releases/{release_id}/apply` | POST | 执行发布 |
 | `/api/v1/releases/{release_id}/rollback` | POST | 回滚发布 |
 | `/api/v1/clusters/{cluster_id}/cni-info` | GET | 获取 CNI 能力信息 |
+
+## 11. Phase 2 验收记录（2026-04-05）
+
+### 11.1 聚焦回归结果
+
+- 后端聚焦回归：通过  
+  - `GOCACHE=/tmp/go-build-cache go test ./internal/service/cluster/... ./internal/service/governance/...`
+- 前端聚焦回归：通过  
+  - `cd web && npx vitest run src/pages/Deployment/Infrastructure/ClusterPolicyCenterPage.test.tsx src/pages/Deployment/Infrastructure/ClusterOperationCenterPage.test.tsx src/api/modules/cluster.policy.test.ts --testTimeout=60000`
+- E2E lite 流程回归：通过  
+  - `cd web && npx vitest run src/e2e/policy-release-flow.test.ts --testTimeout=120000`
+
+### 11.2 全量门禁结果（非本阶段阻塞记录）
+
+- `go test ./...`：未通过（存在既有非 Phase 2 阻塞）
+  - `internal/dao/ai`：缺失 migration fixture（`storage/migrations/20260320_0003_add_ai_failed_session_persistence.sql`、`20260321_0004_fix_ai_run_contents_utf8mb4.sql`）
+  - `internal/service/ai/handler`：多条 SSE 回放相关用例失败（事件重放顺序断言不满足）
+  - `storage/migration`：缺失 migration fixture（`20260317_0003_create_ai_approval_tasks.sql`）
+- `cd web && npm run test`：未通过（存在既有前端测试失败与环境错误）
+  - Notification、Deployment、Cluster 相关若干历史测试超时/断言不匹配
+  - 运行期出现 `window is not defined`、`MutationObserver is not a constructor` 的测试环境问题
+- `cd web && npm run build`：未通过（存在既有类型定义缺失）
+  - `src/data/mockData.ts` 引用了 `../types` 中不存在的导出（`ConfigApp`、`ConfigItem`、`ConfigTemplate`、`Release`、`AuditLog`）
+
+### 11.3 本阶段发布结论
+
+- Phase 2 网络策略治理链路（NetworkPolicy + Gateway API 过渡方向 + Flannel 兼容约束）已具备“聚焦验收可发布”条件。
+- 仓库全量门禁仍有历史阻塞项，需独立修复后再执行全仓统一放行。
