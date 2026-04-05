@@ -95,6 +95,8 @@ export * from './modules/aiops';
 import { aiopsApi } from './modules/aiops';
 export * from './modules/dashboard';
 import { dashboardApi } from './modules/dashboard';
+export * from './modules/cluster.phase3';
+import { clusterPhase3Api } from './modules/cluster.phase3';
 
 // 统一导出所有API
 export const Api = {
@@ -121,6 +123,7 @@ export const Api = {
   notification: notificationApi,
   aiops: aiopsApi,
   dashboard: dashboardApi,
+  phase3: clusterPhase3Api,
 };
 
 export default Api;

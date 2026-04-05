@@ -21,7 +21,8 @@ import (
 //   - 封装数据库操作
 //   - 提供集群、节点、凭证等数据的 CRUD 方法
 type Repository struct {
-	db *gorm.DB // GORM 数据库实例
+	db     *gorm.DB           // GORM 数据库实例
+	Phase3 *Phase3Repository
 }
 
 type clusterCNIInfoRecord struct {
@@ -38,7 +39,9 @@ type clusterCNIInfoRecord struct {
 //
 // 返回: Repository 实例
 func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+	repo := &Repository{db: db}
+	repo.Phase3 = NewPhase3Repository(db)
+	return repo
 }
 
 // GetClusterCNIInfo 返回集群的 CNI 发现结果。

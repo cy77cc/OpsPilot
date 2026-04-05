@@ -28,6 +28,7 @@ const ClusterListPage = lazy(() => import('./pages/Deployment/Infrastructure/Clu
 const ClusterDetailPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterDetailPage'));
 const ClusterOperationCenterPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterOperationCenterPage'));
 const ClusterPolicyCenterPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterPolicyCenterPage'));
+const ClusterSecurityCenterPage = lazy(() => import('./pages/Deployment/Infrastructure/ClusterSecurityCenterPage'));
 const ClusterBootstrapWizard = lazy(() => import('./pages/Deployment/Infrastructure/ClusterBootstrapWizard'));
 const ClusterImportWizard = lazy(() => import('./pages/Deployment/Infrastructure/ClusterImportWizard'));
 const CredentialListPage = lazy(() => import('./pages/Deployment/Infrastructure/CredentialListPage'));
@@ -95,6 +96,7 @@ export default function ProtectedApp() {
                 <Route path="/deployment/infrastructure/clusters/:id" element={withAuth('cluster', 'read', <ClusterDetailPage />)} />
                 <Route path="/deployment/infrastructure/clusters/:id/operations" element={withAuth('cluster', 'read', <ClusterOperationCenterPage />)} />
                 <Route path="/deployment/infrastructure/clusters/:id/policies" element={withAuth('cluster', 'read', <ClusterPolicyCenterPage />)} />
+                <Route path="/deployment/infrastructure/clusters/:id/security" element={withAuth('cluster', 'read', <ClusterSecurityCenterPage />)} />
                 <Route path="/deployment/infrastructure/clusters/bootstrap" element={withAuth('cluster', 'write', <ClusterBootstrapWizard />)} />
                 <Route path="/deployment/infrastructure/clusters/import" element={withAuth('cluster', 'write', <ClusterImportWizard />)} />
                 <Route path="/deployment/infrastructure/credentials" element={withAuth('cluster', 'read', <CredentialListPage />)} />
