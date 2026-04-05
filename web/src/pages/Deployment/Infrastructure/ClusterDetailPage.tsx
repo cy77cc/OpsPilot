@@ -309,6 +309,18 @@ const ClusterDetailPage: React.FC = () => {
     return `/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
   }, [clusterId]);
 
+  const buildPolicyReleaseTraceLink = useCallback((releaseId?: string | number, auditId?: string | number) => {
+    const params = new URLSearchParams();
+    params.set('resource', 'policy_release');
+    if (releaseId) {
+      params.set('release_id', String(releaseId));
+    }
+    if (auditId) {
+      params.set('audit_id', String(auditId));
+    }
+    return `/deployment/infrastructure/clusters/${clusterId}/operations?${params.toString()}`;
+  }, [clusterId]);
+
   const recordOperationFeedback = useCallback((resourceKey: string, feedback: {
     action: string;
     state: ClusterOperationState;
@@ -1463,6 +1475,9 @@ const ClusterDetailPage: React.FC = () => {
         <Space>
           <Button icon={<AuditOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`)}>
             操作中心
+          </Button>
+          <Button icon={<SafetyOutlined />} onClick={() => navigate(buildPolicyReleaseTraceLink())}>
+            策略发布轨迹
           </Button>
           <Button icon={<SyncOutlined />} onClick={handleSyncNodes} loading={nodesLoading}>同步节点</Button>
           <Button icon={<ApiOutlined />} onClick={handleTestConnection}>测试连接</Button>

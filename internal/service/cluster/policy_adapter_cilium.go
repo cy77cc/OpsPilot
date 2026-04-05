@@ -456,6 +456,7 @@ func translateCiliumFQDNSelector(value string) CiliumFQDNSelector {
 }
 
 func unsupportedCiliumField(field string, message string) error {
+	RecordCNIAdapterTranslationError("cilium", PolicyErrorCNISemanticGap)
 	return &CiliumTranslationError{
 		Code:    PolicyErrorCNISemanticGap,
 		Field:   field,

@@ -44,6 +44,22 @@ const historyItem = {
   namespace: '',
 };
 
+const policyReleaseHistoryItem = {
+  audit_id: 701,
+  action: 'policy.release.apply',
+  resource: 'policy_release',
+  resource_type: 'policy_release',
+  resource_name: 'allow-api',
+  resource_id: '501',
+  target: 'candidate-v2',
+  status: 'completed',
+  operator: 'alice',
+  message: 'policy release applied',
+  created_at: '2026-04-05T11:00:00Z',
+  updated_at: '2026-04-05T11:05:00Z',
+  namespace: 'prod',
+};
+
 function mockBaselineLoads() {
   mockApi.cluster.getClusterDetail.mockResolvedValue({ data: defaultCluster });
   mockApi.cluster.getClusterOperations.mockResolvedValue({
@@ -156,5 +172,54 @@ describe('ClusterOperationCenterPage', () => {
         page_size: 20,
       }));
     });
+  });
+
+  it('boots into policy release trace mode from query params and keeps release linkage in the detail share link', async () => {
+    mockApi.cluster.getClusterOperations.mockResolvedValueOnce({
+      data: {
+        list: [policyReleaseHistoryItem],
+        total: 1,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+      },
+    });
+    mockApi.cluster.getClusterOperationDetail.mockResolvedValueOnce({
+      data: {
+        ...policyReleaseHistoryItem,
+        request: {
+          release: {
+            release_id: 501,
+            version: 'candidate-v2',
+            policy: {
+              name: 'allow-api',
+              namespace: 'prod',
+            },
+          },
+        },
+        response: {
+          release: {
+            release_id: 501,
+            version: 'candidate-v2',
+          },
+        },
+        diagnostics: [],
+        timeline: [],
+      },
+    });
+
+    renderPage('/deployment/infrastructure/clusters/42/operations?resource=policy_release&release_id=501');
+
+    await waitFor(() => {
+      expect(mockApi.cluster.getClusterOperations).toHaveBeenCalledWith(42, expect.objectContaining({
+        resource: 'policy_release',
+      }));
+    });
+
+    expect(await screen.findByText('allow-api')).toBeInTheDocument();
+
+    const shareLink = await screen.findByRole('button', { name: '复制/共享当前审计链接' });
+    expect(await screen.findByText('#501')).toBeInTheDocument();
+    expect(shareLink).toBeInTheDocument();
   });
 });

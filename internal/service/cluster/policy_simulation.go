@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 )
 
 var criticalPolicyNamespaces = map[string]struct{}{
@@ -63,7 +64,11 @@ func (r PolicySimulationResult) MarshalYAML() (any, error) {
 
 // SimulatePolicy evaluates a candidate policy and returns simulation findings plus risk.
 func SimulatePolicy(input PolicySimulationInput) PolicySimulationResult {
+	startedAt := time.Now()
+	defer ObserveSimulationEvaluationDurationSince(startedAt)
+
 	candidate := normalizedPolicyDefinition(input.Candidate)
+	recordPolicyRuleMetrics(candidate)
 	impact := buildImpactSummary(candidate, input.NamespacePodCounts)
 	blockingIssues := detectBlockingIssues(input, candidate, impact.AffectedNamespaces)
 	warnings := detectWarnings(candidate, impact)
@@ -86,6 +91,33 @@ func SimulatePolicy(input PolicySimulationInput) PolicySimulationResult {
 			RiskScore: riskScore,
 			RiskLevel: riskLevel,
 		},
+	}
+}
+
+func recordPolicyRuleMetrics(candidate PolicyDefinition) {
+	policyName := strings.TrimSpace(candidate.Metadata.Name)
+	namespace := strings.TrimSpace(candidate.Metadata.Namespace)
+
+	for _, rule := range candidate.Spec.Ingress {
+		action := strings.TrimSpace(string(rule.Action))
+		if action == "" {
+			action = string(PolicyRuleActionAllow)
+		}
+		RecordPolicyHit(policyName, action, "ingress", namespace)
+		if rule.Action == PolicyRuleActionDeny {
+			RecordPolicyDeny(policyName, namespace)
+		}
+	}
+
+	for _, rule := range candidate.Spec.Egress {
+		action := strings.TrimSpace(string(rule.Action))
+		if action == "" {
+			action = string(PolicyRuleActionAllow)
+		}
+		RecordPolicyHit(policyName, action, "egress", namespace)
+		if rule.Action == PolicyRuleActionDeny {
+			RecordPolicyDeny(policyName, namespace)
+		}
 	}
 }
 

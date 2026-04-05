@@ -45,6 +45,21 @@ type OperationFilters = {
   to?: string;
 };
 
+type OperationTraceRecord = ClusterOperationHistoryItem & Partial<{
+  resource_id?: string | number;
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+}>;
+
+type PolicyReleaseTrace = {
+  releaseId?: string;
+  version?: string;
+  policyName?: string;
+  namespace?: string;
+};
+
+const POLICY_RELEASE_RESOURCE = 'policy_release';
+
 const statusMeta: Record<ClusterOperationState | string, { color: string; text: string }> = {
   completed: { color: 'green', text: '已完成' },
   approval_required: { color: 'orange', text: '待审批' },
@@ -61,6 +76,7 @@ const resourceOptions = [
   { value: 'ingress', label: 'Ingress' },
   { value: 'cluster', label: '集群' },
   { value: 'certificate', label: '证书' },
+  { value: POLICY_RELEASE_RESOURCE, label: '策略发布' },
 ];
 
 function formatDate(value?: string) {
@@ -119,6 +135,69 @@ function summarizeDiagnostics(items?: unknown[] | null) {
   }).join(' | ');
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeTraceText(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  return undefined;
+}
+
+function extractPolicyReleaseTrace(record?: OperationTraceRecord | ClusterOperationDetail | null): PolicyReleaseTrace {
+  if (!record) {
+    return {};
+  }
+
+  const source = record as OperationTraceRecord;
+  const requestRelease = asRecord(asRecord(source.request)?.release);
+  const responseRelease = asRecord(asRecord(source.response)?.release);
+  const release = responseRelease || requestRelease;
+  const policy = asRecord(release?.policy) || asRecord(requestRelease?.policy) || asRecord(responseRelease?.policy);
+
+  return {
+    releaseId: normalizeTraceText(source.resource_id)
+      || normalizeTraceText(release?.release_id)
+      || normalizeTraceText(release?.releaseId),
+    version: normalizeTraceText(source.target)
+      || normalizeTraceText(release?.version),
+    policyName: normalizeTraceText(source.resource_name)
+      || normalizeTraceText(policy?.name),
+    namespace: normalizeTraceText(source.namespace)
+      || normalizeTraceText(policy?.namespace),
+  };
+}
+
+function parseFilters(searchParams: URLSearchParams): OperationFilters {
+  const releaseId = normalizeTraceText(searchParams.get('release_id'));
+  const resource = normalizeTraceText(searchParams.get('resource')) || (releaseId ? POLICY_RELEASE_RESOURCE : undefined);
+  return {
+    resource,
+    status: normalizeTraceText(searchParams.get('status')),
+    operator: normalizeTraceText(searchParams.get('operator')),
+    from: normalizeTraceText(searchParams.get('from')),
+    to: normalizeTraceText(searchParams.get('to')),
+  };
+}
+
+function buildRangeValue(filters: OperationFilters): [dayjs.Dayjs | null, dayjs.Dayjs | null] | undefined {
+  if (!filters.from && !filters.to) {
+    return undefined;
+  }
+  return [
+    filters.from ? dayjs(filters.from) : null,
+    filters.to ? dayjs(filters.to) : null,
+  ];
+}
+
 const ClusterOperationCenterPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -137,6 +216,21 @@ const ClusterOperationCenterPage: React.FC = () => {
   const [filters, setFilters] = useState<OperationFilters>({});
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [selectedDetail, setSelectedDetail] = useState<ClusterOperationDetail | null>(null);
+  const releaseFilterId = normalizeTraceText(searchParams.get('release_id'));
+  const searchFilters = useMemo(() => parseFilters(searchParams), [searchParams]);
+
+  const buildOperationLink = useCallback((auditId?: string | number, releaseId?: string) => {
+    const params = new URLSearchParams();
+    if (searchFilters.resource) params.set('resource', searchFilters.resource);
+    if (searchFilters.status) params.set('status', searchFilters.status);
+    if (searchFilters.operator) params.set('operator', searchFilters.operator);
+    if (searchFilters.from) params.set('from', searchFilters.from);
+    if (searchFilters.to) params.set('to', searchFilters.to);
+    if (releaseId) params.set('release_id', releaseId);
+    if (auditId) params.set('audit_id', String(auditId));
+    const query = params.toString();
+    return `/deployment/infrastructure/clusters/${clusterId}/operations${query ? `?${query}` : ''}`;
+  }, [clusterId, searchFilters.from, searchFilters.operator, searchFilters.resource, searchFilters.status, searchFilters.to]);
 
   const loadCluster = useCallback(async () => {
     if (!clusterId) return;
@@ -181,8 +275,13 @@ const ClusterOperationCenterPage: React.FC = () => {
       const res = await Api.cluster.getClusterOperationDetail(clusterId, auditIDText);
       setSelectedDetail(res.data);
       setDetailOpen(true);
+      const trace = extractPolicyReleaseTrace(res.data);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.set('audit_id', auditIDText);
+      if (trace.releaseId) {
+        nextParams.set('resource', POLICY_RELEASE_RESOURCE);
+        nextParams.set('release_id', trace.releaseId);
+      }
       setSearchParams(nextParams, { replace: true });
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载操作详情失败');
@@ -196,8 +295,15 @@ const ClusterOperationCenterPage: React.FC = () => {
   }, [loadCluster]);
 
   useEffect(() => {
-    void loadHistory(1, 20, {});
-  }, [clusterId, loadHistory]);
+    setFilters(searchFilters);
+    filterForm.setFieldsValue({
+      resource: searchFilters.resource,
+      status: searchFilters.status,
+      operator: searchFilters.operator,
+      range: buildRangeValue(searchFilters),
+    });
+    void loadHistory(1, 20, searchFilters);
+  }, [clusterId, filterForm, loadHistory, searchFilters]);
 
   useEffect(() => {
     const auditId = searchParams.get('audit_id');
@@ -206,6 +312,23 @@ const ClusterOperationCenterPage: React.FC = () => {
       void loadDetail(auditId);
     }
   }, [loadDetail, searchParams, selectedAuditId]);
+
+  const visibleHistory = useMemo(() => {
+    if (!releaseFilterId) {
+      return history;
+    }
+    return history.filter((item) => extractPolicyReleaseTrace(item as OperationTraceRecord).releaseId === releaseFilterId);
+  }, [history, releaseFilterId]);
+
+  useEffect(() => {
+    if (!releaseFilterId || searchParams.get('audit_id') || detailLoading || selectedAuditId) {
+      return;
+    }
+    const matched = visibleHistory[0];
+    if (matched) {
+      void loadDetail(matched.audit_id);
+    }
+  }, [detailLoading, loadDetail, releaseFilterId, searchParams, selectedAuditId, visibleHistory]);
 
   const submitFilters = async (values: { resource?: string; status?: string; operator?: string; range?: [dayjs.Dayjs | null, dayjs.Dayjs | null] }) => {
     const nextFilters: OperationFilters = {
@@ -217,6 +340,23 @@ const ClusterOperationCenterPage: React.FC = () => {
     };
     setFilters(nextFilters);
     setPage(1);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextFilters.resource) nextParams.set('resource', nextFilters.resource);
+    else nextParams.delete('resource');
+    if (nextFilters.status) nextParams.set('status', nextFilters.status);
+    else nextParams.delete('status');
+    if (nextFilters.operator) nextParams.set('operator', nextFilters.operator);
+    else nextParams.delete('operator');
+    if (nextFilters.from) nextParams.set('from', nextFilters.from);
+    else nextParams.delete('from');
+    if (nextFilters.to) nextParams.set('to', nextFilters.to);
+    else nextParams.delete('to');
+    if (releaseFilterId && nextFilters.resource === POLICY_RELEASE_RESOURCE) {
+      nextParams.set('release_id', releaseFilterId);
+    } else {
+      nextParams.delete('release_id');
+    }
+    setSearchParams(nextParams, { replace: true });
     await loadHistory(1, pageSize, nextFilters);
   };
 
@@ -224,6 +364,14 @@ const ClusterOperationCenterPage: React.FC = () => {
     filterForm.resetFields();
     setFilters({});
     setPage(1);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('resource');
+    nextParams.delete('status');
+    nextParams.delete('operator');
+    nextParams.delete('from');
+    nextParams.delete('to');
+    nextParams.delete('release_id');
+    setSearchParams(nextParams, { replace: true });
     await loadHistory(1, pageSize, {});
   };
 
@@ -249,8 +397,23 @@ const ClusterOperationCenterPage: React.FC = () => {
       key: 'resource',
       render: (_, record) => (
         <div>
-          <div>{record.resource_name || record.target || record.resource || record.resource_type || '-'}</div>
-          <Text type="secondary">{record.namespace || record.resource_type || '-'}</Text>
+          {(() => {
+            const trace = extractPolicyReleaseTrace(record as OperationTraceRecord);
+            return (
+              <>
+                <div>{trace.policyName || record.resource_name || record.target || record.resource || record.resource_type || '-'}</div>
+                <Space size={8} wrap>
+                  <Text type="secondary">{trace.namespace || record.namespace || record.resource_type || '-'}</Text>
+                  {trace.releaseId ? (
+                    <Link to={buildOperationLink(record.audit_id, trace.releaseId)}>
+                      Release #{trace.releaseId}
+                    </Link>
+                  ) : null}
+                  {trace.version ? <Text type="secondary">{trace.version}</Text> : null}
+                </Space>
+              </>
+            );
+          })()}
         </div>
       ),
     },
@@ -294,16 +457,18 @@ const ClusterOperationCenterPage: React.FC = () => {
         </Space>
       ),
     },
-  ], [loadDetail]);
+  ], [buildOperationLink, loadDetail]);
 
   const detail = selectedDetail;
   const detailApproval = detail?.approval;
   const detailAuditLink = selectedAuditId || detail?.audit_id;
+  const detailTrace = extractPolicyReleaseTrace(detail as OperationTraceRecord | null);
   const isInitialLoading = loading && history.length === 0;
   const detailApprovalRequired = detailApproval?.required ?? Boolean(detailApproval?.ticket || detail?.status === 'approval_required');
   const requestSummary = summarizeObject(detail?.request);
   const responseSummary = summarizeObject(detail?.response);
   const diagnosticsSummary = summarizeDiagnostics(detail?.diagnostics);
+  const effectiveTotal = releaseFilterId ? visibleHistory.length : total;
 
   return (
     <div className="space-y-6">
@@ -318,6 +483,11 @@ const ClusterOperationCenterPage: React.FC = () => {
               {cluster?.name || `集群 #${clusterId}`} 操作中心
             </Title>
             <Text type="secondary">查看高风险操作审计、审批状态与执行详情</Text>
+            {releaseFilterId ? (
+              <div>
+                <Tag color="purple">Policy Release #{releaseFilterId}</Tag>
+              </div>
+            ) : null}
           </div>
         </div>
         <Space>
@@ -380,14 +550,14 @@ const ClusterOperationCenterPage: React.FC = () => {
           <TableSkeleton toolbar={false} rows={10} columns={7} />
         ) : (
           <Table
-            dataSource={history}
+            dataSource={visibleHistory}
             columns={columns}
             rowKey="audit_id"
             loading={false}
             pagination={{
               current: page,
               pageSize,
-              total,
+              total: effectiveTotal,
               showSizeChanger: true,
               showTotal: (value) => `共 ${value} 条`,
               onChange: (nextPage, nextSize) => {
@@ -407,7 +577,7 @@ const ClusterOperationCenterPage: React.FC = () => {
           setSelectedDetail(null);
         }}
         extra={detailAuditLink ? (
-          <Button type="link" onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${detailAuditLink}`)}>
+          <Button type="link" onClick={() => navigate(buildOperationLink(detailAuditLink, detailTrace.releaseId))}>
             复制/共享当前审计链接
           </Button>
         ) : null}
@@ -423,6 +593,12 @@ const ClusterOperationCenterPage: React.FC = () => {
                 {detail.resource_name || detail.target || detail.resource || detail.resource_type || '-'}
               </Descriptions.Item>
               <Descriptions.Item label="资源类型">{detail.resource_type || detail.resource || '-'}</Descriptions.Item>
+              {detailTrace.releaseId ? (
+                <Descriptions.Item label="Release ID">#{detailTrace.releaseId}</Descriptions.Item>
+              ) : null}
+              {detailTrace.version ? (
+                <Descriptions.Item label="发布版本">{detailTrace.version}</Descriptions.Item>
+              ) : null}
               <Descriptions.Item label="状态">
                 <Tag color={(statusMeta[detail.status] || { color: 'default' }).color}>
                   {(statusMeta[detail.status] || { text: detail.status }).text}

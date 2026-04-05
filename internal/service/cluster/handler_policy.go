@@ -175,6 +175,11 @@ func (h *Handler) RollbackPolicyRelease(c *gin.Context) {
 }
 
 func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
+	startedAt := time.Now()
+	observeReleasePhase := func(phase string) {
+		ObservePolicyReleaseDuration(phase, time.Since(startedAt))
+	}
+
 	clusterID := httpx.UintFromParam(c, "id")
 	releaseID := httpx.UintFromParam(c, "release_id")
 	if clusterID == 0 || releaseID == 0 {
@@ -208,6 +213,7 @@ func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
 	now := time.Now().UTC()
 	allowed, approval, state, code, message, err := h.gatePolicyReleaseAction(c.Request.Context(), release, action, strings.TrimSpace(req.ApprovalToken), operatorID, now)
 	if err != nil {
+		observeReleasePhase("failed")
 		httpx.ServerErr(c, err)
 		return
 	}
@@ -215,9 +221,11 @@ func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
 	if !allowed {
 		auditID, auditErr := h.recordPolicyReleaseAudit(c.Request.Context(), release, action, state, code, message, operatorID, approvalTicket(approval))
 		if auditErr != nil {
+			observeReleasePhase("failed")
 			httpx.ServerErr(c, auditErr)
 			return
 		}
+		observeReleasePhase(state)
 		switch state {
 		case OperationStateApprovalRequired:
 			httpx.OK(c, NewApprovalRequiredOperationResponse(approval, auditID, message, gin.H{"release": release}))
@@ -232,10 +240,12 @@ func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
 	switch action {
 	case PolicyReleaseApprovalActionApply:
 		if err := release.MarkApplied(now); err != nil {
+			observeReleasePhase("failed")
 			httpx.ServerErr(c, err)
 			return
 		}
 		if err := release.MarkActive(); err != nil {
+			observeReleasePhase("failed")
 			httpx.ServerErr(c, err)
 			return
 		}
@@ -246,6 +256,7 @@ func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
 			target = release.PreviousStableVersion
 		}
 		if err := release.Rollback(target, now); err != nil {
+			observeReleasePhase("failed")
 			httpx.ServerErr(c, err)
 			return
 		}
@@ -254,9 +265,11 @@ func (h *Handler) handlePolicyReleaseAction(c *gin.Context, action string) {
 
 	auditID, err := h.recordPolicyReleaseAudit(c.Request.Context(), release, action, OperationStateCompleted, OperationCodeSuccess, message, operatorID, strings.TrimSpace(req.ApprovalToken))
 	if err != nil {
+		observeReleasePhase("failed")
 		httpx.ServerErr(c, err)
 		return
 	}
+	observeReleasePhase(string(release.Status.Phase))
 
 	httpx.OK(c, NewCompletedOperationResponse(auditID, gin.H{"release": release}))
 }

@@ -312,6 +312,7 @@ func labelSelectorPtr(selector metav1.LabelSelector) *metav1.LabelSelector {
 }
 
 func unsupportedFlannelL7Field(field string) error {
+	RecordCNIAdapterTranslationError("flannel", PolicyErrorFlannelL7NotSupported)
 	return &FlannelTranslationError{
 		Code:       PolicyErrorFlannelL7NotSupported,
 		Field:      field,
@@ -321,6 +322,7 @@ func unsupportedFlannelL7Field(field string) error {
 }
 
 func unsupportedFlannelField(field string, message string) error {
+	RecordCNIAdapterTranslationError("flannel", PolicyErrorFlannelOnlyStandardNP)
 	return &FlannelTranslationError{
 		Code:       PolicyErrorFlannelOnlyStandardNP,
 		Field:      field,

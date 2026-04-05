@@ -418,6 +418,7 @@ func orderedPolicyWarnings(set map[string]PolicyWarning) []PolicyWarning {
 }
 
 func unsupportedCalicoField(field string, message string) error {
+	RecordCNIAdapterTranslationError("calico", PolicyErrorCNISemanticGap)
 	return &CalicoTranslationError{
 		Code:    PolicyErrorCNISemanticGap,
 		Field:   field,
