@@ -232,15 +232,16 @@ const ClusterDetailPage: React.FC = () => {
     return `/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
   }, [clusterId]);
 
-  const recordOperationFeedback = useCallback((nodeName: string, feedback: {
+  const recordOperationFeedback = useCallback((resourceKey: string, feedback: {
     action: string;
     state: ClusterOperationState;
     message: string;
     audit_id?: string | number;
   }) => {
+    const feedbackKey = String(resourceKey || '').split(':')[0];
     setOperationFeedback((prev) => ({
       ...prev,
-      [nodeName]: feedback,
+      [feedbackKey]: feedback,
     }));
   }, []);
 
@@ -301,7 +302,7 @@ const ClusterDetailPage: React.FC = () => {
         message.info(
           <span>
             审计记录已生成，前往{' '}
-            <Link to={buildOperationLink(result.audit_id)}>操作中心</Link>
+            <a href={buildOperationLink(result.audit_id)}>操作中心</a>
           </span>,
         );
       }
@@ -346,7 +347,7 @@ const ClusterDetailPage: React.FC = () => {
           message.info(
             <span>
               审计记录已生成，前往{' '}
-              <Link to={buildOperationLink(result.audit_id)}>操作中心</Link>
+              <a href={buildOperationLink(result.audit_id)}>操作中心</a>
             </span>,
           );
         }
@@ -1082,6 +1083,41 @@ const ClusterDetailPage: React.FC = () => {
             <Button type="primary" htmlType="submit">添加</Button>
           </div>
         </Form>
+      </Modal>
+
+      <Modal
+        title="审批确认"
+        open={approvalModalVisible}
+        onCancel={() => {
+          setApprovalModalVisible(false);
+          setPendingApprovalOperation(null);
+          approvalForm.resetFields();
+        }}
+        onOk={submitApprovalToken}
+        okText="提交审批"
+        cancelText="取消"
+        confirmLoading={Boolean(pendingApprovalOperation && nodeMutationLoadingKey === pendingApprovalOperation.resourceKey)}
+        destroyOnHidden
+      >
+        <Space direction="vertical" className="w-full" size={12}>
+          {pendingApprovalOperation?.approval?.ticket && (
+            <Text>
+              审批单号: <Text code>{pendingApprovalOperation.approval.ticket}</Text>
+            </Text>
+          )}
+          <Text type="secondary">
+            {pendingApprovalOperation?.title ? `为“${pendingApprovalOperation.title}”提交审批 token 后继续执行。` : '请输入 approval_token 以继续执行。'}
+          </Text>
+          <Form form={approvalForm} layout="vertical">
+            <Form.Item
+              name="approval_token"
+              label="approval_token"
+              rules={[{ required: true, message: '请输入 approval_token' }]}
+            >
+              <Input placeholder="请输入审批 token" autoComplete="off" />
+            </Form.Item>
+          </Form>
+        </Space>
       </Modal>
 
       <Drawer title={`节点详情: ${selectedNode?.name}`} placement="right" width={600} onClose={() => setNodeDrawerVisible(false)} open={nodeDrawerVisible}>

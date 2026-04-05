@@ -818,6 +818,7 @@ func (h *Handler) executeHighRiskNodeOperation(c *gin.Context, clusterID uint, n
 	if opErr != nil {
 		audit, _ := h.RecordClusterOperationAudit(ctx, clusterID, "", action, "node", nodeName, "failed", opErr.Error(), operatorID)
 		return ClusterOperationResponse{
+			State:       OperationStateFailed,
 			Code:        "failed",
 			Message:     sanitizeOperationText(opErr.Error()),
 			ClusterID:   clusterID,
