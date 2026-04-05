@@ -66,7 +66,13 @@ func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 服务和网络
 		clusterGroup.GET("/:id/namespaces/:namespace/services", h.GetServices)
+		clusterGroup.POST("/:id/namespaces/:namespace/services", h.CreateService)
+		clusterGroup.PUT("/:id/namespaces/:namespace/services/:name", h.UpdateService)
+		clusterGroup.DELETE("/:id/namespaces/:namespace/services/:name", h.DeleteService)
 		clusterGroup.GET("/:id/namespaces/:namespace/ingresses", h.GetIngresses)
+		clusterGroup.POST("/:id/namespaces/:namespace/ingresses", h.CreateIngress)
+		clusterGroup.PUT("/:id/namespaces/:namespace/ingresses/:name", h.UpdateIngress)
+		clusterGroup.DELETE("/:id/namespaces/:namespace/ingresses/:name", h.DeleteIngress)
 
 		// 配置
 		clusterGroup.GET("/:id/namespaces/:namespace/configmaps", h.GetConfigMaps)

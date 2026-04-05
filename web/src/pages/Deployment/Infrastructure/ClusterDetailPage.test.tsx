@@ -23,6 +23,13 @@ const mockApi = vi.hoisted(() => ({
     deleteStatefulSet: vi.fn(),
     deletePod: vi.fn(),
     getServices: vi.fn(),
+    createService: vi.fn(),
+    updateService: vi.fn(),
+    deleteService: vi.fn(),
+    getIngresses: vi.fn(),
+    createIngress: vi.fn(),
+    updateIngress: vi.fn(),
+    deleteIngress: vi.fn(),
     getConfigMaps: vi.fn(),
     getSecrets: vi.fn(),
     getPVCs: vi.fn(),
@@ -97,6 +104,7 @@ function mockBaselineLoads() {
   mockApi.cluster.getDaemonSets.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getPods.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getServices.mockResolvedValue({ data: { list: [] } });
+  mockApi.cluster.getIngresses.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getConfigMaps.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getSecrets.mockResolvedValue({ data: { list: [] } });
   mockApi.cluster.getPVCs.mockResolvedValue({ data: { list: [] } });
@@ -181,6 +189,60 @@ function mockBaselineLoads() {
       audit_id: 108,
     },
   });
+  mockApi.cluster.createService.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Service 已创建',
+      audit_id: 109,
+    },
+  });
+  mockApi.cluster.updateService.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Service 已更新',
+      audit_id: 110,
+    },
+  });
+  mockApi.cluster.deleteService.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Service 已删除',
+      audit_id: 111,
+    },
+  });
+  mockApi.cluster.createIngress.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Ingress 已创建',
+      audit_id: 112,
+    },
+  });
+  mockApi.cluster.updateIngress.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Ingress 已更新',
+      audit_id: 113,
+    },
+  });
+  mockApi.cluster.deleteIngress.mockResolvedValue({
+    data: {
+      state: 'completed',
+      success: true,
+      code: 'success',
+      message: 'Ingress 已删除',
+      audit_id: 114,
+    },
+  });
 }
 
 function renderPage() {
@@ -204,6 +266,15 @@ async function openNodeActions(user: ReturnType<typeof userEvent.setup>) {
   await user.click(actionButton);
 }
 
+async function openServicesTab(user: ReturnType<typeof userEvent.setup>) {
+  const tabs = await screen.findAllByRole('tab');
+  const servicesTab = tabs.find((tab) => tab.textContent?.trim() === '服务');
+  if (!(servicesTab instanceof HTMLElement)) {
+    throw new Error('services tab not found');
+  }
+  await user.click(servicesTab);
+}
+
 describe('ClusterDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -211,6 +282,7 @@ describe('ClusterDetailPage', () => {
   });
 
   afterEach(() => {
+    Modal.destroyAll();
     cleanup();
   });
 
@@ -504,5 +576,159 @@ describe('ClusterDetailPage', () => {
         approval_token: 'approved-token',
       });
     });
+  }, 45000);
+
+  it('deletes a service from the services tab and renders audit feedback', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: {
+        list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }],
+      },
+    });
+    mockApi.cluster.getServices.mockResolvedValue({
+      data: {
+        list: [{
+          name: 'web',
+          namespace: 'default',
+          type: 'ClusterIP',
+          cluster_ip: '10.96.0.20',
+          selector: { app: 'web' },
+          ports: [{ name: 'http', port: 80, target_port: '8080', protocol: 'TCP' }],
+          age: '1d',
+          created_at: '2026-04-04T00:00:00Z',
+        }],
+      },
+    });
+
+    renderPage();
+
+    await openServicesTab(user);
+    await screen.findByText('web');
+    await user.click(screen.getByRole('button', { name: '删除 Service web' }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+    });
+
+    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
+    expect(latestConfig?.title).toBe('删除 Service');
+    await latestConfig?.onOk?.();
+
+    await waitFor(() => {
+      expect(mockApi.cluster.deleteService).toHaveBeenCalledWith(42, 'default', 'web', { approval_token: undefined });
+    });
+
+    expect(await screen.findByText('Service 删除')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations?audit_id=111',
+    );
+
+    confirmSpy.mockRestore();
+  }, 45000);
+
+  it('creates an ingress from the services tab and retries with approval_token', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.getNamespaces.mockResolvedValue({
+      data: {
+        list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }],
+      },
+    });
+    mockApi.cluster.getIngresses
+      .mockResolvedValueOnce({ data: { list: [] } })
+      .mockResolvedValue({
+        data: {
+          list: [{
+            name: 'web',
+            namespace: 'default',
+            hosts: [{ host: 'app.example.com', paths: ['/'] }],
+            age: '1d',
+            created_at: '2026-04-04T00:00:00Z',
+          }],
+        },
+      });
+    mockApi.cluster.createIngress
+      .mockResolvedValueOnce({
+        data: {
+          state: 'approval_required',
+          success: false,
+          code: 'approval_required',
+          message: '需要审批',
+          audit_id: 601,
+          approval: {
+            required: true,
+            ticket: 'ticket-601',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          state: 'completed',
+          success: true,
+          code: 'success',
+          message: 'Ingress 已创建',
+          audit_id: 602,
+        },
+      });
+
+    renderPage();
+
+    await openServicesTab(user);
+    await user.click(await screen.findByRole('button', { name: '新建 Ingress' }));
+
+    expect(await screen.findByLabelText('ingress_name')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('ingress_name'), 'web');
+    await user.type(screen.getByLabelText('ingress_host'), 'app.example.com');
+    fireEvent.change(screen.getByLabelText('ingress_path'), { target: { value: '/' } });
+    await user.type(screen.getByLabelText('backend_service_name'), 'web');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'backend_service_port' }), { target: { value: '80' } });
+    await user.click(screen.getByRole('button', { name: '保存 Ingress' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.createIngress).toHaveBeenNthCalledWith(1, 42, 'default', {
+        name: 'web',
+        ingress_class_name: undefined,
+        rules: [{
+          host: 'app.example.com',
+          paths: [{
+            path: '/',
+            path_type: 'Prefix',
+            service_name: 'web',
+            service_port: 80,
+          }],
+        }],
+        tls: undefined,
+        approval_token: undefined,
+      });
+    });
+
+    expect(await screen.findByLabelText('approval_token')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('approval_token'), 'approved-token');
+    await user.click(screen.getByRole('button', { name: '提交审批' }));
+
+    await waitFor(() => {
+      expect(mockApi.cluster.createIngress).toHaveBeenNthCalledWith(2, 42, 'default', {
+        name: 'web',
+        ingress_class_name: undefined,
+        rules: [{
+          host: 'app.example.com',
+          paths: [{
+            path: '/',
+            path_type: 'Prefix',
+            service_name: 'web',
+            service_port: 80,
+          }],
+        }],
+        tls: undefined,
+        approval_token: 'approved-token',
+      });
+    });
+
+    expect(await screen.findByText('Ingress 创建')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations?audit_id=602',
+    );
   }, 45000);
 });

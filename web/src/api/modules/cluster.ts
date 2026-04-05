@@ -264,6 +264,45 @@ export interface ClusterWorkloadScalePayload extends ClusterNodeApprovalPayload 
   replicas: number;
 }
 
+export interface ClusterServiceMutationPort {
+  name?: string;
+  port: number;
+  target_port: string;
+  protocol?: string;
+  node_port?: number;
+}
+
+export interface ClusterServiceMutationPayload extends ClusterNodeApprovalPayload {
+  name: string;
+  type: string;
+  selector: Record<string, string>;
+  ports: ClusterServiceMutationPort[];
+}
+
+export interface ClusterIngressMutationPath {
+  path: string;
+  path_type?: string;
+  service_name: string;
+  service_port: number;
+}
+
+export interface ClusterIngressMutationRule {
+  host: string;
+  paths: ClusterIngressMutationPath[];
+}
+
+export interface ClusterIngressMutationTLS {
+  secret_name?: string;
+  hosts: string[];
+}
+
+export interface ClusterIngressMutationPayload extends ClusterNodeApprovalPayload {
+  name: string;
+  ingress_class_name?: string;
+  rules: ClusterIngressMutationRule[];
+  tls?: ClusterIngressMutationTLS[];
+}
+
 export interface ClusterOperationHistoryQuery {
   page?: number;
   page_size?: number;
@@ -944,8 +983,32 @@ export const clusterApi = {
     return apiService.get(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/services`);
   },
 
+  createService(id: number, namespace: string, payload: ClusterServiceMutationPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/services`, payload));
+  },
+
+  updateService(id: number, namespace: string, name: string, payload: ClusterServiceMutationPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.put(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/services/${encodeURIComponent(name)}`, payload));
+  },
+
+  deleteService(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/services/${encodeURIComponent(name)}`, { data: payload || {} }));
+  },
+
   getIngresses(id: number, namespace: string): Promise<ApiResponse<PaginatedResponse<IngressInfo>>> {
     return apiService.get(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/ingresses`);
+  },
+
+  createIngress(id: number, namespace: string, payload: ClusterIngressMutationPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.post(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/ingresses`, payload));
+  },
+
+  updateIngress(id: number, namespace: string, name: string, payload: ClusterIngressMutationPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.put(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/ingresses/${encodeURIComponent(name)}`, payload));
+  },
+
+  deleteIngress(id: number, namespace: string, name: string, payload?: ClusterNodeApprovalPayload): Promise<ApiResponse<ClusterOperationResponse>> {
+    return wrapOperationResponse(apiService.delete(`/clusters/${id}/namespaces/${encodeURIComponent(namespace)}/ingresses/${encodeURIComponent(name)}`, { data: payload || {} }));
   },
 
   // Config

@@ -4,7 +4,6 @@ import {
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
   Select, Dropdown, InputNumber
 } from 'antd';
-import type { FormInstance } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, ClusterOutlined,
   DeleteOutlined, EditOutlined, ApiOutlined,
@@ -18,11 +17,12 @@ import { Api } from '../../../api';
 import { DetailSkeleton } from '../../../components/LoadingSkeleton';
 import type {
   Cluster, ClusterNode, NamespaceInfo, DeploymentInfo,
-  StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo,
+  StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo, IngressInfo,
   ConfigMapInfo, SecretInfo, PVCInfo, PVInfo, ClusterServiceInfo,
   EventInfo, HPAInfo, ResourceQuotaInfo, LimitRangeInfo,
   ClusterVersionInfo, CertificateInfo, ClusterUpgradePlan,
-  ClusterOperationApproval, ClusterOperationResponse, ClusterOperationState
+  ClusterOperationApproval, ClusterOperationResponse, ClusterOperationState,
+  ClusterServiceMutationPayload, ClusterIngressMutationPayload
 } from '../../../api/modules/cluster';
 
 const { Text, Title } = Typography;
@@ -47,6 +47,7 @@ const ClusterDetailPage: React.FC = () => {
   const [daemonsets, setDaemonsets] = useState<DaemonSetInfo[]>([]);
   const [pods, setPods] = useState<PodInfo[]>([]);
   const [services, setServices] = useState<ServiceInfo[]>([]);
+  const [ingresses, setIngresses] = useState<IngressInfo[]>([]);
   const [configmaps, setConfigmaps] = useState<ConfigMapInfo[]>([]);
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
   const [pvcs, setPvcs] = useState<PVCInfo[]>([]);
@@ -90,6 +91,16 @@ const ClusterDetailPage: React.FC = () => {
   }>(null);
   const [nodeMutationLoadingKey, setNodeMutationLoadingKey] = useState<string>('');
   const [nodeMetadataLoadingKey, setNodeMetadataLoadingKey] = useState<string>('');
+  const [serviceModalVisible, setServiceModalVisible] = useState(false);
+  const [ingressModalVisible, setIngressModalVisible] = useState(false);
+  const [pendingServiceModal, setPendingServiceModal] = useState<null | {
+    mode: 'create' | 'edit';
+    record?: ServiceInfo;
+  }>(null);
+  const [pendingIngressModal, setPendingIngressModal] = useState<null | {
+    mode: 'create' | 'edit';
+    record?: IngressInfo;
+  }>(null);
   const [operationFeedback, setOperationFeedback] = useState<Record<string, {
     action: string;
     state: ClusterOperationState;
@@ -100,6 +111,8 @@ const ClusterDetailPage: React.FC = () => {
   const [addNodeForm] = Form.useForm();
   const [approvalForm] = Form.useForm();
   const [scaleForm] = Form.useForm();
+  const [serviceForm] = Form.useForm();
+  const [ingressForm] = Form.useForm();
   const [nodeLabelForm] = Form.useForm();
   const [nodeTaintForm] = Form.useForm();
 
@@ -149,12 +162,13 @@ const ClusterDetailPage: React.FC = () => {
     if (!clusterId) return;
     setResourceLoading(true);
     try {
-      const [depRes, stsRes, dsRes, podRes, svcRes, cmRes, secRes, pvcRes] = await Promise.all([
+      const [depRes, stsRes, dsRes, podRes, svcRes, ingRes, cmRes, secRes, pvcRes] = await Promise.all([
         Api.cluster.getDeployments(clusterId, namespace),
         Api.cluster.getStatefulSets(clusterId, namespace),
         Api.cluster.getDaemonSets(clusterId, namespace),
         Api.cluster.getPods(clusterId, namespace),
         Api.cluster.getServices(clusterId, namespace),
+        Api.cluster.getIngresses(clusterId, namespace),
         Api.cluster.getConfigMaps(clusterId, namespace),
         Api.cluster.getSecrets(clusterId, namespace),
         Api.cluster.getPVCs(clusterId, namespace),
@@ -164,6 +178,7 @@ const ClusterDetailPage: React.FC = () => {
       setDaemonsets(dsRes.data.list || []);
       setPods(podRes.data.list || []);
       setServices(svcRes.data.list || []);
+      setIngresses(ingRes.data.list || []);
       setConfigmaps(cmRes.data.list || []);
       setSecrets(secRes.data.list || []);
       setPvcs(pvcRes.data.list || []);
@@ -498,21 +513,26 @@ const ClusterDetailPage: React.FC = () => {
     }
 
     return (
-      <Space size={6} wrap>
-        <Tag color={
-          feedback.state === 'completed'
-            ? 'green'
-            : feedback.state === 'approval_required'
-              ? 'orange'
-              : 'red'
-        }>
-          {feedback.action}
-        </Tag>
-        {feedback.audit_id && (
-          <Link to={buildOperationLink(feedback.audit_id)}>
-            审计
-          </Link>
-        )}
+      <Space direction="vertical" size={2}>
+        <Space size={6} wrap>
+          <Tag color={
+            feedback.state === 'completed'
+              ? 'green'
+              : feedback.state === 'approval_required'
+                ? 'orange'
+                : 'red'
+          }>
+            {feedback.action}
+          </Tag>
+          {feedback.audit_id && (
+            <Link to={buildOperationLink(feedback.audit_id)}>
+              审计
+            </Link>
+          )}
+        </Space>
+        <Text type={feedback.state === 'completed' ? 'secondary' : 'danger'}>
+          {feedback.message}
+        </Text>
       </Space>
     );
   }, [buildOperationLink, operationFeedback]);
@@ -572,6 +592,214 @@ const ClusterDetailPage: React.FC = () => {
       // executeClusterOperation already handles user-visible feedback
     }
   }, [executeClusterOperation, pendingScaleOperation, refreshSelectedNamespaceResources, scaleForm]);
+
+  const buildServicePayload = useCallback((values: {
+    name: string;
+    type: string;
+    selector_text: string;
+    port: number;
+    target_port: string;
+    protocol?: string;
+    node_port?: number | null;
+  }, approvalToken?: string): ClusterServiceMutationPayload => {
+    const selector = String(values.selector_text || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .reduce<Record<string, string>>((acc, entry) => {
+        const [key, ...rest] = entry.split('=');
+        const trimmedKey = key?.trim();
+        const trimmedValue = rest.join('=').trim();
+        if (trimmedKey && trimmedValue) {
+          acc[trimmedKey] = trimmedValue;
+        }
+        return acc;
+      }, {});
+    const nodePort = typeof values.node_port === 'number' && !Number.isNaN(values.node_port) ? values.node_port : undefined;
+    return {
+      name: String(values.name || '').trim(),
+      type: values.type,
+      selector,
+      ports: [{
+        name: 'http',
+        port: Number(values.port),
+        target_port: String(values.target_port || '').trim(),
+        protocol: values.protocol || 'TCP',
+        node_port: nodePort,
+      }],
+      approval_token: approvalToken,
+    };
+  }, []);
+
+  const buildIngressPayload = useCallback((values: {
+    name: string;
+    ingress_class_name?: string;
+    host: string;
+    path: string;
+    path_type?: string;
+    service_name: string;
+    service_port: number;
+    tls_secret_name?: string;
+  }, approvalToken?: string): ClusterIngressMutationPayload => {
+    const host = String(values.host || '').trim();
+    const tlsSecretName = String(values.tls_secret_name || '').trim();
+    return {
+      name: String(values.name || '').trim(),
+      ingress_class_name: String(values.ingress_class_name || '').trim() || undefined,
+      rules: [{
+        host,
+        paths: [{
+          path: String(values.path || '').trim(),
+          path_type: values.path_type || 'Prefix',
+          service_name: String(values.service_name || '').trim(),
+          service_port: Number(values.service_port),
+        }],
+      }],
+      tls: tlsSecretName ? [{ secret_name: tlsSecretName, hosts: [host] }] : undefined,
+      approval_token: approvalToken,
+    };
+  }, []);
+
+  const openServiceModal = useCallback((mode: 'create' | 'edit', record?: ServiceInfo) => {
+    setPendingServiceModal({ mode, record });
+    serviceForm.setFieldsValue({
+      name: record?.name ?? '',
+      type: record?.type ?? 'ClusterIP',
+      selector_text: record?.selector ? Object.entries(record.selector).map(([key, value]) => `${key}=${value}`).join(',') : '',
+      port: record?.ports?.[0]?.port ?? 80,
+      target_port: record?.ports?.[0]?.target_port ?? '80',
+      protocol: record?.ports?.[0]?.protocol ?? 'TCP',
+      node_port: undefined,
+    });
+    setServiceModalVisible(true);
+  }, [serviceForm]);
+
+  const openIngressModal = useCallback((mode: 'create' | 'edit', record?: IngressInfo) => {
+    setPendingIngressModal({ mode, record });
+    ingressForm.setFieldsValue({
+      name: record?.name ?? '',
+      ingress_class_name: '',
+      host: record?.hosts?.[0]?.host ?? '',
+      path: record?.hosts?.[0]?.paths?.[0] ?? '/',
+      path_type: 'Prefix',
+      service_name: '',
+      service_port: 80,
+      tls_secret_name: '',
+    });
+    setIngressModalVisible(true);
+  }, [ingressForm]);
+
+  const submitServiceModal = useCallback(async () => {
+    if (!clusterId) return;
+    try {
+      const values = await serviceForm.validateFields();
+      const payload = buildServicePayload(values);
+      const mode = pendingServiceModal?.mode ?? 'create';
+      const serviceName = mode === 'edit' ? pendingServiceModal?.record?.name : payload.name;
+      if (!serviceName) {
+        message.error('Service 名称不能为空');
+        return;
+      }
+      const result = await executeClusterOperation(
+        mode === 'edit' ? 'service.update' : 'service.create',
+        `service:${serviceName}:${mode}`,
+        `service:${serviceName}`,
+        mode === 'edit' ? 'Service 更新' : 'Service 创建',
+        (approvalToken) => {
+          const requestPayload = buildServicePayload(values, approvalToken);
+          if (mode === 'edit') {
+            return Api.cluster.updateService(clusterId, selectedNamespace, serviceName, requestPayload).then((resp) => resp.data);
+          }
+          return Api.cluster.createService(clusterId, selectedNamespace, requestPayload).then((resp) => resp.data);
+        },
+        refreshSelectedNamespaceResources,
+      );
+      if (result.state === 'completed' || result.state === 'approval_required') {
+        setServiceModalVisible(false);
+        setPendingServiceModal(null);
+        serviceForm.resetFields();
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        message.error(err.message);
+      }
+    }
+  }, [buildServicePayload, clusterId, executeClusterOperation, pendingServiceModal, refreshSelectedNamespaceResources, selectedNamespace, serviceForm]);
+
+  const submitIngressModal = useCallback(async () => {
+    if (!clusterId) return;
+    try {
+      const values = await ingressForm.validateFields();
+      const payload = buildIngressPayload(values);
+      const mode = pendingIngressModal?.mode ?? 'create';
+      const ingressName = mode === 'edit' ? pendingIngressModal?.record?.name : payload.name;
+      if (!ingressName) {
+        message.error('Ingress 名称不能为空');
+        return;
+      }
+      const result = await executeClusterOperation(
+        mode === 'edit' ? 'ingress.update' : 'ingress.create',
+        `ingress:${ingressName}:${mode}`,
+        `ingress:${ingressName}`,
+        mode === 'edit' ? 'Ingress 更新' : 'Ingress 创建',
+        (approvalToken) => {
+          const requestPayload = buildIngressPayload(values, approvalToken);
+          if (mode === 'edit') {
+            return Api.cluster.updateIngress(clusterId, selectedNamespace, ingressName, requestPayload).then((resp) => resp.data);
+          }
+          return Api.cluster.createIngress(clusterId, selectedNamespace, requestPayload).then((resp) => resp.data);
+        },
+        refreshSelectedNamespaceResources,
+      );
+      if (result.state === 'completed' || result.state === 'approval_required') {
+        setIngressModalVisible(false);
+        setPendingIngressModal(null);
+        ingressForm.resetFields();
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        message.error(err.message);
+      }
+    }
+  }, [buildIngressPayload, clusterId, executeClusterOperation, ingressForm, pendingIngressModal, refreshSelectedNamespaceResources, selectedNamespace]);
+
+  const handleServiceDelete = useCallback((service: ServiceInfo) => {
+    if (!clusterId) return;
+    Modal.confirm({
+      title: '删除 Service',
+      content: `确定要删除 Service ${service.name} 吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => executeClusterOperation(
+        'service.delete',
+        `service:${service.name}:delete`,
+        `service:${service.name}`,
+        'Service 删除',
+        (approvalToken) => Api.cluster.deleteService(clusterId, selectedNamespace, service.name, { approval_token: approvalToken }).then((resp) => resp.data),
+        refreshSelectedNamespaceResources,
+      ),
+    });
+  }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
+
+  const handleIngressDelete = useCallback((ingress: IngressInfo) => {
+    if (!clusterId) return;
+    Modal.confirm({
+      title: '删除 Ingress',
+      content: `确定要删除 Ingress ${ingress.name} 吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => executeClusterOperation(
+        'ingress.delete',
+        `ingress:${ingress.name}:delete`,
+        `ingress:${ingress.name}`,
+        'Ingress 删除',
+        (approvalToken) => Api.cluster.deleteIngress(clusterId, selectedNamespace, ingress.name, { approval_token: approvalToken }).then((resp) => resp.data),
+        refreshSelectedNamespaceResources,
+      ),
+    });
+  }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
   useEffect(() => {
     loadCluster();
@@ -991,11 +1219,74 @@ const ClusterDetailPage: React.FC = () => {
   ];
 
   const serviceColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => (
+        <Space direction="vertical" size={0}>
+          <Text>{name}</Text>
+          {renderFeedback(`service:${name}`)}
+        </Space>
+      ),
+    },
     { title: '类型', dataIndex: 'type', key: 'type' },
     { title: 'ClusterIP', dataIndex: 'cluster_ip', key: 'cluster_ip' },
     { title: '端口', key: 'ports', render: (_: any, r: ServiceInfo) => r.ports?.map(p => `${p.port}:${p.target_port}`).join(', ') || '-' },
     { title: 'Age', dataIndex: 'age', key: 'age' },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: any, record: ServiceInfo) => (
+        <Space size={4} wrap>
+          <Button size="small" aria-label={`编辑 Service ${record.name}`} onClick={() => { openServiceModal('edit', record); }}>
+            编辑
+          </Button>
+          <Button size="small" danger aria-label={`删除 Service ${record.name}`} onClick={() => { handleServiceDelete(record); }}>
+            删除
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const ingressColumns = [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => (
+        <Space direction="vertical" size={0}>
+          <Text>{name}</Text>
+          {renderFeedback(`ingress:${name}`)}
+        </Space>
+      ),
+    },
+    {
+      title: 'Hosts',
+      key: 'hosts',
+      render: (_: any, record: IngressInfo) => record.hosts?.map((host) => host.host).join(', ') || '-',
+    },
+    {
+      title: '路径',
+      key: 'paths',
+      render: (_: any, record: IngressInfo) => record.hosts?.flatMap((host) => host.paths || []).join(', ') || '-',
+    },
+    { title: 'Age', dataIndex: 'age', key: 'age' },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: any, record: IngressInfo) => (
+        <Space size={4} wrap>
+          <Button size="small" aria-label={`编辑 Ingress ${record.name}`} onClick={() => { openIngressModal('edit', record); }}>
+            编辑
+          </Button>
+          <Button size="small" danger aria-label={`删除 Ingress ${record.name}`} onClick={() => { handleIngressDelete(record); }}>
+            删除
+          </Button>
+        </Space>
+      ),
+    },
   ];
 
   const configColumns = [
@@ -1120,11 +1411,20 @@ const ClusterDetailPage: React.FC = () => {
             <div className="space-y-4">
               <Select style={{ width: 200 }} value={selectedNamespace} onChange={setSelectedNamespace} options={namespaces.map(ns => ({ label: ns.name, value: ns.name }))} />
               <Spin spinning={resourceLoading}>
-                <Card title="Services" size="small" className="mb-4">
+                <Card
+                  title="Services"
+                  size="small"
+                  className="mb-4"
+                  extra={<Button size="small" type="primary" onClick={() => { openServiceModal('create'); }}>新建 Service</Button>}
+                >
                   <Table columns={serviceColumns} dataSource={services} rowKey="name" pagination={false} size="small" />
                 </Card>
-                <Card title="Ingresses" size="small">
-                  <Table columns={[{ title: '名称', dataIndex: 'name' }, { title: 'Hosts', key: 'hosts', render: (_: any, r: any) => r.hosts?.map((h: any) => h.host).join(', ') || '-' }, { title: 'Age', dataIndex: 'age' }]} dataSource={[]} rowKey="name" pagination={false} size="small" />
+                <Card
+                  title="Ingresses"
+                  size="small"
+                  extra={<Button size="small" type="primary" onClick={() => { openIngressModal('create'); }}>新建 Ingress</Button>}
+                >
+                  <Table columns={ingressColumns} dataSource={ingresses} rowKey="name" pagination={false} size="small" />
                 </Card>
               </Spin>
             </div>
@@ -1389,6 +1689,101 @@ const ClusterDetailPage: React.FC = () => {
             initialValue={pendingScaleOperation?.currentReplicas}
           >
             <InputNumber min={0} className="w-full" aria-label="replicas" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={pendingServiceModal?.mode === 'edit' ? '编辑 Service' : '新建 Service'}
+        open={serviceModalVisible}
+        onCancel={() => {
+          setServiceModalVisible(false);
+          setPendingServiceModal(null);
+          serviceForm.resetFields();
+        }}
+        onOk={submitServiceModal}
+        okText="保存 Service"
+        cancelText="取消"
+        confirmLoading={Boolean(pendingServiceModal && nodeMutationLoadingKey === `service:${pendingServiceModal.record?.name || serviceForm.getFieldValue('name')}:${pendingServiceModal.mode}`)}
+        destroyOnHidden
+      >
+        <Form form={serviceForm} layout="vertical">
+          <Form.Item name="name" label="service_name" rules={[{ required: true, message: '请输入 Service 名称' }]}>
+            <Input aria-label="service_name" disabled={pendingServiceModal?.mode === 'edit'} />
+          </Form.Item>
+          <Form.Item name="type" label="service_type" rules={[{ required: true, message: '请选择 Service 类型' }]}>
+            <Select
+              aria-label="service_type"
+              options={[
+                { label: 'ClusterIP', value: 'ClusterIP' },
+                { label: 'NodePort', value: 'NodePort' },
+                { label: 'LoadBalancer', value: 'LoadBalancer' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="selector_text" label="selector" rules={[{ required: true, message: '请输入 selector，格式 key=value' }]}>
+            <Input aria-label="selector" placeholder="app=web,component=api" />
+          </Form.Item>
+          <Form.Item name="port" label="service_port" rules={[{ required: true, message: '请输入端口' }]}>
+            <InputNumber min={1} max={65535} className="w-full" aria-label="service_port" />
+          </Form.Item>
+          <Form.Item name="target_port" label="target_port" rules={[{ required: true, message: '请输入 target_port' }]}>
+            <Input aria-label="target_port" />
+          </Form.Item>
+          <Form.Item name="protocol" label="protocol" initialValue="TCP">
+            <Select aria-label="protocol" options={[{ label: 'TCP', value: 'TCP' }, { label: 'UDP', value: 'UDP' }]} />
+          </Form.Item>
+          <Form.Item name="node_port" label="node_port">
+            <InputNumber min={30000} max={32767} className="w-full" aria-label="node_port" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={pendingIngressModal?.mode === 'edit' ? '编辑 Ingress' : '新建 Ingress'}
+        open={ingressModalVisible}
+        onCancel={() => {
+          setIngressModalVisible(false);
+          setPendingIngressModal(null);
+          ingressForm.resetFields();
+        }}
+        onOk={submitIngressModal}
+        okText="保存 Ingress"
+        cancelText="取消"
+        confirmLoading={Boolean(pendingIngressModal && nodeMutationLoadingKey === `ingress:${pendingIngressModal.record?.name || ingressForm.getFieldValue('name')}:${pendingIngressModal.mode}`)}
+        destroyOnHidden
+      >
+        <Form form={ingressForm} layout="vertical">
+          <Form.Item name="name" label="ingress_name" rules={[{ required: true, message: '请输入 Ingress 名称' }]}>
+            <Input aria-label="ingress_name" disabled={pendingIngressModal?.mode === 'edit'} />
+          </Form.Item>
+          <Form.Item name="ingress_class_name" label="ingress_class_name">
+            <Input aria-label="ingress_class_name" />
+          </Form.Item>
+          <Form.Item name="host" label="ingress_host" rules={[{ required: true, message: '请输入主机名' }]}>
+            <Input aria-label="ingress_host" />
+          </Form.Item>
+          <Form.Item name="path" label="ingress_path" rules={[{ required: true, message: '请输入路径' }]}>
+            <Input aria-label="ingress_path" />
+          </Form.Item>
+          <Form.Item name="path_type" label="path_type" initialValue="Prefix">
+            <Select
+              aria-label="path_type"
+              options={[
+                { label: 'Prefix', value: 'Prefix' },
+                { label: 'Exact', value: 'Exact' },
+                { label: 'ImplementationSpecific', value: 'ImplementationSpecific' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="service_name" label="backend_service_name" rules={[{ required: true, message: '请输入后端 Service 名称' }]}>
+            <Input aria-label="backend_service_name" />
+          </Form.Item>
+          <Form.Item name="service_port" label="backend_service_port" rules={[{ required: true, message: '请输入后端 Service 端口' }]}>
+            <InputNumber min={1} max={65535} className="w-full" aria-label="backend_service_port" />
+          </Form.Item>
+          <Form.Item name="tls_secret_name" label="tls_secret_name">
+            <Input aria-label="tls_secret_name" />
           </Form.Item>
         </Form>
       </Modal>
