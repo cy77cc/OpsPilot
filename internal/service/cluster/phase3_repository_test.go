@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/cy77cc/OpsPilot/internal/model"
 )
 
 func TestPhase3Repository_ExtendsBaseRepository(t *testing.T) {
@@ -96,6 +99,41 @@ func TestPhase3Schema_RuntimeEventIndexes(t *testing.T) {
 		if !slices.Contains(indexes, required) {
 			t.Fatalf("missing runtime_security_events index %q: %v", required, indexes)
 		}
+	}
+}
+
+func TestPhase3Model_RequiredEnums(t *testing.T) {
+	if model.DisposalModeAuto == "" || model.DisposalModeManual == "" || model.DisposalModeSuggestOnly == "" {
+		t.Fatalf("disposal mode constants must be defined")
+	}
+	if model.SecuritySeverityCritical == "" || model.SecuritySeverityHigh == "" {
+		t.Fatalf("security severity constants must be defined")
+	}
+}
+
+func TestPhase3Model_JSONRoundTrip(t *testing.T) {
+	record := model.RuntimeSecurityEvent{
+		ClusterID:      42,
+		Namespace:      "prod",
+		Workload:       "api",
+		RuleID:         "Falco-001",
+		Severity:       model.SecuritySeverityHigh,
+		Source:         model.SecurityEventSourceFalco,
+		RawPayloadJSON: `{"kind":"falco","priority":"high"}`,
+	}
+
+	payload, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal runtime event: %v", err)
+	}
+
+	var decoded model.RuntimeSecurityEvent
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal runtime event: %v", err)
+	}
+
+	if decoded.ClusterID != record.ClusterID || decoded.Severity != record.Severity || decoded.Source != record.Source {
+		t.Fatalf("roundtrip mismatch: got %+v want %+v", decoded, record)
 	}
 }
 
