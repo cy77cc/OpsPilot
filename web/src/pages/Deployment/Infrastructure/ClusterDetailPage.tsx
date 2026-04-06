@@ -1507,6 +1507,9 @@ const ClusterDetailPage: React.FC = () => {
                 <Button block onClick={handleSyncNodes} loading={nodesLoading}>
                   同步节点
                 </Button>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/security`}>进入安全中心</Link>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/policies`}>进入策略中心</Link>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/operations`}>查看全部操作</Link>
               </Space>
             </Card>
           </Col>

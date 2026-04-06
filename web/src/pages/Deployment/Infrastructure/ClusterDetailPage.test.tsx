@@ -342,6 +342,23 @@ describe('ClusterDetailPage', () => {
     expect(screen.queryByText('基本信息')).not.toBeInTheDocument();
   });
 
+  it('renders quick links to security, policy, and operation centers', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('link', { name: '进入安全中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/security',
+    );
+    expect(screen.getByRole('link', { name: '进入策略中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/policies',
+    );
+    expect(screen.getByRole('link', { name: '查看全部操作' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations',
+    );
+  });
+
   it('runs a row action and renders row-level audit feedback', async () => {
     const user = userEvent.setup();
     renderPage();
