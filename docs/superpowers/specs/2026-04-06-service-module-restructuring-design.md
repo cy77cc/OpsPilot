@@ -6,12 +6,16 @@
 
 ## 2. 核心原则
 
-| 层级 | 职责 | 说明 |
-|------|------|------|
-| `handler/` | HTTP 处理层 | 接收请求、参数校验、调用 logic、返回响应 |
-| `logic/` | 业务逻辑层 | 核心算法、业务编排、领域规则 |
+| 层级 | 职责 | 文件命名规范 |
+|------|------|-------------|
+| `handler/` | HTTP 处理层 | `xxx.go` - 按业务概念命名，不重复 handler_ 前缀 |
+| `logic/` | 业务逻辑层 | `xxx.go` - 按业务概念命名，不重复 logic_ 前缀 |
 | `domain/` | 领域细分（可选） | 复杂模块按领域进一步拆分 |
-| `routes.go` | 路由注册 | 保持不变，声明式注册路由 |
+| `routes.go` | 路由注册 | 保持不变 |
+
+**命名规范示例**：
+- ✅ `handler/release.go` - 释放处理
+- ❌ `handler/handler_release.go` - 重复前缀，冗余
 
 ## 3. 模块重组清单
 
@@ -21,9 +25,9 @@
 ```
 deployment/
 ├── handler.go, routes.go
-├── logic.go, logic_*.go (5个)
-├── bootstrap.go, logic_bootstrap.go
-├── audit.go, metrics.go, policy.go, topology.go, types.go
+├── logic.go, logic_bootstrap.go, logic_compose.go, logic_governance.go
+├── logic_release.go, logic_target.go, logic_util.go
+├── bootstrap.go, audit.go, metrics.go, policy.go, topology.go, types.go
 └── handler_environment.go
 ```
 
@@ -31,23 +35,22 @@ deployment/
 ```
 deployment/
 ├── handler/
-│   ├── handler.go          # 基础 handler
-│   └── environment.go      # 环境相关 handler
+│   ├── release.go           # 发布处理（原 handler.go）
+│   ├── environment.go       # 环境相关（自 handler_environment.go）
+│   └── bootstrap.go          # 启动处理
 ├── logic/
-│   ├── logic.go            # 基础逻辑
-│   ├── logic_bootstrap.go
-│   ├── logic_compose.go
-│   ├── logic_governance.go
-│   ├── logic_release.go
-│   ├── logic_target.go
-│   └── logic_util.go
-├── bootstrap.go            # 启动逻辑
-├── audit.go                # 审计相关
-├── metrics.go              # 指标相关
-├── policy.go               # 策略相关
-├── topology.go             # 拓扑相关
-├── types.go                # 类型定义
-└── routes.go               # 路由注册
+│   ├── compose.go           # Compose 编排逻辑
+│   ├── governance.go        # 治理逻辑
+│   ├── release.go            # 发布逻辑
+│   ├── target.go             # 目标逻辑
+│   └── util.go               # 工具逻辑
+├── bootstrap.go              # 引导逻辑（留在根目录，模块级初始化）
+├── audit.go                  # 审计
+├── metrics.go                # 指标
+├── policy.go                 # 策略
+├── topology.go               # 拓扑
+├── types.go                  # 类型定义
+└── routes.go                 # 路由注册
 ```
 
 ### 3.2 notification
@@ -55,19 +58,17 @@ deployment/
 **现状**：3个 flat 文件
 ```
 notification/
-├── notification.go
-├── provider.go
-└── integration.go
+├── notification.go, provider.go, integration.go
 ```
 
 **目标结构**：
 ```
 notification/
 ├── handler/
-│   ├── notification.go    # 主 handler
-│   ├── provider.go          # Provider 配置 handler
-│   └── integration.go      # 集成 handler
-├── logic/                   # 业务逻辑（暂无，新建）
+│   ├── notification.go       # 通知处理
+│   ├── provider.go           # Provider 配置
+│   └── integration.go        # 集成处理
+├── logic/                    # 业务逻辑（暂无，新建空目录占位）
 └── routes.go
 ```
 
@@ -83,9 +84,9 @@ topology/
 ```
 topology/
 ├── handler/
-│   └── handler.go          # 从 routes.go 拆分出 handler
+│   └── handler.go            # 从 routes.go 拆分
 ├── logic/
-│   └── logic.go            # 从 routes.go 拆分出 logic
+│   └── logic.go              # 从 routes.go 拆分
 └── routes.go
 ```
 
@@ -102,20 +103,20 @@ governance/
 ```
 governance/
 ├── handler/
-│   ├── errors.go           # 错误处理
-│   ├── service.go          # 服务 handler
-│   └── types.go            # 类型 handler
-├── logic/                  # 新建，整理业务逻辑
+│   ├── errors.go             # 错误处理
+│   └── service.go            # 服务处理（自 service.go）
+├── logic/                     # 业务逻辑（暂无，新建空目录占位）
 ├── approval/, audit/, envelope/, policy/  # 保持不变
 └── routes.go
 ```
+> 注：governance/types.go 若为领域类型定义，保留根目录；若是 DTO 则移入 handler/
 
 ### 3.5 cluster
 
 **现状**：handler/logic 存在 + 20个 flat 文件
 ```
 cluster/
-├── handler/, logic/        # 已存在
+├── handler/, logic/           # 已存在
 ├── policy_*.go (6个), security_*.go (4个)
 ├── handler_policy.go, handler_security_*.go
 ├── logic_advanced.go, logic_services.go
@@ -124,47 +125,43 @@ cluster/
 ├── delivery_consistency_logic.go
 ├── governance_audit.go
 ├── redaction.go, operation_response.go
-├── types.go
-└── routes.go
+└── types.go, routes.go
 ```
 
 **目标结构**：
 ```
 cluster/
 ├── handler/
-│   ├── handler.go          # 基础 handler
-│   ├── approvals.go        # 审批相关
-│   ├── delivery_gitops.go  # GitOps 发布
-│   ├── operations.go       # 运维操作
-│   ├── policy.go           # 策略
-│   ├── security_admission.go
-│   └── security_runtime.go
+│   ├── handler.go            # 基础 handler
+│   ├── approvals.go          # 审批（自 handler_approvals.go）
+│   ├── delivery_gitops.go     # GitOps（自 handler_delivery_gitops.go）
+│   ├── operations.go          # 运维操作（自 handler_operations.go）
+│   ├── policy.go              # 策略（自 handler_policy.go）
+│   ├── security_admission.go  # 安全准入（自 handler_security_admission.go）
+│   └── security_runtime.go    # 安全运行时（自 handler_security_runtime.go）
 ├── logic/
-│   ├── logic.go            # 基础逻辑
-│   ├── logic_advanced.go
-│   ├── logic_services.go
-│   └── logic_nodes.go
+│   ├── advanced.go            # 高级逻辑（自 logic_advanced.go）
+│   └── services.go            # 服务逻辑（自 logic_services.go）
 ├── domain/
-│   ├── policy/             # 策略领域
+│   ├── policy/                # 策略领域
 │   │   ├── adapter_calico.go
 │   │   ├── adapter_cilium.go
 │   │   ├── adapter_flannel.go
-│   │   ├── definition.go
+│   │   ├── definition.go      # 策略定义
 │   │   ├── metrics.go
-│   │   ├── release.go
-│   │   └── simulation.go
-│   └── security/           # 安全领域
-│       ├── repository.go
-│       ├── slo_logic.go
-│       └── types.go
-├── repository.go           # 数据访问
-├── bootstrap.go            # 启动逻辑
-├── collector.go            # 采集
-├── delivery_consistency_logic.go
-├── governance_audit.go
-├── redaction.go
-├── operation_response.go
-├── types.go
+│   │   ├── release.go         # 策略发布
+│   │   └── simulation.go      # 策略模拟
+│   └── security/              # 安全领域
+│       ├── repository.go      # 安全数据访问
+│       ├── slo_logic.go       # SLO 逻辑
+│       └── types.go           # 安全类型
+├── repository.go              # 数据访问
+├── bootstrap.go               # 引导
+├── collector.go               # 采集
+├── delivery_consistency.go    # 交付一致性（自 delivery_consistency_logic.go）
+├── audit.go                   # 治理审计（自 governance_audit.go）
+├── redaction.go               # 脱敏
+├── operation_response.go      # 操作响应
 └── routes.go
 ```
 
@@ -174,15 +171,17 @@ cluster/
 
 **目标结构**：
 ```
-application/                # 重命名，避免 service 关键字冲突
+application/                   # 重命名，避免 service 关键字冲突
 ├── handler/
 │   └── handler.go
 ├── logic/
-│   ├── logic.go, logic_deploy.go
-│   ├── logic_env_match.go, logic_render.go
-│   ├── logic_revision.go, logic_service.go
-│   ├── logic_util.go, logic_variable.go
-│   └── render.go
+│   ├── deploy.go              # 部署逻辑
+│   ├── env_match.go           # 环境匹配
+│   ├── render.go              # 渲染
+│   ├── revision.go            # 版本
+│   ├── service.go             # 服务逻辑
+│   ├── util.go                # 工具
+│   └── variable.go            # 变量
 ├── template_vars.go
 ├── types.go
 └── routes.go
@@ -193,30 +192,35 @@ application/                # 重命名，避免 service 关键字冲突
 **现状**：collector.go + routes.go
 ```
 dashboard/
-├── collector.go
-└── routes.go
+├── collector.go, routes.go
 ```
 
 **目标结构**：
 ```
 dashboard/
 ├── handler/
-│   └── dashboard.go        # handler（暂无，新建）
+│   └── dashboard.go           # 新建
 ├── logic/
-│   └── collector.go        # 采集逻辑
+│   └── collector.go           # 采集逻辑
 └── routes.go
 ```
 
 ## 4. 实施顺序
 
-1. **Phase 1**: deployment, notification（改动最小，先行）
-2. **Phase 2**: topology, governance（需要拆分现有文件）
-3. **Phase 3**: dashboard, service → application（涉及重命名）
-4. **Phase 4**: cluster（最复杂，文件最多）
+| Phase | 模块 | 复杂度 | 说明 |
+|-------|------|--------|------|
+| 1 | notification | 低 | 3个文件，直接移动 |
+| 2 | dashboard | 低 | 新建 handler/，移动 collector.go |
+| 3 | topology | 中 | 需从 routes.go 拆分逻辑 |
+| 4 | governance | 中 | 整理 flat 文件到 handler/ |
+| 5 | deployment | 高 | 15个文件，重新归类 |
+| 6 | application | 中 | 仅重命名 |
+| 7 | cluster | 最高 | 最多文件，domain/ 子目录 |
 
-## 5. 注意事项
+## 5. 实施注意事项
 
-- 所有文件移动后需更新 `package` 声明
-- `routes.go` 中的 import 路径需同步更新
-- Git history 保留：使用 `git mv` 而非直接 mv
-- 先备份/确认 CI 通过后再合并
+1. **Git History**：使用 `git mv` 保留历史
+2. **Package 声明**：移动后需更新 `package`（通常与目录名一致）
+3. **Import 路径**：`routes.go` 中的 import 需同步更新
+4. **CI 验证**：每个 Phase 完成后运行测试，确认无破坏
+5. **先小后大**：从简单模块开始，积累经验后再处理复杂模块
