@@ -333,6 +333,15 @@ describe('ClusterDetailPage', () => {
     expect(screen.queryByText('集群不存在')).not.toBeInTheDocument();
   });
 
+  it('renders action-first overview and keeps base info in collapsed section', async () => {
+    renderPage();
+
+    expect(await screen.findByText('集群作战面板')).toBeInTheDocument();
+    expect(screen.getByText('关键操作台')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开基础信息' })).toBeInTheDocument();
+    expect(screen.queryByText('基本信息')).not.toBeInTheDocument();
+  });
+
   it('runs a row action and renders row-level audit feedback', async () => {
     const user = userEvent.setup();
     renderPage();
