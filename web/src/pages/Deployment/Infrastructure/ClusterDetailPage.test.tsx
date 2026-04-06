@@ -333,6 +333,32 @@ describe('ClusterDetailPage', () => {
     expect(screen.queryByText('集群不存在')).not.toBeInTheDocument();
   });
 
+  it('renders action-first overview and keeps base info in collapsed section', async () => {
+    renderPage();
+
+    expect(await screen.findByText('集群作战面板')).toBeInTheDocument();
+    expect(screen.getByText('关键操作台')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开基础信息' })).toBeInTheDocument();
+    expect(screen.queryByText('基本信息')).not.toBeInTheDocument();
+  });
+
+  it('renders quick links to security, policy, and operation centers', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('link', { name: '进入安全中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/security',
+    );
+    expect(screen.getByRole('link', { name: '进入策略中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/policies',
+    );
+    expect(screen.getByRole('link', { name: '查看全部操作' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations',
+    );
+  });
+
   it('runs a row action and renders row-level audit feedback', async () => {
     const user = userEvent.setup();
     renderPage();

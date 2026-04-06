@@ -8,60 +8,36 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
+	clustercontracts "github.com/cy77cc/OpsPilot/internal/service/cluster/contracts"
 )
 
 const (
 	// OperationStateCompleted 表示操作已完成。
-	OperationStateCompleted = "completed"
+	OperationStateCompleted = clustercontracts.OperationStateCompleted
 	// OperationStateApprovalRequired 表示操作需要审批。
-	OperationStateApprovalRequired = "approval_required"
+	OperationStateApprovalRequired = clustercontracts.OperationStateApprovalRequired
 	// OperationStateRejected 表示操作被拒绝。
-	OperationStateRejected = "rejected"
+	OperationStateRejected = clustercontracts.OperationStateRejected
 	// OperationStateFailed 表示操作失败。
-	OperationStateFailed = "failed"
+	OperationStateFailed = clustercontracts.OperationStateFailed
 )
 
 const (
 	// OperationCodeSuccess 是已完成操作的规范业务码。
-	OperationCodeSuccess = "success"
+	OperationCodeSuccess = clustercontracts.OperationCodeSuccess
 	// OperationCodeApprovalRequired 是审批待定操作的规范业务码。
-	OperationCodeApprovalRequired = "approval_required"
+	OperationCodeApprovalRequired = clustercontracts.OperationCodeApprovalRequired
 	// OperationCodeApprovalRejected 是审批拒绝操作的规范业务码。
-	OperationCodeApprovalRejected = "approval_rejected"
+	OperationCodeApprovalRejected = clustercontracts.OperationCodeApprovalRejected
 	// OperationCodeFailed 是失败操作的规范业务码。
-	OperationCodeFailed = "failed"
+	OperationCodeFailed = clustercontracts.OperationCodeFailed
 )
 
 // OperationApproval 描述写操作相关的审批信息。
-type OperationApproval struct {
-	Required      bool       `json:"required,omitempty"`
-	Ticket        string     `json:"ticket,omitempty"`
-	ClusterID     uint       `json:"cluster_id,omitempty"`
-	Namespace     string     `json:"namespace,omitempty"`
-	Action        string     `json:"action,omitempty"`
-	Resource      string     `json:"resource,omitempty"`
-	ResourceID    string     `json:"resource_id,omitempty"`
-	Reason        string     `json:"reason,omitempty"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	ConsumedAt    *time.Time `json:"consumed_at,omitempty"`
-	ConsumedBy    uint       `json:"consumed_by,omitempty"`
-	ReplayCount   int        `json:"replay_count,omitempty"`
-	ReplayAt      *time.Time `json:"replay_at,omitempty"`
-	ReplayBy      uint       `json:"replay_by,omitempty"`
-	ReplayCode    string     `json:"replay_code,omitempty"`
-	ReplayMessage string     `json:"replay_message,omitempty"`
-	Status        string     `json:"status,omitempty"`
-}
+type OperationApproval = clustercontracts.OperationApproval
 
 // OperationResponse 是集群写操作的统一响应信封。
-type OperationResponse struct {
-	State    string             `json:"state"`
-	Approval *OperationApproval `json:"approval,omitempty"`
-	AuditID  uint               `json:"audit_id,omitempty"`
-	Code     string             `json:"code,omitempty"`
-	Message  string             `json:"message,omitempty"`
-	Data     any                `json:"data,omitempty"`
-}
+type OperationResponse = clustercontracts.OperationResponse
 
 // NewOperationResponse 创建标准写响应信封。
 func NewOperationResponse(state string, approval *OperationApproval, auditID uint, code, message string, data any) OperationResponse {

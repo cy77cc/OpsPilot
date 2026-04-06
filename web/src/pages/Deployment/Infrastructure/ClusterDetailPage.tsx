@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Card, Tabs, Table, Tag, Button, Space, Descriptions, Spin, message,
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
-  Select, Dropdown, InputNumber
+  Select, Dropdown, InputNumber, Row, Col
 } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, ClusterOutlined,
@@ -87,6 +87,7 @@ const ClusterDetailPage: React.FC = () => {
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [nodesLoading, setNodesLoading] = useState(false);
+  const [infoExpanded, setInfoExpanded] = useState(false);
 
   // Resource state
   const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
@@ -1488,18 +1489,51 @@ const ClusterDetailPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* Overview */}
-      <Card title="基本信息">
-        <Descriptions column={3}>
-          <Descriptions.Item label="集群名称">{cluster.name}</Descriptions.Item>
-          <Descriptions.Item label="K8s 版本">{cluster.k8s_version || cluster.version || '-'}</Descriptions.Item>
-          <Descriptions.Item label="节点数量">{cluster.node_count}</Descriptions.Item>
-          <Descriptions.Item label="API 地址">{cluster.endpoint || '-'}</Descriptions.Item>
-          <Descriptions.Item label="Pod CIDR">{cluster.pod_cidr || '-'}</Descriptions.Item>
-          <Descriptions.Item label="Service CIDR">{cluster.service_cidr || '-'}</Descriptions.Item>
-          <Descriptions.Item label="描述" span={3}>{cluster.description || '-'}</Descriptions.Item>
-        </Descriptions>
+      <Card title="集群作战面板">
+        <Row gutter={16}>
+          <Col xs={24} md={16}>
+            <Space size="middle" wrap>
+              <Tag color={getStatusColor(cluster.status)}>状态: {cluster.status}</Tag>
+              <Tag color="blue">节点: {cluster.node_count}</Tag>
+              <Tag color="geekblue">K8s: {cluster.k8s_version || cluster.version || '-'}</Tag>
+            </Space>
+          </Col>
+          <Col xs={24} md={8}>
+            <Card size="small" title="关键操作台">
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Button block onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`)}>
+                  进入操作中心
+                </Button>
+                <Button block onClick={handleSyncNodes} loading={nodesLoading}>
+                  同步节点
+                </Button>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/security`}>进入安全中心</Link>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/policies`}>进入策略中心</Link>
+                <Link to={`/deployment/infrastructure/clusters/${clusterId}/operations`}>查看全部操作</Link>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
       </Card>
+
+      <div>
+        <Button onClick={() => setInfoExpanded((v) => !v)}>
+          {infoExpanded ? '收起基础信息' : '展开基础信息'}
+        </Button>
+      </div>
+      {infoExpanded ? (
+        <Card title="基本信息">
+          <Descriptions column={3}>
+            <Descriptions.Item label="集群名称">{cluster.name}</Descriptions.Item>
+            <Descriptions.Item label="K8s 版本">{cluster.k8s_version || cluster.version || '-'}</Descriptions.Item>
+            <Descriptions.Item label="节点数量">{cluster.node_count}</Descriptions.Item>
+            <Descriptions.Item label="API 地址">{cluster.endpoint || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Pod CIDR">{cluster.pod_cidr || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Service CIDR">{cluster.service_cidr || '-'}</Descriptions.Item>
+            <Descriptions.Item label="描述" span={3}>{cluster.description || '-'}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      ) : null}
 
       {/* Tabs */}
       <Tabs defaultActiveKey="nodes" items={[
