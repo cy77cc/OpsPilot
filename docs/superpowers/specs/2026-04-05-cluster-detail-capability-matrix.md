@@ -19,4 +19,4 @@
 | 配置与存储（ConfigMap/Secret/PVC） | `/deployment/infrastructure/clusters/:id/config-storage` | `GET /clusters/:id/resources?scope=config-storage` | `GetClusterResources` | `ClusterConfigStoragePage.test.tsx` | partial | 当前接口需补返回聚合结构 |
 | 安全告警摘要 | `/deployment/infrastructure/clusters/:id` | `GET /clusters/:id/security/alerts?severity=high&page_size=5` | `ListRuntimeAlerts` | `handler_phase3_runtime_test.go` | ready | 已支持 severity 与 page_size 过滤 |
 | 运行时处置（contain） | `/deployment/infrastructure/clusters/:id/operations` | `POST /clusters/:id/security/alerts/:id/contain` | `ContainRuntimeAlert` | `handler_phase3_runtime_test.go` | partial | `external_managed` 走 `suggest_only` |
-| 漂移治理入口 | `/deployment/infrastructure/clusters/:id/workloads` | `GET /clusters/:id/apps/:name/drift` | `N/A` | `N/A` | missing | Phase 3 C4 规划项，未实现禁止入口直出 |
+| 漂移治理入口 | `/deployment/infrastructure/clusters/:id/workloads` | `GET /clusters/:id/apps/:name/drift` | `N/A` | `N/A` | partial | Phase 3 C4 规划项，当前未暴露可点击入口 |

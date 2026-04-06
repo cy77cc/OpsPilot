@@ -1,5 +1,7 @@
 # Cluster Detail UI 重构设计（信息降噪 + 紧凑交互 + 前后端对齐）
 
+> 状态：v3 — UI 路由拆分完成（overview / nodes / workloads / network / config-storage），Capability Matrix 已同步当前实现
+
 ## 1. 背景与目标
 
 当前 `ClusterDetailPage` 承载过多模块，信息密度与优先级失衡：
