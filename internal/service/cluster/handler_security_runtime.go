@@ -9,6 +9,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	clustersecurity "github.com/cy77cc/OpsPilot/internal/service/cluster/security"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -62,13 +63,13 @@ func (h *Handler) IngestRuntimeEvent(c *gin.Context) {
 	}
 
 	source := strings.ToLower(strings.TrimSpace(req.Source))
-	var evt RuntimeIngestEvent
+	var evt clustersecurity.RuntimeIngestEvent
 	var err error
 	switch source {
 	case model.SecurityEventSourceFalco:
-		evt, err = ParseFalcoEvent(req.Payload)
+		evt, err = clustersecurity.ParseFalcoEvent(req.Payload)
 	case model.SecurityEventSourceTetragon:
-		evt, err = ParseTetragonEvent(req.Payload)
+		evt, err = clustersecurity.ParseTetragonEvent(req.Payload)
 	default:
 		httpx.BindErr(c, fmt.Errorf("unsupported source: %s", req.Source))
 		return

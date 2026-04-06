@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,7 @@ import (
 func TestHandlerPhase3GitOps_SyncCallsArgoAndRecordsRelease(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3GitOpsTestHandler(t)
-	handler.argocd = stubArgoCDClient{result: ArgoSyncResult{Status: "succeeded", Revision: "rev-sync-1"}}
+	handler.argocd = stubArgoCDClient{result: clusterintegration.ArgoSyncResult{Status: "succeeded", Revision: "rev-sync-1"}}
 
 	body := strings.NewReader(`{"environment":"prod","approval_token":"` + mustIssuePhase3GitOpsApproval(t, db, "payments") + `"}`)
 	recorder := httptest.NewRecorder()
@@ -187,13 +188,13 @@ func mustIssuePhase3GitOpsApproval(t *testing.T, db *gorm.DB, appName string) st
 }
 
 type stubArgoCDClient struct {
-	result ArgoSyncResult
+	result clusterintegration.ArgoSyncResult
 	err    error
 }
 
-func (s stubArgoCDClient) Sync(_ context.Context, _ string) (ArgoSyncResult, error) {
+func (s stubArgoCDClient) Sync(_ context.Context, _ string) (clusterintegration.ArgoSyncResult, error) {
 	if s.err != nil {
-		return ArgoSyncResult{}, s.err
+		return clusterintegration.ArgoSyncResult{}, s.err
 	}
 	return s.result, nil
 }

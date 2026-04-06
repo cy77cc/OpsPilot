@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -104,7 +105,7 @@ func newPhase3GovernanceTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 func TestHandlerPhase3Admission_RegistersPolicyAndVersion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3AdmissionTestHandler(t)
-	handler.trivy = stubTrivyClient{result: TrivyScanResult{Summary: TrivySummary{Critical: 0, High: 1}}}
+	handler.trivy = stubTrivyClient{result: clusterintegration.TrivyScanResult{Summary: clusterintegration.TrivySummary{Critical: 0, High: 1}}}
 
 	body := strings.NewReader(`{"policy_name":"deny-privileged","version":"v1","image":"repo/api:1.2.3","approval_token":"` + mustIssuePhase3Approval(t, db, "admission.apply", "deny-privileged") + `"}`)
 	recorder := httptest.NewRecorder()
@@ -138,7 +139,7 @@ func TestHandlerPhase3Admission_RegistersPolicyAndVersion(t *testing.T) {
 func TestHandlerPhase3Admission_BlocksCriticalVulnFromTrivy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3AdmissionTestHandler(t)
-	handler.trivy = stubTrivyClient{result: TrivyScanResult{Summary: TrivySummary{Critical: 2, High: 0}}}
+	handler.trivy = stubTrivyClient{result: clusterintegration.TrivyScanResult{Summary: clusterintegration.TrivySummary{Critical: 2, High: 0}}}
 
 	body := strings.NewReader(`{"policy_name":"deny-privileged","version":"v2","image":"repo/api:2.0.0","approval_token":"` + mustIssuePhase3Approval(t, db, "admission.apply", "deny-privileged") + `"}`)
 	recorder := httptest.NewRecorder()
@@ -311,10 +312,10 @@ func mustIssuePhase3Approval(t *testing.T, db *gorm.DB, action string, resourceI
 }
 
 type stubTrivyClient struct {
-	result TrivyScanResult
+	result clusterintegration.TrivyScanResult
 	err    error
 }
 
-func (s stubTrivyClient) ScanImage(_ context.Context, _ string) (TrivyScanResult, error) {
+func (s stubTrivyClient) ScanImage(_ context.Context, _ string) (clusterintegration.TrivyScanResult, error) {
 	return s.result, s.err
 }

@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
+	clustersecurity "github.com/cy77cc/OpsPilot/internal/service/cluster/security"
 )
 
 func TestHarborClient_ListProjects(t *testing.T) {
@@ -16,7 +19,7 @@ func TestHarborClient_ListProjects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPHarborClient(server.URL, "")
+	client := clusterintegration.NewHTTPHarborClient(server.URL, "")
 	projects, err := client.ListProjects(context.Background())
 	if err != nil {
 		t.Fatalf("list harbor projects: %v", err)
@@ -35,7 +38,7 @@ func TestTrivyClient_ScanImage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPTrivyClient(server.URL)
+	client := clusterintegration.NewHTTPTrivyClient(server.URL)
 	result, err := client.ScanImage(context.Background(), "registry.local/nginx:1.0")
 	if err != nil {
 		t.Fatalf("scan image: %v", err)
@@ -54,7 +57,7 @@ func TestArgoCDClient_SyncApplication(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPArgoCDClient(server.URL, "")
+	client := clusterintegration.NewHTTPArgoCDClient(server.URL, "")
 	result, err := client.Sync(context.Background(), "payments")
 	if err != nil {
 		t.Fatalf("sync application: %v", err)
@@ -66,7 +69,7 @@ func TestArgoCDClient_SyncApplication(t *testing.T) {
 
 func TestRuntimeIngest_ParseFalcoAndTetragon(t *testing.T) {
 	falcoRaw := []byte(`{"rule":"Terminal shell in container","priority":"Critical","output_fields":{"k8s.ns.name":"prod","k8s.pod.name":"api-1"}}`)
-	falcoEvent, err := ParseFalcoEvent(falcoRaw)
+	falcoEvent, err := clustersecurity.ParseFalcoEvent(falcoRaw)
 	if err != nil {
 		t.Fatalf("parse falco event: %v", err)
 	}
@@ -75,7 +78,7 @@ func TestRuntimeIngest_ParseFalcoAndTetragon(t *testing.T) {
 	}
 
 	tetragonRaw := []byte(`{"policy_name":"exec-detect","severity":"high","namespace":"prod","pod":"api-1"}`)
-	tetragonEvent, err := ParseTetragonEvent(tetragonRaw)
+	tetragonEvent, err := clustersecurity.ParseTetragonEvent(tetragonRaw)
 	if err != nil {
 		t.Fatalf("parse tetragon event: %v", err)
 	}

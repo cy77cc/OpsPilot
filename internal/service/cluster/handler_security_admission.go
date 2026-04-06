@@ -8,6 +8,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -91,7 +92,7 @@ func (h *Handler) UpsertAdmissionPolicy(c *gin.Context) {
 		return
 	}
 
-	scan := TrivyScanResult{}
+	scan := clusterintegration.TrivyScanResult{}
 	image := strings.TrimSpace(req.Image)
 	if image != "" && h.trivy != nil {
 		scan, err = h.trivy.ScanImage(c.Request.Context(), image)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -23,8 +24,8 @@ import (
 type Handler struct {
 	svcCtx *svc.ServiceContext // 服务上下文
 	repo   *Repository         // 数据访问层
-	trivy  TrivyClient
-	argocd ArgoCDClient
+	trivy  clusterintegration.TrivyClient
+	argocd clusterintegration.ArgoCDClient
 }
 
 // NewHandler 创建集群服务处理器。
