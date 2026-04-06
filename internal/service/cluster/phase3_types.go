@@ -1,26 +1,19 @@
 package cluster
 
-import "time"
+import clustercontracts "github.com/cy77cc/OpsPilot/internal/service/cluster/contracts"
 
 const (
-	ClusterModePlatformManaged = "platform_managed"
-	ClusterModeExternalManaged = "external_managed"
+	ClusterModePlatformManaged = clustercontracts.ClusterModePlatformManaged
+	ClusterModeExternalManaged = clustercontracts.ClusterModeExternalManaged
 )
 
-type Phase3GateDecision string
+type Phase3GateDecision = clustercontracts.Phase3GateDecision
 
 const (
-	Phase3GateDecisionAllowed          Phase3GateDecision = "allowed"
-	Phase3GateDecisionApprovalRequired Phase3GateDecision = "approval_required"
-	Phase3GateDecisionRejected         Phase3GateDecision = "rejected"
-	Phase3GateDecisionBlocked          Phase3GateDecision = "blocked"
+	Phase3GateDecisionAllowed          Phase3GateDecision = clustercontracts.Phase3GateDecisionAllowed
+	Phase3GateDecisionApprovalRequired Phase3GateDecision = clustercontracts.Phase3GateDecisionApprovalRequired
+	Phase3GateDecisionRejected         Phase3GateDecision = clustercontracts.Phase3GateDecisionRejected
+	Phase3GateDecisionBlocked          Phase3GateDecision = clustercontracts.Phase3GateDecisionBlocked
 )
 
-type RuntimeContainResult struct {
-	EventID     uint      `json:"event_id"`
-	Mode        string    `json:"mode"`
-	AuditID     uint      `json:"audit_id,omitempty"`
-	ApprovalID  uint      `json:"approval_id,omitempty"`
-	Status      string    `json:"status"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
+type RuntimeContainResult = clustercontracts.RuntimeContainResult

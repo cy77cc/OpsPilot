@@ -5,48 +5,15 @@ package cluster
 
 import (
 	"time"
+
+	clustercontracts "github.com/cy77cc/OpsPilot/internal/service/cluster/contracts"
 )
 
 // ClusterNode 集群节点响应结构。
-type ClusterNode struct {
-	ID               uint      `json:"id"`                // 节点 ID
-	ClusterID        uint      `json:"cluster_id"`        // 所属集群 ID
-	HostID           *uint     `json:"host_id"`           // 关联主机 ID
-	Name             string    `json:"name"`              // 节点名称
-	IP               string    `json:"ip"`                // 节点 IP
-	Role             string    `json:"role"`              // 节点角色: control-plane/worker
-	Status           string    `json:"status"`            // 节点状态
-	KubeletVersion   string    `json:"kubelet_version"`   // Kubelet 版本
-	ContainerRuntime string    `json:"container_runtime"` // 容器运行时
-	OSImage          string    `json:"os_image"`          // 操作系统镜像
-	KernelVersion    string    `json:"kernel_version"`    // 内核版本
-	AllocatableCPU   string    `json:"allocatable_cpu"`   // 可分配 CPU
-	AllocatableMem   string    `json:"allocatable_mem"`   // 可分配内存
-	Labels           string    `json:"labels"`            // 节点标签
-	CreatedAt        time.Time `json:"created_at"`        // 创建时间
-	UpdatedAt        time.Time `json:"updated_at"`        // 更新时间
-}
+type ClusterNode = clustercontracts.ClusterNode
 
 // ClusterDetail 集群详情响应结构。
-type ClusterDetail struct {
-	ID             uint       `json:"id"`              // 集群 ID
-	Name           string     `json:"name"`            // 集群名称
-	Description    string     `json:"description"`     // 集群描述
-	Version        string     `json:"version"`         // 集群版本
-	K8sVersion     string     `json:"k8s_version"`     // Kubernetes 版本
-	Status         string     `json:"status"`          // 集群状态: active/inactive/error
-	Source         string     `json:"source"`          // 来源: platform_managed/external_managed
-	Type           string     `json:"type"`            // 类型: kubernetes/openshift
-	NodeCount      int        `json:"node_count"`      // 节点数量
-	Endpoint       string     `json:"endpoint"`        // API Server 地址
-	PodCIDR        string     `json:"pod_cidr"`        // Pod 网段
-	ServiceCIDR    string     `json:"service_cidr"`    // Service 网段
-	ManagementMode string     `json:"management_mode"` // 管理模式
-	CredentialID   *uint      `json:"credential_id"`   // 凭证 ID
-	LastSyncAt     *time.Time `json:"last_sync_at"`    // 最后同步时间
-	CreatedAt      time.Time  `json:"created_at"`      // 创建时间
-	UpdatedAt      time.Time  `json:"updated_at"`      // 更新时间
-}
+type ClusterDetail = clustercontracts.ClusterDetail
 
 // ClusterListItem 集群列表项响应结构。
 type ClusterListItem struct {
