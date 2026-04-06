@@ -3,6 +3,7 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,11 +111,24 @@ func (h *Handler) ListRuntimeAlerts(c *gin.Context) {
 		return
 	}
 
+	severity := strings.ToLower(strings.TrimSpace(c.Query("severity")))
+	pageSize := 100
+	if raw := strings.TrimSpace(c.DefaultQuery("page_size", "100")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			pageSize = parsed
+		}
+	}
+
+	query := h.svcCtx.DB.WithContext(c.Request.Context()).
+		Where("cluster_id = ?", clusterID)
+	if severity != "" {
+		query = query.Where("LOWER(severity) = ?", severity)
+	}
+
 	var events []model.RuntimeSecurityEvent
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
-		Where("cluster_id = ?", clusterID).
+	if err := query.
 		Order("id DESC").
-		Limit(100).
+		Limit(pageSize).
 		Find(&events).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return

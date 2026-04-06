@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -40,6 +41,36 @@ func TestHandlerPhase3Runtime_IngestFalcoEvent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected one ingested runtime event, got %d", count)
+	}
+}
+
+func TestHandlerPhase3Runtime_ListAlertsSupportsSeverityAndPageSize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, db := newPhase3RuntimeTestHandler(t, ClusterModePlatformManaged)
+	seedRuntimeEvent(t, db, 42, "prod", "api-critical", "rule-1", model.SecuritySeverityCritical, model.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-high-1", "rule-2", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-high-2", "rule-3", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-low", "rule-4", model.SecuritySeverityLow, model.SecurityEventSourceFalco)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/clusters/42/security/alerts?severity=high&page_size=1", nil)
+	ctx.Params = gin.Params{{Key: "id", Value: "42"}}
+
+	handler.ListRuntimeAlerts(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected http 200, got %d", recorder.Code)
+	}
+	payload := decodeRuntimeAlertsResponse(t, recorder)
+	if len(payload.Data.List) != 1 {
+		t.Fatalf("expected one alert by page_size=1, got %d", len(payload.Data.List))
+	}
+	if strings.ToLower(strings.TrimSpace(payload.Data.List[0].Severity)) != model.SecuritySeverityHigh {
+		t.Fatalf("expected severity high, got %q", payload.Data.List[0].Severity)
+	}
+	if payload.Data.Total != 1 {
+		t.Fatalf("expected total to reflect filtered page size of 1, got %d", payload.Data.Total)
 	}
 }
 
@@ -226,4 +257,22 @@ func mustIssuePhase3RuntimeApproval(t *testing.T, db *gorm.DB, eventID uint) str
 		t.Fatalf("approve runtime ticket: %v", err)
 	}
 	return decision.Approval.Ticket
+}
+
+type runtimeAlertsHTTPResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		List []model.RuntimeSecurityEvent `json:"list"`
+		Total int                         `json:"total"`
+	} `json:"data"`
+}
+
+func decodeRuntimeAlertsResponse(t *testing.T, recorder *httptest.ResponseRecorder) runtimeAlertsHTTPResponse {
+	t.Helper()
+	var payload runtimeAlertsHTTPResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode runtime alerts response: %v", err)
+	}
+	return payload
 }
