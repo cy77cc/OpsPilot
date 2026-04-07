@@ -11,17 +11,19 @@ package cluster
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	clusterhandler "github.com/cy77cc/OpsPilot/internal/service/cluster/handler"
+	clusterlogic "github.com/cy77cc/OpsPilot/internal/service/cluster/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterClusterHandlers 注册集群服务路由到 v1 组。
 func RegisterClusterHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
+	h := clusterhandler.NewHandler(svcCtx)
 
 	// 启动集群指标采集器
 	if svcCtx != nil && svcCtx.MetricsPusher != nil {
-		collector := NewCollector(svcCtx)
+		collector := clusterlogic.NewCollector(svcCtx)
 		collector.Start()
 	}
 

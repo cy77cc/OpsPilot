@@ -13,7 +13,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	projectlogic "github.com/cy77cc/OpsPilot/internal/service/project/logic"
-	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
@@ -22,17 +21,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
-
-// Handler 集群资源 HTTP 处理器。
-type Handler struct{ svcCtx *svc.ServiceContext }
-
-// NewHandler 创建集群资源处理器。
-//
-// 参数:
-//   - svcCtx: 服务上下文
-//
-// 返回: Handler 实例
-func NewHandler(svcCtx *svc.ServiceContext) *Handler { return &Handler{svcCtx: svcCtx} }
 
 // List 获取集群列表。
 //
