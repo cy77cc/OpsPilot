@@ -21,7 +21,7 @@ type CICDServiceCIConfig struct {
 	ServiceID      uint      `gorm:"column:service_id;not null;index:idx_cicd_service_ci_service" json:"service_id"` // 关联服务 ID
 	RepoURL        string    `gorm:"column:repo_url;type:varchar(512);not null" json:"repo_url"`         // 代码仓库地址
 	Branch         string    `gorm:"column:branch;type:varchar(128);default:'main'" json:"branch"`       // 分支名称
-	BuildStepsJSON string    `gorm:"column:build_steps_json;type:longtext" json:"build_steps_json"`      // 构建步骤 JSON
+	BuildStepsJSON string    `gorm:"column:build_steps_json;type:text" json:"build_steps_json"`      // 构建步骤 JSON
 	ArtifactTarget string    `gorm:"column:artifact_target;type:varchar(512);not null" json:"artifact_target"` // 制品目标路径
 	TriggerMode    string    `gorm:"column:trigger_mode;type:varchar(32);not null;default:'manual'" json:"trigger_mode"` // 触发模式: manual/source-event/both
 	Status         string    `gorm:"column:status;type:varchar(32);not null;default:'active'" json:"status"` // 配置状态
@@ -65,7 +65,7 @@ type CICDDeploymentCDConfig struct {
 	Env                string    `gorm:"column:env;type:varchar(32);not null;index:uk_cicd_deploy_env_runtime,priority:2" json:"env"` // 环境名称
 	RuntimeType        string    `gorm:"column:runtime_type;type:varchar(16);not null;default:'k8s';index:uk_cicd_deploy_env_runtime,priority:3" json:"runtime_type"` // 运行时类型: k8s/compose
 	Strategy           string    `gorm:"column:strategy;type:varchar(32);not null;default:'rolling'" json:"strategy"`          // 发布策略: rolling/blue-green/canary
-	StrategyConfigJSON string    `gorm:"column:strategy_config_json;type:longtext" json:"strategy_config_json"`                // 策略配置 JSON
+	StrategyConfigJSON string    `gorm:"column:strategy_config_json;type:text" json:"strategy_config_json"`                // 策略配置 JSON
 	ApprovalRequired   bool      `gorm:"column:approval_required;not null;default:false" json:"approval_required"`             // 是否需要审批
 	UpdatedBy          uint      `gorm:"column:updated_by;not null;default:0" json:"updated_by"`                               // 最后更新用户 ID
 	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                   // 创建时间
@@ -93,7 +93,7 @@ type CICDRelease struct {
 	ApprovedBy            uint       `gorm:"column:approved_by;not null;default:0" json:"approved_by"`                    // 审批用户 ID
 	ApprovalComment       string     `gorm:"column:approval_comment;type:varchar(1024);default:''" json:"approval_comment"` // 审批备注
 	RollbackFromReleaseID uint       `gorm:"column:rollback_from_release_id;not null;default:0" json:"rollback_from_release_id"` // 回滚来源发布 ID
-	DiagnosticsJSON       string     `gorm:"column:diagnostics_json;type:longtext" json:"diagnostics_json"`               // 诊断信息 JSON
+	DiagnosticsJSON       string     `gorm:"column:diagnostics_json;type:text" json:"diagnostics_json"`               // 诊断信息 JSON
 	StartedAt             *time.Time `gorm:"column:started_at" json:"started_at"`                                          // 开始时间
 	FinishedAt            *time.Time `gorm:"column:finished_at" json:"finished_at"`                                        // 完成时间
 	CreatedAt             time.Time  `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`                    // 创建时间
@@ -136,9 +136,9 @@ type CICDAuditEvent struct {
 	Intent           string    `gorm:"column:intent;type:varchar(128);index" json:"intent"`        // AI 意图
 	PlanHash         string    `gorm:"column:plan_hash;type:varchar(96);index" json:"plan_hash"`   // 计划哈希
 	TraceID          string    `gorm:"column:trace_id;type:varchar(96);index" json:"trace_id"`     // 追踪 ID
-	ApprovalContext  string    `gorm:"column:approval_context;type:longtext" json:"approval_context"` // 审批上下文 JSON
+	ApprovalContext  string    `gorm:"column:approval_context;type:text" json:"approval_context"` // 审批上下文 JSON
 	ExecutionSummary string    `gorm:"column:execution_summary;type:text" json:"execution_summary"` // 执行摘要
-	PayloadJSON      string    `gorm:"column:payload_json;type:longtext" json:"payload_json"`      // 事件负载 JSON
+	PayloadJSON      string    `gorm:"column:payload_json;type:text" json:"payload_json"`      // 事件负载 JSON
 	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`   // 创建时间
 }
 

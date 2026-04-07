@@ -28,7 +28,7 @@ type Cluster struct {
 	Source         string     `gorm:"column:source;type:varchar(32);default:'platform_managed';index" json:"source"` // 来源: platform_managed/external_managed
 	EnvType        string     `gorm:"column:env_type;type:varchar(32);not null;default:'development';index" json:"env_type"` // 环境: development/staging/production
 	Endpoint       string     `gorm:"column:endpoint;type:varchar(256)" json:"endpoint"`                           // API Server 地址
-	KubeConfig     string     `gorm:"column:kubeconfig;type:mediumtext" json:"-"`                                 // kubeconfig 内容 (逐步废弃)
+	KubeConfig     string     `gorm:"column:kubeconfig;type:text" json:"-"`                                 // kubeconfig 内容 (逐步废弃)
 	CACert         string     `gorm:"column:ca_cert;type:text" json:"-"`                                          // CA 证书
 	Token          string     `gorm:"column:token;type:text" json:"-"`                                            // 认证 Token
 	Nodes          string     `gorm:"column:nodes;type:json" json:"nodes"`                                         // 节点列表 (JSON)
@@ -67,7 +67,7 @@ type ClusterBootstrapProfile struct {
 	ControlPlaneEndpoint string    `gorm:"column:control_plane_endpoint;type:varchar(256)" json:"control_plane_endpoint"` // 控制面端点
 	VIPProvider          string    `gorm:"column:vip_provider;type:varchar(32)" json:"vip_provider"`                // VIP 提供者: kube-vip/keepalived
 	EtcdMode             string    `gorm:"column:etcd_mode;type:varchar(16);default:'stacked'" json:"etcd_mode"`    // etcd 模式: stacked/external
-	ExternalEtcdJSON     string    `gorm:"column:external_etcd_json;type:longtext" json:"external_etcd_json"`       // 外部 etcd 配置 (JSON)
+	ExternalEtcdJSON     string    `gorm:"column:external_etcd_json;type:text" json:"external_etcd_json"`       // 外部 etcd 配置 (JSON)
 	CreatedBy            uint64    `gorm:"column:created_by;index" json:"created_by"`                               // 创建人 ID
 	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`               // 创建时间
 	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                      // 更新时间

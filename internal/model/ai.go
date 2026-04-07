@@ -63,7 +63,7 @@ type AIChatMessage struct {
 	SessionID    string         `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_chat_messages_session_created,priority:1;uniqueIndex:uk_ai_chat_messages_session_seq,priority:1;index:idx_ai_chat_messages_session_role,priority:1" json:"session_id"`
 	SessionIDNum int            `gorm:"column:session_id_num;not null;default:0;uniqueIndex:uk_ai_chat_messages_session_seq,priority:2" json:"session_id_num"`
 	Role         string         `gorm:"column:role;type:varchar(16);not null;default:'assistant';index:idx_ai_chat_messages_session_role,priority:2" json:"role"`
-	Content      string         `gorm:"column:content;type:longtext;not null" json:"content"`
+	Content      string         `gorm:"column:content;type:text;not null" json:"content"`
 	Status       string         `gorm:"column:status;type:varchar(16);not null;default:'done'" json:"status"`
 	CreatedAt    time.Time      `gorm:"column:created_at;autoCreateTime;index:idx_ai_chat_messages_session_created,priority:2" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
@@ -118,7 +118,7 @@ type AIRun struct {
 	RiskLevel          string         `gorm:"column:risk_level;type:varchar(16)" json:"risk_level"`
 	TraceID            string         `gorm:"column:trace_id;type:varchar(128)" json:"trace_id"`
 	ErrorMessage       string         `gorm:"column:error_message;type:text" json:"error_message"`
-	TraceJSON          string         `gorm:"column:trace_json;type:longtext;not null" json:"trace_json"`
+	TraceJSON          string         `gorm:"column:trace_json;type:text;not null" json:"trace_json"`
 	StartedAt          time.Time      `gorm:"column:started_at;autoCreateTime" json:"started_at"`
 	LastEventAt        *time.Time     `gorm:"column:last_event_at" json:"last_event_at"`
 	FinishedAt         *time.Time     `gorm:"column:finished_at" json:"finished_at"`
@@ -153,7 +153,7 @@ type AIRunEvent struct {
 	EventType   string    `gorm:"column:event_type;type:varchar(32);not null;index:idx_ai_run_events_run_type,priority:2" json:"event_type"`
 	AgentName   string    `gorm:"column:agent_name;type:varchar(64)" json:"agent_name"`
 	ToolCallID  string    `gorm:"column:tool_call_id;type:varchar(64);index:idx_ai_run_events_tool_call_id" json:"tool_call_id"`
-	PayloadJSON string    `gorm:"column:payload_json;type:longtext;not null" json:"payload_json"`
+	PayloadJSON string    `gorm:"column:payload_json;type:text;not null" json:"payload_json"`
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime;index:idx_ai_run_events_session_created,priority:2,sort:desc" json:"created_at"`
 }
 
@@ -180,7 +180,7 @@ type AIRunProjection struct {
 	SessionID      string    `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_run_projections_session_id" json:"session_id"`
 	Version        int       `gorm:"column:version;not null;default:1" json:"version"`
 	Status         string    `gorm:"column:status;type:varchar(32);not null" json:"status"`
-	ProjectionJSON string    `gorm:"column:projection_json;type:longtext;not null" json:"projection_json"`
+	ProjectionJSON string    `gorm:"column:projection_json;type:text;not null" json:"projection_json"`
 	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
@@ -211,8 +211,8 @@ type AIRunContent struct {
 	ContentKind string    `gorm:"column:content_kind;type:varchar(32);not null;index:idx_ai_run_contents_kind" json:"content_kind"`
 	Encoding    string    `gorm:"column:encoding;type:varchar(16);not null" json:"encoding"`
 	SummaryText string    `gorm:"column:summary_text;type:varchar(500)" json:"summary_text"`
-	BodyText    string    `gorm:"column:body_text;type:longtext" json:"body_text"`
-	BodyJSON    string    `gorm:"column:body_json;type:longtext" json:"body_json"`
+	BodyText    string    `gorm:"column:body_text;type:text" json:"body_text"`
+	BodyJSON    string    `gorm:"column:body_json;type:text" json:"body_json"`
 	SizeBytes   int64     `gorm:"column:size_bytes;not null;default:0" json:"size_bytes"`
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 }
@@ -244,10 +244,10 @@ type AIDiagnosisReport struct {
 	RunID               string         `gorm:"column:run_id;type:varchar(64);not null;uniqueIndex" json:"run_id"`
 	SessionID           string         `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_diagnosis_reports_session_created,priority:1" json:"session_id"`
 	Summary             string         `gorm:"column:summary;type:text;not null" json:"summary"`
-	ReportJSON          string         `gorm:"column:report_json;type:longtext" json:"report_json"`
-	EvidenceJSON        string         `gorm:"column:evidence_json;type:longtext" json:"evidence_json"`
-	RootCausesJSON      string         `gorm:"column:root_causes_json;type:longtext" json:"root_causes_json"`
-	RecommendationsJSON string         `gorm:"column:recommendations_json;type:longtext" json:"recommendations_json"`
+	ReportJSON          string         `gorm:"column:report_json;type:text" json:"report_json"`
+	EvidenceJSON        string         `gorm:"column:evidence_json;type:text" json:"evidence_json"`
+	RootCausesJSON      string         `gorm:"column:root_causes_json;type:text" json:"root_causes_json"`
+	RecommendationsJSON string         `gorm:"column:recommendations_json;type:text" json:"recommendations_json"`
 	RiskLevel           string         `gorm:"column:risk_level;type:varchar(16)" json:"risk_level"`
 	GeneratedAt         time.Time      `gorm:"column:generated_at;autoCreateTime" json:"generated_at"`
 	CreatedAt           time.Time      `gorm:"column:created_at;autoCreateTime;index:idx_ai_diagnosis_reports_session_created,priority:2,sort:desc" json:"created_at"`
@@ -304,9 +304,9 @@ type AISceneConfig struct {
 	ID               uint64         `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	Scene            string         `gorm:"column:scene;type:varchar(32);not null;uniqueIndex" json:"scene"`
 	Description      string         `gorm:"column:description;type:text" json:"description"`
-	ConstraintsJSON  string         `gorm:"column:constraints_json;type:longtext" json:"constraints_json"`
-	AllowedToolsJSON string         `gorm:"column:allowed_tools_json;type:longtext" json:"allowed_tools_json"`
-	BlockedToolsJSON string         `gorm:"column:blocked_tools_json;type:longtext" json:"blocked_tools_json"`
+	ConstraintsJSON  string         `gorm:"column:constraints_json;type:text" json:"constraints_json"`
+	AllowedToolsJSON string         `gorm:"column:allowed_tools_json;type:text" json:"allowed_tools_json"`
+	BlockedToolsJSON string         `gorm:"column:blocked_tools_json;type:text" json:"blocked_tools_json"`
 	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
@@ -394,7 +394,7 @@ type AIUsageLog struct {
 	ApprovalStatus   string         `gorm:"column:approval_status;type:varchar(16);default:''" json:"approval_status"`
 	ToolCallCount    int64          `gorm:"column:tool_call_count;not null;default:0" json:"tool_call_count"`
 	ToolErrorCount   int64          `gorm:"column:tool_error_count;not null;default:0" json:"tool_error_count"`
-	MetadataJSON     string         `gorm:"column:metadata_json;type:longtext" json:"metadata_json"`
+	MetadataJSON     string         `gorm:"column:metadata_json;type:text" json:"metadata_json"`
 	CreatedAt        time.Time      `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`
 	UpdatedAt        time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index" json:"-"`
@@ -425,7 +425,7 @@ type AICheckpoint struct {
 	RunID        string         `gorm:"column:run_id;type:varchar(64);index" json:"run_id"`
 	UserID       uint64         `gorm:"column:user_id;not null;default:0;index" json:"user_id"`
 	Scene        string         `gorm:"column:scene;type:varchar(32);index" json:"scene"`
-	Payload      []byte         `gorm:"column:payload;type:longblob;not null" json:"payload"`
+	Payload      []byte         `gorm:"column:payload;type:bytea;not null" json:"payload"`
 	ExpiresAt    *time.Time     `gorm:"column:expires_at;index" json:"expires_at"`
 	CreatedAt    time.Time      `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
@@ -458,7 +458,7 @@ type AIToolRiskPolicy struct {
 	ToolName          string    `gorm:"column:tool_name;type:varchar(64);not null;index:idx_ai_tool_risk_policies_tool_enabled,priority:1" json:"tool_name"`
 	Scene             *string   `gorm:"column:scene;type:varchar(32)" json:"scene"`
 	CommandClass      *string   `gorm:"column:command_class;type:varchar(32)" json:"command_class"`
-	ArgumentRulesJSON *string   `gorm:"column:argument_rules;type:longtext" json:"argument_rules"`
+	ArgumentRulesJSON *string   `gorm:"column:argument_rules;type:text" json:"argument_rules"`
 	ApprovalRequired  bool      `gorm:"column:approval_required;not null;default:false" json:"approval_required"`
 	RiskLevel         string    `gorm:"column:risk_level;type:varchar(16);not null;default:'medium'" json:"risk_level"`
 	Priority          int       `gorm:"column:priority;not null;default:0" json:"priority"`
@@ -516,8 +516,8 @@ type AIApprovalTask struct {
 	UserID           uint64         `gorm:"column:user_id;not null;default:0;index" json:"user_id"`
 	ToolName         string         `gorm:"column:tool_name;type:varchar(64);not null" json:"tool_name"`
 	ToolCallID       string         `gorm:"column:tool_call_id;type:varchar(64);not null" json:"tool_call_id"`
-	ArgumentsJSON    string         `gorm:"column:arguments_json;type:longtext;not null" json:"arguments_json"`
-	PreviewJSON      string         `gorm:"column:preview_json;type:longtext;not null" json:"preview_json"`
+	ArgumentsJSON    string         `gorm:"column:arguments_json;type:text;not null" json:"arguments_json"`
+	PreviewJSON      string         `gorm:"column:preview_json;type:text;not null" json:"preview_json"`
 	Status           string         `gorm:"column:status;type:varchar(16);not null;default:'pending';index" json:"status"` // pending, approved, rejected, expired
 	ApprovedBy       uint64         `gorm:"column:approved_by;not null;default:0" json:"approved_by"`
 	DisapproveReason string         `gorm:"column:disapprove_reason;type:text" json:"disapprove_reason"`
@@ -572,7 +572,7 @@ type AIApprovalOutboxEvent struct {
 	EventType   string     `gorm:"column:event_type;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_approval_event,priority:2" json:"event_type"`
 	RunID       string     `gorm:"column:run_id;type:varchar(64);not null;uniqueIndex:uk_ai_approval_outbox_events_run_seq,priority:1;index:idx_ai_approval_outbox_events_run_id" json:"run_id"`
 	SessionID   string     `gorm:"column:session_id;type:varchar(64);not null;index:idx_ai_approval_outbox_events_session_id" json:"session_id"`
-	PayloadJSON string     `gorm:"column:payload_json;type:longtext;not null" json:"payload_json"`
+	PayloadJSON string     `gorm:"column:payload_json;type:text;not null" json:"payload_json"`
 	Status      string     `gorm:"column:status;type:varchar(16);not null;default:'pending';index:idx_ai_approval_outbox_events_queue,priority:1" json:"status"`
 	RetryCount  int        `gorm:"column:retry_count;not null;default:0" json:"retry_count"`
 	NextRetryAt *time.Time `gorm:"column:next_retry_at;index:idx_ai_approval_outbox_events_queue,priority:2" json:"next_retry_at"`

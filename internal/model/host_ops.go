@@ -49,7 +49,7 @@ type HostHealthSnapshot struct {
 	InodeUsedPct float64 `gorm:"column:inode_used_pct" json:"inode_used_pct"`
 
 	// SummaryJSON 检查详情 JSON
-	SummaryJSON string `gorm:"column:summary_json;type:longtext" json:"summary_json"`
+	SummaryJSON string `gorm:"column:summary_json;type:text" json:"summary_json"`
 
 	// ErrorMessage 错误信息
 	ErrorMessage string `gorm:"column:error_message;type:text" json:"error_message"`
@@ -99,10 +99,10 @@ type AIHostExecutionRecord struct {
 	Status string `gorm:"column:status;type:varchar(32);index" json:"status"`
 
 	// StdoutText 标准输出
-	StdoutText string `gorm:"column:stdout_text;type:longtext" json:"stdout_text"`
+	StdoutText string `gorm:"column:stdout_text;type:text" json:"stdout_text"`
 
 	// StderrText 标准错误
-	StderrText string `gorm:"column:stderr_text;type:longtext" json:"stderr_text"`
+	StderrText string `gorm:"column:stderr_text;type:text" json:"stderr_text"`
 
 	// ExitCode 退出码
 	ExitCode int `gorm:"column:exit_code" json:"exit_code"`
@@ -114,7 +114,7 @@ type AIHostExecutionRecord struct {
 	FinishedAt *time.Time `gorm:"column:finished_at" json:"finished_at"`
 
 	// PolicyJSON 执行策略 JSON（审批信息等）
-	PolicyJSON string `gorm:"column:policy_json;type:longtext" json:"policy_json"`
+	PolicyJSON string `gorm:"column:policy_json;type:text" json:"policy_json"`
 
 	// CreatedBy 创建者用户 ID
 	CreatedBy uint64 `gorm:"column:created_by" json:"created_by"`

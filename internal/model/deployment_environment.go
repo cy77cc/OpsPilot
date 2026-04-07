@@ -29,7 +29,7 @@ type EnvironmentInstallJob struct {
 	StartedAt       *time.Time `gorm:"column:started_at" json:"started_at"`                                // 开始时间
 	FinishedAt      *time.Time `gorm:"column:finished_at" json:"finished_at"`                              // 结束时间
 	ErrorMessage    string     `gorm:"column:error_message;type:text" json:"error_message"`                // 错误信息
-	ResultJSON      string     `gorm:"column:result_json;type:longtext" json:"result_json"`                // 结果详情 (JSON)
+	ResultJSON      string     `gorm:"column:result_json;type:text" json:"result_json"`                // 结果详情 (JSON)
 	CreatedBy       uint64     `gorm:"column:created_by;index" json:"created_by"`                          // 创建人 ID
 	CreatedAt       time.Time  `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`           // 创建时间
 	UpdatedAt       time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                 // 更新时间
@@ -87,12 +87,12 @@ type ClusterCredential struct {
 	ClusterID       uint       `gorm:"column:cluster_id;default:0;index" json:"cluster_id"`                // 集群 ID
 	Endpoint        string     `gorm:"column:endpoint;type:varchar(256);default:''" json:"endpoint"`       // 集群端点
 	AuthMethod      string     `gorm:"column:auth_method;type:varchar(32);default:'kubeconfig'" json:"auth_method"` // 认证方式
-	KubeconfigEnc   string     `gorm:"column:kubeconfig_enc;type:longtext" json:"-"`                       // 加密的 kubeconfig
-	CACertEnc       string     `gorm:"column:ca_cert_enc;type:longtext" json:"-"`                          // 加密的 CA 证书
-	CertEnc         string     `gorm:"column:cert_enc;type:longtext" json:"-"`                             // 加密的客户端证书
-	KeyEnc          string     `gorm:"column:key_enc;type:longtext" json:"-"`                              // 加密的客户端私钥
-	TokenEnc        string     `gorm:"column:token_enc;type:longtext" json:"-"`                            // 加密的 Bearer Token
-	MetadataJSON    string     `gorm:"column:metadata_json;type:longtext" json:"metadata_json"`            // 元数据 (JSON)
+	KubeconfigEnc   string     `gorm:"column:kubeconfig_enc;type:text" json:"-"`                       // 加密的 kubeconfig
+	CACertEnc       string     `gorm:"column:ca_cert_enc;type:text" json:"-"`                          // 加密的 CA 证书
+	CertEnc         string     `gorm:"column:cert_enc;type:text" json:"-"`                             // 加密的客户端证书
+	KeyEnc          string     `gorm:"column:key_enc;type:text" json:"-"`                              // 加密的客户端私钥
+	TokenEnc        string     `gorm:"column:token_enc;type:text" json:"-"`                            // 加密的 Bearer Token
+	MetadataJSON    string     `gorm:"column:metadata_json;type:text" json:"metadata_json"`            // 元数据 (JSON)
 	Status          string     `gorm:"column:status;type:varchar(32);default:'active'" json:"status"`      // 状态: active/inactive
 	LastTestAt      *time.Time `gorm:"column:last_test_at" json:"last_test_at"`                            // 最后测试时间
 	LastTestStatus  string     `gorm:"column:last_test_status;type:varchar(32);default:''" json:"last_test_status"` // 最后测试状态

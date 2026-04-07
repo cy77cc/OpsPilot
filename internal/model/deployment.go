@@ -83,13 +83,13 @@ type DeploymentRelease struct {
 	PreviewTokenHash   string     `gorm:"column:preview_token_hash;type:varchar(128);default:''" json:"preview_token_hash"` // 预览令牌哈希
 	PreviewExpiresAt   *time.Time `gorm:"column:preview_expires_at" json:"preview_expires_at"`                       // 预览过期时间
 	Status             string     `gorm:"column:status;type:varchar(32);default:'pending_approval';index" json:"status"` // 状态
-	ManifestSnapshot   string     `gorm:"column:manifest_snapshot;type:longtext" json:"manifest_snapshot"`           // 清单快照 (YAML)
-	RuntimeContextJSON string     `gorm:"column:runtime_context_json;type:longtext" json:"runtime_context_json"`     // 运行时上下文 (JSON)
-	TriggerContextJSON string     `gorm:"column:trigger_context_json;type:longtext" json:"trigger_context_json"`     // 触发上下文 (JSON)
-	ChecksJSON         string     `gorm:"column:checks_json;type:longtext" json:"checks_json"`                       // 检查项 (JSON)
-	WarningsJSON       string     `gorm:"column:warnings_json;type:longtext" json:"warnings_json"`                   // 警告项 (JSON)
-	DiagnosticsJSON    string     `gorm:"column:diagnostics_json;type:longtext" json:"diagnostics_json"`             // 诊断信息 (JSON)
-	VerificationJSON   string     `gorm:"column:verification_json;type:longtext" json:"verification_json"`           // 验证结果 (JSON)
+	ManifestSnapshot   string     `gorm:"column:manifest_snapshot;type:text" json:"manifest_snapshot"`           // 清单快照 (YAML)
+	RuntimeContextJSON string     `gorm:"column:runtime_context_json;type:text" json:"runtime_context_json"`     // 运行时上下文 (JSON)
+	TriggerContextJSON string     `gorm:"column:trigger_context_json;type:text" json:"trigger_context_json"`     // 触发上下文 (JSON)
+	ChecksJSON         string     `gorm:"column:checks_json;type:text" json:"checks_json"`                       // 检查项 (JSON)
+	WarningsJSON       string     `gorm:"column:warnings_json;type:text" json:"warnings_json"`                   // 警告项 (JSON)
+	DiagnosticsJSON    string     `gorm:"column:diagnostics_json;type:text" json:"diagnostics_json"`             // 诊断信息 (JSON)
+	VerificationJSON   string     `gorm:"column:verification_json;type:text" json:"verification_json"`           // 验证结果 (JSON)
 	Operator           uint       `gorm:"column:operator;default:0;index" json:"operator"`                           // 操作人 ID
 	CIRunID            uint       `gorm:"column:ci_run_id;default:0;index:idx_deploy_release_ci_run" json:"ci_run_id"` // CI 运行 ID
 	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`                  // 创建时间
@@ -129,7 +129,7 @@ type DeploymentReleaseAudit struct {
 	TraceID       string    `gorm:"column:trace_id;type:varchar(96);index" json:"trace_id"`          // 链路追踪 ID
 	Action        string    `gorm:"column:action;type:varchar(64);not null;index" json:"action"`     // 操作类型
 	Actor         uint      `gorm:"column:actor;default:0" json:"actor"`                             // 操作人 ID
-	DetailJSON    string    `gorm:"column:detail_json;type:longtext" json:"detail_json"`             // 详情 (JSON)
+	DetailJSON    string    `gorm:"column:detail_json;type:text" json:"detail_json"`             // 详情 (JSON)
 	CreatedAt     time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`        // 创建时间
 }
 
@@ -144,10 +144,10 @@ type ServiceGovernancePolicy struct {
 	ID                   uint      `gorm:"primaryKey;column:id" json:"id"`                                                        // 策略 ID
 	ServiceID            uint      `gorm:"column:service_id;not null;index:idx_service_env_governance,priority:1" json:"service_id"` // 服务 ID
 	Env                  string    `gorm:"column:env;type:varchar(32);not null;index:idx_service_env_governance,priority:2" json:"env"` // 环境
-	TrafficPolicyJSON    string    `gorm:"column:traffic_policy_json;type:longtext" json:"traffic_policy_json"`                  // 流量策略 (JSON)
-	ResiliencePolicyJSON string    `gorm:"column:resilience_policy_json;type:longtext" json:"resilience_policy_json"`            // 弹性策略 (JSON)
-	AccessPolicyJSON     string    `gorm:"column:access_policy_json;type:longtext" json:"access_policy_json"`                    // 访问策略 (JSON)
-	SLOPolicyJSON        string    `gorm:"column:slo_policy_json;type:longtext" json:"slo_policy_json"`                          // SLO 策略 (JSON)
+	TrafficPolicyJSON    string    `gorm:"column:traffic_policy_json;type:text" json:"traffic_policy_json"`                  // 流量策略 (JSON)
+	ResiliencePolicyJSON string    `gorm:"column:resilience_policy_json;type:text" json:"resilience_policy_json"`            // 弹性策略 (JSON)
+	AccessPolicyJSON     string    `gorm:"column:access_policy_json;type:text" json:"access_policy_json"`                    // 访问策略 (JSON)
+	SLOPolicyJSON        string    `gorm:"column:slo_policy_json;type:text" json:"slo_policy_json"`                          // SLO 策略 (JSON)
 	UpdatedBy            uint      `gorm:"column:updated_by;default:0" json:"updated_by"`                                        // 更新人 ID
 	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                    // 更新时间
 }
@@ -171,8 +171,8 @@ type AIOPSInspection struct {
 	ServiceID       uint      `gorm:"column:service_id;default:0;index" json:"service_id"`        // 服务 ID
 	Stage           string    `gorm:"column:stage;type:varchar(16);not null" json:"stage"`        // 阶段: pre/post/periodic
 	Summary         string    `gorm:"column:summary;type:text" json:"summary"`                    // 摘要
-	FindingsJSON    string    `gorm:"column:findings_json;type:longtext" json:"findings_json"`    // 发现问题 (JSON)
-	SuggestionsJSON string    `gorm:"column:suggestions_json;type:longtext" json:"suggestions_json"` // 优化建议 (JSON)
+	FindingsJSON    string    `gorm:"column:findings_json;type:text" json:"findings_json"`    // 发现问题 (JSON)
+	SuggestionsJSON string    `gorm:"column:suggestions_json;type:text" json:"suggestions_json"` // 优化建议 (JSON)
 	Status          string    `gorm:"column:status;type:varchar(32);default:'done'" json:"status"` // 状态
 	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`   // 创建时间
 }

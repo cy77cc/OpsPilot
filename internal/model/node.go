@@ -68,7 +68,7 @@ type SSHKey struct {
 	ID          NodeID    `gorm:"primaryKey;column:id" json:"id"`                              // 密钥 ID
 	Name        string    `gorm:"column:name;type:varchar(64)" json:"name"`                    // 密钥名称
 	PublicKey   string    `gorm:"column:public_key;type:text;not null" json:"public_key"`      // 公钥
-	PrivateKey  string    `gorm:"column:private_key;type:longtext;not null" json:"private_key"` // 私钥 (加密存储)
+	PrivateKey  string    `gorm:"column:private_key;type:text;not null" json:"private_key"` // 私钥 (加密存储)
 	Passphrase  string    `gorm:"column:passphrase;type:varchar(128)" json:"passphrase"`       // 密钥密码 (加密存储)
 	Fingerprint string    `gorm:"column:fingerprint;type:varchar(128)" json:"fingerprint"`    // 指纹
 	Algorithm   string    `gorm:"column:algorithm;type:varchar(32)" json:"algorithm"`          // 算法: rsa/ed25519
@@ -109,7 +109,7 @@ type HostCloudAccount struct {
 	Provider           string    `gorm:"column:provider;type:varchar(32);not null;index" json:"provider"`                   // 云厂商: volcengine/alicloud/tencent
 	AccountName        string    `gorm:"column:account_name;type:varchar(128);not null;uniqueIndex:idx_provider_account" json:"account_name"` // 账户名称（唯一索引）
 	AccessKeyID        string    `gorm:"column:access_key_id;type:varchar(256);not null;uniqueIndex:idx_provider_ak" json:"access_key_id"` // Access Key ID（唯一索引）
-	AccessKeySecretEnc string    `gorm:"column:access_key_secret_enc;type:longtext;not null" json:"-"`                     // Access Key Secret (加密存储)
+	AccessKeySecretEnc string    `gorm:"column:access_key_secret_enc;type:text;not null" json:"-"`                     // Access Key Secret (加密存储)
 	RegionDefault      string    `gorm:"column:region_default;type:varchar(64)" json:"region_default"`                      // 默认区域
 	Status             string    `gorm:"column:status;type:varchar(32);default:active" json:"status"`                       // 状态: active/inactive
 	CreatedBy          uint64    `gorm:"column:created_by;index" json:"created_by"`                                         // 创建人 ID
@@ -128,8 +128,8 @@ type HostImportTask struct {
 	ID           string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`                       // 任务 ID
 	Provider     string    `gorm:"column:provider;type:varchar(32);not null;index" json:"provider"`       // 云厂商
 	AccountID    uint64    `gorm:"column:account_id;index" json:"account_id"`                            // 云账户 ID
-	RequestJSON  string    `gorm:"column:request_json;type:longtext" json:"request_json"`                // 请求参数 (JSON)
-	ResultJSON   string    `gorm:"column:result_json;type:longtext" json:"result_json"`                  // 导入结果 (JSON)
+	RequestJSON  string    `gorm:"column:request_json;type:text" json:"request_json"`                // 请求参数 (JSON)
+	ResultJSON   string    `gorm:"column:result_json;type:text" json:"result_json"`                  // 导入结果 (JSON)
 	Status       string    `gorm:"column:status;type:varchar(32);index" json:"status"`                   // 状态: pending/running/success/failed
 	ErrorMessage string    `gorm:"column:error_message;type:text" json:"error_message"`                  // 错误消息
 	CreatedBy    uint64    `gorm:"column:created_by;index" json:"created_by"`                            // 创建人 ID
@@ -148,7 +148,7 @@ type HostVirtualizationTask struct {
 	ID           string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`                       // 任务 ID
 	HostID       uint64    `gorm:"column:host_id;index" json:"host_id"`                                  // 宿主机 ID
 	Hypervisor   string    `gorm:"column:hypervisor;type:varchar(32);not null" json:"hypervisor"`        // 虚拟化类型: kvm/vmware
-	RequestJSON  string    `gorm:"column:request_json;type:longtext" json:"request_json"`                // 请求参数 (JSON)
+	RequestJSON  string    `gorm:"column:request_json;type:text" json:"request_json"`                // 请求参数 (JSON)
 	VMName       string    `gorm:"column:vm_name;type:varchar(128)" json:"vm_name"`                      // 虚拟机名称
 	VMIP         string    `gorm:"column:vm_ip;type:varchar(64)" json:"vm_ip"`                           // 虚拟机 IP
 	Status       string    `gorm:"column:status;type:varchar(32);index" json:"status"`                   // 状态: pending/running/success/failed

@@ -18,7 +18,7 @@ type OperationApproval struct {
 	Resource       string     `gorm:"column:resource;type:varchar(64);not null;default:'';index" json:"resource"`
 	ResourceID     string     `gorm:"column:resource_id;type:varchar(128);not null;default:'';index" json:"resource_id"`
 	Action         string     `gorm:"column:action;type:varchar(64);not null;default:'';index" json:"action"`
-	ContextJSON    string     `gorm:"column:context_json;type:longtext;not null;default:''" json:"context_json"`
+	ContextJSON    string     `gorm:"column:context_json;type:text;not null;default:''" json:"context_json"`
 	Reason         string     `gorm:"column:reason;type:varchar(255);not null;default:''" json:"reason"`
 	Status         string     `gorm:"column:status;type:varchar(32);not null;default:'pending';index" json:"status"`
 	RequestBy      uint       `gorm:"column:request_by;not null;default:0" json:"request_by"`
@@ -56,9 +56,9 @@ type OperationAudit struct {
 	Status             string    `gorm:"column:status;type:varchar(32);not null;default:'success';index" json:"status"`
 	Code               string    `gorm:"column:code;type:varchar(64);not null;default:'';index" json:"code"`
 	Message            string    `gorm:"column:message;type:varchar(255);not null;default:''" json:"message"`
-	RequestSummaryJSON string    `gorm:"column:request_summary_json;type:longtext;not null;default:''" json:"request_summary_json"`
-	ResultSummaryJSON  string    `gorm:"column:result_summary_json;type:longtext;not null;default:''" json:"result_summary_json"`
-	DiagnosticsJSON    string    `gorm:"column:diagnostics_json;type:longtext;not null;default:''" json:"diagnostics_json"`
+	RequestSummaryJSON string    `gorm:"column:request_summary_json;type:text;not null;default:''" json:"request_summary_json"`
+	ResultSummaryJSON  string    `gorm:"column:result_summary_json;type:text;not null;default:''" json:"result_summary_json"`
+	DiagnosticsJSON    string    `gorm:"column:diagnostics_json;type:text;not null;default:''" json:"diagnostics_json"`
 	ApprovalTicket     string    `gorm:"column:approval_ticket;type:varchar(96);not null;default:'';index" json:"approval_ticket"`
 	LatencyMS          int64     `gorm:"column:latency_ms;not null;default:0" json:"latency_ms"`
 	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`

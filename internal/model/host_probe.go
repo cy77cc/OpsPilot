@@ -46,10 +46,10 @@ type HostProbeSession struct {
 	LatencyMS int64 `gorm:"column:latency_ms;not null;default:0" json:"latency_ms"`
 
 	// FactsJSON 系统信息 JSON（主机名、操作系统、架构等）
-	FactsJSON string `gorm:"column:facts_json;type:longtext" json:"facts_json"`
+	FactsJSON string `gorm:"column:facts_json;type:text" json:"facts_json"`
 
 	// WarningsJSON 警告信息 JSON
-	WarningsJSON string `gorm:"column:warnings_json;type:longtext" json:"warnings_json"`
+	WarningsJSON string `gorm:"column:warnings_json;type:text" json:"warnings_json"`
 
 	// ExpiresAt 令牌过期时间
 	ExpiresAt time.Time `gorm:"column:expires_at;index" json:"expires_at"`

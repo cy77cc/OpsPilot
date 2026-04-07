@@ -19,7 +19,7 @@ import "time"
 type AutomationInventory struct {
 	ID        uint      `gorm:"primaryKey;column:id" json:"id"`          // 清单 ID
 	Name      string    `gorm:"column:name;type:varchar(128);not null;index" json:"name"` // 清单名称
-	HostsJSON string    `gorm:"column:hosts_json;type:longtext" json:"hosts_json"`        // 主机配置 JSON
+	HostsJSON string    `gorm:"column:hosts_json;type:text" json:"hosts_json"`        // 主机配置 JSON
 	CreatedBy uint      `gorm:"column:created_by;default:0;index" json:"created_by"`      // 创建者 ID
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`       // 创建时间
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`       // 更新时间
@@ -38,7 +38,7 @@ func (AutomationInventory) TableName() string { return "automation_inventories" 
 type AutomationPlaybook struct {
 	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                              // Playbook ID
 	Name       string    `gorm:"column:name;type:varchar(128);not null;index" json:"name"`    // Playbook 名称
-	ContentYML string    `gorm:"column:content_yml;type:longtext" json:"content_yml"`         // YAML 格式内容
+	ContentYML string    `gorm:"column:content_yml;type:text" json:"content_yml"`         // YAML 格式内容
 	RiskLevel  string    `gorm:"column:risk_level;type:varchar(32);not null;default:'medium'" json:"risk_level"` // 风险等级 (low/medium/high)
 	CreatedBy  uint      `gorm:"column:created_by;default:0;index" json:"created_by"`         // 创建者 ID
 	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`          // 创建时间
@@ -59,8 +59,8 @@ type AutomationRun struct {
 	ID         string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`       // 执行记录 ID（格式: run-{timestamp}）
 	Action     string    `gorm:"column:action;type:varchar(128);not null;index" json:"action"` // 执行动作类型
 	Status     string    `gorm:"column:status;type:varchar(32);not null;index" json:"status"`  // 执行状态 (running/succeeded/failed)
-	ResultJSON string    `gorm:"column:result_json;type:longtext" json:"result_json"`          // 执行结果 JSON
-	ParamsJSON string    `gorm:"column:params_json;type:longtext" json:"params_json"`          // 执行参数 JSON
+	ResultJSON string    `gorm:"column:result_json;type:text" json:"result_json"`          // 执行结果 JSON
+	ParamsJSON string    `gorm:"column:params_json;type:text" json:"params_json"`          // 执行参数 JSON
 	Error      string    `gorm:"column:error;type:text" json:"error"`                          // 错误信息
 	OperatorID uint      `gorm:"column:operator_id;default:0;index" json:"operator_id"`        // 操作者 ID
 	StartedAt  time.Time `gorm:"column:started_at;index" json:"started_at"`                    // 开始时间
@@ -103,7 +103,7 @@ type AutomationExecutionAudit struct {
 	Action     string    `gorm:"column:action;type:varchar(128);not null;index" json:"action"` // 执行动作类型
 	Status     string    `gorm:"column:status;type:varchar(32);not null;index" json:"status"`  // 执行状态
 	ActorID    uint      `gorm:"column:actor_id;default:0;index" json:"actor_id"`              // 操作者 ID
-	DetailJSON string    `gorm:"column:detail_json;type:longtext" json:"detail_json"`          // 详细信息 JSON
+	DetailJSON string    `gorm:"column:detail_json;type:text" json:"detail_json"`          // 详细信息 JSON
 	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`     // 创建时间
 }
 
@@ -122,7 +122,7 @@ type TopologyAccessAudit struct {
 	ActorID    uint      `gorm:"column:actor_id;default:0;index" json:"actor_id"`           // 操作者 ID
 	Action     string    `gorm:"column:action;type:varchar(64);not null;index" json:"action"` // 访问动作
 	Scope      string    `gorm:"column:scope;type:varchar(128);not null;index" json:"scope"` // 访问范围
-	FilterJSON string    `gorm:"column:filter_json;type:longtext" json:"filter_json"`       // 过滤条件 JSON
+	FilterJSON string    `gorm:"column:filter_json;type:text" json:"filter_json"`       // 过滤条件 JSON
 	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`  // 创建时间
 }
 

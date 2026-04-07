@@ -56,12 +56,12 @@ type Service struct {
 	RenderTarget              string    `gorm:"column:render_target;type:varchar(16);default:'k8s'" json:"render_target"`  // 渲染目标: k8s/compose
 	LabelsJSON                string    `gorm:"column:labels_json;type:json" json:"labels_json"`                            // 标签 (JSON)
 	StandardJSON              string    `gorm:"column:standard_config_json;type:json" json:"standard_config_json"`          // 标准配置 (JSON)
-	CustomYAML                string    `gorm:"column:custom_yaml;type:mediumtext" json:"custom_yaml"`                      // 自定义 YAML
+	CustomYAML                string    `gorm:"column:custom_yaml;type:text" json:"custom_yaml"`                      // 自定义 YAML
 	TemplateVer               string    `gorm:"column:source_template_version;type:varchar(32);default:'v1'" json:"source_template_version"` // 模板版本
 	LastRevisionID            uint      `gorm:"column:last_revision_id;default:0" json:"last_revision_id"`                  // 最后版本 ID
 	DefaultTargetID           uint      `gorm:"column:default_target_id;default:0" json:"default_target_id"`               // 默认目标 ID
 	DefaultDeploymentTargetID uint      `gorm:"column:default_deployment_target_id;default:0" json:"default_deployment_target_id"` // 默认部署目标 ID
-	RuntimeStrategyJSON       string    `gorm:"column:runtime_strategy_json;type:longtext" json:"runtime_strategy_json"`   // 运行时策略 (JSON)
+	RuntimeStrategyJSON       string    `gorm:"column:runtime_strategy_json;type:text" json:"runtime_strategy_json"`   // 运行时策略 (JSON)
 	TemplateEngineVersion     string    `gorm:"column:template_engine_version;type:varchar(16);default:'v1'" json:"template_engine_version"` // 模板引擎版本
 	Status                    string    `gorm:"column:status;type:varchar(32);default:'draft';index" json:"status"`        // 状态: draft/active/archived
 	Name                      string    `gorm:"column:name;type:varchar(64);not null" json:"name"`                          // 服务名称
@@ -73,7 +73,7 @@ type Service struct {
 	NodePort                  int32     `gorm:"column:node_port" json:"node_port"`                                          // NodePort
 	EnvVars                   string    `gorm:"column:env_vars;type:json" json:"env_vars"`                                  // 环境变量 (JSON)
 	Resources                 string    `gorm:"column:resources;type:json" json:"resources"`                                // 资源配置 (JSON)
-	YamlContent               string    `gorm:"column:yaml_content;type:mediumtext" json:"yaml_content"`                   // YAML 内容
+	YamlContent               string    `gorm:"column:yaml_content;type:text" json:"yaml_content"`                   // YAML 内容
 	CreatedAt                 time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                         // 创建时间
 	UpdatedAt                 time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                         // 更新时间
 }
@@ -93,8 +93,8 @@ type ServiceHelmRelease struct {
 	ChartName    string    `gorm:"column:chart_name;type:varchar(128);not null" json:"chart_name"`   // Chart 名称
 	ChartVersion string    `gorm:"column:chart_version;type:varchar(64);default:''" json:"chart_version"` // Chart 版本
 	ChartRef     string    `gorm:"column:chart_ref;type:varchar(512);default:''" json:"chart_ref"`   // Chart 引用 (本地路径/仓库)
-	ValuesYAML   string    `gorm:"column:values_yaml;type:mediumtext" json:"values_yaml"`            // Values 配置 (YAML)
-	RenderedYAML string    `gorm:"column:rendered_yaml;type:longtext" json:"rendered_yaml"`          // 渲染结果 (YAML)
+	ValuesYAML   string    `gorm:"column:values_yaml;type:text" json:"values_yaml"`            // Values 配置 (YAML)
+	RenderedYAML string    `gorm:"column:rendered_yaml;type:text" json:"rendered_yaml"`          // 渲染结果 (YAML)
 	Status       string    `gorm:"column:status;type:varchar(32);default:'imported'" json:"status"`  // 状态: imported/deployed/failed
 	CreatedBy    uint      `gorm:"column:created_by;default:0" json:"created_by"`                    // 创建人 ID
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`               // 创建时间
@@ -115,7 +115,7 @@ type ServiceRenderSnapshot struct {
 	ServiceID    uint      `gorm:"column:service_id;not null;index" json:"service_id"`          // 服务 ID
 	Target       string    `gorm:"column:target;type:varchar(16);not null" json:"target"`       // 目标: k8s/compose/helm
 	Mode         string    `gorm:"column:mode;type:varchar(16);not null" json:"mode"`           // 模式: standard/custom
-	RenderedYAML string    `gorm:"column:rendered_yaml;type:longtext" json:"rendered_yaml"`     // 渲染结果 (YAML)
+	RenderedYAML string    `gorm:"column:rendered_yaml;type:text" json:"rendered_yaml"`     // 渲染结果 (YAML)
 	Diagnostics  string    `gorm:"column:diagnostics_json;type:json" json:"diagnostics_json"`   // 诊断信息 (JSON)
 	CreatedBy    uint      `gorm:"column:created_by;default:0" json:"created_by"`               // 创建人 ID
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`          // 创建时间

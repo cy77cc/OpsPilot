@@ -26,7 +26,7 @@ log:
     compress: true
 
 mysql:
-  enable: true
+  enable: false
   instance:
   host: ${MYSQL_HOST}
   port: ${MYSQL_PORT}
@@ -42,12 +42,12 @@ mysql:
   
 
 postgres:
-  enable: false
-  host: 127.0.0.1
-  port: 5432
-  user: gin_user
-  password: strong_password
-  database: gin_db
+  enable: true
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  user: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  database: devops
   ssl_mode: disable
   max_open_conns: 50
   max_idle_conns: 20

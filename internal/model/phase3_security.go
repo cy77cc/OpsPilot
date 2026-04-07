@@ -26,7 +26,7 @@ type AdmissionPolicy struct {
 	PolicyName string   `gorm:"column:policy_name;type:varchar(191);not null;index" json:"policy_name"`
 	Version   string    `gorm:"column:version;type:varchar(64);not null" json:"version"`
 	Status    string    `gorm:"column:status;type:varchar(32);not null;default:'draft';index" json:"status"`
-	ContentJSON string  `gorm:"column:content_json;type:longtext;not null;default:''" json:"content_json"`
+	ContentJSON string  `gorm:"column:content_json;type:text;not null;default:''" json:"content_json"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
@@ -56,7 +56,7 @@ type RuntimeSecurityEvent struct {
 	RuleID         string    `gorm:"column:rule_id;type:varchar(191);not null;default:'';index" json:"rule_id"`
 	Severity       string    `gorm:"column:severity;type:varchar(32);not null;index" json:"severity"`
 	Source         string    `gorm:"column:source;type:varchar(32);not null;index" json:"source"`
-	RawPayloadJSON string    `gorm:"column:raw_payload_json;type:longtext;not null;default:''" json:"raw_payload_json"`
+	RawPayloadJSON string    `gorm:"column:raw_payload_json;type:text;not null;default:''" json:"raw_payload_json"`
 	DisposeStatus  string    `gorm:"column:dispose_status;type:varchar(32);not null;default:'pending';index" json:"dispose_status"`
 	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
