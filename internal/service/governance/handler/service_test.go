@@ -1,15 +1,17 @@
-package governance
+package handler
 
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/cy77cc/OpsPilot/internal/service/governance/logic"
 )
 
 func TestBuildEnvelope_UsesCanonicalFieldsOnly(t *testing.T) {
-	approval := &ApprovalInfo{Ticket: "gov-appr-1"}
-	env := BuildEnvelope(Decision{
+	approval := &logic.ApprovalInfo{Ticket: "gov-appr-1"}
+	env := BuildEnvelope(logic.Decision{
 		Allowed:  true,
-		State:    StateCompleted,
+		State:    logic.StateCompleted,
 		Code:     CodeSuccess,
 		Message:  "done",
 		Approval: approval,

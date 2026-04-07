@@ -1,4 +1,4 @@
-package governance
+package handler
 
 const (
 	CodeSuccess               = "success"
