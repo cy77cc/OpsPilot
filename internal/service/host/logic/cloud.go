@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/alicloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud"
+	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud/ulighthost"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/volcengine"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 )
@@ -27,10 +29,14 @@ import (
 // CloudAccountReq 创建云账号请求参数。
 type CloudAccountReq struct {
 	Provider        string `json:"provider"`
+	ProductType     string `json:"product_type"` // 产品类型: uhost/ulighthost/ecs/swas
 	AccountName     string `json:"account_name"`
 	AccessKeyID     string `json:"access_key_id"`
 	AccessKeySecret string `json:"access_key_secret"`
 	RegionDefault   string `json:"region_default"`
+	// UCloud 额外配置
+	ProjectId       string `json:"project_id"` // 项目 ID（UCloud 子账户必填）
+	IsIntl          bool   `json:"is_intl"`    // 是否为国际版账户（香港、台湾等海外地域需勾选）
 }
 
 // CloudQueryReq 查询云实例请求参数。
@@ -72,8 +78,11 @@ func init() {
 	// 注册阿里云适配器
 	cloud.Register(alicloud.New())
 
-	// 注册 UCLOUD 适配器
+	// 注册 UCLOUD UHost 适配器
 	cloud.Register(ucloud.New())
+
+	// 注册 UCLOUD ULightHost 适配器
+	cloud.Register(ulighthost.New())
 
 	// 注册 Mock 适配器（腾讯云，待实现）
 	cloud.Register(cloud.NewMockProvider("tencent", "腾讯云"))
@@ -102,14 +111,34 @@ func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req Cl
 		return nil, err
 	}
 
+	// 默认产品类型
+	productType := req.ProductType
+	if productType == "" {
+		productType = getDefaultProductType(req.Provider)
+	}
+
 	acc := &model.HostCloudAccount{
 		Provider:           req.Provider,
+		ProductType:        productType,
 		AccountName:        req.AccountName,
 		AccessKeyID:        req.AccessKeyID,
 		AccessKeySecretEnc: secretEnc,
 		RegionDefault:      req.RegionDefault,
 		Status:             "active",
 		CreatedBy:          uid,
+	}
+
+	// UCloud 额外配置：ProjectId（子账户必填）和 IsIntl（国际版）
+	if req.Provider == "ucloud" && (req.ProjectId != "" || req.IsIntl) {
+		extraConfig := map[string]interface{}{}
+		if req.ProjectId != "" {
+			extraConfig["project_id"] = req.ProjectId
+		}
+		if req.IsIntl {
+			extraConfig["is_intl"] = true
+		}
+		extraConfigJSON, _ := json.Marshal(extraConfig)
+		acc.ExtraConfig = string(extraConfigJSON)
 	}
 
 	if err := s.svcCtx.DB.WithContext(ctx).Create(acc).Error; err != nil {
@@ -120,6 +149,18 @@ func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req Cl
 	acc.AccessKeyID = utils.MaskAccessKey(acc.AccessKeyID)
 
 	return acc, nil
+}
+
+// getDefaultProductType 获取云厂商的默认产品类型。
+func getDefaultProductType(provider string) string {
+	switch provider {
+	case "ucloud":
+		return "uhost"
+	case "alicloud", "volcengine":
+		return "ecs"
+	default:
+		return "default"
+	}
 }
 
 // ListCloudAccounts 列出云账号。
@@ -133,7 +174,7 @@ func (s *HostService) CreateCloudAccount(ctx context.Context, uid uint64, req Cl
 //   - 失败返回错误
 func (s *HostService) ListCloudAccounts(ctx context.Context, provider string) ([]model.HostCloudAccount, error) {
 	query := s.svcCtx.DB.WithContext(ctx).Model(&model.HostCloudAccount{}).
-		Select("id", "provider", "account_name", "access_key_id", "region_default", "status", "created_by", "created_at", "updated_at")
+		Select("id", "provider", "product_type", "account_name", "access_key_id", "region_default", "extra_config", "status", "created_by", "created_at", "updated_at")
 	if provider != "" {
 		query = query.Where("provider = ?", provider)
 	}
@@ -205,8 +246,9 @@ func (s *HostService) QueryCloudInstances(ctx context.Context, req CloudQueryReq
 		return nil, err
 	}
 
-	// 获取云厂商适配器
-	provider, err := cloud.GetProvider(account.Provider)
+	// 获取云厂商适配器：使用 provider:product_type 格式
+	providerKey := fmt.Sprintf("%s:%s", account.Provider, account.ProductType)
+	provider, err := cloud.GetProvider(providerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -220,14 +262,18 @@ func (s *HostService) QueryCloudInstances(ctx context.Context, req CloudQueryReq
 	// 确定地域
 	region := firstNonEmpty(req.Region, account.RegionDefault)
 
-	// 调用适配器查询实例
-	instances, err := provider.ListInstances(ctx, cloud.ListInstancesRequest{
+	// 构建查询请求
+	listReq := cloud.ListInstancesRequest{
 		AccessKeyID:     account.AccessKeyID,
 		AccessKeySecret: secret,
 		Region:          region,
 		Zone:            req.Zone,
 		Keyword:         req.Keyword,
-	})
+		Extra:           account.ExtraConfig,
+	}
+
+	// 调用适配器查询实例
+	instances, err := provider.ListInstances(ctx, listReq)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +328,20 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 	}
 
 	created := make([]model.Node, 0, len(req.Instances))
+	skipped := make([]string, 0) // 跳过的实例 ID
+
 	for _, ins := range req.Instances {
+		// 检查是否已存在
+		var existing model.Node
+		err := s.svcCtx.DB.WithContext(ctx).
+			Where("provider = ? AND provider_instance_id = ?", req.Provider, ins.InstanceID).
+			First(&existing).Error
+		if err == nil {
+			// 已存在，跳过
+			skipped = append(skipped, ins.InstanceID)
+			continue
+		}
+
 		// 将 labels 转换为 JSON 格式
 		labelsJSON := "[]"
 		if len(req.Labels) > 0 {
@@ -299,6 +358,7 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			Status:      "online",
 			Role:        req.Role,
 			Labels:      labelsJSON,
+			Description: ins.Region,
 			OS:          ins.OS,
 			CpuCores:    ins.CPU,
 			MemoryMB:    ins.MemoryMB,
@@ -306,6 +366,7 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			Source:      "cloud_import",
 			Provider:    req.Provider,
 			ProviderID:  ins.InstanceID,
+			Region:      ins.Region,
 			LastCheckAt: time.Now(),
 		}
 
@@ -313,12 +374,17 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			task.Status = "failed"
 			task.ErrorMessage = err.Error()
 			_ = s.svcCtx.DB.WithContext(ctx).Save(task).Error
-			return task, nil, err
+			return task, created, err
 		}
 		created = append(created, node)
 	}
 
-	resultJSON, _ := json.Marshal(created)
+	resultJSON, _ := json.Marshal(map[string]interface{}{
+		"created":  created,
+		"skipped":  skipped,
+		"total":    len(req.Instances),
+		"imported": len(created),
+	})
 	task.Status = "success"
 	task.ResultJSON = string(resultJSON)
 

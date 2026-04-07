@@ -20,9 +20,15 @@ import (
 //
 // 封装 UCLOUD SDK 的 UHost 服务客户端，提供简化的实例查询接口。
 type Client struct {
-	uhost   *uhost.UHostClient
+	uhost    *uhost.UHostClient
 	uaccount *uaccount.UAccountClient
-	ak      string
+	ak       string
+}
+
+// UCloudExtraConfig UCLOUD 额外配置。
+type UCloudExtraConfig struct {
+	ProjectId string `json:"project_id"` // 项目 ID（子账户必须填写）
+	IsIntl    bool   `json:"is_intl"`    // 是否为国际版账户
 }
 
 // NewClient 创建 UCLOUD UHost 客户端。
@@ -36,6 +42,21 @@ type Client struct {
 //   - 成功返回客户端实例
 //   - 失败返回错误（如凭证格式错误）
 func NewClient(ak, sk, region string) (*Client, error) {
+	return NewClientWithConfig(ak, sk, region, nil)
+}
+
+// NewClientWithConfig 创建 UCLOUD UHost 客户端（支持额外配置）。
+//
+// 参数:
+//   - ak: AccessKey ID (PublicKey)
+//   - sk: AccessKey Secret (PrivateKey)
+//   - region: 地域标识（如 "cn-bj2"、"cn-sh2"）
+//   - extraConfig: 额外配置（如 ProjectId、IsIntl）
+//
+// 返回:
+//   - 成功返回客户端实例
+//   - 失败返回错误（如凭证格式错误）
+func NewClientWithConfig(ak, sk, region string, extraConfig *UCloudExtraConfig) (*Client, error) {
 	if ak == "" || sk == "" {
 		return nil, fmt.Errorf("UCLOUD AccessKey ID 和 Secret 不能为空")
 	}
@@ -45,6 +66,11 @@ func NewClient(ak, sk, region string) (*Client, error) {
 
 	config := ucloud.NewConfig()
 	config.Region = region
+
+	// 国际版使用不同的 API endpoint
+	if extraConfig != nil && extraConfig.IsIntl {
+		config.BaseUrl = "https://api.intl.ucloud.cn"
+	}
 
 	credential := auth.NewCredential()
 	credential.PublicKey = ak

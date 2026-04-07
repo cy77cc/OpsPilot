@@ -39,6 +39,11 @@ type ListInstancesRequest struct {
 	// 阿里云 V9 SDK 推荐使用 NextToken 替代 PageNumber。
 	// 如果提供 NextToken，优先使用游标分页。
 	NextToken string
+
+	// Extra 额外配置（JSON 字符串）。
+	//
+	// 用于传递云厂商特定的配置，如 UCloud 的 ProjectId、IsIntl。
+	Extra string
 }
 
 // CloudInstance 统一的云实例模型。
@@ -103,6 +108,16 @@ type ProviderInfo struct {
 	//
 	// 如 "火山云"、"阿里云"、"腾讯云"
 	DisplayName string `json:"display_name"`
+
+	// ProductType 产品类型标识。
+	//
+	// 如 "uhost"、"ulighthost"、"ecs"、"swas"
+	ProductType string `json:"product_type"`
+
+	// ProductTypeName 产品类型显示名称。
+	//
+	// 如 "云服务器"、"轻量应用云主机"
+	ProductTypeName string `json:"product_type_name"`
 }
 
 // Region 云地域信息。

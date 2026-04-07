@@ -40,6 +40,16 @@ func (p *MockProvider) DisplayName() string {
 	return p.displayName
 }
 
+// ProductType 返回产品类型标识。
+func (p *MockProvider) ProductType() string {
+	return "default"
+}
+
+// ProductTypeName 返回产品类型显示名称。
+func (p *MockProvider) ProductTypeName() string {
+	return "默认产品"
+}
+
 // Capabilities 返回云厂商能力标识。
 func (p *MockProvider) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{

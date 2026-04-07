@@ -34,6 +34,16 @@ func (p *Provider) DisplayName() string {
 	return "火山云"
 }
 
+// ProductType 返回产品类型标识。
+func (p *Provider) ProductType() string {
+	return "ecs"
+}
+
+// ProductTypeName 返回产品类型显示名称。
+func (p *Provider) ProductTypeName() string {
+	return "云服务器"
+}
+
 // Capabilities 返回火山云能力标识。
 func (p *Provider) Capabilities() cloud.ProviderCapabilities {
 	return cloud.ProviderCapabilities{

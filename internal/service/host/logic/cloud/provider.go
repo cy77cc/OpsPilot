@@ -33,6 +33,18 @@ type CloudProvider interface {
 	//   - 用于前端下拉选项展示
 	DisplayName() string
 
+	// ProductType 返回产品类型标识。
+	//
+	// 返回值:
+	//   - 产品类型标识，如 "uhost"、"ulighthost"、"ecs"、"swas"
+	ProductType() string
+
+	// ProductTypeName 返回产品类型显示名称。
+	//
+	// 返回值:
+	//   - 用户友好的显示名称，如 "云服务器"、"轻量应用云主机"
+	ProductTypeName() string
+
 	// Capabilities 返回云厂商能力标识。
 	//
 	// 返回值:

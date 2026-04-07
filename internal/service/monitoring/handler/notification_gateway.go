@@ -198,7 +198,7 @@ func (g *NotificationGateway) upsertAlertEvent(ctx context.Context, alert Alertm
 //   - alert: 告警事件
 func (g *NotificationGateway) dispatchAsync(ctx context.Context, alert model.AlertEvent) {
 	channels := make([]model.AlertNotificationChannel, 0, 16)
-	if err := g.svcCtx.DB.WithContext(ctx).Where("enabled = 1").Find(&channels).Error; err != nil {
+	if err := g.svcCtx.DB.WithContext(ctx).Where("enabled = ?", true).Find(&channels).Error; err != nil {
 		logger.L().Warn("load alert channels failed", logger.Error(err))
 		return
 	}

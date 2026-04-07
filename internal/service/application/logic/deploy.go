@@ -325,7 +325,7 @@ func (l *Logic) resolveDeployTarget(ctx context.Context, serviceID uint, req Dep
 		}, nil
 	}
 	var row model.ServiceDeployTarget
-	if err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND is_default = 1", serviceID).First(&row).Error; err != nil {
+	if err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND is_default = ?", serviceID, true).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			fallback, ferr := l.resolveFallbackDeployTarget(ctx, serviceID, req)
 			if ferr != nil {

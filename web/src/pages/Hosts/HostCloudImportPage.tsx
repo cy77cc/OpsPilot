@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Select, Space, Table, Tag, message, Popconfirm } from 'antd';
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, message, Popconfirm, Tooltip } from 'antd';
+import { DeleteOutlined, QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { CloudAccount, CloudInstance, CloudProviderInfo } from '../../api/modules/hosts';
 
@@ -11,6 +12,23 @@ const providerOptions = [
   { value: 'ucloud', label: 'UCLOUD' },
   { value: 'tencent', label: '腾讯云' },
 ];
+
+// 产品类型选项（根据云厂商动态变化）
+const productTypeOptions: Record<string, { value: string; label: string }[]> = {
+  ucloud: [
+    { value: 'uhost', label: '云服务器' },
+    { value: 'ulighthost', label: '轻量应用云主机' },
+  ],
+  alicloud: [
+    { value: 'ecs', label: '云服务器 ECS' },
+  ],
+  volcengine: [
+    { value: 'ecs', label: '云服务器' },
+  ],
+  tencent: [
+    { value: 'cvm', label: '云服务器' },
+  ],
+};
 
 // 地域和可用区类型
 interface RegionInfo {
@@ -24,6 +42,7 @@ interface ZoneInfo {
 }
 
 const HostCloudImportPage: React.FC = () => {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [providers, setProviders] = useState<CloudProviderInfo[]>([]);
   const [instances, setInstances] = useState<CloudInstance[]>([]);
@@ -35,6 +54,10 @@ const HostCloudImportPage: React.FC = () => {
   const [zones, setZones] = useState<ZoneInfo[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [loadingZones, setLoadingZones] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [resultModalVisible, setResultModalVisible] = useState(false);
+  const [importedHosts, setImportedHosts] = useState<any[]>([]);
   const [accountForm] = Form.useForm();
   const [queryForm] = Form.useForm();
 
@@ -74,7 +97,17 @@ const HostCloudImportPage: React.FC = () => {
   const createAccount = async () => {
     const values = await accountForm.validateFields();
     try {
-      await Api.hosts.createCloudAccount(values);
+      await Api.hosts.createCloudAccount({
+        provider: values.provider,
+        productType: values.productType,
+        accountName: values.accountName,
+        accessKeyId: values.accessKeyId,
+        accessKeySecret: values.accessKeySecret,
+        regionDefault: values.regionDefault,
+        // UCloud 额外配置
+        projectId: values.projectId,
+        isIntl: values.isIntl,
+      });
       message.success('云账号创建成功');
       accountForm.resetFields();
       loadAccounts();
@@ -168,14 +201,23 @@ const HostCloudImportPage: React.FC = () => {
     }
   };
 
-  // 导入选中实例
-  const importSelected = async () => {
-    const values = await queryForm.validateFields();
-    const picked = instances.filter((x) => selected.includes(x.instanceId));
-    if (picked.length === 0) {
+  // 点击导入按钮，显示确认弹窗
+  const handleImportClick = () => {
+    if (selected.length === 0) {
       message.warning('请选择要导入的实例');
       return;
     }
+    setConfirmModalVisible(true);
+  };
+
+  // 确认导入
+  const confirmImport = async () => {
+    const values = await queryForm.validateFields();
+    const picked = instances.filter((x) => selected.includes(x.instanceId));
+
+    setConfirmModalVisible(false);
+    setImporting(true);
+
     try {
       const res = await Api.hosts.importCloudInstances({
         provider: values.provider,
@@ -184,11 +226,30 @@ const HostCloudImportPage: React.FC = () => {
         role: values.role || '',
         labels: values.labels ? String(values.labels).split(',').map((x) => x.trim()).filter(Boolean) : [],
       });
-      message.success(`导入成功，任务ID: ${res.data?.task?.id || '-'}`);
+
+      const result = res.data || {};
+      const importedCount = result.nodes?.length || 0;
+      const skippedCount = result.skipped?.length || 0;
+
+      if (importedCount > 0) {
+        message.success(`成功导入 ${importedCount} 台主机${skippedCount > 0 ? `，跳过 ${skippedCount} 台已存在` : ''}`);
+      } else if (skippedCount > 0) {
+        message.warning(`全部 ${skippedCount} 台实例已存在，未导入新主机`);
+      }
+
       setSelected([]);
+      setImportedHosts(result.nodes || []);
+      setResultModalVisible(true);
     } catch (err: any) {
       message.error(err?.message || '导入失败');
+    } finally {
+      setImporting(false);
     }
+  };
+
+  // 获取选中的实例列表
+  const getSelectedInstances = () => {
+    return instances.filter((x) => selected.includes(x.instanceId));
   };
 
   // 获取云厂商显示名称
@@ -221,6 +282,18 @@ const HostCloudImportPage: React.FC = () => {
           <Form.Item name="provider" rules={[{ required: true }]}>
             <Select style={{ width: 120 }} options={providerOptions} />
           </Form.Item>
+          <Form.Item shouldUpdate>
+            {({ getFieldValue }) => {
+              const provider = getFieldValue('provider');
+              const options = productTypeOptions[provider] || [];
+              if (options.length <= 1) return null;
+              return (
+                <Form.Item name="productType" rules={[{ required: true, message: '请选择产品类型' }]}>
+                  <Select style={{ width: 140 }} placeholder="产品类型" options={options} />
+                </Form.Item>
+              );
+            }}
+          </Form.Item>
           <Form.Item name="accountName" rules={[{ required: true }]}>
             <Input placeholder="账号名称" style={{ width: 140 }} />
           </Form.Item>
@@ -232,6 +305,29 @@ const HostCloudImportPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="regionDefault">
             <Input placeholder="默认地域（如 cn-beijing）" style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item shouldUpdate>
+            {({ getFieldValue }) => {
+              const provider = getFieldValue('provider');
+              if (provider !== 'ucloud') return null;
+              return (
+                <>
+                  <Form.Item name="projectId">
+                    <Input
+                      placeholder="项目 ID（子账户必填）"
+                      style={{ width: 140 }}
+                    />
+                  </Form.Item>
+                  <Form.Item name="isIntl" valuePropName="checked">
+                    <Checkbox>
+                      <Tooltip title="使用国际版 API 端点（api.intl.ucloud.cn）。国内站账号通常无需勾选，国际站账号需勾选。">
+                        国际版 <QuestionCircleOutlined style={{ color: '#999' }} />
+                      </Tooltip>
+                    </Checkbox>
+                  </Form.Item>
+                </>
+              );
+            }}
           </Form.Item>
           <Form.Item>
             <Button type="primary" onClick={createAccount}>添加账号</Button>
@@ -252,6 +348,15 @@ const HostCloudImportPage: React.FC = () => {
                 dataIndex: 'provider',
                 width: 100,
                 render: (v) => <Tag color={v === 'volcengine' ? 'orange' : 'blue'}>{getProviderLabel(v)}</Tag>,
+              },
+              {
+                title: '产品类型',
+                dataIndex: 'productType',
+                width: 120,
+                render: (v, record) => {
+                  const label = productTypeOptions[record.provider]?.find(o => o.value === v)?.label || v || '云服务器';
+                  return <Tag>{label}</Tag>;
+                },
               },
               { title: '账号名称', dataIndex: 'accountName', width: 150 },
               { title: 'AccessKey ID', dataIndex: 'accessKeyId', width: 200, ellipsis: true },
@@ -294,7 +399,7 @@ const HostCloudImportPage: React.FC = () => {
             <span style={{ color: '#999', fontSize: 12 }}>
               已选 {selected.length} 个实例
             </span>
-            <Button type="primary" onClick={importSelected} disabled={selected.length === 0}>
+            <Button type="primary" onClick={handleImportClick} disabled={selected.length === 0} loading={importing}>
               导入选中实例
             </Button>
           </Space>
@@ -351,7 +456,7 @@ const HostCloudImportPage: React.FC = () => {
         {/* 实例列表 */}
         <Table
           rowKey="instanceId"
-          loading={querying}
+          loading={querying || importing}
           rowSelection={{
             selectedRowKeys: selected,
             onChange: setSelected,
@@ -383,6 +488,80 @@ const HostCloudImportPage: React.FC = () => {
           locale={{ emptyText: accounts.length === 0 ? '请先添加云账号' : '暂无实例，请选择账号后查询' }}
         />
       </Card>
+
+      {/* 确认导入弹窗 */}
+      <Modal
+        title="确认导入"
+        open={confirmModalVisible}
+        onCancel={() => setConfirmModalVisible(false)}
+        onOk={confirmImport}
+        okText="确认导入"
+        cancelText="取消"
+        width={600}
+      >
+        <p>即将导入 <strong>{selected.length}</strong> 台实例：</p>
+        <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
+          <Table
+            size="small"
+            dataSource={getSelectedInstances().map((x) => ({
+              key: x.instanceId,
+              name: x.name,
+              ip: x.ip,
+              region: x.region,
+              status: x.status,
+            }))}
+            columns={[
+              { title: '名称', dataIndex: 'name', ellipsis: true },
+              { title: 'IP', dataIndex: 'ip', width: 130 },
+              { title: '地域', dataIndex: 'region', width: 100 },
+              { title: '状态', dataIndex: 'status', width: 80, render: (v) => (
+                <Tag color={v === 'running' ? 'green' : 'default'}>{v}</Tag>
+              )},
+            ]}
+            pagination={false}
+          />
+        </div>
+      </Modal>
+
+      {/* 导入结果弹窗 */}
+      <Modal
+        title="导入成功"
+        open={resultModalVisible}
+        onCancel={() => setResultModalVisible(false)}
+        footer={[
+          <Button key="continue" onClick={() => setResultModalVisible(false)}>
+            继续导入
+          </Button>,
+          <Button key="detail" type="primary" onClick={() => {
+            setResultModalVisible(false);
+            navigate('/hosts');
+          }}>
+            查看主机列表
+          </Button>,
+        ]}
+        width={600}
+      >
+        <p>成功导入 <strong>{importedHosts.length}</strong> 台主机</p>
+        {importedHosts.length > 0 && (
+          <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
+            <Table
+              size="small"
+              dataSource={importedHosts.map((h: any) => ({
+                key: h.id,
+                name: h.name,
+                ip: h.ip,
+                status: h.status,
+              }))}
+              columns={[
+                { title: '主机名', dataIndex: 'name', ellipsis: true },
+                { title: 'IP', dataIndex: 'ip', width: 130 },
+                { title: '状态', dataIndex: 'status', width: 80, render: (v) => <Tag color="green">{v}</Tag> },
+              ]}
+              pagination={false}
+            />
+          </div>
+        )}
+      </Modal>
     </Space>
   );
 };

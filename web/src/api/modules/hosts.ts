@@ -179,6 +179,7 @@ export interface SSHKeyItem {
 export interface CloudAccount {
   id: string;
   provider: string;
+  productType: string;
   accountName: string;
   accessKeyId: string;
   regionDefault: string;
@@ -188,6 +189,8 @@ export interface CloudAccount {
 export interface CloudProviderInfo {
   name: string;
   displayName: string;
+  productType?: string;
+  productTypeName?: string;
 }
 
 export interface CloudInstance {
@@ -602,6 +605,7 @@ export const hostApi = {
       data: rawList.map((x: any) => ({
         id: String(x.id),
         provider: x.provider,
+        productType: x.product_type || 'uhost',
         accountName: x.account_name,
         accessKeyId: x.access_key_id,
         regionDefault: x.region_default,
@@ -617,17 +621,22 @@ export const hostApi = {
       data: (res.data || []).map((x: any) => ({
         name: x.name,
         displayName: x.display_name,
+        productType: x.product_type,
+        productTypeName: x.product_type_name,
       })),
     };
   },
 
-  async createCloudAccount(payload: { provider: string; accountName: string; accessKeyId: string; accessKeySecret: string; regionDefault?: string }): Promise<ApiResponse<CloudAccount>> {
+  async createCloudAccount(payload: { provider: string; productType?: string; accountName: string; accessKeyId: string; accessKeySecret: string; regionDefault?: string; projectId?: string; isIntl?: boolean }): Promise<ApiResponse<CloudAccount>> {
     const res = await apiService.post<any>('/hosts/cloud/accounts', {
       provider: payload.provider,
+      product_type: payload.productType || '',
       account_name: payload.accountName,
       access_key_id: payload.accessKeyId,
       access_key_secret: payload.accessKeySecret,
       region_default: payload.regionDefault || '',
+      project_id: payload.projectId || '',
+      is_intl: payload.isIntl || false,
     });
     const x = res.data || {};
     return {
@@ -635,6 +644,7 @@ export const hostApi = {
       data: {
         id: String(x.id),
         provider: x.provider,
+        productType: x.product_type || 'uhost',
         accountName: x.account_name,
         accessKeyId: x.access_key_id,
         regionDefault: x.region_default,

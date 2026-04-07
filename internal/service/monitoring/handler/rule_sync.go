@@ -120,7 +120,7 @@ func (s *RuleSyncService) SyncRules(ctx context.Context) (int, error) {
 	defer s.mu.Unlock()
 
 	rules := make([]model.AlertRule, 0, 64)
-	if err := s.db.WithContext(ctx).Where("enabled = 1").Order("id ASC").Find(&rules).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("enabled = ?", true).Order("id ASC").Find(&rules).Error; err != nil {
 		return 0, err
 	}
 

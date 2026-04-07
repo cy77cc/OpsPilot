@@ -615,7 +615,7 @@ func (l *Logic) ListDeliveries(ctx context.Context, alertID uint, channelType, s
 // 返回: 可能的错误
 func (l *Logic) evaluateRules(ctx context.Context, values map[string]float64) error {
 	rules := make([]model.AlertRule, 0, 32)
-	if err := l.svcCtx.DB.WithContext(ctx).Where("enabled = 1").Find(&rules).Error; err != nil {
+	if err := l.svcCtx.DB.WithContext(ctx).Where("enabled = ?", true).Find(&rules).Error; err != nil {
 		return err
 	}
 	now := time.Now()

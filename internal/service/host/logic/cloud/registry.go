@@ -39,7 +39,7 @@ func NewRegistry() *Registry {
 // 参数:
 //   - p: 要注册的云厂商适配器
 //
-// 覆盖同名适配器，用于测试或更新实现。
+// 注册键格式: provider:product_type (如 "ucloud:uhost", "ucloud:ulighthost")
 func Register(p CloudProvider) {
 	globalRegistry.Register(p)
 }
@@ -47,18 +47,14 @@ func Register(p CloudProvider) {
 // GetProvider 从全局注册表获取指定云厂商适配器。
 //
 // 参数:
-//   - name: 云厂商标识（如 "volcengine"）
+//   - key: 适配器键，格式为 "provider:product_type" 或 "provider" (向后兼容)
 //
-// 返回:
-//   - 找到返回适配器实例
-//   - 未找到返回 ErrProviderNotFound 错误
-func GetProvider(name string) (CloudProvider, error) {
-	return globalRegistry.GetProvider(name)
+// 返回适配器实例或 ErrProviderNotFound 错误
+func GetProvider(key string) (CloudProvider, error) {
+	return globalRegistry.GetProvider(key)
 }
 
 // ListProviders 列出全局注册表中所有云厂商信息。
-//
-// 返回所有已注册的云厂商列表，用于前端下拉选项展示。
 func ListProviders() []ProviderInfo {
 	return globalRegistry.ListProviders()
 }
@@ -67,17 +63,45 @@ func ListProviders() []ProviderInfo {
 func (r *Registry) Register(p CloudProvider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.providers[p.Name()] = p
+	// 使用 provider:product_type 作为键
+	key := p.Name() + ":" + p.ProductType()
+	r.providers[key] = p
 }
 
 // GetProvider 获取指定云厂商适配器。
-func (r *Registry) GetProvider(name string) (CloudProvider, error) {
+func (r *Registry) GetProvider(key string) (CloudProvider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if p, ok := r.providers[name]; ok {
+
+	// 首先尝试精确匹配 provider:product_type
+	if p, ok := r.providers[key]; ok {
 		return p, nil
 	}
+
+	// 向后兼容：如果 key 不包含 ":"，尝试查找默认产品类型
+	// 例如 "ucloud" -> 查找 "ucloud:uhost"
+	if !containsColon(key) {
+		defaultKey := key + ":uhost"
+		if p, ok := r.providers[defaultKey]; ok {
+			return p, nil
+		}
+		defaultKey = key + ":ecs"
+		if p, ok := r.providers[defaultKey]; ok {
+			return p, nil
+		}
+	}
+
 	return nil, ErrProviderNotFound
+}
+
+// containsColon 检查字符串是否包含冒号。
+func containsColon(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			return true
+		}
+	}
+	return false
 }
 
 // ListProviders 列出所有云厂商信息。
@@ -87,8 +111,10 @@ func (r *Registry) ListProviders() []ProviderInfo {
 	list := make([]ProviderInfo, 0, len(r.providers))
 	for _, p := range r.providers {
 		list = append(list, ProviderInfo{
-			Name:        p.Name(),
-			DisplayName: p.DisplayName(),
+			Name:            p.Name(),
+			DisplayName:     p.DisplayName(),
+			ProductType:     p.ProductType(),
+			ProductTypeName: p.ProductTypeName(),
 		})
 	}
 	return list

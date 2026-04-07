@@ -373,7 +373,7 @@ func (l *Logic) resolveReleaseTarget(ctx context.Context, serviceID, deploymentI
 	scopeEnv := strings.TrimSpace(defaultIfEmpty(env, svc.Env))
 
 	var sdt model.ServiceDeployTarget
-	if err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND is_default = 1", serviceID).First(&sdt).Error; err == nil {
+	if err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND is_default = ?", serviceID, true).First(&sdt).Error; err == nil {
 		targetRuntime := normalizeRuntimeType(defaultIfEmpty(sdt.DeployTarget, rt))
 		if targetRuntime == "" {
 			targetRuntime = rt

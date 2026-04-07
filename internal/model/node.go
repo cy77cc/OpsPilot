@@ -42,8 +42,9 @@ type Node struct {
 	Role                 string     `gorm:"column:role;type:varchar(32)" json:"role"`                                // 角色: master/worker
 	ClusterID            uint       `gorm:"column:cluster_id" json:"cluster_id"`                                     // 所属集群 ID
 	Source               string     `gorm:"column:source;type:varchar(32);default:manual_ssh" json:"source"`         // 来源: manual_ssh/imported/cloud
-	Provider             string     `gorm:"column:provider;type:varchar(32)" json:"provider"`                        // 云厂商: aliyun/aws/tencent
-	ProviderID           string     `gorm:"column:provider_instance_id;type:varchar(128)" json:"provider_instance_id"` // 云厂商实例 ID
+	Provider             string     `gorm:"column:provider;type:varchar(32);uniqueIndex:idx_provider_instance" json:"provider"`                        // 云厂商: aliyun/aws/tencent
+	ProviderID           string     `gorm:"column:provider_instance_id;type:varchar(128);uniqueIndex:idx_provider_instance" json:"provider_instance_id"` // 云厂商实例 ID
+	Region               string     `gorm:"column:region;type:varchar(64)" json:"region"`                            // 区域
 	ParentHostID         *NodeID    `gorm:"column:parent_host_id" json:"parent_host_id"`                            // 父主机 ID (虚拟机场景)
 	HealthState          string     `gorm:"column:health_state;type:varchar(32);default:unknown" json:"health_state"` // 健康状态: healthy/unhealthy/unknown
 	MaintenanceReason    string     `gorm:"column:maintenance_reason;type:varchar(512)" json:"maintenance_reason"`   // 维护原因
@@ -107,10 +108,12 @@ func (n *NodeEvent) TableName() string {
 type HostCloudAccount struct {
 	ID                 uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`                                      // 账户 ID
 	Provider           string    `gorm:"column:provider;type:varchar(32);not null;index" json:"provider"`                   // 云厂商: volcengine/alicloud/tencent
+	ProductType        string    `gorm:"column:product_type;type:varchar(32);not null;default:'uhost';index" json:"product_type"` // 产品类型: uhost/ulighthost/ecs/swas
 	AccountName        string    `gorm:"column:account_name;type:varchar(128);not null;uniqueIndex:idx_provider_account" json:"account_name"` // 账户名称（唯一索引）
 	AccessKeyID        string    `gorm:"column:access_key_id;type:varchar(256);not null;uniqueIndex:idx_provider_ak" json:"access_key_id"` // Access Key ID（唯一索引）
 	AccessKeySecretEnc string    `gorm:"column:access_key_secret_enc;type:text;not null" json:"-"`                     // Access Key Secret (加密存储)
 	RegionDefault      string    `gorm:"column:region_default;type:varchar(64)" json:"region_default"`                      // 默认区域
+	ExtraConfig        string    `gorm:"column:extra_config;type:text" json:"extra_config"`                                 // 额外配置 (JSON): ProjectId, IsIntl 等
 	Status             string    `gorm:"column:status;type:varchar(32);default:active" json:"status"`                       // 状态: active/inactive
 	CreatedBy          uint64    `gorm:"column:created_by;index" json:"created_by"`                                         // 创建人 ID
 	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                // 创建时间

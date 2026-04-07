@@ -6,7 +6,9 @@ package ucloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/ucloud/ucloud-sdk-go/services/uaccount"
@@ -35,6 +37,16 @@ func (p *Provider) DisplayName() string {
 	return "UCLOUD"
 }
 
+// ProductType 返回产品类型标识。
+func (p *Provider) ProductType() string {
+	return "uhost"
+}
+
+// ProductTypeName 返回产品类型显示名称。
+func (p *Provider) ProductTypeName() string {
+	return "云服务器"
+}
+
 // Capabilities 返回 UCLOUD 能力标识。
 func (p *Provider) Capabilities() cloud.ProviderCapabilities {
 	return cloud.ProviderCapabilities{
@@ -42,20 +54,40 @@ func (p *Provider) Capabilities() cloud.ProviderCapabilities {
 	}
 }
 
+// ParseExtraConfig 解析额外配置 JSON。
+func ParseExtraConfig(extraConfigJSON string) *UCloudExtraConfig {
+	if extraConfigJSON == "" {
+		return nil
+	}
+	var cfg UCloudExtraConfig
+	if err := json.Unmarshal([]byte(extraConfigJSON), &cfg); err != nil {
+		return nil
+	}
+	return &cfg
+}
+
 // ValidateCredential 验证 UCLOUD 凭证是否有效。
 //
 // 通过调用 DescribeUHostInstance API（限制返回 1 条）验证凭证有效性。
 func (p *Provider) ValidateCredential(ctx context.Context, ak, sk, region string) error {
-	client, err := NewClient(ak, sk, region)
+	return p.ValidateCredentialWithExtra(ctx, ak, sk, region, nil)
+}
+
+// ValidateCredentialWithExtra 验证 UCLOUD 凭证是否有效（支持额外配置）。
+func (p *Provider) ValidateCredentialWithExtra(ctx context.Context, ak, sk, region string, extraConfig *UCloudExtraConfig) error {
+	client, err := NewClientWithConfig(ak, sk, region, extraConfig)
 	if err != nil {
 		return err
 	}
 
-	// 通过查询实例验证凭证，限制返回 1 条
 	limit := 1
 	req := &uhost.DescribeUHostInstanceRequest{}
 	req.Region = &region
 	req.Limit = &limit
+
+	if extraConfig != nil && extraConfig.ProjectId != "" {
+		req.ProjectId = &extraConfig.ProjectId
+	}
 
 	_, err = client.DescribeUHostInstance(ctx, req)
 	if err != nil {
@@ -66,7 +98,14 @@ func (p *Provider) ValidateCredential(ctx context.Context, ak, sk, region string
 
 // ListInstances 查询 UCLOUD UHost 实例列表。
 func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesRequest) ([]cloud.CloudInstance, error) {
-	client, err := NewClient(req.AccessKeyID, req.AccessKeySecret, req.Region)
+	// 解析额外配置
+	extraConfig := ParseExtraConfig(req.Extra)
+	return p.ListInstancesWithExtra(ctx, req, extraConfig)
+}
+
+// ListInstancesWithExtra 查询 UCLOUD UHost 实例列表（支持额外配置）。
+func (p *Provider) ListInstancesWithExtra(ctx context.Context, req cloud.ListInstancesRequest, extraConfig *UCloudExtraConfig) ([]cloud.CloudInstance, error) {
+	client, err := NewClientWithConfig(req.AccessKeyID, req.AccessKeySecret, req.Region, extraConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +114,13 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	input := &uhost.DescribeUHostInstanceRequest{}
 	input.Region = &req.Region
 
-	// 可用区过滤（仅当 Zone 有效时才设置）
-	if req.Zone != "" && req.Zone != "undefined" {
+	// 设置 ProjectId（子账户必须）
+	if extraConfig != nil && extraConfig.ProjectId != "" {
+		input.ProjectId = &extraConfig.ProjectId
+	}
+
+	// 可用区过滤（仅当 Zone 有效且不为 "all" 时才设置）
+	if req.Zone != "" && req.Zone != "undefined" && req.Zone != "all" {
 		input.Zone = &req.Zone
 	}
 
@@ -92,11 +136,27 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 		input.Offset = &offset
 	}
 
+	// 调试日志
+	slog.Debug("UCloud ListInstances", "region", req.Region, "zone", req.Zone, "projectId", func() string {
+		if extraConfig != nil {
+			return extraConfig.ProjectId
+		}
+		return ""
+	}(), "isIntl", func() bool {
+		if extraConfig != nil {
+			return extraConfig.IsIntl
+		}
+		return false
+	}())
+
 	// 调用 API
 	output, err := client.DescribeUHostInstance(ctx, input)
 	if err != nil {
+		slog.Error("UCloud DescribeUHostInstance failed", "error", err, "region", req.Region, "zone", req.Zone)
 		return nil, fmt.Errorf("查询 UCLOUD 实例失败: %w", p.wrapError(err))
 	}
+
+	slog.Debug("UCloud API response", "totalCount", output.TotalCount, "instanceCount", len(output.UHostSet))
 
 	// 转换实例数据
 	instances := make([]cloud.CloudInstance, 0, len(output.UHostSet))
