@@ -1,12 +1,11 @@
-// Package notification 提供通知管理服务。
+// Package handler 提供通知管理的 HTTP 处理器及相关组件。
 //
-// 本包实现用户通知的查询、状态更新等功能，支持告警、任务、系统等类型通知。
+// notification.go 实现用户通知的查询、状态更新等 HTTP 接口处理。
 // 主要功能:
 //   - 通知列表查询（分页、过滤）
 //   - 未读数量统计（按类型、严重级别）
 //   - 通知状态管理（已读、忽略、确认）
-//   - WebSocket 实时推送
-package notification
+package handler
 
 import (
 	"strconv"
@@ -393,31 +392,4 @@ func getUserID(c *gin.Context) uint64 {
 		return uid
 	}
 	return 0
-}
-
-// RegisterNotificationHandlers 注册通知相关路由。
-//
-// 路由列表:
-//   - GET  /notifications           - 获取通知列表
-//   - GET  /notifications/unread-count - 获取未读数量
-//   - POST /notifications/:id/read   - 标记已读
-//   - POST /notifications/:id/dismiss - 忽略通知
-//   - POST /notifications/:id/confirm - 确认告警
-//   - POST /notifications/read-all   - 全部已读
-//
-// 参数:
-//   - r: Gin 路由组
-//   - svcCtx: 服务上下文
-func RegisterNotificationHandlers(r *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	svc := NewNotificationService(svcCtx)
-
-	notifications := r.Group("/notifications")
-	{
-		notifications.GET("", svc.ListNotifications)
-		notifications.GET("/unread-count", svc.UnreadCount)
-		notifications.POST("/:id/read", svc.MarkAsRead)
-		notifications.POST("/:id/dismiss", svc.Dismiss)
-		notifications.POST("/:id/confirm", svc.Confirm)
-		notifications.POST("/read-all", svc.MarkAllAsRead)
-	}
 }

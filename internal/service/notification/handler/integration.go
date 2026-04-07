@@ -1,11 +1,11 @@
-// Package notification 提供通知管理服务。
+// Package handler 提供通知管理的 HTTP 处理器及相关组件。
 //
 // integration.go 实现通知集成服务，负责创建各类通知并推送。
 // 支持的通知类型:
 //   - alert: 告警通知
 //   - task: 任务通知
 //   - system: 系统通知
-package notification
+package handler
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-// Package notification 提供通知管理服务。
+// Package handler 提供通知管理的 HTTP 处理器及相关组件。
 //
 // provider.go 实现可插拔的通知发送提供者。
 // 支持的通道类型:
@@ -7,7 +7,7 @@
 //   - wecom: 企业微信机器人
 //   - email: 邮件通知
 //   - sms: 短信通知
-package notification
+package handler
 
 import (
 	"bytes"

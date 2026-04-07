@@ -26,7 +26,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
-	"github.com/cy77cc/OpsPilot/internal/service/notification"
+	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	"gorm.io/gorm"
@@ -625,7 +625,7 @@ func (s *HostService) emitMaintenanceLifecycle(ctx context.Context, node *model.
 	if operator == 0 {
 		return
 	}
-	integrator := notification.NewNotificationIntegrator(s.svcCtx.DB)
+	integrator := notifhandler.NewNotificationIntegrator(s.svcCtx.DB)
 	_ = integrator.CreateSystemNotification(ctx, title, content, []uint64{operator})
 }
 

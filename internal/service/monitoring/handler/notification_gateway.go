@@ -14,7 +14,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
-	notifsvc "github.com/cy77cc/OpsPilot/internal/service/notification"
+	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -50,7 +50,7 @@ type AlertmanagerAlert struct {
 // 并异步分发给所有启用的通知渠道。
 type NotificationGateway struct {
 	svcCtx    *svc.ServiceContext        // 服务上下文
-	providers *notifsvc.ProviderRegistry // 通知提供者注册表
+	providers *notifhandler.ProviderRegistry // 通知提供者注册表
 }
 
 // NewNotificationGateway 创建通知网关实例。
@@ -64,7 +64,7 @@ type NotificationGateway struct {
 func NewNotificationGateway(svcCtx *svc.ServiceContext) *NotificationGateway {
 	return &NotificationGateway{
 		svcCtx:    svcCtx,
-		providers: notifsvc.NewDefaultProviderRegistry(),
+		providers: notifhandler.NewDefaultProviderRegistry(),
 	}
 }
 

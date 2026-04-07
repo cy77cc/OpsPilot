@@ -19,7 +19,7 @@ import (
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
-	"github.com/cy77cc/OpsPilot/internal/service/notification"
+	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -656,7 +656,7 @@ func (l *Logic) evaluateRules(ctx context.Context, values map[string]float64) er
 				return err
 			}
 			// 创建通知并推送
-			integrator := notification.NewNotificationIntegrator(l.svcCtx.DB)
+			integrator := notifhandler.NewNotificationIntegrator(l.svcCtx.DB)
 			go integrator.CreateAlertNotification(runtimectx.Detach(ctx), &event)
 			continue
 		}
