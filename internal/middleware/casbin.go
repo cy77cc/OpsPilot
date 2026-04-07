@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/casbin/casbin/v2"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/gin-gonic/gin"
 )
 

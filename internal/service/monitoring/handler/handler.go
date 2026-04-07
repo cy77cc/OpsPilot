@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	monitoringlogic "github.com/cy77cc/OpsPilot/internal/service/monitoring/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,10 +29,10 @@ import (
 // 聚合了告警规则同步、通知网关和业务逻辑层，
 // 提供统一的监控告警 API 入口。
 type Handler struct {
-	logic     *monitoringlogic.Logic  // 业务逻辑层
-	svcCtx    *svc.ServiceContext     // 服务上下文
-	ruleSync  *RuleSyncService        // 规则同步服务
-	webhookGW *NotificationGateway    // 通知网关
+	logic     *monitoringlogic.Logic // 业务逻辑层
+	svcCtx    *svc.ServiceContext    // 服务上下文
+	ruleSync  *RuleSyncService       // 规则同步服务
+	webhookGW *NotificationGateway   // 通知网关
 }
 
 // NewHandler 创建监控服务处理器实例。

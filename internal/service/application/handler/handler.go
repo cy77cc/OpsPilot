@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/application/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 

@@ -10,8 +10,8 @@ import (
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 

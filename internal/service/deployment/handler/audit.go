@@ -6,9 +6,9 @@ package handler
 import (
 	"context"
 
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,10 +29,10 @@ func NewAuditHandler(svcCtx *svc.ServiceContext) *AuditHandler {
 
 // listAuditLogsReq 是获取审计日志列表的请求参数。
 type listAuditLogsReq struct {
-	Page         int    `form:"page" binding:"omitempty,min=1"`        // 页码
+	Page         int    `form:"page" binding:"omitempty,min=1"`              // 页码
 	PageSize     int    `form:"page_size" binding:"omitempty,min=1,max=100"` // 每页数量
-	ActionType   string `form:"action_type"`                           // 操作类型
-	ResourceType string `form:"resource_type"`                         // 资源类型
+	ActionType   string `form:"action_type"`                                 // 操作类型
+	ResourceType string `form:"resource_type"`                               // 资源类型
 }
 
 // ListAuditLogs 获取审计日志列表。

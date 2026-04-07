@@ -8,9 +8,9 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/utils"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 

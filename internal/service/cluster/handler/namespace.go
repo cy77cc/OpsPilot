@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	corev1 "k8s.io/api/core/v1"

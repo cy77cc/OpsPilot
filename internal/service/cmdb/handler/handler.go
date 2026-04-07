@@ -16,10 +16,10 @@ import (
 
 	cmdbv1 "github.com/cy77cc/OpsPilot/api/cmdb/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	cmdblogic "github.com/cy77cc/OpsPilot/internal/service/cmdb/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 

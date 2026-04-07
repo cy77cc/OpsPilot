@@ -11,8 +11,8 @@ import (
 	"time"
 
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
+	"github.com/cy77cc/OpsPilot/internal/httpx/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

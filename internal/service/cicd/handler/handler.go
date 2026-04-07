@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	cicdlogic "github.com/cy77cc/OpsPilot/internal/service/cicd/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,7 +27,7 @@ import (
 //   - 调用 Logic 层处理业务逻辑
 //   - 返回统一格式的响应
 type Handler struct {
-	logic  *cicdlogic.Logic // 业务逻辑层
+	logic  *cicdlogic.Logic    // 业务逻辑层
 	svcCtx *svc.ServiceContext // 服务上下文
 }
 

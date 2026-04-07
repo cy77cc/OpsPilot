@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	aiService "github.com/cy77cc/OpsPilot/internal/service/ai"
 	aimodel "github.com/cy77cc/OpsPilot/internal/service/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"gorm.io/gorm"
 )
 

@@ -12,21 +12,21 @@ import (
 
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
 	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/utils"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"gorm.io/gorm"
 )
 
 // Login 用户登录。
 //
 // 流程:
-//   1. 检查用户是否存在
-//   2. 验证密码
-//   3. 生成 Access Token 和 Refresh Token
-//   4. 将 Refresh Token 加入白名单
-//   5. 更新最后登录时间
-//   6. 加载用户角色和权限
+//  1. 检查用户是否存在
+//  2. 验证密码
+//  3. 生成 Access Token 和 Refresh Token
+//  4. 将 Refresh Token 加入白名单
+//  5. 更新最后登录时间
+//  6. 加载用户角色和权限
 //
 // 参数:
 //   - ctx: 上下文
@@ -94,13 +94,13 @@ func (l *UserLogic) Login(ctx context.Context, req v1.LoginReq) (v1.TokenResp, e
 // Register 用户注册。
 //
 // 流程:
-//   1. 检查用户名是否已存在
-//   2. 对密码进行哈希处理
-//   3. 创建用户记录
-//   4. 为新用户分配默认 viewer 角色
-//   5. 生成 Access Token 和 Refresh Token
-//   6. 将 Refresh Token 加入白名单
-//   7. 加载用户角色和权限
+//  1. 检查用户名是否已存在
+//  2. 对密码进行哈希处理
+//  3. 创建用户记录
+//  4. 为新用户分配默认 viewer 角色
+//  5. 生成 Access Token 和 Refresh Token
+//  6. 将 Refresh Token 加入白名单
+//  7. 加载用户角色和权限
 //
 // 参数:
 //   - ctx: 上下文
@@ -184,11 +184,11 @@ func (l *UserLogic) Register(ctx context.Context, req v1.UserCreateReq) (v1.Toke
 // Refresh 刷新 Token。
 //
 // 流程:
-//   1. 检查 Refresh Token 是否在白名单中
-//   2. 解析 Token 获取用户信息
-//   3. 生成新的 Access Token 和 Refresh Token
-//   4. 从白名单删除旧 Token，添加新 Token
-//   5. 加载用户角色和权限
+//  1. 检查 Refresh Token 是否在白名单中
+//  2. 解析 Token 获取用户信息
+//  3. 生成新的 Access Token 和 Refresh Token
+//  4. 从白名单删除旧 Token，添加新 Token
+//  5. 加载用户角色和权限
 //
 // 参数:
 //   - ctx: 上下文
@@ -242,8 +242,8 @@ func (l *UserLogic) Refresh(ctx context.Context, req v1.RefreshReq) (v1.TokenRes
 // Logout 用户登出。
 //
 // 流程:
-//   1. 检查 Refresh Token 是否为空
-//   2. 从白名单中删除 Refresh Token
+//  1. 检查 Refresh Token 是否为空
+//  2. 从白名单中删除 Refresh Token
 //
 // 参数:
 //   - ctx: 上下文
@@ -263,9 +263,9 @@ func (l *UserLogic) Logout(ctx context.Context, req v1.LogoutReq) error {
 // loadRolesAndPermissions 加载用户的角色和权限列表。
 //
 // 流程:
-//   1. 通过 user_roles 表查询用户的所有角色
-//   2. 通过 role_permissions 表查询角色关联的所有权限
-//   3. 如果用户是 admin 角色，添加 "*:*" 全局权限
+//  1. 通过 user_roles 表查询用户的所有角色
+//  2. 通过 role_permissions 表查询角色关联的所有权限
+//  3. 如果用户是 admin 角色，添加 "*:*" 全局权限
 //
 // 参数:
 //   - ctx: 上下文

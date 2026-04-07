@@ -9,8 +9,8 @@ import (
 
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	userLogic "github.com/cy77cc/OpsPilot/internal/service/user/logic"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 

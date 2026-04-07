@@ -7,7 +7,7 @@ package httpx
 import (
 	"net/http"
 
-	"github.com/cy77cc/OpsPilot/internal/xcode"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/gin-gonic/gin"
 )
 

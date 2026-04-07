@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,19 +32,19 @@ func NewPolicyHandler(svcCtx *svc.ServiceContext) *PolicyHandler {
 
 // listPoliciesReq 是获取策略列表的请求参数。
 type listPoliciesReq struct {
-	Page     int    `form:"page" binding:"omitempty,min=1"`     // 页码
+	Page     int    `form:"page" binding:"omitempty,min=1"`              // 页码
 	PageSize int    `form:"page_size" binding:"omitempty,min=1,max=100"` // 每页数量
-	Type     string `form:"type"`                               // 策略类型
-	TargetID uint   `form:"target_id"`                          // 目标 ID
+	Type     string `form:"type"`                                        // 策略类型
+	TargetID uint   `form:"target_id"`                                   // 目标 ID
 }
 
 // createPolicyReq 是创建策略的请求参数。
 type createPolicyReq struct {
-	Name     string                 `json:"name" binding:"required"`  // 策略名称
+	Name     string                 `json:"name" binding:"required"`                                     // 策略名称
 	Type     string                 `json:"type" binding:"required,oneof=traffic resilience access slo"` // 策略类型
-	TargetID uint                   `json:"target_id"`                // 目标 ID
-	Config   map[string]interface{} `json:"config"`                   // 策略配置
-	Enabled  bool                   `json:"enabled"`                  // 是否启用
+	TargetID uint                   `json:"target_id"`                                                   // 目标 ID
+	Config   map[string]interface{} `json:"config"`                                                      // 策略配置
+	Enabled  bool                   `json:"enabled"`                                                     // 是否启用
 }
 
 // updatePolicyReq 是更新策略的请求参数。

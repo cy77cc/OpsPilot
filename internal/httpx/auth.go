@@ -7,8 +7,8 @@ package httpx
 import (
 	"strings"
 
+	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
