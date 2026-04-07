@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的工具函数。
+// Package logic 提供部署管理服务的工具函数。
 //
 // 本文件包含预览令牌生成/验证和通用工具函数。
-package deployment
+package logic
 
 import (
 	"crypto/hmac"

@@ -11,17 +11,18 @@ package deployment
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/service/deployment/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterDeploymentHandlers 注册部署服务路由到 v1 组。
 func RegisterDeploymentHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := NewHandler(svcCtx)
-	auditH := NewAuditHandler(svcCtx)
-	metricsH := NewMetricsHandler(svcCtx)
-	topologyH := NewTopologyHandler(svcCtx)
-	policyH := NewPolicyHandler(svcCtx)
+	h := handler.NewHandler(svcCtx)
+	auditH := handler.NewAuditHandler(svcCtx)
+	metricsH := handler.NewMetricsHandler(svcCtx)
+	topologyH := handler.NewTopologyHandler(svcCtx)
+	policyH := handler.NewPolicyHandler(svcCtx)
 	g := v1.Group("/deploy", middleware.JWTAuth())
 	{
 		g.GET("/targets", h.ListTargets)

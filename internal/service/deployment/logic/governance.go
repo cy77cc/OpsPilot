@@ -1,7 +1,7 @@
-// Package deployment 提供服务治理策略的业务逻辑实现。
+// Package logic 提供服务治理策略的业务逻辑实现。
 //
 // 本文件包含服务治理策略的查询和更新逻辑。
-package deployment
+package logic
 
 import (
 	"context"

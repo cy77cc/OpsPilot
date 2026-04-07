@@ -1,7 +1,7 @@
-// Package deployment 提供环境引导的业务逻辑实现。
+// Package logic 提供环境引导的业务逻辑实现。
 //
 // 本文件包含环境引导安装、凭证管理和连通性测试等业务逻辑。
-package deployment
+package logic
 
 import (
 	"context"

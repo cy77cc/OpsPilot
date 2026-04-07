@@ -1,12 +1,13 @@
-// Package deployment 提供部署管理服务的环境引导处理器。
+// Package handler 提供部署管理服务的环境引导处理器。
 //
 // 本文件包含环境引导和凭证管理相关的 HTTP 处理器实现。
-package deployment
+package handler
 
 import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/service/deployment/logic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,7 +19,7 @@ import (
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body EnvironmentBootstrapReq true "引导请求"
+// @Param body body logic.EnvironmentBootstrapReq true "引导请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -28,7 +29,7 @@ func (h *Handler) StartEnvironmentBootstrap(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:target:write") {
 		return
 	}
-	var req EnvironmentBootstrapReq
+	var req logic.EnvironmentBootstrapReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -77,7 +78,7 @@ func (h *Handler) GetEnvironmentBootstrapJob(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body PlatformCredentialRegisterReq true "注册请求"
+// @Param body body logic.PlatformCredentialRegisterReq true "注册请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -87,7 +88,7 @@ func (h *Handler) RegisterPlatformCredential(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:write", "deploy:target:write") {
 		return
 	}
-	var req PlatformCredentialRegisterReq
+	var req logic.PlatformCredentialRegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -108,7 +109,7 @@ func (h *Handler) RegisterPlatformCredential(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body ClusterCredentialImportReq true "导入请求"
+// @Param body body logic.ClusterCredentialImportReq true "导入请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -118,7 +119,7 @@ func (h *Handler) ImportExternalCredential(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:credential:write", "deploy:target:write") {
 		return
 	}
-	var req ClusterCredentialImportReq
+	var req logic.ClusterCredentialImportReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return

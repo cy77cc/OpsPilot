@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的 HTTP 处理器。
+// Package handler 提供部署管理服务的 HTTP 处理器。
 //
 // 本文件包含部署目标、发布管理和集群引导相关的 HTTP 处理器实现。
-package deployment
+package handler
 
 import (
 	"fmt"
@@ -9,13 +9,14 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/deployment/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
 
 // Handler 是部署服务的 HTTP 处理器，封装业务逻辑层和服务上下文。
 type Handler struct {
-	logic  *Logic
+	logic  *logic.Logic
 	svcCtx *svc.ServiceContext
 }
 
@@ -26,7 +27,7 @@ type Handler struct {
 //
 // 返回: Handler 实例
 func NewHandler(svcCtx *svc.ServiceContext) *Handler {
-	return &Handler{logic: NewLogic(svcCtx), svcCtx: svcCtx}
+	return &Handler{logic: logic.NewLogic(svcCtx), svcCtx: svcCtx}
 }
 
 // ListTargets 获取部署目标列表。
@@ -63,14 +64,14 @@ func (h *Handler) ListTargets(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body TargetUpsertReq true "部署目标信息"
+// @Param body body logic.TargetUpsertReq true "部署目标信息"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
 // @Router /deploy/targets [post]
 func (h *Handler) CreateTarget(c *gin.Context) {
-	var req TargetUpsertReq
+	var req logic.TargetUpsertReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -121,14 +122,14 @@ func (h *Handler) GetTarget(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "部署目标 ID"
-// @Param body body TargetUpsertReq true "部署目标信息"
+// @Param body body logic.TargetUpsertReq true "部署目标信息"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
 // @Router /deploy/targets/{id} [put]
 func (h *Handler) UpdateTarget(c *gin.Context) {
-	var req TargetUpsertReq
+	var req logic.TargetUpsertReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -177,7 +178,7 @@ func (h *Handler) DeleteTarget(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "部署目标 ID"
-// @Param body body map[string][]TargetNodeReq true "节点列表"
+// @Param body body map[string][]logic.TargetNodeReq true "节点列表"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -188,7 +189,7 @@ func (h *Handler) PutTargetNodes(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Nodes []TargetNodeReq `json:"nodes"`
+		Nodes []logic.TargetNodeReq `json:"nodes"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -210,14 +211,14 @@ func (h *Handler) PutTargetNodes(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body ReleasePreviewReq true "发布预览请求"
+// @Param body body logic.ReleasePreviewReq true "发布预览请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
 // @Router /deploy/releases/preview [post]
 func (h *Handler) PreviewRelease(c *gin.Context) {
-	var req ReleasePreviewReq
+	var req logic.ReleasePreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -246,14 +247,14 @@ func (h *Handler) PreviewRelease(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body ReleasePreviewReq true "发布请求"
+// @Param body body logic.ReleasePreviewReq true "发布请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
 // @Router /deploy/releases/apply [post]
 func (h *Handler) ApplyRelease(c *gin.Context) {
-	var req ReleasePreviewReq
+	var req logic.ReleasePreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -313,7 +314,7 @@ func (h *Handler) RollbackRelease(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "发布 ID"
-// @Param body body ReleaseDecisionReq false "审批意见"
+// @Param body body logic.ReleaseDecisionReq false "审批意见"
 // @Success 200 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
@@ -327,7 +328,7 @@ func (h *Handler) ApproveRelease(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:release:approve", "deploy:release:apply") || !h.authorizeRuntime(c, row.RuntimeType, "apply") {
 		return
 	}
-	var req ReleaseDecisionReq
+	var req logic.ReleaseDecisionReq
 	_ = c.ShouldBindJSON(&req)
 	resp, err := h.logic.ApproveRelease(c.Request.Context(), row.ID, httpx.UIDFromCtx(c), req.Comment)
 	if err != nil {
@@ -346,7 +347,7 @@ func (h *Handler) ApproveRelease(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "发布 ID"
-// @Param body body ReleaseDecisionReq false "拒绝原因"
+// @Param body body logic.ReleaseDecisionReq false "拒绝原因"
 // @Success 200 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
@@ -360,7 +361,7 @@ func (h *Handler) RejectRelease(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:release:approve", "deploy:release:apply") || !h.authorizeRuntime(c, row.RuntimeType, "apply") {
 		return
 	}
-	var req ReleaseDecisionReq
+	var req logic.ReleaseDecisionReq
 	_ = c.ShouldBindJSON(&req)
 	resp, err := h.logic.RejectRelease(c.Request.Context(), row.ID, httpx.UIDFromCtx(c), req.Comment)
 	if err != nil {
@@ -428,7 +429,7 @@ func (h *Handler) ListReleases(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
-	list := make([]ReleaseSummaryResp, 0, len(rows))
+	list := make([]logic.ReleaseSummaryResp, 0, len(rows))
 	for i := range rows {
 		list = append(list, h.toReleaseSummary(rows[i]))
 	}
@@ -495,7 +496,7 @@ func (h *Handler) GetGovernance(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "服务 ID"
-// @Param body body GovernanceReq true "治理策略"
+// @Param body body logic.GovernanceReq true "治理策略"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -505,7 +506,7 @@ func (h *Handler) PutGovernance(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:governance:write", "service:write") {
 		return
 	}
-	var req GovernanceReq
+	var req logic.GovernanceReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -526,7 +527,7 @@ func (h *Handler) PutGovernance(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body ClusterBootstrapPreviewReq true "引导预览请求"
+// @Param body body logic.ClusterBootstrapPreviewReq true "引导预览请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -536,7 +537,7 @@ func (h *Handler) PreviewClusterBootstrap(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:target:write") {
 		return
 	}
-	var req ClusterBootstrapPreviewReq
+	var req logic.ClusterBootstrapPreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -557,7 +558,7 @@ func (h *Handler) PreviewClusterBootstrap(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
-// @Param body body ClusterBootstrapPreviewReq true "引导请求"
+// @Param body body logic.ClusterBootstrapPreviewReq true "引导请求"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -567,7 +568,7 @@ func (h *Handler) ApplyClusterBootstrap(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "deploy:target:write") {
 		return
 	}
-	var req ClusterBootstrapPreviewReq
+	var req logic.ClusterBootstrapPreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -628,8 +629,8 @@ func (h *Handler) authorizeRuntime(c *gin.Context, runtime, action string) bool 
 //   - row: 发布记录模型
 //
 // 返回: 发布摘要响应
-func (h *Handler) toReleaseSummary(row model.DeploymentRelease) ReleaseSummaryResp {
-	return ReleaseSummaryResp{
+func (h *Handler) toReleaseSummary(row model.DeploymentRelease) logic.ReleaseSummaryResp {
+	return logic.ReleaseSummaryResp{
 		ID:                 row.ID,
 		UnifiedReleaseID:   row.ID,
 		ServiceID:          row.ServiceID,
@@ -644,7 +645,7 @@ func (h *Handler) toReleaseSummary(row model.DeploymentRelease) ReleaseSummaryRe
 		SourceReleaseID:    row.SourceReleaseID,
 		TargetRevision:     row.TargetRevision,
 		Status:             row.Status,
-		LifecycleState:     h.logic.releaseLifecycleState(row.Status),
+		LifecycleState:     h.logic.ReleaseLifecycleState(row.Status),
 		DiagnosticsJSON:    row.DiagnosticsJSON,
 		VerificationJSON:   row.VerificationJSON,
 		CreatedAt:          row.CreatedAt,

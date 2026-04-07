@@ -1,7 +1,7 @@
-// Package deployment 提供部署目标管理的业务逻辑实现。
+// Package logic 提供部署目标管理的业务逻辑实现。
 //
 // 本文件包含部署目标的 CRUD 操作和节点管理逻辑。
-package deployment
+package logic
 
 import (
 	"context"

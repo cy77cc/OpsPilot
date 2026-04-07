@@ -19,7 +19,7 @@ import (
 	cicdv1 "github.com/cy77cc/OpsPilot/api/cicd/v1"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd/repo"
-	deploymentlogic "github.com/cy77cc/OpsPilot/internal/service/deployment"
+	deploymentlogic "github.com/cy77cc/OpsPilot/internal/service/deployment/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )

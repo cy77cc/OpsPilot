@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的指标处理器。
+// Package handler 提供部署管理服务的指标处理器。
 //
 // 本文件包含部署指标统计的 HTTP 处理器实现。
-package deployment
+package handler
 
 import (
 	"context"

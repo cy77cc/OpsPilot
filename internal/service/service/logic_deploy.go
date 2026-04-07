@@ -17,7 +17,7 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	deploymentlogic "github.com/cy77cc/OpsPilot/internal/service/deployment"
+	deploymentlogic "github.com/cy77cc/OpsPilot/internal/service/deployment/logic"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	"gorm.io/gorm"
 )

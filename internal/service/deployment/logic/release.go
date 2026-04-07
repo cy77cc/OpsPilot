@@ -1,7 +1,7 @@
-// Package deployment 提供发布管理的业务逻辑实现。
+// Package logic 提供发布管理的业务逻辑实现。
 //
 // 本文件包含发布预览、执行、审批和回滚等核心业务逻辑。
-package deployment
+package logic
 
 import (
 	"context"
@@ -161,7 +161,7 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 			CIRunID:          release.CIRunID,
 			ApprovalRequired: true,
 			ApprovalTicket:   ticket,
-			LifecycleState:   l.releaseLifecycleState(release.Status),
+			LifecycleState:   l.ReleaseLifecycleState(release.Status),
 		}, nil
 	}
 
@@ -177,7 +177,7 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 			TriggerSource:    release.TriggerSource,
 			TriggerContext:   triggerContext,
 			CIRunID:          release.CIRunID,
-			LifecycleState:   l.releaseLifecycleState(release.Status),
+			LifecycleState:   l.ReleaseLifecycleState(release.Status),
 		}, execErr
 	}
 	return ReleaseApplyResp{
@@ -188,7 +188,7 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 		TriggerSource:    release.TriggerSource,
 		TriggerContext:   triggerContext,
 		CIRunID:          release.CIRunID,
-		LifecycleState:   l.releaseLifecycleState(release.Status),
+		LifecycleState:   l.ReleaseLifecycleState(release.Status),
 	}, nil
 }
 
@@ -292,7 +292,7 @@ func (l *Logic) RollbackRelease(ctx context.Context, id uint, uid uint64) (Relea
 		TriggerSource:    rollback.TriggerSource,
 		TriggerContext:   map[string]any{"from_release_id": current.ID},
 		CIRunID:          rollback.CIRunID,
-		LifecycleState:   l.releaseLifecycleState(rollback.Status),
+		LifecycleState:   l.ReleaseLifecycleState(rollback.Status),
 	}, nil
 }
 
@@ -343,7 +343,7 @@ func (l *Logic) ApproveRelease(ctx context.Context, id uint, uid uint64, comment
 			TriggerSource:    release.TriggerSource,
 			TriggerContext:   map[string]any{"approval_ticket": approval.Ticket},
 			CIRunID:          release.CIRunID,
-			LifecycleState:   l.releaseLifecycleState(release.Status),
+			LifecycleState:   l.ReleaseLifecycleState(release.Status),
 		}, execErr
 	}
 	return ReleaseApplyResp{
@@ -354,7 +354,7 @@ func (l *Logic) ApproveRelease(ctx context.Context, id uint, uid uint64, comment
 		TriggerSource:    release.TriggerSource,
 		TriggerContext:   map[string]any{"approval_ticket": approval.Ticket},
 		CIRunID:          release.CIRunID,
-		LifecycleState:   l.releaseLifecycleState(release.Status),
+		LifecycleState:   l.ReleaseLifecycleState(release.Status),
 	}, nil
 }
 
@@ -400,7 +400,7 @@ func (l *Logic) RejectRelease(ctx context.Context, id uint, uid uint64, comment 
 		TriggerSource:    release.TriggerSource,
 		TriggerContext:   map[string]any{"approval_ticket": approval.Ticket},
 		CIRunID:          release.CIRunID,
-		LifecycleState:   l.releaseLifecycleState(release.Status),
+		LifecycleState:   l.ReleaseLifecycleState(release.Status),
 	}, nil
 }
 
@@ -608,13 +608,13 @@ func (l *Logic) writeReleaseAudit(ctx context.Context, releaseID, actor uint, ac
 	}).Error
 }
 
-// releaseLifecycleState 将发布状态转换为生命周期状态。
+// ReleaseLifecycleState 将发布状态转换为生命周期状态。
 //
 // 参数:
 //   - status: 发布状态
 //
 // 返回: 生命周期状态
-func (l *Logic) releaseLifecycleState(status string) string {
+func (l *Logic) ReleaseLifecycleState(status string) string {
 	switch strings.TrimSpace(status) {
 	case releaseStatusPreviewed:
 		return "preview"

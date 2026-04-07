@@ -1,7 +1,7 @@
-// Package deployment 提供集群引导的业务逻辑实现。
+// Package logic 提供集群引导的业务逻辑实现。
 //
 // 本文件包含 Kubernetes 集群引导预览和执行逻辑。
-package deployment
+package logic
 
 import (
 	"context"

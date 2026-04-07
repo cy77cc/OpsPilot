@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的业务逻辑层。
+// Package logic 提供部署管理服务的业务逻辑层。
 //
 // 本文件定义部署服务的核心业务逻辑结构。
-package deployment
+package logic
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/svc"

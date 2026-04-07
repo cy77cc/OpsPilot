@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的拓扑处理器。
+// Package handler 提供部署管理服务的拓扑处理器。
 //
 // 本文件包含部署拓扑可视化的 HTTP 处理器实现。
-package deployment
+package handler
 
 import (
 	"context"

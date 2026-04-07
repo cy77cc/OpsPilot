@@ -1,7 +1,7 @@
-// Package deployment 提供 Docker Compose 发布的业务逻辑实现。
+// Package logic 提供 Docker Compose 发布的业务逻辑实现。
 //
 // 本文件包含 Docker Compose 场景下的发布执行和节点选择逻辑。
-package deployment
+package logic
 
 import (
 	"context"

@@ -1,7 +1,7 @@
-// Package deployment 提供部署管理服务的请求和响应类型定义。
+// Package logic 提供部署管理服务的请求和响应类型定义。
 //
 // 本文件包含所有 HTTP 请求参数和响应结构的类型定义。
-package deployment
+package logic
 
 import "time"
 
