@@ -1,7 +1,7 @@
 // Package service 提供模板变量检测和解析功能。
 //
 // 本文件实现模板变量的正则匹配、检测和替换功能。
-package service
+package logic
 
 import (
 	"regexp"

@@ -1,7 +1,7 @@
 // Package service 提供服务环境匹配校验相关的业务逻辑。
 //
 // 本文件实现服务环境与集群环境类型的匹配校验。
-package service
+package logic
 
 import (
 	"context"

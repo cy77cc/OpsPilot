@@ -1,7 +1,7 @@
 // Package service 提供服务版本管理相关的业务逻辑。
 //
 // 本文件实现服务版本列表查询、创建等业务逻辑。
-package service
+package logic
 
 import (
 	"context"
@@ -109,7 +109,7 @@ func (l *Logic) createRevisionRecord(ctx context.Context, service *model.Service
 	_ = l.svcCtx.DB.WithContext(ctx).Model(&model.ServiceRevision{}).Where("service_id = ?", service.ID).Select("COALESCE(MAX(revision_no),0)").Scan(&maxRevision).Error
 	schema := override
 	if len(schema) == 0 {
-		schema = detectTemplateVars(defaultIfEmpty(service.CustomYAML, service.YamlContent))
+		schema = detectTemplateVars(DefaultIfEmpty(service.CustomYAML, service.YamlContent))
 	}
 	schemaJSON := mustJSON(schema)
 	rev := &model.ServiceRevision{
@@ -128,7 +128,7 @@ func (l *Logic) createRevisionRecord(ctx context.Context, service *model.Service
 	service.LastRevisionID = rev.ID
 	if err := l.svcCtx.DB.WithContext(ctx).Model(service).Updates(map[string]any{
 		"last_revision_id":        rev.ID,
-		"template_engine_version": defaultIfEmpty(service.TemplateEngineVersion, "v1"),
+		"template_engine_version": DefaultIfEmpty(service.TemplateEngineVersion, "v1"),
 	}).Error; err != nil {
 		return nil, err
 	}

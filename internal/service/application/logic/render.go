@@ -1,7 +1,7 @@
 // Package service 提供服务渲染相关的业务逻辑。
 //
 // 本文件实现服务配置渲染预览和转换功能。
-package service
+package logic
 
 import (
 	"errors"

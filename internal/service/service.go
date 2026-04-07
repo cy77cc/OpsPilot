@@ -21,7 +21,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/service/notification"
 	"github.com/cy77cc/OpsPilot/internal/service/project"
 	"github.com/cy77cc/OpsPilot/internal/service/rbac"
-	servicemgr "github.com/cy77cc/OpsPilot/internal/service/service"
+	servicemgr "github.com/cy77cc/OpsPilot/internal/service/application"
 	"github.com/cy77cc/OpsPilot/internal/service/topology"
 	"github.com/cy77cc/OpsPilot/internal/service/user"
 	"github.com/cy77cc/OpsPilot/internal/svc"

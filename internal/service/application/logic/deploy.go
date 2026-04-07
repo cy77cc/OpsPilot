@@ -1,7 +1,7 @@
 // Package service 提供服务部署相关的业务逻辑。
 //
 // 本文件实现服务部署预览、执行、Helm 操作等业务逻辑。
-package service
+package logic
 
 import (
 	"context"
@@ -198,7 +198,7 @@ func (l *Logic) HelmRender(ctx context.Context, req HelmRenderReq) (string, []Re
 
 	ctx2, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx2, "helm", "template", defaultIfEmpty(req.ChartName, "release"), chartRef, "-f", valuesFile.Name())
+	cmd := exec.CommandContext(ctx2, "helm", "template", DefaultIfEmpty(req.ChartName, "release"), chartRef, "-f", valuesFile.Name())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", []RenderDiagnostic{{Level: "error", Code: "helm_template_failed", Message: string(out)}}, err
@@ -206,7 +206,7 @@ func (l *Logic) HelmRender(ctx context.Context, req HelmRenderReq) (string, []Re
 	return string(out), diags, nil
 }
 
-// deployHelm 部署 Helm 服务。
+// DeployHelm 部署 Helm 服务。
 //
 // 更新 Helm 发布记录状态为 deployed。
 //
@@ -215,7 +215,7 @@ func (l *Logic) HelmRender(ctx context.Context, req HelmRenderReq) (string, []Re
 //   - serviceID: 服务 ID
 //
 // 返回: 错误信息
-func (l *Logic) deployHelm(ctx context.Context, serviceID uint) error {
+func (l *Logic) DeployHelm(ctx context.Context, serviceID uint) error {
 	var release model.ServiceHelmRelease
 	if err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ?", serviceID).Order("id DESC").First(&release).Error; err != nil {
 		return err
@@ -310,7 +310,7 @@ func toDeployTargetResp(t *model.ServiceDeployTarget) DeployTargetResp {
 // 返回: 部署目标响应和错误信息
 func (l *Logic) resolveDeployTarget(ctx context.Context, serviceID uint, req DeployReq) (DeployTargetResp, error) {
 	if req.ClusterID > 0 {
-		if strings.EqualFold(defaultIfEmpty(req.DeployTarget, "k8s"), "compose") {
+		if strings.EqualFold(DefaultIfEmpty(req.DeployTarget, "k8s"), "compose") {
 			var target model.DeploymentTarget
 			if err := l.svcCtx.DB.WithContext(ctx).Where("id = ? AND target_type = ?", req.ClusterID, "compose").First(&target).Error; err != nil {
 				return DeployTargetResp{}, fmt.Errorf("compose deployment target not found: %w", err)
@@ -319,8 +319,8 @@ func (l *Logic) resolveDeployTarget(ctx context.Context, serviceID uint, req Dep
 		return DeployTargetResp{
 			ServiceID:    serviceID,
 			ClusterID:    req.ClusterID,
-			Namespace:    defaultIfEmpty(req.Namespace, "default"),
-			DeployTarget: defaultIfEmpty(req.DeployTarget, "k8s"),
+			Namespace:    DefaultIfEmpty(req.Namespace, "default"),
+			DeployTarget: DefaultIfEmpty(req.DeployTarget, "k8s"),
 			IsDefault:    false,
 		}, nil
 	}
@@ -367,13 +367,13 @@ func (l *Logic) newDeployTargetNotConfiguredErr(ctx context.Context, serviceID u
 	if err := l.svcCtx.DB.WithContext(ctx).Select("id", "project_id", "team_id", "env").First(&svc, serviceID).Error; err != nil {
 		return fmt.Errorf("deploy target not configured: %w", cause)
 	}
-	runtime := strings.TrimSpace(defaultIfEmpty(req.DeployTarget, "k8s"))
-	env := strings.TrimSpace(defaultIfEmpty(req.Env, svc.Env))
+	runtime := strings.TrimSpace(DefaultIfEmpty(req.DeployTarget, "k8s"))
+	env := strings.TrimSpace(DefaultIfEmpty(req.Env, svc.Env))
 	return fmt.Errorf(
 		"deploy target not configured (project_id=%d, team_id=%d, env=%s, target_type=%s): %w; hint: 配置服务默认部署目标或创建匹配作用域的 active deployment target",
 		svc.ProjectID,
 		svc.TeamID,
-		defaultIfEmpty(env, "staging"),
+		DefaultIfEmpty(env, "staging"),
 		runtime,
 		cause,
 	)
@@ -394,7 +394,7 @@ func (l *Logic) resolveFallbackDeployTarget(ctx context.Context, serviceID uint,
 	if err := l.svcCtx.DB.WithContext(ctx).First(&svc, serviceID).Error; err != nil {
 		return DeployTargetResp{}, err
 	}
-	runtime := strings.TrimSpace(defaultIfEmpty(req.DeployTarget, "k8s"))
+	runtime := strings.TrimSpace(DefaultIfEmpty(req.DeployTarget, "k8s"))
 	q := l.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentTarget{}).
 		Where("target_type = ? AND status = ?", runtime, "active")
 	if svc.ProjectID > 0 {
@@ -403,7 +403,7 @@ func (l *Logic) resolveFallbackDeployTarget(ctx context.Context, serviceID uint,
 	if svc.TeamID > 0 {
 		q = q.Where("team_id = ?", svc.TeamID)
 	}
-	env := strings.TrimSpace(defaultIfEmpty(req.Env, svc.Env))
+	env := strings.TrimSpace(DefaultIfEmpty(req.Env, svc.Env))
 	if env != "" {
 		q = q.Where("env = ? OR env = ''", env)
 	}
@@ -423,7 +423,7 @@ func (l *Logic) resolveFallbackDeployTarget(ctx context.Context, serviceID uint,
 	resp := DeployTargetResp{
 		ServiceID:    serviceID,
 		ClusterID:    clusterID,
-		Namespace:    defaultIfEmpty(req.Namespace, "default"),
+		Namespace:    DefaultIfEmpty(req.Namespace, "default"),
 		DeployTarget: runtime,
 		IsDefault:    true,
 	}
@@ -447,7 +447,7 @@ func (l *Logic) cacheFallbackDefaultTarget(ctx context.Context, serviceID uint, 
 	if serviceID == 0 || target.ClusterID == 0 {
 		return nil
 	}
-	deployTarget := strings.TrimSpace(defaultIfEmpty(target.DeployTarget, "k8s"))
+	deployTarget := strings.TrimSpace(DefaultIfEmpty(target.DeployTarget, "k8s"))
 	if deployTarget != "k8s" && deployTarget != "compose" {
 		return nil
 	}
@@ -463,7 +463,7 @@ func (l *Logic) cacheFallbackDefaultTarget(ctx context.Context, serviceID uint, 
 	}
 	_, err := l.UpsertDeployTarget(ctx, serviceID, 0, DeployTargetUpsertReq{
 		ClusterID:    target.ClusterID,
-		Namespace:    defaultIfEmpty(target.Namespace, "default"),
+		Namespace:    DefaultIfEmpty(target.Namespace, "default"),
 		DeployTarget: deployTarget,
 		Policy:       map[string]any{},
 	})
@@ -516,13 +516,13 @@ func (l *Logic) loadNodeSSHPrivateKey(ctx context.Context, node *model.Node) (st
 //
 // 返回: 解析后的 YAML、未解析变量列表和错误信息
 func (l *Logic) resolveServiceTemplate(ctx context.Context, service *model.Service, env string, reqValues map[string]string) (string, []string, error) {
-	content := defaultIfEmpty(service.CustomYAML, service.YamlContent)
+	content := DefaultIfEmpty(service.CustomYAML, service.YamlContent)
 	if strings.TrimSpace(content) == "" {
 		return "", nil, fmt.Errorf("empty service template")
 	}
 	envValues := map[string]string{}
 	var set model.ServiceVariableSet
-	err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND env = ?", service.ID, defaultIfEmpty(env, service.Env)).First(&set).Error
+	err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND env = ?", service.ID, DefaultIfEmpty(env, service.Env)).First(&set).Error
 	if err == nil && strings.TrimSpace(set.ValuesJSON) != "" {
 		_ = json.Unmarshal([]byte(set.ValuesJSON), &envValues)
 	}
@@ -545,8 +545,8 @@ func (l *Logic) UpsertDeployTarget(ctx context.Context, serviceID uint, uid uint
 	if req.ClusterID == 0 {
 		return DeployTargetResp{}, fmt.Errorf("cluster_id is required")
 	}
-	ns := defaultIfEmpty(req.Namespace, "default")
-	deployTarget := defaultIfEmpty(req.DeployTarget, "k8s")
+	ns := DefaultIfEmpty(req.Namespace, "default")
+	deployTarget := DefaultIfEmpty(req.DeployTarget, "k8s")
 	if deployTarget == "compose" {
 		var target model.DeploymentTarget
 		if err := l.svcCtx.DB.WithContext(ctx).Where("id = ? AND target_type = ?", req.ClusterID, "compose").First(&target).Error; err != nil {
@@ -619,7 +619,7 @@ func (l *Logic) ListReleaseRecords(ctx context.Context, serviceID uint) ([]Relea
 		var target model.DeploymentTarget
 		if err := l.svcCtx.DB.WithContext(ctx).First(&target, releases[i].TargetID).Error; err == nil {
 			item.ClusterID = target.ClusterID
-			item.Namespace = defaultIfEmpty(target.Env, releases[i].NamespaceOrProject)
+			item.Namespace = DefaultIfEmpty(target.Env, releases[i].NamespaceOrProject)
 		}
 		out = append(out, item)
 	}
@@ -661,7 +661,7 @@ func (l *Logic) ListReleaseRecords(ctx context.Context, serviceID uint) ([]Relea
 //
 // 返回: 统一目标 ID 和错误信息
 func (l *Logic) ensureUnifiedTargetID(ctx context.Context, service *model.Service, target DeployTargetResp, env string) (uint, error) {
-	runtime := strings.TrimSpace(defaultIfEmpty(target.DeployTarget, "k8s"))
+	runtime := strings.TrimSpace(DefaultIfEmpty(target.DeployTarget, "k8s"))
 	if runtime == "compose" {
 		return target.ClusterID, nil
 	}
@@ -684,7 +684,7 @@ func (l *Logic) ensureUnifiedTargetID(ctx context.Context, service *model.Servic
 		ClusterSource:   "platform_managed",
 		ProjectID:       service.ProjectID,
 		TeamID:          service.TeamID,
-		Env:             defaultIfEmpty(env, service.Env),
+		Env:             DefaultIfEmpty(env, service.Env),
 		Status:          "active",
 		ReadinessStatus: "unknown",
 	}

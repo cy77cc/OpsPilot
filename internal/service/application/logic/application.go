@@ -1,7 +1,7 @@
-// Package service 提供服务目录管理的业务逻辑层。
+// Package logic 提供服务目录管理的业务逻辑层。
 //
 // 本文件定义服务管理模块的核心业务逻辑结构。
-package service
+package logic
 
 import "github.com/cy77cc/OpsPilot/internal/svc"
 

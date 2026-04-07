@@ -1,7 +1,7 @@
 // Package service 提供服务目录管理的类型定义。
 //
 // 本文件定义服务管理模块的请求、响应和数据结构类型。
-package service
+package logic
 
 import "time"
 

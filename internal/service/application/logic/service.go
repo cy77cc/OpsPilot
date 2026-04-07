@@ -1,7 +1,7 @@
 // Package service 提供服务目录管理的核心业务逻辑。
 //
 // 本文件实现服务 CRUD、权限校验、配置规范化等业务逻辑。
-package service
+package logic
 
 import (
 	"context"
@@ -47,9 +47,9 @@ func (l *Logic) Create(ctx context.Context, uid uint64, req ServiceCreateReq) (S
 		LabelsJSON:            string(labelsJSON),
 		StandardJSON:          string(standardJSON),
 		CustomYAML:            normalized.CustomYAML,
-		TemplateVer:           defaultIfEmpty(normalized.SourceTemplateV, "v1"),
+		TemplateVer:           DefaultIfEmpty(normalized.SourceTemplateV, "v1"),
 		TemplateEngineVersion: "v1",
-		Status:                defaultIfEmpty(normalized.Status, "draft"),
+		Status:                DefaultIfEmpty(normalized.Status, "draft"),
 		Name:                  normalized.Name,
 		Type:                  normalized.ServiceType,
 		Image:                 cfg.Image,
@@ -159,8 +159,8 @@ func (l *Logic) Update(ctx context.Context, id uint, req ServiceCreateReq) (Serv
 	existing.LabelsJSON = string(labelsJSON)
 	existing.StandardJSON = string(standardJSON)
 	existing.CustomYAML = normalized.CustomYAML
-	existing.TemplateVer = defaultIfEmpty(normalized.SourceTemplateV, existing.TemplateVer)
-	existing.Status = defaultIfEmpty(normalized.Status, existing.Status)
+	existing.TemplateVer = DefaultIfEmpty(normalized.SourceTemplateV, existing.TemplateVer)
+	existing.Status = DefaultIfEmpty(normalized.Status, existing.Status)
 	existing.Name = normalized.Name
 	existing.Type = normalized.ServiceType
 	existing.Image = cfg.Image
@@ -342,7 +342,7 @@ func (l *Logic) CheckViewPermission(s *model.Service, uid uint64, viewerTeamID u
 	if uint(uid) == s.OwnerUserID {
 		return true
 	}
-	visibility := normalizeVisibility(defaultIfEmpty(s.Visibility, "team"))
+	visibility := normalizeVisibility(DefaultIfEmpty(s.Visibility, "team"))
 	switch visibility {
 	case "private":
 		return false
@@ -448,14 +448,14 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 	if r.ProjectID == 0 {
 		return r, "", fmt.Errorf("project_id is required from request or X-Project-ID context")
 	}
-	r.Env = defaultIfEmpty(r.Env, "staging")
-	r.Owner = defaultIfEmpty(r.Owner, "system")
-	r.RuntimeType = defaultIfEmpty(r.RuntimeType, "k8s")
-	r.ConfigMode = defaultIfEmpty(r.ConfigMode, "standard")
-	r.ServiceKind = defaultIfEmpty(r.ServiceKind, "business")
-	r.Visibility = normalizeVisibility(defaultIfEmpty(r.Visibility, defaultVisibilityByKind(r.ServiceKind)))
-	r.RenderTarget = defaultIfEmpty(r.RenderTarget, r.RuntimeType)
-	r.ServiceType = defaultIfEmpty(r.ServiceType, "stateless")
+	r.Env = DefaultIfEmpty(r.Env, "staging")
+	r.Owner = DefaultIfEmpty(r.Owner, "system")
+	r.RuntimeType = DefaultIfEmpty(r.RuntimeType, "k8s")
+	r.ConfigMode = DefaultIfEmpty(r.ConfigMode, "standard")
+	r.ServiceKind = DefaultIfEmpty(r.ServiceKind, "business")
+	r.Visibility = normalizeVisibility(DefaultIfEmpty(r.Visibility, defaultVisibilityByKind(r.ServiceKind)))
+	r.RenderTarget = DefaultIfEmpty(r.RenderTarget, r.RuntimeType)
+	r.ServiceType = DefaultIfEmpty(r.ServiceType, "stateless")
 	r.Icon = strings.TrimSpace(r.Icon)
 	if r.Tags == nil {
 		r.Tags = make([]string, 0)
@@ -465,7 +465,7 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 	}
 
 	if r.ConfigMode == "custom" {
-		r.CustomYAML = defaultIfEmpty(r.CustomYAML, r.YamlContent)
+		r.CustomYAML = DefaultIfEmpty(r.CustomYAML, r.YamlContent)
 		if strings.TrimSpace(r.CustomYAML) == "" {
 			return r, "", fmt.Errorf("custom_yaml is required when config_mode=custom")
 		}
@@ -474,7 +474,7 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 
 	if r.StandardConfig == nil {
 		r.StandardConfig = &StandardServiceConfig{
-			Image:    defaultIfEmpty(r.Image, "nginx:latest"),
+			Image:    DefaultIfEmpty(r.Image, "nginx:latest"),
 			Replicas: maxInt32(r.Replicas, 1),
 			Ports: []PortConfig{{
 				Name:          "http",
@@ -487,7 +487,7 @@ func (l *Logic) normalizeAndRender(req ServiceCreateReq) (ServiceCreateReq, stri
 		}
 	}
 	if strings.TrimSpace(r.StandardConfig.Image) == "" {
-		r.StandardConfig.Image = defaultIfEmpty(r.Image, "nginx:latest")
+		r.StandardConfig.Image = DefaultIfEmpty(r.Image, "nginx:latest")
 	}
 	if len(r.StandardConfig.Ports) == 0 {
 		r.StandardConfig.Ports = []PortConfig{{

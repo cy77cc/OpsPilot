@@ -1,7 +1,7 @@
 // Package service 提供服务变量管理相关的业务逻辑。
 //
 // 本文件实现服务变量提取、Schema 获取、值管理等业务逻辑。
-package service
+package logic
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func (l *Logic) GetVariableSchema(ctx context.Context, serviceID uint) ([]Templa
 			if err := l.svcCtx.DB.WithContext(ctx).First(&service, serviceID).Error; err != nil {
 				return nil, err
 			}
-			content := defaultIfEmpty(service.CustomYAML, service.YamlContent)
+			content := DefaultIfEmpty(service.CustomYAML, service.YamlContent)
 			return detectTemplateVars(content), nil
 		}
 		return nil, err
@@ -74,10 +74,10 @@ func (l *Logic) GetVariableSchema(ctx context.Context, serviceID uint) ([]Templa
 // 返回: 变量值响应和错误信息
 func (l *Logic) GetVariableValues(ctx context.Context, serviceID uint, env string) (VariableValuesResp, error) {
 	var set model.ServiceVariableSet
-	err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND env = ?", serviceID, defaultIfEmpty(env, "staging")).First(&set).Error
+	err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND env = ?", serviceID, DefaultIfEmpty(env, "staging")).First(&set).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return VariableValuesResp{ServiceID: serviceID, Env: defaultIfEmpty(env, "staging"), Values: map[string]string{}}, nil
+			return VariableValuesResp{ServiceID: serviceID, Env: DefaultIfEmpty(env, "staging"), Values: map[string]string{}}, nil
 		}
 		return VariableValuesResp{}, err
 	}
@@ -104,7 +104,7 @@ func (l *Logic) GetVariableValues(ctx context.Context, serviceID uint, env strin
 //
 // 返回: 变量值响应和错误信息
 func (l *Logic) UpsertVariableValues(ctx context.Context, serviceID uint, uid uint64, req VariableValuesUpsertReq) (VariableValuesResp, error) {
-	env := defaultIfEmpty(req.Env, "staging")
+	env := DefaultIfEmpty(req.Env, "staging")
 	req.Values = normalizeStringMap(req.Values)
 	valuesJSON := mustJSON(req.Values)
 	secretJSON := mustJSON(req.SecretKeys)

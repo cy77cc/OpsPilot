@@ -1,7 +1,7 @@
 // Package service 提供服务管理模块的通用工具函数。
 //
 // 本文件包含 JSON 序列化、字符串处理、配置规范化等工具函数。
-package service
+package logic
 
 import (
 	"encoding/json"

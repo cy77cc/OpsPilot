@@ -1,4 +1,4 @@
-// Package service 提供服务目录管理的 HTTP 处理器。
+// Package handler 提供服务目录管理的 HTTP 处理器。
 //
 // 本文件包含服务管理模块的所有 HTTP Handler 实现，涵盖：
 //   - 服务 CRUD 操作
@@ -7,7 +7,7 @@
 //   - 版本管理
 //   - 部署操作
 //   - Helm 部署支持
-package service
+package handler
 
 import (
 	"strconv"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/service/application/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/xcode"
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ import (
 //
 // 包含业务逻辑层引用和服务上下文，用于处理服务管理相关的 HTTP 请求。
 type Handler struct {
-	logic  *Logic
+	logic  *logic.Logic
 	svcCtx *svc.ServiceContext
 }
 
@@ -36,7 +37,7 @@ type Handler struct {
 //
 // 返回: Handler 实例指针
 func NewHandler(svcCtx *svc.ServiceContext) *Handler {
-	return &Handler{logic: NewLogic(svcCtx), svcCtx: svcCtx}
+	return &Handler{logic: logic.NewLogic(svcCtx), svcCtx: svcCtx}
 }
 
 // Preview 预览服务配置渲染结果。
@@ -57,7 +58,7 @@ func (h *Handler) Preview(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req RenderPreviewReq
+	var req logic.RenderPreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -88,7 +89,7 @@ func (h *Handler) Transform(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req TransformReq
+	var req logic.TransformReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -122,7 +123,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req ServiceCreateReq
+	var req logic.ServiceCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -170,7 +171,7 @@ func (h *Handler) Update(c *gin.Context) {
 	if !h.checkEditPermission(c, uint(id)) {
 		return
 	}
-	var req ServiceCreateReq
+	var req logic.ServiceCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -340,7 +341,7 @@ func (h *Handler) UpdateVisibility(c *gin.Context) {
 	if !h.checkEditPermission(c, uint(id)) {
 		return
 	}
-	var req VisibilityUpdateReq
+	var req logic.VisibilityUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -382,7 +383,7 @@ func (h *Handler) UpdateGrantedTeams(c *gin.Context) {
 	if !h.checkEditPermission(c, uint(id)) {
 		return
 	}
-	var req GrantTeamsReq
+	var req logic.GrantTeamsReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -405,7 +406,7 @@ func (h *Handler) UpdateGrantedTeams(c *gin.Context) {
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "服务 ID"
 // @Param body body DeployReq true "部署请求"
-// @Success 200 {object} httpx.Response{data=DeployResp}
+// @Success 200 {object} httpx.Response{data=logic.DeployResp}
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 403 {object} httpx.Response
@@ -421,7 +422,7 @@ func (h *Handler) Deploy(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var req DeployReq
+	var req logic.DeployReq
 	_ = c.ShouldBindJSON(&req)
 
 	item, err := h.logic.Get(c.Request.Context(), uint(id))
@@ -439,7 +440,7 @@ func (h *Handler) Deploy(c *gin.Context) {
 		}
 	}
 
-	env := defaultIfEmpty(req.Env, item.Env)
+	env := logic.DefaultIfEmpty(req.Env, item.Env)
 	if strings.EqualFold(env, "production") && !httpx.HasAnyPermission(h.svcCtx.DB, httpx.UIDFromCtx(c), "service:approve") {
 		httpx.Fail(c, xcode.Forbidden, "production deploy requires service:approve")
 		return
@@ -449,7 +450,7 @@ func (h *Handler) Deploy(c *gin.Context) {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	httpx.OK(c, DeployResp{ReleaseRecordID: recordID, UnifiedReleaseID: recordID, TriggerSource: "manual"})
+	httpx.OK(c, logic.DeployResp{ReleaseRecordID: recordID, UnifiedReleaseID: recordID, TriggerSource: "manual"})
 }
 
 // DeployPreview 预览部署结果。
@@ -478,7 +479,7 @@ func (h *Handler) DeployPreview(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var req DeployReq
+	var req logic.DeployReq
 	_ = c.ShouldBindJSON(&req)
 	resp, err := h.logic.DeployPreview(c.Request.Context(), uint(id), req)
 	if err != nil {
@@ -506,7 +507,7 @@ func (h *Handler) HelmImport(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req HelmImportReq
+	var req logic.HelmImportReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -537,7 +538,7 @@ func (h *Handler) HelmRender(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req HelmRenderReq
+	var req logic.HelmRenderReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -575,7 +576,7 @@ func (h *Handler) DeployHelm(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	if err := h.logic.deployHelm(c.Request.Context(), uint(id)); err != nil {
+	if err := h.logic.DeployHelm(c.Request.Context(), uint(id)); err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
@@ -668,7 +669,7 @@ func (h *Handler) ExtractVariables(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "service:write") {
 		return
 	}
-	var req VariableExtractReq
+	var req logic.VariableExtractReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -771,7 +772,7 @@ func (h *Handler) UpsertVariableValues(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var req VariableValuesUpsertReq
+	var req logic.VariableValuesUpsertReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -841,7 +842,7 @@ func (h *Handler) CreateRevision(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var req RevisionCreateReq
+	var req logic.RevisionCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -879,7 +880,7 @@ func (h *Handler) UpsertDeployTarget(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var req DeployTargetUpsertReq
+	var req logic.DeployTargetUpsertReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -958,7 +959,7 @@ func (h *Handler) checkOwnershipHeaders(c *gin.Context, projectID, teamID uint) 
 // 参数:
 //   - c: Gin 上下文
 //   - req: 服务创建请求，将被修改
-func (h *Handler) fillOwnershipFromHeaders(c *gin.Context, req *ServiceCreateReq) {
+func (h *Handler) fillOwnershipFromHeaders(c *gin.Context, req *logic.ServiceCreateReq) {
 	if req == nil || httpx.IsAdmin(h.svcCtx.DB, httpx.UIDFromCtx(c)) {
 		return
 	}

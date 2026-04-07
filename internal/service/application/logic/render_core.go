@@ -1,7 +1,7 @@
 // Package service 提供服务配置渲染功能。
 //
 // 本文件实现标准服务配置到 K8s/Docker Compose YAML 的渲染逻辑。
-package service
+package logic
 
 import (
 	"bytes"
@@ -176,7 +176,7 @@ func buildK8sYAML(name, serviceType string, cfg *StandardServiceConfig) (string,
 	}
 	ports := make([]corev1.ContainerPort, 0, len(cfg.Ports))
 	for _, p := range cfg.Ports {
-		ports = append(ports, corev1.ContainerPort{ContainerPort: p.ContainerPort, Protocol: corev1.Protocol(strings.ToUpper(defaultIfEmpty(p.Protocol, "TCP")))})
+		ports = append(ports, corev1.ContainerPort{ContainerPort: p.ContainerPort, Protocol: corev1.Protocol(strings.ToUpper(DefaultIfEmpty(p.Protocol, "TCP")))})
 	}
 
 	volumeMounts := make([]corev1.VolumeMount, 0, len(cfg.Volumes))
@@ -205,7 +205,7 @@ func buildK8sYAML(name, serviceType string, cfg *StandardServiceConfig) (string,
 	if cfg.HealthCheck != nil {
 		h := cfg.HealthCheck
 		if h.Type == "http" {
-			path := defaultIfEmpty(h.Path, "/health")
+			path := DefaultIfEmpty(h.Path, "/health")
 			port := h.Port
 			if port <= 0 {
 				port = cfg.Ports[0].ContainerPort
@@ -235,7 +235,7 @@ func buildK8sYAML(name, serviceType string, cfg *StandardServiceConfig) (string,
 
 	svcPorts := make([]corev1.ServicePort, 0, len(cfg.Ports))
 	for _, p := range cfg.Ports {
-		svcPorts = append(svcPorts, corev1.ServicePort{Name: defaultIfEmpty(p.Name, fmt.Sprintf("p%d", p.ServicePort)), Port: p.ServicePort, TargetPort: intstr.FromInt(int(p.ContainerPort)), Protocol: corev1.Protocol(strings.ToUpper(defaultIfEmpty(p.Protocol, "TCP")))})
+		svcPorts = append(svcPorts, corev1.ServicePort{Name: DefaultIfEmpty(p.Name, fmt.Sprintf("p%d", p.ServicePort)), Port: p.ServicePort, TargetPort: intstr.FromInt(int(p.ContainerPort)), Protocol: corev1.Protocol(strings.ToUpper(DefaultIfEmpty(p.Protocol, "TCP")))})
 	}
 	svcObj := &corev1.Service{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
@@ -255,14 +255,14 @@ func buildK8sYAML(name, serviceType string, cfg *StandardServiceConfig) (string,
 	return buf.String(), diags, nil
 }
 
-// defaultIfEmpty 返回非空值或默认值。
+// DefaultIfEmpty 返回非空值或默认值。
 //
 // 参数:
 //   - v: 输入值
 //   - d: 默认值
 //
 // 返回: 若输入为空则返回默认值，否则返回输入值
-func defaultIfEmpty(v, d string) string {
+func DefaultIfEmpty(v, d string) string {
 	if strings.TrimSpace(v) == "" {
 		return d
 	}
