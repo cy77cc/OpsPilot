@@ -1,7 +1,7 @@
-// Package dashboard 提供主控台相关的业务逻辑。
+// Package logic 提供仪表盘业务逻辑层。
 //
 // 本文件实现主控台数据采集器，定时采集 K8s 集群资源、工作负载状态和异常 Pod。
-package dashboard
+package logic
 
 import (
 	"context"
