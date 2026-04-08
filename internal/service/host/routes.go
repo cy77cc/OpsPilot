@@ -94,5 +94,10 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		cred.POST("/ssh_keys", h.CreateSSHKey)
 		cred.DELETE("/ssh_keys/:id", h.DeleteSSHKey)
 		cred.POST("/ssh_keys/:id/verify", h.VerifySSHKey)
+
+		// SSH 认证预设管理路由
+		cred.GET("/templates", h.ListCredentialTemplates)
+		cred.POST("/templates", h.CreateCredentialTemplate)
+		cred.DELETE("/templates/:id", h.DeleteCredentialTemplate)
 	}
 }

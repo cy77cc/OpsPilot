@@ -205,6 +205,30 @@ export interface CloudInstance {
   diskGB: number;
 }
 
+export interface CredentialTemplate {
+  id: string;
+  name: string;
+  authType: 'password' | 'key';
+  sshUser: string;
+  port: number;
+  sshKeyId?: string;
+  sshKeyName?: string;
+  description?: string;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCredentialTemplateParams {
+  name: string;
+  authType: 'password' | 'key';
+  sshUser?: string;
+  port?: number;
+  password?: string;
+  sshKeyId?: number;
+  description?: string;
+}
+
 const parseLabels = (labels: any): string[] => {
   if (Array.isArray(labels)) {
     return labels.map((x) => String(x).trim()).filter(Boolean);
@@ -714,7 +738,7 @@ export const hostApi = {
     };
   },
 
-  async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[] }): Promise<ApiResponse<any>> {
+  async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[]; credentialAssignments?: Record<string, string> }): Promise<ApiResponse<any>> {
     return apiService.post(`/hosts/cloud/providers/${payload.provider}/instances/import`, {
       account_id: payload.accountId,
       instances: payload.instances.map((x) => ({
@@ -730,7 +754,61 @@ export const hostApi = {
       })),
       role: payload.role || '',
       labels: payload.labels || [],
+      credential_assignments: payload.credentialAssignments || {},
     });
+  },
+
+  async listCredentialTemplates(): Promise<ApiResponse<CredentialTemplate[]>> {
+    const res = await apiService.get<any>('/credentials/templates');
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+    return {
+      ...res,
+      data: rawList.map((x: any) => ({
+        id: String(x.id),
+        name: x.name,
+        authType: x.auth_type,
+        sshUser: x.ssh_user,
+        port: Number(x.port || 22),
+        sshKeyId: x.ssh_key_id ? String(x.ssh_key_id) : undefined,
+        sshKeyName: x.ssh_key_name || undefined,
+        description: x.description || '',
+        createdBy: Number(x.created_by || 0),
+        createdAt: x.created_at,
+        updatedAt: x.updated_at,
+      })),
+    };
+  },
+
+  async createCredentialTemplate(payload: CreateCredentialTemplateParams): Promise<ApiResponse<CredentialTemplate>> {
+    const res = await apiService.post<any>('/credentials/templates', {
+      name: payload.name,
+      auth_type: payload.authType,
+      ssh_user: payload.sshUser || 'root',
+      port: payload.port || 22,
+      password: payload.password || '',
+      ssh_key_id: payload.sshKeyId,
+      description: payload.description || '',
+    });
+    const x = res.data || {};
+    return {
+      ...res,
+      data: {
+        id: String(x.id),
+        name: x.name,
+        authType: x.auth_type,
+        sshUser: x.ssh_user,
+        port: Number(x.port || 22),
+        sshKeyId: x.ssh_key_id ? String(x.ssh_key_id) : undefined,
+        description: x.description || '',
+        createdBy: Number(x.created_by || 0),
+        createdAt: x.created_at,
+        updatedAt: x.updated_at,
+      },
+    };
+  },
+
+  async deleteCredentialTemplate(id: string): Promise<ApiResponse<void>> {
+    return apiService.delete(`/credentials/templates/${id}`);
   },
 
   async kvmPreview(hostId: string, payload: { name: string; cpu: number; memoryMB: number; diskGB: number; networkBridge?: string; template?: string }): Promise<ApiResponse<any>> {

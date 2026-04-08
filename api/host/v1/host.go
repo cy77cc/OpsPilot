@@ -197,11 +197,39 @@ type CloudInstance struct {
 // CloudImportReq is the request body for importing cloud instances as managed hosts
 // (POST /cloud/:provider/import).
 type CloudImportReq struct {
-	Provider  string          `json:"provider"`
-	AccountID uint64          `json:"account_id"`
-	Instances []CloudInstance `json:"instances"`
-	Role      string          `json:"role"`
-	Labels    []string        `json:"labels"`
+	Provider              string                     `json:"provider"`
+	AccountID             uint64                     `json:"account_id"`
+	Instances             []CloudInstance            `json:"instances"`
+	Role                  string                     `json:"role"`
+	Labels                []string                   `json:"labels"`
+	CredentialAssignments map[string]uint64          `json:"credential_assignments"` // instanceId -> templateId
+}
+
+// CredentialTemplateCreateReq is the request body for creating an SSH credential template
+// (POST /credentials/templates).
+type CredentialTemplateCreateReq struct {
+	Name        string  `json:"name"`
+	AuthType    string  `json:"auth_type"`    // "password" or "key"
+	SSHUser     string  `json:"ssh_user"`
+	Port        int     `json:"port"`
+	Password    string  `json:"password"`     // required when auth_type is "password"
+	SSHKeyID    *uint64 `json:"ssh_key_id"`   // required when auth_type is "key"
+	Description string  `json:"description"`
+}
+
+// CredentialTemplate represents an SSH credential template.
+type CredentialTemplate struct {
+	ID          uint64    `json:"id"`
+	Name        string    `json:"name"`
+	AuthType    string    `json:"auth_type"`
+	SSHUser     string    `json:"ssh_user"`
+	Port        int       `json:"port"`
+	SSHKeyID    *uint64   `json:"ssh_key_id"`
+	SSHKeyName  string    `json:"ssh_key_name,omitempty"` // associated key name for display
+	Description string    `json:"description"`
+	CreatedBy   uint64    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // KVMPreviewReq is the request body for previewing a KVM virtual machine configuration

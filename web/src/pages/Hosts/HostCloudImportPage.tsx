@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, message, Popconfirm, Tooltip } from 'antd';
-import { DeleteOutlined, QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Spin, Table, Tag, message, Popconfirm, Tooltip } from 'antd';
+import { CheckCircleOutlined, DeleteOutlined, QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
-import type { CloudAccount, CloudInstance, CloudProviderInfo } from '../../api/modules/hosts';
+import type { CloudAccount, CloudInstance, CloudProviderInfo, CredentialTemplate } from '../../api/modules/hosts';
 
 // 云厂商选项
 const providerOptions = [
@@ -54,10 +54,12 @@ const HostCloudImportPage: React.FC = () => {
   const [zones, setZones] = useState<ZoneInfo[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [loadingZones, setLoadingZones] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
-  const [resultModalVisible, setResultModalVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importStep, setImportStep] = useState<'confirm' | 'importing' | 'result'>('confirm');
   const [importedHosts, setImportedHosts] = useState<any[]>([]);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [credentialTemplates, setCredentialTemplates] = useState<CredentialTemplate[]>([]);
+  const [instanceCredentials, setInstanceCredentials] = useState<Record<string, string>>({});
   const [accountForm] = Form.useForm();
   const [queryForm] = Form.useForm();
 
@@ -88,9 +90,20 @@ const HostCloudImportPage: React.FC = () => {
     }
   };
 
+  // 加载认证预设列表
+  const loadCredentialTemplates = async () => {
+    try {
+      const res = await Api.hosts.listCredentialTemplates();
+      setCredentialTemplates(res.data || []);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     loadAccounts();
     loadProviders();
+    loadCredentialTemplates();
   }, []);
 
   // 创建云账号
@@ -207,7 +220,8 @@ const HostCloudImportPage: React.FC = () => {
       message.warning('请选择要导入的实例');
       return;
     }
-    setConfirmModalVisible(true);
+    setImportStep('confirm');
+    setImportModalVisible(true);
   };
 
   // 确认导入
@@ -215,8 +229,7 @@ const HostCloudImportPage: React.FC = () => {
     const values = await queryForm.validateFields();
     const picked = instances.filter((x) => selected.includes(x.instanceId));
 
-    setConfirmModalVisible(false);
-    setImporting(true);
+    setImportStep('importing');
 
     try {
       const res = await Api.hosts.importCloudInstances({
@@ -225,26 +238,41 @@ const HostCloudImportPage: React.FC = () => {
         instances: picked,
         role: values.role || '',
         labels: values.labels ? String(values.labels).split(',').map((x) => x.trim()).filter(Boolean) : [],
+        credentialAssignments: instanceCredentials,
       });
 
       const result = res.data || {};
       const importedCount = result.nodes?.length || 0;
-      const skippedCount = result.skipped?.length || 0;
+      const skipped = result.skipped?.length || 0;
 
-      if (importedCount > 0) {
-        message.success(`成功导入 ${importedCount} 台主机${skippedCount > 0 ? `，跳过 ${skippedCount} 台已存在` : ''}`);
-      } else if (skippedCount > 0) {
-        message.warning(`全部 ${skippedCount} 台实例已存在，未导入新主机`);
-      }
-
-      setSelected([]);
       setImportedHosts(result.nodes || []);
-      setResultModalVisible(true);
+      setSkippedCount(skipped);
+      setSelected([]);
+      setInstanceCredentials({});
+      setImportStep('result');
     } catch (err: any) {
       message.error(err?.message || '导入失败');
-    } finally {
-      setImporting(false);
+      setImportModalVisible(false);
     }
+  };
+
+  // 关闭弹窗
+  const closeImportModal = () => {
+    setImportModalVisible(false);
+    setImportStep('confirm');
+    setImportedHosts([]);
+    setSkippedCount(0);
+  };
+
+  // 继续导入
+  const handleContinueImport = () => {
+    closeImportModal();
+  };
+
+  // 查看主机列表
+  const handleViewHosts = () => {
+    closeImportModal();
+    navigate('/hosts');
   };
 
   // 获取选中的实例列表
@@ -399,7 +427,7 @@ const HostCloudImportPage: React.FC = () => {
             <span style={{ color: '#999', fontSize: 12 }}>
               已选 {selected.length} 个实例
             </span>
-            <Button type="primary" onClick={handleImportClick} disabled={selected.length === 0} loading={importing}>
+            <Button type="primary" onClick={handleImportClick} disabled={selected.length === 0}>
               导入选中实例
             </Button>
           </Space>
@@ -456,7 +484,7 @@ const HostCloudImportPage: React.FC = () => {
         {/* 实例列表 */}
         <Table
           rowKey="instanceId"
-          loading={querying || importing}
+          loading={querying}
           rowSelection={{
             selectedRowKeys: selected,
             onChange: setSelected,
@@ -489,77 +517,122 @@ const HostCloudImportPage: React.FC = () => {
         />
       </Card>
 
-      {/* 确认导入弹窗 */}
+      {/* 导入弹窗 */}
       <Modal
-        title="确认导入"
-        open={confirmModalVisible}
-        onCancel={() => setConfirmModalVisible(false)}
-        onOk={confirmImport}
-        okText="确认导入"
-        cancelText="取消"
-        width={600}
+        title={importStep === 'confirm' ? '确认导入' : importStep === 'importing' ? '正在导入' : '导入完成'}
+        open={importModalVisible}
+        onCancel={importStep !== 'importing' ? closeImportModal : undefined}
+        footer={
+          importStep === 'confirm' ? [
+            <Button key="cancel" onClick={closeImportModal}>
+              取消
+            </Button>,
+            <Button key="ok" type="primary" onClick={confirmImport}>
+              确认导入
+            </Button>,
+          ] : importStep === 'importing' ? null : [
+            <Button key="continue" onClick={handleContinueImport}>
+              继续导入
+            </Button>,
+            <Button key="detail" type="primary" onClick={handleViewHosts}>
+              查看主机列表
+            </Button>,
+          ]
+        }
+        width={750}
+        maskClosable={false}
       >
-        <p>即将导入 <strong>{selected.length}</strong> 台实例：</p>
-        <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
-          <Table
-            size="small"
-            dataSource={getSelectedInstances().map((x) => ({
-              key: x.instanceId,
-              name: x.name,
-              ip: x.ip,
-              region: x.region,
-              status: x.status,
-            }))}
-            columns={[
-              { title: '名称', dataIndex: 'name', ellipsis: true },
-              { title: 'IP', dataIndex: 'ip', width: 130 },
-              { title: '地域', dataIndex: 'region', width: 100 },
-              { title: '状态', dataIndex: 'status', width: 80, render: (v) => (
-                <Tag color={v === 'running' ? 'green' : 'default'}>{v}</Tag>
-              )},
-            ]}
-            pagination={false}
-          />
-        </div>
-      </Modal>
+        {/* 确认阶段 */}
+        {importStep === 'confirm' && (
+          <>
+            <p>即将导入 <strong>{selected.length}</strong> 台实例：</p>
+            <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
+              <Table
+                size="small"
+                dataSource={getSelectedInstances().map((x) => ({
+                  key: x.instanceId,
+                  name: x.name,
+                  ip: x.ip,
+                  region: x.region,
+                  status: x.status,
+                }))}
+                columns={[
+                  { title: '名称', dataIndex: 'name', ellipsis: true },
+                  { title: 'IP', dataIndex: 'ip', width: 130 },
+                  { title: '地域', dataIndex: 'region', width: 100 },
+                  { title: '状态', dataIndex: 'status', width: 80, render: (v) => (
+                    <Tag color={v === 'running' ? 'green' : 'default'}>{v}</Tag>
+                  )},
+                  {
+                    title: '认证预设',
+                    dataIndex: 'key',
+                    width: 150,
+                    render: (instanceId: string) => (
+                      <Select
+                        size="small"
+                        style={{ width: '100%' }}
+                        placeholder="不设置"
+                        allowClear
+                        options={credentialTemplates.map((t) => ({
+                          value: t.id,
+                          label: `${t.name} (${t.sshUser}:${t.port})`,
+                        }))}
+                        value={instanceCredentials[instanceId] || undefined}
+                        onChange={(val) => setInstanceCredentials((prev) => ({
+                          ...prev,
+                          [instanceId]: val || '',
+                        }))}
+                      />
+                    ),
+                  },
+                ]}
+                pagination={false}
+              />
+            </div>
+            <p style={{ marginTop: 12, color: '#999', fontSize: 12 }}>
+              提示: 可为每个实例选择认证预设，导入后自动配置 SSH 认证信息
+            </p>
+          </>
+        )}
 
-      {/* 导入结果弹窗 */}
-      <Modal
-        title="导入成功"
-        open={resultModalVisible}
-        onCancel={() => setResultModalVisible(false)}
-        footer={[
-          <Button key="continue" onClick={() => setResultModalVisible(false)}>
-            继续导入
-          </Button>,
-          <Button key="detail" type="primary" onClick={() => {
-            setResultModalVisible(false);
-            navigate('/hosts');
-          }}>
-            查看主机列表
-          </Button>,
-        ]}
-        width={600}
-      >
-        <p>成功导入 <strong>{importedHosts.length}</strong> 台主机</p>
-        {importedHosts.length > 0 && (
-          <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
-            <Table
-              size="small"
-              dataSource={importedHosts.map((h: any) => ({
-                key: h.id,
-                name: h.name,
-                ip: h.ip,
-                status: h.status,
-              }))}
-              columns={[
-                { title: '主机名', dataIndex: 'name', ellipsis: true },
-                { title: 'IP', dataIndex: 'ip', width: 130 },
-                { title: '状态', dataIndex: 'status', width: 80, render: (v) => <Tag color="green">{v}</Tag> },
-              ]}
-              pagination={false}
-            />
+        {/* 导入中阶段 */}
+        {importStep === 'importing' && (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <Spin size="large" />
+            <p style={{ marginTop: 16, color: '#666' }}>正在导入实例，请稍候...</p>
           </div>
+        )}
+
+        {/* 结果阶段 */}
+        {importStep === 'result' && (
+          <>
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />
+              <p style={{ marginTop: 16, fontSize: 16 }}>
+                成功导入 <strong>{importedHosts.length}</strong> 台主机
+                {skippedCount > 0 && <span style={{ color: '#999' }}>，跳过 {skippedCount} 台已存在</span>}
+              </p>
+            </div>
+            {importedHosts.length > 0 && (
+              <div style={{ maxHeight: 250, overflow: 'auto', marginTop: 16 }}>
+                <Table
+                  size="small"
+                  dataSource={importedHosts.map((h: any) => ({
+                    key: h.id,
+                    name: h.name,
+                    ip: h.ip,
+                    status: h.status,
+                  }))}
+                  columns={[
+                    { title: '主机名', dataIndex: 'name', ellipsis: true },
+                    { title: 'IP', dataIndex: 'ip', width: 130 },
+                    { title: '状态', dataIndex: 'status', width: 80, render: (v) => <Tag color="green">{v}</Tag> },
+                  ]}
+                  pagination={false}
+                />
+              </div>
+            )}
+          </>
         )}
       </Modal>
     </Space>

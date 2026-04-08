@@ -35,8 +35,8 @@ type CloudAccountReq struct {
 	AccessKeySecret string `json:"access_key_secret"`
 	RegionDefault   string `json:"region_default"`
 	// UCloud 额外配置
-	ProjectId       string `json:"project_id"` // 项目 ID（UCloud 子账户必填）
-	IsIntl          bool   `json:"is_intl"`    // 是否为国际版账户（香港、台湾等海外地域需勾选）
+	ProjectId string `json:"project_id"` // 项目 ID（UCloud 子账户必填）
+	IsIntl    bool   `json:"is_intl"`    // 是否为国际版账户（香港、台湾等海外地域需勾选）
 }
 
 // CloudQueryReq 查询云实例请求参数。
@@ -44,17 +44,18 @@ type CloudQueryReq struct {
 	Provider  string `json:"provider"`
 	AccountID uint64 `json:"account_id"`
 	Region    string `json:"region"`
-	Zone      string `json:"zone"`      // 可选，可用区
+	Zone      string `json:"zone"` // 可选，可用区
 	Keyword   string `json:"keyword"`
 }
 
 // CloudImportReq 导入云实例请求参数。
 type CloudImportReq struct {
-	Provider  string               `json:"provider"`
-	AccountID uint64               `json:"account_id"`
-	Instances []CloudInstanceInfo  `json:"instances"`
-	Role      string               `json:"role"`
-	Labels    []string             `json:"labels"`
+	Provider              string              `json:"provider"`
+	AccountID             uint64              `json:"account_id"`
+	Instances             []CloudInstanceInfo `json:"instances"`
+	Role                  string              `json:"role"`
+	Labels                []string            `json:"labels"`
+	CredentialAssignments map[string]uint64   `json:"credential_assignments"` // instanceId -> templateId
 }
 
 // CloudInstanceInfo 云实例信息（用于导入）。
@@ -370,6 +371,24 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			LastCheckAt: time.Now(),
 		}
 
+		// 应用认证预设
+		if templateID, ok := req.CredentialAssignments[ins.InstanceID]; ok && templateID > 0 {
+			var template model.SSHCredentialTemplate
+			if err := s.svcCtx.DB.WithContext(ctx).First(&template, templateID).Error; err == nil {
+				node.SSHUser = template.SSHUser
+				node.Port = template.Port
+				if template.AuthType == "key" && template.SSHKeyID != nil {
+					// 密钥认证：设置 SSHKeyID
+					keyID := model.NodeID(*template.SSHKeyID); node.SSHKeyID = &keyID
+				} else if template.AuthType == "password" && template.Password != "" {
+					// 密码认证：解密并存储密码
+					if decryptedPwd, err := utils.DecryptText(template.Password, config.CFG.Security.EncryptionKey); err == nil {
+						node.SSHPassword = decryptedPwd
+					}
+				}
+			}
+		}
+
 		if err := s.svcCtx.DB.WithContext(ctx).Create(&node).Error; err != nil {
 			task.Status = "failed"
 			task.ErrorMessage = err.Error()
@@ -496,4 +515,3 @@ func (s *HostService) ListCloudZones(ctx context.Context, providerName string, a
 
 	return provider.ListZones(ctx, account.AccessKeyID, secret, region)
 }
-

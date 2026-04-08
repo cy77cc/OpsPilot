@@ -14,7 +14,7 @@ const HostListPage = lazy(() => import('./pages/Hosts/HostListPage'));
 const HostDetailPage = lazy(() => import('./pages/Hosts/HostDetailPage'));
 const HostOnboardingPage = lazy(() => import('./pages/Hosts/HostOnboardingPage'));
 const HostTerminalPage = lazy(() => import('./pages/Hosts/HostTerminalPage'));
-const HostKeysPage = lazy(() => import('./pages/Hosts/HostKeysPage'));
+const HostCredentialsPage = lazy(() => import('./pages/Hosts/HostCredentialsPage'));
 const HostCloudImportPage = lazy(() => import('./pages/Hosts/HostCloudImportPage'));
 const HostVirtualizationPage = lazy(() => import('./pages/Hosts/HostVirtualizationPage'));
 const TasksPage = lazy(() => import('./pages/Tasks/TasksPage'));
@@ -110,7 +110,8 @@ export default function ProtectedApp() {
                 <Route path="/deployment/infrastructure/credentials" element={withAuth('cluster', 'read', <CredentialListPage />)} />
                 <Route path="/deployment/infrastructure/hosts" element={withAuth('host', 'read', <HostListPage />)} />
                 <Route path="/deployment/infrastructure/hosts/onboarding" element={withAuth('host', 'write', <HostOnboardingPage />)} />
-                <Route path="/deployment/infrastructure/hosts/keys" element={withAuth('host', 'write', <HostKeysPage />)} />
+                <Route path="/deployment/infrastructure/hosts/keys" element={withAuth('host', 'write', <HostCredentialsPage />)} />
+                <Route path="/deployment/infrastructure/hosts/credentials" element={withAuth('host', 'write', <HostCredentialsPage />)} />
                 <Route path="/deployment/infrastructure/hosts/cloud-import" element={withAuth('host', 'write', <HostCloudImportPage />)} />
                 <Route path="/deployment/infrastructure/hosts/virtualization" element={withAuth('host', 'write', <HostVirtualizationPage />)} />
                 <Route path="/deployment/infrastructure/hosts/:id" element={withAuth('host', 'read', <HostDetailPage />)} />

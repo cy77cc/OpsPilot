@@ -428,6 +428,9 @@ const HostListPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">管理和监控所有主机资源</p>
         </div>
         <Space>
+          <Button onClick={() => navigate('/deployment/infrastructure/hosts/credentials')}>
+            凭证管理
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新
           </Button>
@@ -437,13 +440,11 @@ const HostListPage: React.FC = () => {
                 { key: 'onboarding', label: 'SSH 接入（密码/密钥）' },
                 { key: 'cloud', label: '云平台导入（阿里云/腾讯云）' },
                 { key: 'virt', label: 'KVM 虚拟化创建' },
-                { key: 'keys', label: 'SSH 密钥管理' },
               ],
               onClick: ({ key }) => {
                 if (key === 'onboarding') navigate('/hosts/onboarding');
                 if (key === 'cloud') navigate('/hosts/cloud-import');
                 if (key === 'virt') navigate('/hosts/virtualization');
-                if (key === 'keys') navigate('/hosts/keys');
               },
             }}
           >

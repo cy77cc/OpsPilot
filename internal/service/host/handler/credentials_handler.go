@@ -119,3 +119,80 @@ func (h *Handler) VerifySSHKey(c *gin.Context) {
 	}
 	httpx.OK(c, result)
 }
+
+// ListCredentialTemplates 获取认证预设列表。
+//
+// @Summary 获取认证预设列表
+// @Description 获取所有 SSH 认证预设模板（密码已脱敏）
+// @Tags 认证预设管理
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Success 200 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /credentials/templates [get]
+func (h *Handler) ListCredentialTemplates(c *gin.Context) {
+	list, err := h.hostService.ListCredentialTemplates(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
+}
+
+// CreateCredentialTemplate 创建认证预设。
+//
+// @Summary 创建认证预设
+// @Description 创建 SSH 认证预设模板，密码将被加密存储
+// @Tags 认证预设管理
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param body body hostlogic.CredentialTemplateCreateReq true "预设创建请求"
+// @Success 200 {object} httpx.Response
+// @Failure 400 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /credentials/templates [post]
+func (h *Handler) CreateCredentialTemplate(c *gin.Context) {
+	var req hostlogic.CredentialTemplateCreateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	uid := getUID(c)
+	item, err := h.hostService.CreateCredentialTemplate(c.Request.Context(), uid, req)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, err.Error())
+		return
+	}
+	httpx.OK(c, item)
+}
+
+// DeleteCredentialTemplate 删除认证预设。
+//
+// @Summary 删除认证预设
+// @Description 删除指定的 SSH 认证预设模板
+// @Tags 认证预设管理
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param id path int true "预设 ID"
+// @Success 200 {object} httpx.Response
+// @Failure 400 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /credentials/templates/{id} [delete]
+func (h *Handler) DeleteCredentialTemplate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, "invalid id")
+		return
+	}
+	if err := h.hostService.DeleteCredentialTemplate(c.Request.Context(), id); err != nil {
+		httpx.Fail(c, xcode.ParamError, err.Error())
+		return
+	}
+	httpx.OK(c, nil)
+}
