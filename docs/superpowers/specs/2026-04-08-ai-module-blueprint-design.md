@@ -547,7 +547,7 @@ Turn lifecycle:
 
 - `turn_started`
 - `turn_planned`
-- `turn_replanned`
+- `turn_refined`
 - `turn_completed`
 
 Tool lifecycle:
