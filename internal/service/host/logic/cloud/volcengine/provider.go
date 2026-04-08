@@ -107,19 +107,54 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 	// 转换实例数据
 	instances := make([]cloud.CloudInstance, 0, len(output.Instances))
 	for _, inst := range output.Instances {
+		instId := volcengine.StringValue(inst.InstanceId)
+
+		// 调试：打印实例的磁盘信息
+		fmt.Printf("实例 %s:\n", instId)
+		fmt.Printf("  LocalVolumes 数量: %d\n", len(inst.LocalVolumes))
+		for i, lv := range inst.LocalVolumes {
+			size := int32(0)
+			count := int32(0)
+			if lv.Size != nil {
+				size = *lv.Size
+			}
+			if lv.Count != nil {
+				count = *lv.Count
+			}
+			fmt.Printf("    [%d] Size=%d, Count=%d\n", i, size, count)
+		}
+		fmt.Printf("  Volumes 数量: %d\n", len(inst.Volumes))
+		for i, v := range inst.Volumes {
+			fmt.Printf("    [%d] VolumeId=%s\n", i, volcengine.StringValue(v.VolumeId))
+		}
+
 		// 查询该实例关联的云盘大小
 		volumeSizes := make(map[string]int)
-		if inst.InstanceId != nil {
+
+		// 如果有云盘，查询云盘大小
+		if len(inst.Volumes) > 0 {
 			volOutput, volErr := client.DescribeVolumes(ctx, &storageebs.DescribeVolumesInput{
 				InstanceId: inst.InstanceId,
 			})
-			if volErr == nil && volOutput != nil {
-				volumeSizes = BuildVolumeSizeMap(volOutput)
+			if volErr != nil {
+				fmt.Printf("  查询云盘失败: %v\n", volErr)
+			} else if volOutput != nil {
+				fmt.Printf("  DescribeVolumes 返回 %d 个云盘\n", len(volOutput.Volumes))
+				for _, v := range volOutput.Volumes {
+					if v.VolumeId != nil && v.Size != nil {
+						size, err := v.Size.Int64()
+						if err == nil {
+							volumeSizes[*v.VolumeId] = int(size)
+							fmt.Printf("    云盘 %s: %d GB\n", *v.VolumeId, size)
+						}
+					}
+				}
 			}
 		}
 
 		// 转换实例，传入 region 和 volumeSizes
 		converted := ConvertInstance(inst, req.Region, volumeSizes)
+		fmt.Printf("  最终 DiskGB: %d\n\n", converted.DiskGB)
 
 		// 如果有关键词，进行过滤
 		if req.Keyword != "" {

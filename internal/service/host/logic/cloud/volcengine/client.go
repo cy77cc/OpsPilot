@@ -43,8 +43,8 @@ func NewClient(ak, sk, region string) (*Client, error) {
 
 	// 构建配置
 	// 火山云 ECS 是区域服务，Endpoint 格式: ecs.<region>.volcengineapi.com
+	// 火山云 EBS 使用统一接入地址: open.volcengineapi.com
 	ecsEndpoint := fmt.Sprintf("ecs.%s.volcengineapi.com", region)
-	storageEBSEndpoint := fmt.Sprintf("storage_ebs.%s.volcengineapi.com", region)
 
 	config := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
@@ -56,11 +56,11 @@ func NewClient(ak, sk, region string) (*Client, error) {
 		return nil, fmt.Errorf("创建火山云会话失败: %w", err)
 	}
 
-	// StorageEBS 使用单独的配置和会话
+	// StorageEBS 使用统一接入地址
 	storageConfig := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
 		WithRegion(region).
-		WithEndpoint(storageEBSEndpoint)
+		WithEndpoint("open.volcengineapi.com")
 
 	storageSess, err := session.NewSession(storageConfig)
 	if err != nil {

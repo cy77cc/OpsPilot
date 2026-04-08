@@ -3,7 +3,7 @@ app:
   env: dev
   debug: true
   timezone: Asia/Shanghai
-  auto_migrate: false
+  auto_migrate: true
 
 server:
   host: 0.0.0.0
