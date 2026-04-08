@@ -110,6 +110,14 @@ Non-responsibility:
 - no approval enforcement
 - no event persistence
 
+Router must also provide a degradation path when classification confidence is low.
+
+Recommended fallback behaviors:
+
+- ask the user a direct disambiguation question for materially different paths such as chat vs diagnosis vs execution
+- default to the lower-risk conversation path when no strong execution signal is present
+- emit explicit routing-confidence metadata into the event stream for replay and evaluation
+
 ### 4.4 Agent Kernel
 
 Responsibility:
@@ -126,6 +134,8 @@ Responsibility:
 - support replay and recovery
 
 This is the core runtime of the new AI module.
+
+Kernel state must be durable rather than memory-only. Approval waits, resumable runs, and long investigations require a persisted state machine model whose checkpoints can survive process restart and long idle gaps.
 
 ### 4.5 Domain Agents
 
@@ -356,6 +366,8 @@ Kernel should explicitly support five modes inspired by the referenced article:
 5. `Evaluator-Optimizer`
 - critique and refine diagnosis, plan quality, or action proposals until acceptable
 
+For latency-sensitive paths, router may use a lighter model or deterministic classifier before escalating to the full execution stack. The goal is to avoid paying full multi-stage latency for trivial or high-frequency requests.
+
 ## 7. Context Engineering
 
 This is the most important redesign axis.
@@ -414,7 +426,27 @@ Loaded through managers rather than raw message replay:
 - run scratchpad
 - distilled knowledge
 
-### 7.6 Context Rules
+### 7.6 Token Budgeting
+
+`PromptCompiler` should enforce explicit token budgeting instead of relying on best-effort prompt growth.
+
+Recommended budget slices:
+
+- core system and capability index: fixed reserved budget
+- runtime context: bounded reserved budget
+- memory summaries: elastic but capped budget
+- on-demand knowledge: priority-ranked budget
+- run scratchpad and recent evidence: last-budget-wins segment with automatic compression
+
+Required behaviors:
+
+- estimate token usage before final prompt assembly
+- trigger summarization when scratchpad or evidence exceeds budget
+- truncate lowest-priority context first, never core constraints first
+- preserve plan decisions, unresolved blockers, and active policy state during compression
+- emit budget decisions into trace metadata for debugging context loss
+
+### 7.7 Context Rules
 
 1. raw message history is not default context
 2. long tool output should be replaced by compact summaries in prompt space
@@ -422,7 +454,7 @@ Loaded through managers rather than raw message replay:
 4. scene prompts become structured context providers, not direct prompt concatenation
 5. tool constraints are enforced by policy/tool layers, not by prose alone
 
-### 7.7 New Internal Components
+### 7.8 New Internal Components
 
 Recommended components:
 
@@ -516,6 +548,12 @@ Approval payload should include:
 - rollback plan
 - supporting evidence
 - linked run step
+
+Implementation direction:
+
+- treat approval and resume as durable workflow transitions rather than in-memory goroutine suspension
+- persist checkpoint, current step, pending approval payload, and resume target in database-backed runtime state
+- design the kernel state model with the same durability goals as workflow engines such as Temporal or AWS Step Functions, while keeping the implementation local to OpsPilot
 
 ### 8.5 Safety Model
 
@@ -632,6 +670,8 @@ Consumers:
 
 All three layers should connect through the same `run_id` and `trace_id`.
 
+Internal event structures should also map cleanly onto standard observability concepts such as spans and attributes so that Agent traces can be exported to OpenTelemetry-compatible backends when needed.
+
 ### 10.3 Evaluation Harness
 
 Minimum built-in evaluation surfaces:
@@ -673,7 +713,20 @@ Recommended built-in views:
 
 These views are part of the learning value of the project.
 
-## 11. Proposed Internal Package Direction
+## 11. OpenTelemetry Alignment
+
+The AI runtime keeps its own event taxonomy, but it should not become an observability island.
+
+Recommended mapping:
+
+- `Run` lifecycle maps to a root trace/span group
+- routing, planning, tool invocation, policy evaluation, approval wait, resume, and completion map to child spans
+- event payload metadata maps to span attributes
+- error and retry information maps to status/error annotations
+
+This preserves a domain-native event model while allowing export into Jaeger, Datadog, Tempo, or other OpenTelemetry-compatible systems.
+
+## 12. Proposed Internal Package Direction
 
 This section describes the intended package shape, not a mandatory file-level final structure.
 
@@ -695,7 +748,7 @@ internal/ai/
 
 A practical code goal is to remove the current concentration of responsibilities in service logic and promote AI internals into stable subsystems.
 
-## 12. Migration Direction
+## 13. Migration Direction
 
 Compatibility is not a design goal. The redesign can be implemented through direct restructuring.
 
@@ -723,7 +776,7 @@ Recommended phases:
 6. add harness surfaces
 - replay inspector, context snapshot, evaluation reporting
 
-## 13. Risks
+## 14. Risks
 
 1. Overbuilding before proving behavior
 - mitigation: implement one thin vertical slice first, but keep target boundaries intact
@@ -737,7 +790,10 @@ Recommended phases:
 4. Evaluation data becoming too expensive or noisy
 - mitigation: separate user timeline, agent trace, and system telemetry instead of mixing all details into one stream
 
-## 14. Success Criteria
+5. Latency amplification across stacked model calls
+- mitigation: show event-driven progress in UI, prefer small/fast models for routing and simple classification, and avoid entering the full execution stack for trivial requests
+
+## 15. Success Criteria
 
 The redesign is successful when:
 
@@ -750,7 +806,7 @@ The redesign is successful when:
 7. Event stream becomes the common source for projection, replay, trace, and evaluation.
 8. The system can explain not only what it answered, but also why it acted, why it paused, and how it can be replayed.
 
-## 15. Final Recommendation
+## 16. Final Recommendation
 
 OpsPilot AI should evolve from a chat-driven tool-calling module into an `Agent Runtime` with:
 
