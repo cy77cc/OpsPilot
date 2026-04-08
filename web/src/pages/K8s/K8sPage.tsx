@@ -3,6 +3,7 @@ import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Space, Table, Ta
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { Cluster, Node } from '../../api/modules/kubernetes';
+import { useStableFetch } from '../../hooks';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
 import ClusterOverview from '../../components/K8s/ClusterOverview';
 import NamespacePolicyPanel from '../../components/K8s/NamespacePolicyPanel';
@@ -30,7 +31,7 @@ const K8sPage: React.FC = () => {
   const [form] = Form.useForm();
   const [createForm] = Form.useForm();
 
-  const load = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const res = await Api.kubernetes.getClusterList({ page: 1, pageSize: 50 });
@@ -40,7 +41,10 @@ const K8sPage: React.FC = () => {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
+
+  useEffect(() => { load(); }, [load]);
 
   const openDetail = async (cluster: Cluster) => {
     setSelectedCluster(cluster);

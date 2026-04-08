@@ -4,6 +4,7 @@ import { useInterval } from 'ahooks';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { OverviewResponseV2, TimeRange } from '../../api/modules/dashboard';
+import { useStableFetch } from '../../hooks';
 import TimeRangeSelector from '../../components/Dashboard/TimeRangeSelector';
 import HealthCard from '../../components/Dashboard/HealthCard';
 import WorkloadHealthCard from '../../components/Dashboard/WorkloadHealthCard';
@@ -56,7 +57,7 @@ const Dashboard: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [overview, setOverview] = useState<OverviewResponseV2>(emptyOverview);
 
-  const load = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     const firstLoad = initialLoadRef.current;
     if (firstLoad) {
       setIsInitialLoading(true);
@@ -78,16 +79,14 @@ const Dashboard: React.FC = () => {
     }
   }, [timeRange]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
 
   useEffect(() => {
-    const handler = () => {
-      load();
-    };
-    window.addEventListener('project:changed', handler as EventListener);
-    return () => window.removeEventListener('project:changed', handler as EventListener);
+    load();
+    const handler = () => load();
+    window.addEventListener('project:changed', handler);
+    return () => window.removeEventListener('project:changed', handler);
   }, [load]);
 
   useInterval(() => {

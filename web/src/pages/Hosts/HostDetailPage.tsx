@@ -23,6 +23,7 @@ import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, DeleteOutlined } from 
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Host, HostAuditItem, HostHealthSnapshot, HostMetricPoint, SSHKeyItem } from '../../api/modules/hosts';
+import { useStableFetch } from '../../hooks';
 import { DetailSkeleton } from '../../components/LoadingSkeleton';
 
 type HostEditFormValues = {
@@ -68,7 +69,7 @@ const HostDetailPage: React.FC = () => {
     }
   }, []);
 
-  const load = async () => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
@@ -83,11 +84,14 @@ const HostDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
 
   useEffect(() => {
-    void load();
-  }, [id]);
+    load();
+  }, [id, load]);
 
   useEffect(() => {
     if (!editOpen) return;

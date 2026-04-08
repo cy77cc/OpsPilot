@@ -3,3 +3,5 @@ export { useRetry, retryAsync } from './useRetry';
 export { useCancelToken, useRequestManager } from './useCancelToken';
 export { useAsync, useAsyncMultiple } from './useAsync';
 export type { AsyncState, UseAsyncOptions } from './useAsync';
+export { useStableFetch } from './useStableFetch';
+export type { UseStableFetchOptions } from './useStableFetch';

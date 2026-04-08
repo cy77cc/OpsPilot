@@ -8,6 +8,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { Api } from '../../api';
 import type { Host, HostFileItem } from '../../api/modules/hosts';
+import { useStableFetch } from '../../hooks';
 
 const { Text } = Typography;
 
@@ -147,8 +148,130 @@ const HostTerminalPage: React.FC = () => {
     }
   }, [id]);
 
+  // Store callbacks in refs to avoid useEffect dependency issues
+  const safeFitRef = React.useRef(safeFit);
+  const refreshFilesRef = React.useRef(refreshFiles);
+  safeFitRef.current = safeFit;
+  refreshFilesRef.current = refreshFiles;
+
+  // Use a ref to track connection state across StrictMode remounts
+  const connectingRef = React.useRef(false);
+  const mountCountRef = React.useRef(0);
+
+  React.useEffect(() => {
+    mountCountRef.current += 1;
+    const mountNum = mountCountRef.current;
+    console.log(`[HostTerminalPage] useEffect #${mountNum} - connectingRef: ${connectingRef.current}, id: ${id}`);
+
+    // Prevent duplicate connections
+    if (connectingRef.current || !id) {
+      console.log(`[HostTerminalPage] Skipping connection - already connecting or no id`);
+      return;
+    }
+    connectingRef.current = true;
+    console.log(`[HostTerminalPage] Starting connection #${mountNum}`);
+
+    let cancelled = false;
+
+    const doConnect = async () => {
+      setStatus('connecting');
+      try {
+        const [hostResp, sessResp] = await Promise.all([
+          Api.hosts.getHostDetail(id),
+          Api.hosts.createTerminalSession(id),
+        ]);
+
+        if (cancelled) return;
+
+        setHost(hostResp.data);
+        setSessionID(sessResp.data.session_id);
+
+        const ws = new WebSocket(wsURLFromPath(sessResp.data.ws_path));
+        wsRef.current = ws;
+        ws.onopen = () => {
+          if (cancelled) return;
+          setStatus('connected');
+          safeFitRef.current();
+          const term = xtermRef.current;
+          if (!term) return;
+          term.focus();
+          term.writeln(`\x1b[32mConnected to ${hostResp.data.name} (${hostResp.data.ip})\x1b[0m`);
+          inputListenerRef.current?.dispose();
+          inputListenerRef.current = term.onData((data) => {
+            ws.send(JSON.stringify({ type: 'input', input: data }));
+          });
+          const fit = fitRef.current;
+          const size = term.cols && term.rows ? { cols: term.cols, rows: term.rows } : { cols: 120, rows: 40 };
+          ws.send(JSON.stringify({ type: 'resize', ...size }));
+          if (fit) {
+            resizeObserverRef.current?.disconnect();
+            const observer = new ResizeObserver(() => {
+              if (xtermRef.current !== term) return;
+              safeFitRef.current();
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+              }
+            });
+            resizeObserverRef.current = observer;
+            if (termWrapRef.current) observer.observe(termWrapRef.current);
+          }
+        };
+        ws.onmessage = (event) => {
+          const term = xtermRef.current;
+          if (!term) return;
+          try {
+            const msg = JSON.parse(String(event.data));
+            if (msg.type === 'output' && msg.payload?.data) {
+              term.write(String(msg.payload.data));
+            }
+          } catch {
+            term.write(String(event.data));
+          }
+        };
+        ws.onerror = () => {
+          if (cancelled) return;
+          setStatus('error');
+          xtermRef.current?.writeln('\r\n\x1b[31mTerminal websocket error\x1b[0m');
+        };
+        ws.onclose = () => {
+          if (cancelled) return;
+          setStatus('closed');
+          resizeObserverRef.current?.disconnect();
+          resizeObserverRef.current = null;
+          inputListenerRef.current?.dispose();
+          inputListenerRef.current = null;
+          xtermRef.current?.writeln('\r\n\x1b[90mSession closed\x1b[0m');
+          connectingRef.current = false;
+        };
+        await refreshFilesRef.current('.');
+      } catch (err) {
+        if (cancelled) return;
+        setStatus('error');
+        message.error(err instanceof Error ? err.message : '终端连接失败');
+        connectingRef.current = false;
+      }
+    };
+
+    void doConnect();
+
+    return () => {
+      console.log(`[HostTerminalPage] Cleanup #${mountNum} - cancelling`);
+      cancelled = true;
+      // Close websocket on cleanup
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
+      // Reset connecting flag so reconnection can happen
+      connectingRef.current = false;
+    };
+  }, [id]); // Only depend on id - stable!
+
   const connect = React.useCallback(async () => {
+    // Manual reconnect - reset the flag first
+    connectingRef.current = false;
     if (!id) return;
+
+    connectingRef.current = true;
     setStatus('connecting');
     try {
       const [hostResp, sessResp] = await Promise.all([
@@ -162,7 +285,7 @@ const HostTerminalPage: React.FC = () => {
       wsRef.current = ws;
       ws.onopen = () => {
         setStatus('connected');
-        safeFit();
+        safeFitRef.current();
         const term = xtermRef.current;
         if (!term) return;
         term.focus();
@@ -178,7 +301,7 @@ const HostTerminalPage: React.FC = () => {
           resizeObserverRef.current?.disconnect();
           const observer = new ResizeObserver(() => {
             if (xtermRef.current !== term) return;
-            safeFit();
+            safeFitRef.current();
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
             }
@@ -210,17 +333,15 @@ const HostTerminalPage: React.FC = () => {
         inputListenerRef.current?.dispose();
         inputListenerRef.current = null;
         xtermRef.current?.writeln('\r\n\x1b[90mSession closed\x1b[0m');
+        connectingRef.current = false;
       };
-      await refreshFiles('.');
+      await refreshFilesRef.current('.');
     } catch (err) {
       setStatus('error');
       message.error(err instanceof Error ? err.message : '终端连接失败');
+      connectingRef.current = false;
     }
-  }, [id, refreshFiles, safeFit]);
-
-  React.useEffect(() => {
-    void connect();
-  }, [connect]);
+  }, [id]);
 
   React.useEffect(() => {
     const raf = window.requestAnimationFrame(() => {

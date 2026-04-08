@@ -37,6 +37,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
+import { useStableFetch } from '../../hooks';
 import { StaggerList, StaggerItem } from '../../components/Motion';
 import { CardGridSkeleton, TableSkeleton } from '../../components/LoadingSkeleton';
 
@@ -65,7 +66,7 @@ const ServiceListPage: React.FC = () => {
     return null;
   });
 
-  const load = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     const firstLoad = initialLoadRef.current;
     if (firstLoad) {
       setIsInitialLoading(true);
@@ -94,6 +95,9 @@ const ServiceListPage: React.FC = () => {
       }
     }
   }, [env, runtime, serviceKind, labelSelector, query]);
+
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
 
   useEffect(() => {
     const fromURL = searchParams.get('service_kind') || 'all';

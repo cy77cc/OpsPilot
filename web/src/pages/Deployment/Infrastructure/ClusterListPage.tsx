@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { Cluster } from '../../../api/modules/cluster';
+import { useStableFetch } from '../../../hooks';
 import { CardGridSkeleton } from '../../../components/LoadingSkeleton';
 
 const ClusterListPage: React.FC = () => {
@@ -16,7 +17,7 @@ const ClusterListPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [clusters, setClusters] = useState<Cluster[]>([]);
 
-  const load = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await Api.cluster.getClusters();
@@ -28,8 +29,11 @@ const ClusterListPage: React.FC = () => {
     }
   }, []);
 
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
+
   useEffect(() => {
-    void load();
+    load();
   }, [load]);
 
   const handleDelete = async (id: number) => {

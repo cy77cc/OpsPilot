@@ -37,6 +37,7 @@ import {
 import { Api } from '../../api';
 import type { Host, HostHealthSnapshot } from '../../api/modules/hosts';
 import { useNavigate } from 'react-router-dom';
+import { useStableFetch } from '../../hooks';
 import { StaggerList, StaggerItem } from '../../components/Motion';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
 
@@ -94,7 +95,7 @@ const HostListPage: React.FC = () => {
     ucloud: { name: 'UCloud' },
   };
 
-  const load = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const res = await Api.hosts.getHostList({
@@ -120,12 +121,15 @@ const HostListPage: React.FC = () => {
     }
   };
 
+  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
+  const load = useStableFetch(fetchData);
+
   useEffect(() => {
     load();
     const handler = () => load();
-    window.addEventListener('project:changed', handler as EventListener);
-    return () => window.removeEventListener('project:changed', handler as EventListener);
-  }, [statusFilter, group]);
+    window.addEventListener('project:changed', handler);
+    return () => window.removeEventListener('project:changed', handler);
+  }, [statusFilter, group, load]);
 
   // 统计数据
   const stats = useMemo(() => {
