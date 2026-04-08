@@ -44,7 +44,7 @@ func NewClient(ak, sk, region string) (*Client, error) {
 	// 构建配置
 	// 火山云 ECS 是区域服务，Endpoint 格式: ecs.<region>.volcengineapi.com
 	ecsEndpoint := fmt.Sprintf("ecs.%s.volcengineapi.com", region)
-	storageEBSEndpoint := fmt.Sprintf("storageebs.%s.volcengineapi.com", region)
+	storageEBSEndpoint := fmt.Sprintf("storage_ebs.%s.volcengineapi.com", region)
 
 	config := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
