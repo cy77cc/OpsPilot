@@ -1,0 +1,124 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import HostTerminalPage from './HostTerminalPage';
+
+const mockApi = vi.hoisted(() => ({
+  hosts: {
+    getHostDetail: vi.fn(),
+    createTerminalSession: vi.fn(),
+    closeTerminalSession: vi.fn(),
+    listFiles: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    deletePath: vi.fn(),
+    renamePath: vi.fn(),
+    uploadFile: vi.fn(),
+    mkdir: vi.fn(),
+    downloadFile: vi.fn(),
+  },
+}));
+
+vi.mock('../../api', () => ({ Api: mockApi }));
+
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value, onChange }: { value: string; onChange: (v: string | undefined) => void }) => (
+    <textarea aria-label="modal-editor" value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
+vi.mock('xterm', () => ({
+  Terminal: class {
+    cols = 120;
+    rows = 40;
+    loadAddon() {}
+    open() {}
+    focus() {}
+    writeln() {}
+    write() {}
+    onData() {
+      return { dispose() {} };
+    }
+    dispose() {}
+  },
+}));
+
+vi.mock('xterm-addon-fit', () => ({
+  FitAddon: class { fit() {} },
+}));
+
+class WebSocketMock {
+  static OPEN = 1;
+  readyState = WebSocketMock.OPEN;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  constructor() {
+    setTimeout(() => this.onopen?.(), 0);
+  }
+  send() {}
+  close() {
+    this.onclose?.();
+  }
+}
+
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = WebSocketMock as unknown as typeof WebSocket;
+
+describe('HostTerminalPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockApi.hosts.getHostDetail.mockResolvedValue({
+      data: { id: '1', name: 'node-1', ip: '10.0.0.1' },
+    });
+    mockApi.hosts.createTerminalSession.mockResolvedValue({
+      data: { session_id: 's1', ws_path: '/ws/host' },
+    });
+    mockApi.hosts.listFiles.mockResolvedValue({
+      data: {
+        path: '.',
+        list: [
+          { name: 'app.yaml', path: 'app.yaml', is_dir: false, size: 10, mode: '-rw-r--r--' },
+        ],
+      },
+    });
+    mockApi.hosts.readFile.mockResolvedValue({ data: { content: 'kind: ConfigMap' } });
+    mockApi.hosts.writeFile.mockResolvedValue({ data: {} });
+  });
+
+  it('opens modal editor after clicking a file and saves content', async () => {
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText('app.yaml')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('app.yaml'));
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('modal-editor'), { target: { value: 'kind: Secret' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(mockApi.hosts.writeFile).toHaveBeenCalledWith('1', 'app.yaml', 'kind: Secret');
+    });
+  });
+
+  it('uses full viewport layout so terminal bottom line is not clipped by page chrome', async () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText('终端与文件')).toBeInTheDocument());
+    const root = container.querySelector('.host-terminal-page') as HTMLDivElement;
+    expect(root.style.height).toBe('100vh');
+  });
+});
