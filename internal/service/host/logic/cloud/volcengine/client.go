@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/volcengine/volcengine-go-sdk/service/ecs"
+	"github.com/volcengine/volcengine-go-sdk/service/storageebs"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/credentials"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/session"
@@ -18,7 +19,8 @@ import (
 //
 // 封装火山云 SDK 的 ECS 服务客户端，提供简化的实例查询接口。
 type Client struct {
-	ecs *ecs.ECS
+	ecs        *ecs.ECS
+	storageEBS *storageebs.STORAGEEBS
 }
 
 // NewClient 创建火山云 ECS 客户端。
@@ -41,20 +43,33 @@ func NewClient(ak, sk, region string) (*Client, error) {
 
 	// 构建配置
 	// 火山云 ECS 是区域服务，Endpoint 格式: ecs.<region>.volcengineapi.com
-	endpoint := fmt.Sprintf("ecs.%s.volcengineapi.com", region)
+	ecsEndpoint := fmt.Sprintf("ecs.%s.volcengineapi.com", region)
+	storageEBSEndpoint := fmt.Sprintf("storageebs.%s.volcengineapi.com", region)
 
 	config := volcengine.NewConfig().
 		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
 		WithRegion(region).
-		WithEndpoint(endpoint)
+		WithEndpoint(ecsEndpoint)
 
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, fmt.Errorf("创建火山云会话失败: %w", err)
 	}
 
+	// StorageEBS 使用单独的配置和会话
+	storageConfig := volcengine.NewConfig().
+		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
+		WithRegion(region).
+		WithEndpoint(storageEBSEndpoint)
+
+	storageSess, err := session.NewSession(storageConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建火山云存储会话失败: %w", err)
+	}
+
 	return &Client{
-		ecs: ecs.New(sess),
+		ecs:        ecs.New(sess),
+		storageEBS: storageebs.New(storageSess),
 	}, nil
 }
 
@@ -95,4 +110,17 @@ func (c *Client) DescribeRegions(ctx context.Context, input *ecs.DescribeRegions
 //   - 失败返回错误
 func (c *Client) DescribeZones(ctx context.Context, input *ecs.DescribeZonesInput) (*ecs.DescribeZonesOutput, error) {
 	return c.ecs.DescribeZonesWithContext(ctx, input)
+}
+
+// DescribeVolumes 查询云盘列表。
+//
+// 参数:
+//   - ctx: 请求上下文
+//   - input: 查询参数
+//
+// 返回:
+//   - 成功返回云盘列表
+//   - 失败返回错误
+func (c *Client) DescribeVolumes(ctx context.Context, input *storageebs.DescribeVolumesInput) (*storageebs.DescribeVolumesOutput, error) {
+	return c.storageEBS.DescribeVolumesWithContext(ctx, input)
 }

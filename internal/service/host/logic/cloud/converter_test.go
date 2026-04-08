@@ -118,7 +118,7 @@ func TestConvertInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := volcengine.ConvertInstance(tt.inst, tt.region)
+			result := volcengine.ConvertInstance(tt.inst, tt.region, nil)
 
 			if result.InstanceID != tt.expected.InstanceID {
 				t.Errorf("InstanceID = %s, want %s", result.InstanceID, tt.expected.InstanceID)

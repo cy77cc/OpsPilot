@@ -738,7 +738,14 @@ export const hostApi = {
     };
   },
 
-  async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[]; credentialAssignments?: Record<string, string> }): Promise<ApiResponse<any>> {
+  async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[]; credentialAssignments?: Record<string, string | number> }): Promise<ApiResponse<any>> {
+    // Convert credentialAssignments values to numbers (backend expects uint64)
+    const credentialAssignments: Record<string, number> = {};
+    if (payload.credentialAssignments) {
+      for (const [instanceId, templateId] of Object.entries(payload.credentialAssignments)) {
+        credentialAssignments[instanceId] = typeof templateId === 'string' ? parseInt(templateId, 10) : templateId;
+      }
+    }
     return apiService.post(`/hosts/cloud/providers/${payload.provider}/instances/import`, {
       account_id: payload.accountId,
       instances: payload.instances.map((x) => ({
@@ -754,7 +761,7 @@ export const hostApi = {
       })),
       role: payload.role || '',
       labels: payload.labels || [],
-      credential_assignments: payload.credentialAssignments || {},
+      credential_assignments: credentialAssignments,
     });
   },
 

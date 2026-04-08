@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/volcengine/volcengine-go-sdk/service/ecs"
+	"github.com/volcengine/volcengine-go-sdk/service/storageebs"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/volcengineerr"
 
@@ -103,11 +104,26 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 		return nil, fmt.Errorf("查询火山云实例失败: %w", p.wrapError(err))
 	}
 
+	// 提取所有云盘 ID，批量查询云盘大小
+	volumeIds := ExtractVolumeIds(output.Instances)
+	volumeSizes := make(map[string]int)
+
+	if len(volumeIds) > 0 {
+		// 批量查询云盘大小
+		volOutput, err := client.DescribeVolumes(ctx, &storageebs.DescribeVolumesInput{
+			VolumeIds: volcengine.StringSlice(volumeIds),
+		})
+		if err == nil && volOutput != nil {
+			volumeSizes = BuildVolumeSizeMap(volOutput)
+		}
+		// 如果查询失败，继续处理，磁盘大小会是 0
+	}
+
 	// 转换实例数据
 	instances := make([]cloud.CloudInstance, 0, len(output.Instances))
 	for _, inst := range output.Instances {
-		// 转换实例，传入 region（实例数据中无 Region 字段）
-		converted := ConvertInstance(inst, req.Region)
+		// 转换实例，传入 region 和 volumeSizes
+		converted := ConvertInstance(inst, req.Region, volumeSizes)
 
 		// 如果有关键词，进行过滤
 		if req.Keyword != "" {
