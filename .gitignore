@@ -123,3 +123,4 @@ bin/
 openspec/
 .omx/
 .tmp/
+.worktrees/
