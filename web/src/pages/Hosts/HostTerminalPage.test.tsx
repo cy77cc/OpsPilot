@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import HostTerminalPage from './HostTerminalPage';
 
@@ -96,12 +96,13 @@ describe('HostTerminalPage', () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByText('app.yaml')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('app.yaml'));
+    await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByTitle('app.yaml')[0]);
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const dialog = screen.getByRole('dialog');
     fireEvent.change(screen.getByLabelText('modal-editor'), { target: { value: 'kind: Secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {
       expect(mockApi.hosts.writeFile).toHaveBeenCalledWith('1', 'app.yaml', 'kind: Secret');
@@ -117,8 +118,30 @@ describe('HostTerminalPage', () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByText('终端与文件')).toBeInTheDocument());
+    await waitFor(() => expect(mockApi.hosts.listFiles).toHaveBeenCalled());
     const root = container.querySelector('.host-terminal-page') as HTMLDivElement;
     expect(root.style.height).toBe('100vh');
+  });
+
+  it('shows confirm dialog when closing modal with unsaved edits', async () => {
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByTitle('app.yaml')[0]);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const dialog = screen.getByRole('dialog');
+
+    fireEvent.change(screen.getByLabelText('modal-editor'), { target: { value: 'kind: Secret' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('放弃未保存修改？').length).toBeGreaterThan(1);
+    });
   });
 });
