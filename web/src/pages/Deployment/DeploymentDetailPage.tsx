@@ -12,7 +12,7 @@ import {
   Row,
   Col,
   Empty,
-  Modal,
+  Popconfirm,
   Tabs,
 } from 'antd';
 import {
@@ -118,43 +118,24 @@ const DeploymentDetailPage: React.FC = () => {
 
   const handleReject = async () => {
     if (!release) return;
-    Modal.confirm({
-      title: '确认拒绝',
-      content: `确定要拒绝 Release #${release.id} 吗？`,
-      okText: '确认拒绝',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await Api.deployment.rejectRelease(release.id, {});
-          message.success(`Release #${release.id} 已拒绝`);
-          await load();
-        } catch (err) {
-          handleApiError(err, '拒绝失败');
-        }
-      },
-    });
+    try {
+      await Api.deployment.rejectRelease(release.id, {});
+      message.success(`Release #${release.id} 已拒绝`);
+      await load();
+    } catch (err) {
+      handleApiError(err, '拒绝失败');
+    }
   };
 
-  // 回滚操作
   const handleRollback = async () => {
     if (!release) return;
-    Modal.confirm({
-      title: '确认回滚',
-      content: `确定要回滚 Release #${release.id} 吗？这将创建一个新的回滚部署。`,
-      okText: '确认回滚',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await Api.deployment.rollbackRelease(release.id);
-          message.success(`回滚任务已提交，来源 Release #${release.id}`);
-          await load();
-        } catch (err) {
-          handleApiError(err, '回滚失败');
-        }
-      },
-    });
+    try {
+      await Api.deployment.rollbackRelease(release.id);
+      message.success(`回滚任务已提交，来源 Release #${release.id}`);
+      await load();
+    } catch (err) {
+      handleApiError(err, '回滚失败');
+    }
   };
 
   if (!release && !loading) {
@@ -228,15 +209,31 @@ const DeploymentDetailPage: React.FC = () => {
               <Button type="primary" icon={<CheckOutlined />} onClick={handleApprove}>
                 审批通过
               </Button>
-              <Button danger icon={<CloseOutlined />} onClick={handleReject}>
-                拒绝
-              </Button>
+              <Popconfirm
+                title="确定拒绝此 Release？"
+                okText="确定"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                onConfirm={handleReject}
+              >
+                <Button danger icon={<CloseOutlined />}>
+                  拒绝
+                </Button>
+              </Popconfirm>
             </>
           )}
           {(release?.status === 'succeeded' || release?.status === 'applied') && (
-            <Button danger icon={<RollbackOutlined />} onClick={handleRollback}>
-              回滚
-            </Button>
+            <Popconfirm
+              title="确定回滚此 Release？"
+              okText="确定"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={handleRollback}
+            >
+              <Button danger icon={<RollbackOutlined />}>
+                回滚
+              </Button>
+            </Popconfirm>
           )}
         </Space>
       </div>
