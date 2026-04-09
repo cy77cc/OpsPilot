@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, InputNumber, Modal, Radio, Select, Space, Table, Tabs, Tag, message } from 'antd';
+import { Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Table, Tabs, Tag, message } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
@@ -89,23 +89,7 @@ const HostCredentialsPage: React.FC = () => {
     verifyForm.resetFields();
   };
 
-  // 删除 SSH 密钥
-  const onDeleteKey = (id: string, name: string) => {
-    Modal.confirm({
-      title: `确认删除密钥 ${name}`,
-      content: '删除后无法恢复',
-      onOk: async () => {
-        try {
-          await Api.hosts.deleteSSHKey(id);
-          message.success('删除成功');
-          loadKeys();
-        } catch (err: any) {
-          message.error(err?.message || '删除失败');
-        }
-      },
-    });
-  };
-
+  
   // 创建认证预设
   const onCreateTemplate = async () => {
     const values = await templateForm.validateFields();
@@ -128,23 +112,7 @@ const HostCredentialsPage: React.FC = () => {
     }
   };
 
-  // 删除认证预设
-  const onDeleteTemplate = (id: string, name: string) => {
-    Modal.confirm({
-      title: `确认删除预设 ${name}`,
-      content: '删除后无法恢复',
-      onOk: async () => {
-        try {
-          await Api.hosts.deleteCredentialTemplate(id);
-          message.success('删除成功');
-          loadTemplates();
-        } catch (err: any) {
-          message.error(err?.message || '删除失败');
-        }
-      },
-    });
-  };
-
+  
   const authType = Form.useWatch('authType', templateForm);
 
   const tabItems = [
@@ -181,9 +149,23 @@ const HostCredentialsPage: React.FC = () => {
                   <Button type="link" onClick={() => setVerifyOpen({ visible: true, keyId: row.id })}>
                     验证
                   </Button>
-                  <Button type="link" danger onClick={() => onDeleteKey(row.id, row.name)}>
-                    删除
-                  </Button>
+                  <Popconfirm
+                    title="确定删除此密钥？"
+                    okText="确定"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={async () => {
+                      try {
+                        await Api.hosts.deleteSSHKey(row.id);
+                        message.success('删除成功');
+                        loadKeys();
+                      } catch (err: any) {
+                        message.error(err?.message || '删除失败');
+                      }
+                    }}
+                  >
+                    <Button type="link" danger>删除</Button>
+                  </Popconfirm>
                 </Space>
               ),
             },
@@ -223,9 +205,23 @@ const HostCredentialsPage: React.FC = () => {
               title: '操作',
               width: 100,
               render: (_: unknown, row: CredentialTemplate) => (
-                <Button type="link" danger onClick={() => onDeleteTemplate(row.id, row.name)}>
-                  删除
-                </Button>
+                <Popconfirm
+                  title="确定删除此预设？"
+                  okText="确定"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    try {
+                      await Api.hosts.deleteCredentialTemplate(row.id);
+                      message.success('删除成功');
+                      loadTemplates();
+                    } catch (err: any) {
+                      message.error(err?.message || '删除失败');
+                    }
+                  }}
+                >
+                  <Button type="link" danger>删除</Button>
+                </Popconfirm>
               ),
             },
           ]}
