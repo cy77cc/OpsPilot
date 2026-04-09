@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Card, Drawer, Empty, Form, Input, Modal, Space, Table, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Drawer, Empty, Form, Input, Modal, Popconfirm, Space, Table, Tag, Tree, Typography, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { DataNode } from 'antd/es/tree';
 import { Api } from '../../api';
@@ -13,7 +13,6 @@ import {
   getFilteredPermissionCodes,
   groupPermissions,
   inverseSelection,
-  summarizePermissionChanges,
 } from './rbacPermissionUtils';
 
 const { Text } = Typography;
@@ -81,31 +80,7 @@ const RolesPage: React.FC = () => {
     void load();
   };
 
-  const deleteRole = async (role: Role) => {
-    if (!canWrite) return;
-    Modal.confirm({
-      title: '删除角色',
-      content: `将删除角色「${role.name}」，并解除关联授权。确认继续？`,
-      okText: '确认删除',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        const startedAt = performance.now();
-        await Api.rbac.deleteRole(role.id);
-        void Api.rbac.recordMigrationEvent({
-          eventType: 'governance_task',
-          action: 'role.delete',
-          status: 'success',
-          durationMs: Math.round(performance.now() - startedAt),
-        }).catch(() => undefined);
-        message.success('角色删除成功');
-        if (active?.id === role.id) {
-          setActive(null);
-        }
-        void load();
-      },
-    });
-  };
-
+  
   const openRoleDetail = (role: Role) => {
     setActive(role);
     setPermissionQuery('');
@@ -173,31 +148,26 @@ const RolesPage: React.FC = () => {
 
   const saveRolePermissions = async () => {
     if (!active || !canWrite) return;
-    const values = await detailForm.validateFields();
-    const summary = summarizePermissionChanges(active.permissions || [], editingPermissions);
-
-    Modal.confirm({
-      title: '确认更新角色权限',
-      content: `本次新增 ${summary.added} 项、移除 ${summary.removed} 项权限，影响对象：1 个角色。是否继续？`,
-      okText: '确认更新',
-      onOk: async () => {
-        const startedAt = performance.now();
-        await Api.rbac.updateRole(active.id, {
-          name: values.name,
-          description: values.description,
-          permissions: editingPermissions,
-        });
-        void Api.rbac.recordMigrationEvent({
-          eventType: 'governance_task',
-          action: 'role.update_permissions',
-          status: 'success',
-          durationMs: Math.round(performance.now() - startedAt),
-        }).catch(() => undefined);
-        message.success('角色权限更新成功');
-        setActive(null);
-        void load();
-      },
-    });
+    try {
+      const values = await detailForm.validateFields();
+      const startedAt = performance.now();
+      await Api.rbac.updateRole(active.id, {
+        name: values.name,
+        description: values.description,
+        permissions: editingPermissions,
+      });
+      void Api.rbac.recordMigrationEvent({
+        eventType: 'governance_task',
+        action: 'role.update_permissions',
+        status: 'success',
+        durationMs: Math.round(performance.now() - startedAt),
+      }).catch(() => undefined);
+      message.success('角色权限更新成功');
+      setActive(null);
+      void load();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '更新失败');
+    }
   };
 
   if (accessDenied) {
@@ -291,19 +261,42 @@ const RolesPage: React.FC = () => {
                   </Button>
                 ) : null}
                 {canWrite ? (
-                  <Button
-                    type="link"
-                    danger
-                    icon={<DeleteOutlined />}
-                    className="governance-action-btn"
-                    aria-label={`删除角色 ${row.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void deleteRole(row);
+                  <Popconfirm
+                    title="确定删除此角色？"
+                    okText="确定"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={async () => {
+                      try {
+                        const startedAt = performance.now();
+                        await Api.rbac.deleteRole(row.id);
+                        void Api.rbac.recordMigrationEvent({
+                          eventType: 'governance_task',
+                          action: 'role.delete',
+                          status: 'success',
+                          durationMs: Math.round(performance.now() - startedAt),
+                        }).catch(() => undefined);
+                        message.success('角色删除成功');
+                        if (active?.id === row.id) {
+                          setActive(null);
+                        }
+                        void load();
+                      } catch (err: unknown) {
+                        message.error(err instanceof Error ? err.message : '删除失败');
+                      }
                     }}
                   >
-                    删除
-                  </Button>
+                    <Button
+                      type="link"
+                      danger
+                      icon={<DeleteOutlined />}
+                      className="governance-action-btn"
+                      aria-label={`删除角色 ${row.name}`}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      删除
+                    </Button>
+                  </Popconfirm>
                 ) : null}
               </Space>
             ),
@@ -340,7 +333,16 @@ const RolesPage: React.FC = () => {
         open={Boolean(active)}
         onClose={() => setActive(null)}
         width={760}
-        extra={canWrite ? <Button className="governance-action-btn" type="primary" onClick={() => void saveRolePermissions()}>保存变更</Button> : null}
+        extra={canWrite ? (
+          <Popconfirm
+            title="确定更新角色权限？"
+            okText="确定"
+            cancelText="取消"
+            onConfirm={() => void saveRolePermissions()}
+          >
+            <Button className="governance-action-btn" type="primary">保存变更</Button>
+          </Popconfirm>
+        ) : null}
       >
         <Form form={detailForm} layout="vertical">
           <Form.Item name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}>
