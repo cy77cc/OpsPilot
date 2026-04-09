@@ -356,7 +356,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     }
     loadNotifications();
     // 注意：轮询由 WebSocket 状态变化时自动处理，不在这里启动
-  }, [hasAuth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasAuth]);
 
   // 当 WebSocket 状态变化时处理轮询
   useEffect(() => {
