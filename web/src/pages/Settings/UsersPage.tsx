@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Card, Drawer, Empty, Form, Input, Modal, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Card, Drawer, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import type { Role, User } from '../../api/modules/rbac';
@@ -98,57 +98,28 @@ const UsersPage: React.FC = () => {
 
   const submitEdit = async () => {
     if (!canWrite || !editingUser) return;
-    const values = await editForm.validateFields();
-
-    Modal.confirm({
-      title: '确认更新用户',
-      content: `将更新用户「${editingUser.username}」的账号信息和角色绑定，确认继续？`,
-      okText: '确认更新',
-      onOk: async () => {
-        const startedAt = performance.now();
-        await Api.rbac.updateUser(editingUser.id, {
-          email: values.email,
-          roles: values.roles,
-          status: values.status,
-          password: values.password || undefined,
-        });
-        void Api.rbac.recordMigrationEvent({
-          eventType: 'governance_task',
-          action: 'user.update',
-          status: 'success',
-          durationMs: Math.round(performance.now() - startedAt),
-        }).catch(() => undefined);
-        message.success('用户更新成功');
-        setEditOpen(false);
-        setEditingUser(null);
-        void load();
-      },
-    });
-  };
-
-  const remove = async (user: User) => {
-    if (!canWrite) return;
-    Modal.confirm({
-      title: '删除用户',
-      content: `将删除用户「${user.username}」，本次操作影响 1 个用户账号，确认继续？`,
-      okText: '确认删除',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        const startedAt = performance.now();
-        await Api.rbac.deleteUser(user.id);
-        void Api.rbac.recordMigrationEvent({
-          eventType: 'governance_task',
-          action: 'user.delete',
-          status: 'success',
-          durationMs: Math.round(performance.now() - startedAt),
-        }).catch(() => undefined);
-        message.success('删除成功');
-        if (active?.id === user.id) {
-          setActive(null);
-        }
-        void load();
-      },
-    });
+    try {
+      const values = await editForm.validateFields();
+      const startedAt = performance.now();
+      await Api.rbac.updateUser(editingUser.id, {
+        email: values.email,
+        roles: values.roles,
+        status: values.status,
+        password: values.password || undefined,
+      });
+      void Api.rbac.recordMigrationEvent({
+        eventType: 'governance_task',
+        action: 'user.update',
+        status: 'success',
+        durationMs: Math.round(performance.now() - startedAt),
+      }).catch(() => undefined);
+      message.success('用户更新成功');
+      setEditOpen(false);
+      setEditingUser(null);
+      void load();
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '更新失败');
+    }
   };
 
   const filtered = list.filter((item) => {
@@ -250,18 +221,42 @@ const UsersPage: React.FC = () => {
                     </Button>
                   ) : null}
                   {canWrite ? (
-                    <Button
-                      className="governance-action-btn"
-                      danger
-                      type="link"
-                      aria-label={`删除用户 ${row.username}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void remove(row);
+                    <Popconfirm
+                      title="确定删除此用户？"
+                      okText="确定"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={async (event) => {
+                        event?.stopPropagation();
+                        try {
+                          const startedAt = performance.now();
+                          await Api.rbac.deleteUser(row.id);
+                          void Api.rbac.recordMigrationEvent({
+                            eventType: 'governance_task',
+                            action: 'user.delete',
+                            status: 'success',
+                            durationMs: Math.round(performance.now() - startedAt),
+                          }).catch(() => undefined);
+                          message.success('删除成功');
+                          if (active?.id === row.id) {
+                            setActive(null);
+                          }
+                          void load();
+                        } catch (err: unknown) {
+                          message.error(err instanceof Error ? err.message : '删除失败');
+                        }
                       }}
                     >
-                      删除
-                    </Button>
+                      <Button
+                        className="governance-action-btn"
+                        danger
+                        type="link"
+                        aria-label={`删除用户 ${row.username}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
                   ) : null}
                 </Space>
               ),
@@ -289,8 +284,22 @@ const UsersPage: React.FC = () => {
           setEditOpen(false);
           setEditingUser(null);
         }}
-        onOk={() => void submitEdit()}
-        okButtonProps={{ disabled: !canWrite }}
+        footer={(
+          <Space>
+            <Button onClick={() => {
+              setEditOpen(false);
+              setEditingUser(null);
+            }}>取消</Button>
+            <Popconfirm
+              title="确定更新此用户？"
+              okText="确定"
+              cancelText="取消"
+              onConfirm={() => void submitEdit()}
+            >
+              <Button type="primary" disabled={!canWrite}>保存</Button>
+            </Popconfirm>
+          </Space>
+        )}
       >
         <Form form={editForm} layout="vertical">
           <Form.Item label="用户名">

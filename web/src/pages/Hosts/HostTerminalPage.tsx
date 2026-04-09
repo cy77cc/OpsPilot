@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Breadcrumb, Button, Card, Col, Input, Modal, Row, Space, Spin, Tag, Typography, Upload, message } from 'antd';
+import { Alert, Breadcrumb, Button, Card, Col, Input, Modal, Popconfirm, Row, Space, Spin, Tag, Typography, Upload, message } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FileAddOutlined, FolderAddOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
@@ -11,6 +11,7 @@ import type { Host, HostFileItem } from '../../api/modules/hosts';
 import { useStableFetch } from '../../hooks';
 
 const { Text } = Typography;
+const TERMINAL_INPUT_BATCH_MS = 16;
 
 type ConnStatus = 'idle' | 'connecting' | 'connected' | 'closed' | 'error';
 
@@ -22,8 +23,11 @@ const HostTerminalPage: React.FC = () => {
   const resizeObserverRef = React.useRef<ResizeObserver | null>(null);
   const inputListenerRef = React.useRef<{ dispose: () => void } | null>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
+  const inputBufferRef = React.useRef('');
+  const inputFlushTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const terminalInitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const termWrapRef = React.useRef<HTMLDivElement>(null);
+  const filePaneRef = React.useRef<HTMLDivElement>(null);
   const [status, setStatus] = React.useState<ConnStatus>('idle');
   const [host, setHost] = React.useState<Host | null>(null);
   const [sessionID, setSessionID] = React.useState('');
@@ -38,8 +42,20 @@ const HostTerminalPage: React.FC = () => {
   const [newDirOpen, setNewDirOpen] = React.useState(false);
   const [newDirName, setNewDirName] = React.useState('');
   const [pathInput, setPathInput] = React.useState('.');
+  const [filePaneWidth, setFilePaneWidth] = React.useState(0);
 
-  const fileGridColumns = 'minmax(0, 1fr) 108px 88px 112px 88px';
+  const fileColumnMode = React.useMemo<'full' | 'compact' | 'minimal'>(() => {
+    if (filePaneWidth > 0 && filePaneWidth < 420) return 'minimal';
+    if (filePaneWidth > 0 && filePaneWidth < 560) return 'compact';
+    return 'full';
+  }, [filePaneWidth]);
+  const showMTime = fileColumnMode !== 'minimal';
+  const showSize = fileColumnMode === 'full';
+  const fileGridColumns = fileColumnMode === 'full'
+    ? 'minmax(120px, 1fr) 108px 72px 88px'
+    : fileColumnMode === 'compact'
+      ? 'minmax(140px, 1fr) 88px 88px'
+      : 'minmax(140px, 1fr) 88px';
 
   const setupTerminal = React.useCallback(() => {
     if (!termWrapRef.current || xtermRef.current) return false;
@@ -88,6 +104,40 @@ const HostTerminalPage: React.FC = () => {
     }
   }, []);
 
+  const clearPendingTerminalInput = React.useCallback(() => {
+    if (inputFlushTimerRef.current) {
+      clearTimeout(inputFlushTimerRef.current);
+      inputFlushTimerRef.current = null;
+    }
+    inputBufferRef.current = '';
+  }, []);
+
+  const flushPendingTerminalInput = React.useCallback((ws?: WebSocket | null) => {
+    if (inputFlushTimerRef.current) {
+      clearTimeout(inputFlushTimerRef.current);
+      inputFlushTimerRef.current = null;
+    }
+    const buffered = inputBufferRef.current;
+    inputBufferRef.current = '';
+    if (!buffered) return;
+    const target = ws ?? wsRef.current;
+    if (!target || target.readyState !== WebSocket.OPEN) return;
+    target.send(JSON.stringify({ type: 'input', input: buffered }));
+  }, []);
+
+  const queueTerminalInput = React.useCallback((ws: WebSocket, data: string) => {
+    if (!data) return;
+    inputBufferRef.current += data;
+    if (data.includes('\r') || data.includes('\u0003') || data.includes('\u0004')) {
+      flushPendingTerminalInput(ws);
+      return;
+    }
+    if (inputFlushTimerRef.current) return;
+    inputFlushTimerRef.current = setTimeout(() => {
+      flushPendingTerminalInput(ws);
+    }, TERMINAL_INPUT_BATCH_MS);
+  }, [flushPendingTerminalInput]);
+
   React.useEffect(() => {
     let cancelled = false;
     const tryInit = () => {
@@ -108,6 +158,7 @@ const HostTerminalPage: React.FC = () => {
         terminalInitTimerRef.current = null;
       }
       window.removeEventListener('resize', onResize);
+      clearPendingTerminalInput();
       wsRef.current?.close();
       wsRef.current = null;
       resizeObserverRef.current?.disconnect();
@@ -118,7 +169,26 @@ const HostTerminalPage: React.FC = () => {
       xtermRef.current = null;
       fitRef.current = null;
     };
-  }, [safeFit, setupTerminal]);
+  }, [clearPendingTerminalInput, safeFit, setupTerminal]);
+
+  React.useEffect(() => {
+    const pane = filePaneRef.current;
+    if (!pane) return;
+    const update = () => setFilePaneWidth(pane.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    if (status !== 'connected') return;
+    const raf = window.requestAnimationFrame(() => safeFit());
+    return () => window.cancelAnimationFrame(raf);
+  }, [status, filePaneWidth, safeFit]);
 
   const wsURLFromPath = (wsPath: string) => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -192,7 +262,7 @@ const HostTerminalPage: React.FC = () => {
           term.writeln(`\x1b[32mConnected to ${hostResp.data.name} (${hostResp.data.ip})\x1b[0m`);
           inputListenerRef.current?.dispose();
           inputListenerRef.current = term.onData((data) => {
-            ws.send(JSON.stringify({ type: 'input', input: data }));
+            queueTerminalInput(ws, data);
           });
           const fit = fitRef.current;
           const size = term.cols && term.rows ? { cols: term.cols, rows: term.rows } : { cols: 120, rows: 40 };
@@ -234,6 +304,7 @@ const HostTerminalPage: React.FC = () => {
           resizeObserverRef.current = null;
           inputListenerRef.current?.dispose();
           inputListenerRef.current = null;
+          clearPendingTerminalInput();
           xtermRef.current?.writeln('\r\n\x1b[90mSession closed\x1b[0m');
           connectingRef.current = false;
         };
@@ -258,7 +329,7 @@ const HostTerminalPage: React.FC = () => {
       // Reset connecting flag so reconnection can happen
       connectingRef.current = false;
     };
-  }, [id]); // Only depend on id - stable!
+  }, [clearPendingTerminalInput, id, queueTerminalInput]); // Only depend on id - stable!
 
   const connect = React.useCallback(async () => {
     // Manual reconnect - reset the flag first
@@ -286,7 +357,7 @@ const HostTerminalPage: React.FC = () => {
         term.writeln(`\x1b[32mConnected to ${hostResp.data.name} (${hostResp.data.ip})\x1b[0m`);
         inputListenerRef.current?.dispose();
         inputListenerRef.current = term.onData((data) => {
-          ws.send(JSON.stringify({ type: 'input', input: data }));
+          queueTerminalInput(ws, data);
         });
         const fit = fitRef.current;
         const size = term.cols && term.rows ? { cols: term.cols, rows: term.rows } : { cols: 120, rows: 40 };
@@ -326,6 +397,7 @@ const HostTerminalPage: React.FC = () => {
         resizeObserverRef.current = null;
         inputListenerRef.current?.dispose();
         inputListenerRef.current = null;
+        clearPendingTerminalInput();
         xtermRef.current?.writeln('\r\n\x1b[90mSession closed\x1b[0m');
         connectingRef.current = false;
       };
@@ -335,7 +407,7 @@ const HostTerminalPage: React.FC = () => {
       message.error(err instanceof Error ? err.message : '终端连接失败');
       connectingRef.current = false;
     }
-  }, [id]);
+  }, [clearPendingTerminalInput, id, queueTerminalInput]);
 
   React.useEffect(() => {
     const raf = window.requestAnimationFrame(() => {
@@ -345,6 +417,7 @@ const HostTerminalPage: React.FC = () => {
   }, [safeFit, fileModalOpen]);
 
   const closeSession = React.useCallback(async () => {
+    flushPendingTerminalInput();
     wsRef.current?.close();
     if (id && sessionID) {
       try {
@@ -354,7 +427,7 @@ const HostTerminalPage: React.FC = () => {
       }
     }
     setStatus('closed');
-  }, [id, sessionID]);
+  }, [flushPendingTerminalInput, id, sessionID]);
 
   const openFile = async (item: HostFileItem) => {
     if (!id) return;
@@ -388,23 +461,20 @@ const HostTerminalPage: React.FC = () => {
     }
   };
 
-  const removePath = (item: HostFileItem) => {
+  const handleDeletePath = async (item: HostFileItem) => {
     if (!id) return;
-    Modal.confirm({
-      title: `删除 ${item.name}`,
-      content: '此操作不可恢复，确认删除吗？',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        await Api.hosts.deletePath(id, item.path);
-        if (item.path === activeFilePath) {
-          setActiveFilePath('');
-          setModalContent('');
-          setModalDirty(false);
-          setFileModalOpen(false);
-        }
-        await refreshFiles(cwd);
-      },
-    });
+    try {
+      await Api.hosts.deletePath(id, item.path);
+      if (item.path === activeFilePath) {
+        setActiveFilePath('');
+        setModalContent('');
+        setModalDirty(false);
+        setFileModalOpen(false);
+      }
+      await refreshFiles(cwd);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '删除失败');
+    }
   };
 
   const renamePath = (item: HostFileItem) => {
@@ -450,31 +520,38 @@ const HostTerminalPage: React.FC = () => {
     return `${mm}-${dd} ${hh}:${min}`;
   }, []);
 
-  const requestCloseFileModal = React.useCallback(() => {
+  const handleCloseFileModal = React.useCallback(() => {
     if (!modalDirty) {
       setFileModalOpen(false);
-      return;
     }
-    Modal.confirm({
-      title: '放弃未保存修改？',
-      content: '当前文件尚未保存，确认关闭编辑窗口吗？',
-      okText: '放弃修改',
-      cancelText: '继续编辑',
-      onOk: () => setFileModalOpen(false),
-    });
   }, [modalDirty]);
 
+  const handleConfirmCloseFileModal = React.useCallback(() => {
+    setFileModalOpen(false);
+  }, []);
+
   return (
-    <div className="fade-in host-terminal-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <Breadcrumb className="mb-4">
+    <div
+      className="fade-in host-terminal-page"
+      style={{
+        flex: 1,
+        height: 'calc(100dvh - var(--app-shell-offset, 4rem) - (var(--app-content-y-padding, 1rem) * 2))',
+        minHeight: 0,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <Breadcrumb>
         <Breadcrumb.Item><Link to="/deployment/infrastructure/hosts">主机管理</Link></Breadcrumb.Item>
         <Breadcrumb.Item><Link to={`/deployment/infrastructure/hosts/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
         <Breadcrumb.Item>终端与文件</Breadcrumb.Item>
       </Breadcrumb>
 
       <Card
-        style={{ marginBottom: 8, borderRadius: 10, flex: 1, minHeight: 0, overflow: 'hidden' }}
-        styles={{ body: { minHeight: 0, height: '100%' } }}
+        style={{ borderRadius: 10, flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { padding: 12, minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
         title={
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/hosts/${id}`)}>返回</Button>
@@ -492,40 +569,44 @@ const HostTerminalPage: React.FC = () => {
           </Space>
         }
       >
-        <Row gutter={12} style={{ height: '100%', minHeight: 0 }} align="stretch">
-          <Col xs={24} xl={17} style={{ display: 'flex', minHeight: 0, minWidth: 0 }}>
+        <Row gutter={12} style={{ flex: 1, minHeight: 0 }} align="stretch">
+          <Col xs={24} xl={17} style={{ display: 'flex', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
             <Card
               size="small"
-              styles={{ body: { padding: 0, background: '#0e1117', height: '100%', minHeight: 0 } }}
-              style={{ borderRadius: 10, border: '1px solid #1f2937', width: '100%', height: '100%' }}
+              styles={{ body: { padding: 0, background: '#0e1117', minHeight: 0, flex: 1, display: 'flex', overflow: 'hidden' } }}
+              style={{ borderRadius: 10, border: '1px solid #1f2937', width: '100%', minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column' }}
             >
-              <div className="host-terminal-xterm" ref={termWrapRef} style={{ height: '100%', width: '100%', minHeight: 360 }} />
+              <div className="host-terminal-xterm" ref={termWrapRef} style={{ height: '100%', width: '100%', minHeight: 0 }} />
             </Card>
           </Col>
-          <Col xs={24} xl={7} style={{ display: 'flex', minHeight: 0, minWidth: 0, overflow: 'hidden', height: '100%' }}>
-            <Card
-              size="small"
-              title="文件管理"
-              extra={
-                <Space size={4}>
-                  <Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshFiles(cwd)} />
-                  <Button size="small" icon={<FolderAddOutlined />} onClick={() => setNewDirOpen(true)} />
-                  <Upload
-                    showUploadList={false}
-                    customRequest={async (opt) => {
-                      const file = opt.file as File;
-                      await Api.hosts.uploadFile(id, cwd, file);
-                      opt.onSuccess?.({}, new XMLHttpRequest());
-                      await refreshFiles(cwd);
-                    }}
-                  >
-                    <Button size="small" icon={<UploadOutlined />} />
-                  </Upload>
-                </Space>
-              }
-              style={{ borderRadius: 10, minHeight: 0, height: '100%' }}
-              styles={{ body: { display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, height: '100%', overflow: 'hidden' } }}
-            >
+          <Col xs={24} xl={7} style={{ display: 'flex', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+            <div ref={filePaneRef} style={{ width: '100%', minHeight: 0, display: 'flex' }}>
+              <Card
+                size="small"
+                title="文件管理"
+                extra={
+                  <Space size={4}>
+                    <Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshFiles(cwd)} />
+                    <Button size="small" icon={<FolderAddOutlined />} onClick={() => setNewDirOpen(true)} />
+                    <Upload
+                      showUploadList={false}
+                      customRequest={async (opt) => {
+                        const file = opt.file as File;
+                        await Api.hosts.uploadFile(id, cwd, file);
+                        opt.onSuccess?.({}, new XMLHttpRequest());
+                        await refreshFiles(cwd);
+                      }}
+                    >
+                      <Button size="small" icon={<UploadOutlined />} />
+                    </Upload>
+                  </Space>
+                }
+                style={{ borderRadius: 10, minHeight: 0, width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
+                styles={{
+                  header: { minHeight: 40, padding: '0 12px' },
+                  body: { padding: '8px 12px 10px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0, flex: 1, overflow: 'hidden' },
+                }}
+              >
               <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                 <Text type="secondary">目录: {cwd}</Text>
                 <Space.Compact style={{ width: 220 }}>
@@ -553,9 +634,8 @@ const HostTerminalPage: React.FC = () => {
                 }}
               >
                 <span>名称</span>
-                <span>修改时间</span>
-                <span style={{ textAlign: 'right' }}>大小</span>
-                <span>权限</span>
+                {showMTime ? <span>修改时间</span> : null}
+                {showSize ? <span style={{ textAlign: 'right' }}>大小</span> : null}
                 <span />
               </div>
               <div style={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', flex: 1, minHeight: 0 }}>
@@ -569,9 +649,8 @@ const HostTerminalPage: React.FC = () => {
                     >
                       <span title="..">📁 ..</span>
                     </div>
-                    <span>-</span>
-                    <span style={{ textAlign: 'right' }}>-</span>
-                    <span>drwxr-xr-x</span>
+                    {showMTime ? <span>-</span> : null}
+                    {showSize ? <span style={{ textAlign: 'right' }}>-</span> : null}
                     <span />
                   </div>
                 ) : null}
@@ -596,39 +675,62 @@ const HostTerminalPage: React.FC = () => {
                         {item.is_dir ? '📁' : '📄'} {item.name}
                       </span>
                     </div>
-                    <span>{formatLsTime(item.updated_at)}</span>
-                    <span style={{ textAlign: 'right' }}>{item.is_dir ? '-' : String(item.size ?? 0)}</span>
-                    <span>{item.mode || '-'}</span>
+                    {showMTime ? <span>{formatLsTime(item.updated_at)}</span> : null}
+                    {showSize ? <span style={{ textAlign: 'right' }}>{item.is_dir ? '-' : String(item.size ?? 0)}</span> : null}
                     <Space size={0} style={{ justifyContent: 'flex-end' }}>
                       {!item.is_dir ? <Button type="text" size="small" icon={<DownloadOutlined />} onClick={() => void downloadFile(item)} /> : null}
                       <Button type="text" size="small" icon={<EditOutlined />} onClick={() => renamePath(item)} />
-                      <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => removePath(item)} />
+                      <Popconfirm
+                        title={`确定删除 ${item.name}？`}
+                        okText="确定"
+                        cancelText="取消"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => void handleDeletePath(item)}
+                      >
+                        <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
                     </Space>
                   </div>
                 ))}
               </div>
-            </Card>
+              </Card>
+            </div>
           </Col>
         </Row>
       </Card>
 
-      <div style={{ overflow: 'hidden', flexShrink: 0 }}>
-        <Alert
-          type="info"
-          showIcon
-          message="终端和文件管理都通过主机 SSH 实时执行；删除/覆盖操作请谨慎。"
-        />
-      </div>
-
       <Modal
         open={fileModalOpen}
         title={activeFilePath ? <Text ellipsis={{ tooltip: activeFilePath }} style={{ maxWidth: '100%', display: 'block' }}>{`编辑: ${activeFilePath}`}</Text> : '文件编辑'}
-        onCancel={requestCloseFileModal}
+        onCancel={() => {
+          if (!modalDirty) {
+            setFileModalOpen(false);
+          } else {
+            Modal.confirm({
+              title: '放弃未保存修改？',
+              content: '当前文件尚未保存，确认关闭编辑窗口吗？',
+              okText: '放弃修改',
+              cancelText: '继续编辑',
+              onOk: handleConfirmCloseFileModal,
+            });
+          }
+        }}
         width="80vw"
         styles={{ body: { height: '80vh', display: 'flex', flexDirection: 'column', minHeight: 0 } }}
         footer={(
           <Space>
-            <Button onClick={requestCloseFileModal}>取消</Button>
+            {modalDirty ? (
+              <Popconfirm
+                title="放弃未保存修改？"
+                okText="放弃"
+                cancelText="继续编辑"
+                onConfirm={handleConfirmCloseFileModal}
+              >
+                <Button>取消</Button>
+              </Popconfirm>
+            ) : (
+              <Button onClick={handleCloseFileModal}>取消</Button>
+            )}
             <Button type="primary" icon={<SaveOutlined />} loading={modalSaving} onClick={() => void saveFile()}>保存</Button>
           </Space>
         )}
