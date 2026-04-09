@@ -866,40 +866,26 @@ const ClusterDetailPage: React.FC = () => {
 
   const handleServiceDelete = useCallback((service: ServiceInfo) => {
     if (!clusterId) return;
-    Modal.confirm({
-      title: '删除 Service',
-      content: `确定要删除 Service ${service.name} 吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => executeClusterOperation(
-        'service.delete',
-        `service:${service.name}:delete`,
-        `service:${service.name}`,
-        'Service 删除',
-        (approvalToken) => Api.cluster.deleteService(clusterId, selectedNamespace, service.name, { approval_token: approvalToken }).then((resp) => resp.data),
-        refreshSelectedNamespaceResources,
-      ),
-    });
+    return executeClusterOperation(
+      'service.delete',
+      `service:${service.name}:delete`,
+      `service:${service.name}`,
+      'Service 删除',
+      (approvalToken) => Api.cluster.deleteService(clusterId, selectedNamespace, service.name, { approval_token: approvalToken }).then((resp) => resp.data),
+      refreshSelectedNamespaceResources,
+    );
   }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
   const handleIngressDelete = useCallback((ingress: IngressInfo) => {
     if (!clusterId) return;
-    Modal.confirm({
-      title: '删除 Ingress',
-      content: `确定要删除 Ingress ${ingress.name} 吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => executeClusterOperation(
-        'ingress.delete',
-        `ingress:${ingress.name}:delete`,
-        `ingress:${ingress.name}`,
-        'Ingress 删除',
-        (approvalToken) => Api.cluster.deleteIngress(clusterId, selectedNamespace, ingress.name, { approval_token: approvalToken }).then((resp) => resp.data),
-        refreshSelectedNamespaceResources,
-      ),
-    });
+    return executeClusterOperation(
+      'ingress.delete',
+      `ingress:${ingress.name}:delete`,
+      `ingress:${ingress.name}`,
+      'Ingress 删除',
+      (approvalToken) => Api.cluster.deleteIngress(clusterId, selectedNamespace, ingress.name, { approval_token: approvalToken }).then((resp) => resp.data),
+      refreshSelectedNamespaceResources,
+    );
   }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
   useEffect(() => {
@@ -1021,43 +1007,32 @@ const ClusterDetailPage: React.FC = () => {
   }, [clusterId, performNodeOperation]);
 
   const handleRenewCertificates = useCallback(() => {
-    Modal.confirm({
-      title: '续期证书',
-      content: '确定要续期所有证书吗？此操作将重启控制平面组件。',
-      okText: '确定',
-      cancelText: '取消',
-      onOk: () => executeClusterOperation(
-        'renew-certificates',
-        'cluster:certificates',
-        'cluster:certificates',
-        '证书续期',
-        (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
-      ),
-    });
+    if (!clusterId) return;
+    return executeClusterOperation(
+      'renew-certificates',
+      'cluster:certificates',
+      'cluster:certificates',
+      '证书续期',
+      (approvalToken) => Api.cluster.renewCertificates(clusterId, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
   }, [clusterId, executeClusterOperation]);
 
   const handleClusterUpgrade = useCallback(() => {
-    if (!upgradePlan) return;
+    if (!clusterId || !upgradePlan) return;
     const currentParts = upgradePlan.current_version.replace('v', '').split('.');
     const nextMinor = parseInt(currentParts[1], 10) + 1;
     const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
 
-    Modal.confirm({
-      title: '升级集群',
-      content: '确定要升级集群吗？建议先备份数据。',
-      okText: '确定',
-      cancelText: '取消',
-      onOk: () => executeClusterOperation(
-        'upgrade',
-        `cluster:upgrade:${targetVersion}`,
-        'cluster:upgrade',
-        '集群升级',
-        (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
-          target_version: targetVersion,
-          approval_token: approvalToken,
-        }).then((resp) => resp.data),
-      ),
-    });
+    return executeClusterOperation(
+      'upgrade',
+      `cluster:upgrade:${targetVersion}`,
+      'cluster:upgrade',
+      '集群升级',
+      (approvalToken) => Api.cluster.upgradeCluster(clusterId, {
+        target_version: targetVersion,
+        approval_token: approvalToken,
+      }).then((resp) => resp.data),
+    );
   }, [clusterId, executeClusterOperation, upgradePlan]);
 
   const handleDeploymentRestart = useCallback((deployment: DeploymentInfo) => {
@@ -1086,19 +1061,12 @@ const ClusterDetailPage: React.FC = () => {
 
   const handleDeploymentDelete = useCallback((deployment: DeploymentInfo) => {
     if (!clusterId) return;
-    Modal.confirm({
-      title: '删除 Deployment',
-      content: `确定要删除 Deployment ${deployment.name} 吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => executeWorkloadOperation(
-        'deployment.delete',
-        `deployment:${deployment.name}`,
-        'Deployment 删除',
-        (approvalToken) => Api.cluster.deleteDeployment(clusterId, selectedNamespace, deployment.name, { approval_token: approvalToken }).then((resp) => resp.data),
-      ),
-    });
+    return executeWorkloadOperation(
+      'deployment.delete',
+      `deployment:${deployment.name}`,
+      'Deployment 删除',
+      (approvalToken) => Api.cluster.deleteDeployment(clusterId, selectedNamespace, deployment.name, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handleStatefulSetRestart = useCallback((statefulset: StatefulSetInfo) => {
@@ -1127,36 +1095,22 @@ const ClusterDetailPage: React.FC = () => {
 
   const handleStatefulSetDelete = useCallback((statefulset: StatefulSetInfo) => {
     if (!clusterId) return;
-    Modal.confirm({
-      title: '删除 StatefulSet',
-      content: `确定要删除 StatefulSet ${statefulset.name} 吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => executeWorkloadOperation(
-        'statefulset.delete',
-        `statefulset:${statefulset.name}`,
-        'StatefulSet 删除',
-        (approvalToken) => Api.cluster.deleteStatefulSet(clusterId, selectedNamespace, statefulset.name, { approval_token: approvalToken }).then((resp) => resp.data),
-      ),
-    });
+    return executeWorkloadOperation(
+      'statefulset.delete',
+      `statefulset:${statefulset.name}`,
+      'StatefulSet 删除',
+      (approvalToken) => Api.cluster.deleteStatefulSet(clusterId, selectedNamespace, statefulset.name, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handlePodDelete = useCallback((pod: PodInfo) => {
     if (!clusterId) return;
-    Modal.confirm({
-      title: '删除 Pod',
-      content: `确定要删除 Pod ${pod.name} 吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => executeWorkloadOperation(
-        'pod.delete',
-        `pod:${pod.name}`,
-        'Pod 删除',
-        (approvalToken) => Api.cluster.deletePod(clusterId, selectedNamespace, pod.name, { approval_token: approvalToken }).then((resp) => resp.data),
-      ),
-    });
+    return executeWorkloadOperation(
+      'pod.delete',
+      `pod:${pod.name}`,
+      'Pod 删除',
+      (approvalToken) => Api.cluster.deletePod(clusterId, selectedNamespace, pod.name, { approval_token: approvalToken }).then((resp) => resp.data),
+    );
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const getStatusColor = (status: string) => {
@@ -1311,15 +1265,22 @@ const ClusterDetailPage: React.FC = () => {
           >
             扩缩容
           </Button>
-          <Button
-            size="small"
-            danger
-            aria-label={`删除 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'} ${record.name}`}
-            loading={nodeMutationLoadingKey === `${kind}:${record.name}:${kind}.delete`}
-            onClick={() => { onDelete(record); }}
+          <Popconfirm
+            title={`确定删除此 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'}？`}
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => { void onDelete(record); }}
           >
-            删除
-          </Button>
+            <Button
+              size="small"
+              danger
+              aria-label={`删除 ${kind === 'deployment' ? 'Deployment' : 'StatefulSet'} ${record.name}`}
+              loading={nodeMutationLoadingKey === `${kind}:${record.name}:${kind}.delete`}
+            >
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -1346,15 +1307,22 @@ const ClusterDetailPage: React.FC = () => {
       title: '操作',
       key: 'actions',
       render: (_: any, record: PodInfo) => (
-        <Button
-          size="small"
-          danger
-          aria-label={`删除 Pod ${record.name}`}
-          loading={nodeMutationLoadingKey === `pod:${record.name}:pod.delete`}
-          onClick={() => { handlePodDelete(record); }}
+        <Popconfirm
+          title="确定删除此 Pod？"
+          okText="确定"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => { void handlePodDelete(record); }}
         >
-          删除
-        </Button>
+          <Button
+            size="small"
+            danger
+            aria-label={`删除 Pod ${record.name}`}
+            loading={nodeMutationLoadingKey === `pod:${record.name}:pod.delete`}
+          >
+            删除
+          </Button>
+        </Popconfirm>
       ),
     },
   ];
@@ -1383,9 +1351,17 @@ const ClusterDetailPage: React.FC = () => {
           <Button size="small" aria-label={`编辑 Service ${record.name}`} onClick={() => { openServiceModal('edit', record); }}>
             编辑
           </Button>
-          <Button size="small" danger aria-label={`删除 Service ${record.name}`} onClick={() => { handleServiceDelete(record); }}>
-            删除
-          </Button>
+          <Popconfirm
+            title="确定删除此 Service？"
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => { void handleServiceDelete(record); }}
+          >
+            <Button size="small" danger aria-label={`删除 Service ${record.name}`}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -1422,9 +1398,17 @@ const ClusterDetailPage: React.FC = () => {
           <Button size="small" aria-label={`编辑 Ingress ${record.name}`} onClick={() => { openIngressModal('edit', record); }}>
             编辑
           </Button>
-          <Button size="small" danger aria-label={`删除 Ingress ${record.name}`} onClick={() => { handleIngressDelete(record); }}>
-            删除
-          </Button>
+          <Popconfirm
+            title="确定删除此 Ingress？"
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => { void handleIngressDelete(record); }}
+          >
+            <Button size="small" danger aria-label={`删除 Ingress ${record.name}`}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -1734,7 +1718,14 @@ const ClusterDetailPage: React.FC = () => {
               </Card>
               <Card title="证书信息" size="small" className="mb-4" extra={
                 cluster?.source === 'platform_managed' && (
-                  <Button size="small" icon={<SyncOutlined />} onClick={handleRenewCertificates}>续期证书</Button>
+                  <Popconfirm
+                    title="确定续期所有证书？此操作将重启控制平面组件。"
+                    okText="确定"
+                    cancelText="取消"
+                    onConfirm={() => { void handleRenewCertificates(); }}
+                  >
+                    <Button size="small" icon={<SyncOutlined />}>续期证书</Button>
+                  </Popconfirm>
                 )
               }>
                 {renderFeedback('cluster:certificates')}
@@ -1751,7 +1742,14 @@ const ClusterDetailPage: React.FC = () => {
               {upgradePlan && cluster?.source === 'platform_managed' && (
                 <Card title="升级计划" size="small" extra={
                   upgradePlan.upgradable && (
-                    <Button size="small" type="primary" onClick={handleClusterUpgrade}>升级集群</Button>
+                    <Popconfirm
+                      title="确定升级集群？建议先备份数据。"
+                      okText="确定"
+                      cancelText="取消"
+                      onConfirm={() => { void handleClusterUpgrade(); }}
+                    >
+                      <Button size="small" type="primary">升级集群</Button>
+                    </Popconfirm>
                   )
                 }>
                   <Descriptions column={1} size="small">
