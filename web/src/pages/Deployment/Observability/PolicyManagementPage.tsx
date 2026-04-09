@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Space, Table, Modal, Form, Input, Select, message, Tabs, Switch, Tag } from 'antd';
-import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Button, Space, Table, Modal, Popconfirm, Form, Input, Select, message, Tabs, Switch, Tag } from 'antd';
+import { PlusOutlined, ReloadOutlined, EditOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Api } from '../../../api';
 import type { Policy } from '../../../api/modules/deployment';
@@ -51,25 +51,7 @@ const PolicyManagementPage: React.FC = () => {
     setModalVisible(true);
   };
 
-  const handleDelete = async (id: number) => {
-    Modal.confirm({
-      title: '确认删除',
-      content: '确定要删除此策略吗？',
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await Api.deployment.deletePolicy(id);
-          message.success('策略已删除');
-          load();
-        } catch (err) {
-          message.error('删除失败');
-        }
-      },
-    });
-  };
-
+  
   const handleToggleEnabled = async (policy: Policy) => {
     try {
       await Api.deployment.updatePolicy(policy.id, { enabled: !policy.enabled });
@@ -173,15 +155,23 @@ const PolicyManagementPage: React.FC = () => {
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
             编辑
           </Button>
-          <Button
-            type="link"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(record.id)}
+          <Popconfirm
+            title="确定删除此策略？"
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={async () => {
+              try {
+                await Api.deployment.deletePolicy(record.id);
+                message.success('策略已删除');
+                load();
+              } catch (err: unknown) {
+                message.error(err instanceof Error ? err.message : '删除失败');
+              }
+            }}
           >
-            删除
-          </Button>
+            <Button danger size="small">删除</Button>
+          </Popconfirm>
         </Space>
       ),
     },
