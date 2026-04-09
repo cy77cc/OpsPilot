@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Radio,
   Row,
   Select,
@@ -239,25 +240,19 @@ const HostDetailPage: React.FC = () => {
             <Button onClick={() => void runHealthCheck()}>健康检查</Button>
             <Button onClick={() => runAction('restart', true)}>重启</Button>
             <Button danger onClick={() => runAction('shutdown', true)}>关机</Button>
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => {
-                Modal.confirm({
-                  title: '确认删除主机',
-                  content: `确定要删除主机 "${host?.name}" (${host?.ip}) 吗？此操作不可恢复。`,
-                  okText: '确认删除',
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await Api.hosts.deleteHost(id);
-                    message.success('主机已删除');
-                    navigate('/deployment/infrastructure/hosts');
-                  },
-                });
+            <Popconfirm
+              title="确定删除此主机？"
+              okText="确定"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={async () => {
+                await Api.hosts.deleteHost(id);
+                message.success('主机已删除');
+                navigate('/deployment/infrastructure/hosts');
               }}
             >
-              删除
-            </Button>
+              <Button danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
           </Space>
         )}
       >
