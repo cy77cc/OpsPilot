@@ -79,7 +79,7 @@ vi.mock('../../api/modules/ai', async () => {
 const renderWithProviders = (component: React.ReactNode) => {
   return render(
     <BrowserRouter>
-      <NotificationProvider>
+      <NotificationProvider userId="1">
         {component}
       </NotificationProvider>
     </BrowserRouter>
@@ -89,6 +89,7 @@ const renderWithProviders = (component: React.ReactNode) => {
 describe('NotificationPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('token', 'test-token');
   });
 
   it('renders notification panel with title', async () => {

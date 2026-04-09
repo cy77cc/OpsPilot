@@ -7,7 +7,7 @@ import {
   SyncOutlined,
   EyeOutlined,
 } from '@ant-design/icons';
-import { hosts as mockHosts } from '../../data/mockData';
+import { hosts as mockHosts } from './mockHosts';
 import type { Host } from '../../types';
 
 const { Option } = Select;

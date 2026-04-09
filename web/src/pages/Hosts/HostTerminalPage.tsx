@@ -29,23 +29,17 @@ const HostTerminalPage: React.FC = () => {
   const [sessionID, setSessionID] = React.useState('');
   const [cwd, setCwd] = React.useState('.');
   const [files, setFiles] = React.useState<HostFileItem[]>([]);
-  const [selectedFile, setSelectedFile] = React.useState('');
-  const [selectedContent, setSelectedContent] = React.useState('');
+  const [activeFilePath, setActiveFilePath] = React.useState('');
+  const [fileModalOpen, setFileModalOpen] = React.useState(false);
+  const [modalContent, setModalContent] = React.useState('');
   const [filesLoading, setFilesLoading] = React.useState(false);
-  const [editing, setEditing] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
+  const [modalDirty, setModalDirty] = React.useState(false);
+  const [modalSaving, setModalSaving] = React.useState(false);
   const [newDirOpen, setNewDirOpen] = React.useState(false);
   const [newDirName, setNewDirName] = React.useState('');
-  const [editorSize, setEditorSize] = React.useState<'sm' | 'md' | 'lg'>('md');
   const [pathInput, setPathInput] = React.useState('.');
 
-  const pageHeight = 'calc(100vh - 112px)';
   const fileGridColumns = 'minmax(0, 1fr) 108px 88px 112px 88px';
-  const rightPanelSplitMap: Record<'sm' | 'md' | 'lg', string> = {
-    sm: 'minmax(0, 64fr) minmax(0, 36fr)',
-    md: 'minmax(0, 58fr) minmax(0, 42fr)',
-    lg: 'minmax(0, 52fr) minmax(0, 48fr)',
-  };
 
   const setupTerminal = React.useCallback(() => {
     if (!termWrapRef.current || xtermRef.current) return false;
@@ -348,7 +342,7 @@ const HostTerminalPage: React.FC = () => {
       safeFit();
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [editorSize, safeFit, selectedFile]);
+  }, [safeFit, fileModalOpen]);
 
   const closeSession = React.useCallback(async () => {
     wsRef.current?.close();
@@ -370,26 +364,27 @@ const HostTerminalPage: React.FC = () => {
     }
     try {
       const res = await Api.hosts.readFile(id, item.path);
-      setSelectedFile(item.path);
-      setSelectedContent(res.data.content || '');
-      setEditing(false);
+      setActiveFilePath(item.path);
+      setModalContent(res.data.content || '');
+      setModalDirty(false);
+      setFileModalOpen(true);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '读取文件失败');
     }
   };
 
   const saveFile = async () => {
-    if (!id || !selectedFile) return;
-    setSaving(true);
+    if (!id || !activeFilePath) return;
+    setModalSaving(true);
     try {
-      await Api.hosts.writeFile(id, selectedFile, selectedContent);
-      setEditing(false);
+      await Api.hosts.writeFile(id, activeFilePath, modalContent);
+      setModalDirty(false);
       message.success('文件已保存');
       await refreshFiles(cwd);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '保存失败');
     } finally {
-      setSaving(false);
+      setModalSaving(false);
     }
   };
 
@@ -401,9 +396,11 @@ const HostTerminalPage: React.FC = () => {
       okButtonProps: { danger: true },
       onOk: async () => {
         await Api.hosts.deletePath(id, item.path);
-        if (item.path === selectedFile) {
-          setSelectedFile('');
-          setSelectedContent('');
+        if (item.path === activeFilePath) {
+          setActiveFilePath('');
+          setModalContent('');
+          setModalDirty(false);
+          setFileModalOpen(false);
         }
         await refreshFiles(cwd);
       },
@@ -453,8 +450,22 @@ const HostTerminalPage: React.FC = () => {
     return `${mm}-${dd} ${hh}:${min}`;
   }, []);
 
+  const requestCloseFileModal = React.useCallback(() => {
+    if (!modalDirty) {
+      setFileModalOpen(false);
+      return;
+    }
+    Modal.confirm({
+      title: '放弃未保存修改？',
+      content: '当前文件尚未保存，确认关闭编辑窗口吗？',
+      okText: '放弃修改',
+      cancelText: '继续编辑',
+      onOk: () => setFileModalOpen(false),
+    });
+  }, [modalDirty]);
+
   return (
-    <div className="fade-in host-terminal-page" style={{ height: pageHeight, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div className="fade-in host-terminal-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <Breadcrumb className="mb-4">
         <Breadcrumb.Item><Link to="/deployment/infrastructure/hosts">主机管理</Link></Breadcrumb.Item>
         <Breadcrumb.Item><Link to={`/deployment/infrastructure/hosts/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
@@ -482,7 +493,7 @@ const HostTerminalPage: React.FC = () => {
         }
       >
         <Row gutter={12} style={{ height: '100%', minHeight: 0 }} align="stretch">
-          <Col xs={24} xl={16} style={{ display: 'flex', minHeight: 0, minWidth: 0 }}>
+          <Col xs={24} xl={17} style={{ display: 'flex', minHeight: 0, minWidth: 0 }}>
             <Card
               size="small"
               styles={{ body: { padding: 0, background: '#0e1117', height: '100%', minHeight: 0 } }}
@@ -491,19 +502,7 @@ const HostTerminalPage: React.FC = () => {
               <div className="host-terminal-xterm" ref={termWrapRef} style={{ height: '100%', width: '100%', minHeight: 360 }} />
             </Card>
           </Col>
-          <Col
-            xs={24}
-            xl={8}
-              style={{
-                display: 'grid',
-                gridTemplateRows: rightPanelSplitMap[editorSize],
-                gap: 8,
-                minHeight: 0,
-                minWidth: 0,
-                overflow: 'hidden',
-                height: '100%',
-              }}
-          >
+          <Col xs={24} xl={7} style={{ display: 'flex', minHeight: 0, minWidth: 0, overflow: 'hidden', height: '100%' }}>
             <Card
               size="small"
               title="文件管理"
@@ -586,7 +585,7 @@ const HostTerminalPage: React.FC = () => {
                       columnGap: 12,
                       borderRadius: 8,
                       padding: '2px 8px',
-                      background: selectedFile === item.path ? '#e6f4ff' : 'transparent',
+                      background: activeFilePath === item.path ? '#e6f4ff' : 'transparent',
                     }}
                   >
                     <div
@@ -609,37 +608,6 @@ const HostTerminalPage: React.FC = () => {
                 ))}
               </div>
             </Card>
-
-            <Card
-              size="small"
-              title={selectedFile ? <Text ellipsis={{ tooltip: selectedFile }} style={{ maxWidth: '100%', display: 'block' }}>{`编辑: ${selectedFile}`}</Text> : '文件预览'}
-              extra={selectedFile ? (
-                <Space size={4}>
-                  <Button size="small" type={editorSize === 'sm' ? 'primary' : 'default'} onClick={() => setEditorSize('sm')}>缩小</Button>
-                  <Button size="small" type={editorSize === 'md' ? 'primary' : 'default'} onClick={() => setEditorSize('md')}>默认</Button>
-                  <Button size="small" type={editorSize === 'lg' ? 'primary' : 'default'} onClick={() => setEditorSize('lg')}>放大</Button>
-                  <Button size="small" icon={<SaveOutlined />} loading={saving} onClick={() => void saveFile()}>保存</Button>
-                </Space>
-              ) : null}
-              style={{ borderRadius: 10, minHeight: 0, height: '100%' }}
-              styles={{ body: { overflow: 'hidden', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column' } }}
-            >
-              {selectedFile ? (
-                <>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <Editor
-                      height="100%"
-                      defaultLanguage="yaml"
-                      value={selectedContent}
-                      onChange={(v) => { setSelectedContent(v || ''); setEditing(true); }}
-                      theme="vs-dark"
-                      options={{ minimap: { enabled: false }, fontSize: 13 }}
-                    />
-                  </div>
-                  {editing ? <Alert style={{ marginTop: 8 }} type="warning" showIcon message="内容已修改，记得保存。" /> : null}
-                </>
-              ) : <Text type="secondary">选择文件后在这里查看与编辑内容。</Text>}
-            </Card>
           </Col>
         </Row>
       </Card>
@@ -651,6 +619,32 @@ const HostTerminalPage: React.FC = () => {
           message="终端和文件管理都通过主机 SSH 实时执行；删除/覆盖操作请谨慎。"
         />
       </div>
+
+      <Modal
+        open={fileModalOpen}
+        title={activeFilePath ? <Text ellipsis={{ tooltip: activeFilePath }} style={{ maxWidth: '100%', display: 'block' }}>{`编辑: ${activeFilePath}`}</Text> : '文件编辑'}
+        onCancel={requestCloseFileModal}
+        width="80vw"
+        styles={{ body: { height: '80vh', display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+        footer={(
+          <Space>
+            <Button onClick={requestCloseFileModal}>取消</Button>
+            <Button type="primary" icon={<SaveOutlined />} loading={modalSaving} onClick={() => void saveFile()}>保存</Button>
+          </Space>
+        )}
+      >
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <Editor
+            height="100%"
+            defaultLanguage="yaml"
+            value={modalContent}
+            onChange={(v) => { setModalContent(v || ''); setModalDirty(true); }}
+            theme="vs-dark"
+            options={{ minimap: { enabled: false }, fontSize: 13 }}
+          />
+        </div>
+        {modalDirty ? <Alert style={{ marginTop: 8 }} type="warning" showIcon message="内容已修改，记得保存。" /> : null}
+      </Modal>
 
       <Modal
         open={newDirOpen}
