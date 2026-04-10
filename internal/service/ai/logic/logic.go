@@ -27,6 +27,7 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	serviceruntime "github.com/cy77cc/OpsPilot/internal/service/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
@@ -84,6 +85,10 @@ var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
 	return aicore.InitDeepAgent(ctx)
 }
 
+type runtimeKernel interface {
+	ResumeTransition(state serviceruntime.RunState) (serviceruntime.RunState, error)
+}
+
 // Logic 封装 AI 模块的核心业务逻辑。
 type Logic struct {
 	svcCtx             *svc.ServiceContext
@@ -98,6 +103,7 @@ type Logic struct {
 	AIRouter           adk.ResumableAgent
 	MigrationFlags     ApprovalEventMigrationFlags
 	projectionGroup    singleflight.Group
+	runtimeKernel      runtimeKernel
 }
 
 // NewAILogic 创建 Logic 实例。
@@ -124,6 +130,7 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 		MigrationFlags:     NewApprovalEventMigrationFlagsFromEnv(),
+		runtimeKernel:      serviceruntime.NewKernel(),
 	}
 }
 
@@ -141,7 +148,18 @@ func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(db),
 		RunContentDAO:      aidao.NewAIRunContentDAO(db),
 		AIRouter:           router,
+		runtimeKernel:      serviceruntime.NewKernel(),
 	}
+}
+
+// CanResumeSameRunStatus reports whether an approval resume transition should
+// remain within the same run attempt for the provided run status.
+func (l *Logic) CanResumeSameRunStatus(status string) bool {
+	if l == nil || l.runtimeKernel == nil {
+		return strings.EqualFold(strings.TrimSpace(status), "waiting_approval")
+	}
+	_, err := l.runtimeKernel.ResumeTransition(serviceruntime.RunState(strings.TrimSpace(status)))
+	return err == nil
 }
 
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
