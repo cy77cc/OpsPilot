@@ -12,5 +12,10 @@ import (
 
 // InitDeepAgent 初始化 DeepAgents 主入口。
 func InitDeepAgent(ctx context.Context) (adk.ResumableAgent, error) {
+	return InitDeepAgentPrimaryFirst(ctx)
+}
+
+// InitDeepAgentPrimaryFirst initializes the primary-agent-first entrypoint.
+func InitDeepAgentPrimaryFirst(ctx context.Context) (adk.ResumableAgent, error) {
 	return orchestrator.NewOpsPilotAgent(ctx)
 }

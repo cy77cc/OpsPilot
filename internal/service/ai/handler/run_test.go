@@ -10,6 +10,7 @@ import (
 
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	serviceruntime "github.com/cy77cc/OpsPilot/internal/service/ai/runtime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -131,5 +132,25 @@ func TestGetRun_ReturnsNotFoundForNonexistentRun(t *testing.T) {
 	// 2005 is the NotFound business code
 	if resp.Code != 2005 {
 		t.Fatalf("expected business code 2005 (NotFound), got %d", resp.Code)
+	}
+}
+
+func TestRunHandler_RuntimeKernelDefaultsToSingleAgentDispatch(t *testing.T) {
+	kernel := serviceruntime.NewKernel()
+	if got := kernel.DefaultExecutionShape(); got != serviceruntime.ExecutionShapeSingleAgent {
+		t.Fatalf("expected %q, got %q", serviceruntime.ExecutionShapeSingleAgent, got)
+	}
+}
+
+func TestRunHandler_RuntimeKernelBuildDispatchDecision(t *testing.T) {
+	kernel := serviceruntime.NewKernel()
+	decision := kernel.BuildDispatchDecision("kubernetes", true)
+	if decision.ExecutionShape != serviceruntime.ExecutionShapeDelegatedSpecialist {
+		t.Fatalf("expected delegated specialist dispatch, got %#v", decision)
+	}
+
+	decision = kernel.BuildDispatchDecision("kubernetes", false)
+	if decision.ExecutionShape != serviceruntime.ExecutionShapeSingleAgent {
+		t.Fatalf("expected single-agent fallback dispatch, got %#v", decision)
 	}
 }

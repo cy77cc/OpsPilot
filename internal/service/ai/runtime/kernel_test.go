@@ -29,3 +29,24 @@ func TestKernelResumeTransition_RejectsInvalidSourceState(t *testing.T) {
 		t.Fatal("expected invalid resume transition from completed")
 	}
 }
+
+func TestKernelDefaultExecutionShape_IsSingleAgent(t *testing.T) {
+	kernel := NewKernel()
+	if got := kernel.DefaultExecutionShape(); got != ExecutionShapeSingleAgent {
+		t.Fatalf("expected %q, got %q", ExecutionShapeSingleAgent, got)
+	}
+}
+
+func TestKernelBuildDispatchDecision_DelegatesOnlyWhenSpecialistAvailable(t *testing.T) {
+	kernel := NewKernel()
+
+	withoutSpecialist := kernel.BuildDispatchDecision("kubernetes", false)
+	if withoutSpecialist.ExecutionShape != ExecutionShapeSingleAgent {
+		t.Fatalf("expected single_agent when specialist unavailable, got %q", withoutSpecialist.ExecutionShape)
+	}
+
+	withSpecialist := kernel.BuildDispatchDecision("kubernetes", true)
+	if withSpecialist.ExecutionShape != ExecutionShapeDelegatedSpecialist {
+		t.Fatalf("expected delegated_specialist when specialist available, got %q", withSpecialist.ExecutionShape)
+	}
+}

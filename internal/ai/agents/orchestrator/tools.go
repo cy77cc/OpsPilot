@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/host"
-	"github.com/cy77cc/OpsPilot/internal/ai/agents/kubernetes"
+	agentkubernetes "github.com/cy77cc/OpsPilot/internal/ai/agents/kubernetes"
 	"github.com/cy77cc/OpsPilot/internal/ai/agents/monitor"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
@@ -21,7 +21,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	kubernetesclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -74,7 +74,7 @@ func defaultToolCatalog() aitools.Catalog {
 			AccessPath:       item.AccessPath,
 		})
 	}
-	for _, item := range kubernetes.CatalogMetadataList() {
+	for _, item := range agentkubernetes.CatalogMetadataList() {
 		entries = append(entries, aitools.ToolMetadata{
 			ToolName:         item.ToolName,
 			Domain:           item.Domain,
@@ -638,7 +638,7 @@ func discoverOverview(ctx context.Context, svcCtx *svc.ServiceContext) (map[stri
 //   - *kubernetes.Clientset: Kubernetes 客户端
 //   - string: 集群名称
 //   - error: 错误信息
-func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Clientset, string, error) {
+func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetesclient.Clientset, string, error) {
 	if clusterID <= 0 {
 		return nil, "", fmt.Errorf("cluster_id is required")
 	}
@@ -653,7 +653,7 @@ func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Cl
 	if err != nil {
 		return nil, "", err
 	}
-	cli, err := kubernetes.NewForConfig(cfg)
+	cli, err := kubernetesclient.NewForConfig(cfg)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create k8s client: %v", err)
 	}
