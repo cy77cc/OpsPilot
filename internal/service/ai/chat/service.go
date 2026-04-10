@@ -2,45 +2,94 @@ package chat
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cloudwego/eino/adk"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/logic"
+	"github.com/cy77cc/OpsPilot/internal/service/ai/router"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )
+
+type RouteService interface {
+	Decide(ctx context.Context, input router.RouteInput) (router.RouteDecision, error)
+}
 
 // Service provides chat/session/run/diagnosis use cases.
 type Service struct {
 	logic       *logic.Logic
 	RunDAO      *aidao.AIRunDAO
 	RunEventDAO *aidao.AIRunEventDAO
+	router      RouteService
 }
 
 func NewService(svcCtx *svc.ServiceContext) *Service {
 	l := logic.NewAILogic(svcCtx)
-	return NewServiceWithLogic(l)
+	return NewServiceWithLogicAndRouter(l, router.NewService())
 }
 
 func NewServiceWithLogic(l *logic.Logic) *Service {
+	return NewServiceWithLogicAndRouter(l, router.NewService())
+}
+
+func NewServiceWithLogicAndRouter(l *logic.Logic, routeSvc RouteService) *Service {
+	if routeSvc == nil {
+		routeSvc = router.NewService()
+	}
 	if l == nil {
-		return &Service{}
+		return &Service{router: routeSvc}
 	}
 	return &Service{
 		logic:       l,
 		RunDAO:      l.RunDAO,
 		RunEventDAO: l.RunEventDAO,
+		router:      routeSvc,
 	}
 }
 
-func NewServiceWithDB(db *gorm.DB, router adk.ResumableAgent) *Service {
-	l := logic.NewLogicWithDB(db, router)
-	return NewServiceWithLogic(l)
+func NewServiceWithDB(db *gorm.DB, agentRouter adk.ResumableAgent) *Service {
+	l := logic.NewLogicWithDB(db, agentRouter)
+	return NewServiceWithLogicAndRouter(l, router.NewService())
 }
 
 func (s *Service) Chat(ctx context.Context, input logic.ChatInput, emit logic.EventEmitter) error {
+	decision, err := s.decideRoute(ctx, input.Message)
+	if err != nil {
+		return err
+	}
+	if decision.Mode == router.ModeConversation {
+		if emit != nil {
+			emit("status", map[string]any{
+				"mode":    string(router.ModeConversation),
+				"state":   "deferred",
+				"reason":  "not_implemented",
+				"message": "conversation path is deferred until the dedicated copilot flow is implemented",
+			})
+		}
+		return nil
+	}
+	if s == nil || s.logic == nil {
+		return fmt.Errorf("AI service not initialized")
+	}
 	return s.logic.Chat(ctx, input, emit)
+}
+
+func (s *Service) decideRoute(ctx context.Context, message string) (router.RouteDecision, error) {
+	if s == nil || s.router == nil {
+		return router.RouteDecision{}, nil
+	}
+	decision, err := s.router.Decide(ctx, router.RouteInput{
+		Message: message,
+	})
+	if err != nil {
+		return router.RouteDecision{}, err
+	}
+	if err := decision.Validate(); err != nil {
+		return router.RouteDecision{}, err
+	}
+	return decision, nil
 }
 
 func (s *Service) CreateSession(ctx context.Context, userID uint64, title, scene string) (*model.AIChatSession, error) {
