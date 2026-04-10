@@ -140,14 +140,20 @@ type K8sQueryOutput struct {
 func K8sQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_query",
-		"Query Kubernetes resources with filtering options. resource is required and specifies the resource type (pods/services/deployments/nodes). cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), name filters by exact name, label uses label selector, limit caps results (default 50). Returns resource details with status and metadata. Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"default\",\"label\":\"app=nginx\"}.",
+		"Query Kubernetes resources with filtering options. "+
+			"Use when: you need details of specific resources (pods/services/deployments/nodes) or need to filter by name or label. "+
+			"Don't use when: you need a general list of all resources in a namespace without complex filtering. "+
+			"Example: {\"cluster_id\":1,\"resource\":\"pods\",\"label\":\"app=nginx\"}.",
 		func(ctx context.Context, input *K8sQueryInput, opts ...tool.Option) (*K8sQueryOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
-				return nil, fmt.Errorf("service context is unavailable")
+				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
+			}
+			if input.ClusterID == 0 {
+				return nil, fmt.Errorf("cluster_id is required. Suggestion: call platform_discover_resources(resource_type='clusters') to find the cluster ID")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
-				return nil, fmt.Errorf("resource is required")
+				return nil, fmt.Errorf("resource is required (pods, services, deployments, or nodes). Suggestion: specify which resource type you want to query")
 			}
 			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {
@@ -274,14 +280,20 @@ type K8sListResourcesOutput struct {
 func K8sListResources(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_list_resources",
-		"List Kubernetes resources of a specific type. resource is required and must be one of: pods, services, deployments, nodes. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), limit caps results (default 50). Returns a simplified list of resources with basic information. Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"kube-system\",\"limit\":20}.",
+		"List Kubernetes resources of a specific type. "+
+			"Use when: you need an overview of all resources of a certain type (pods, services, deployments, nodes) in a namespace. "+
+			"Don't use when: you already know a resource name or have specific labels (use k8s_query instead). "+
+			"Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"default\"}.",
 		func(ctx context.Context, input *K8sListInput, opts ...tool.Option) (*K8sListResourcesOutput, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
-				return nil, fmt.Errorf("service context is unavailable")
+				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
+			}
+			if input.ClusterID == 0 {
+				return nil, fmt.Errorf("cluster_id is required. Suggestion: call platform_discover_resources(resource_type='clusters') to find the cluster ID")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
-				return nil, fmt.Errorf("resource is required")
+				return nil, fmt.Errorf("resource is required (pods, services, deployments, or nodes). Suggestion: specify which resource type you want to list")
 			}
 			cli, _, err := resolveK8sClient(svcCtx, input.ClusterID)
 			if err != nil {

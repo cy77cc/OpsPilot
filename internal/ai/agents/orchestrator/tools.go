@@ -37,25 +37,28 @@ type LoadSessionHistoryInput struct {
 func LoadSessionHistory(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"load_session_history",
-		"Load final user and assistant messages from the current authorized chat session. Do not pass session_id; the tool reads the active session from runtime context and enforces ownership automatically. It never returns steps, tool traces, or runtime state. mode=recent returns the latest turns verbatim. mode=compact returns a compact summary of earlier history plus recent turns. Example: {\"mode\":\"compact\",\"max_turns\":6}.",
+		"Load final user and assistant messages from the current authorized chat session. "+
+			"Use when: you need to recall context from earlier in the conversation or understand the current task's history. "+
+			"Don't use when: the user's last message is sufficient or when starting a completely new task. "+
+			"Example: {\"mode\":\"compact\",\"max_turns\":6}. The tool reads the active session from runtime context and enforces ownership automatically.",
 		func(ctx context.Context, input *LoadSessionHistoryInput, _ ...tool.Option) (map[string]any, error) {
 			svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
 			if svcCtx == nil || svcCtx.DB == nil {
-				return nil, fmt.Errorf("service context unavailable")
+				return nil, fmt.Errorf("service context unavailable. Suggestion: retry in a few moments or report system error")
 			}
 
 			meta := runtimectx.AIMetadataFrom(ctx)
 			if strings.TrimSpace(meta.SessionID) == "" || meta.UserID == 0 {
-				return nil, fmt.Errorf("ai session context unavailable")
+				return nil, fmt.Errorf("ai session context unavailable. Suggestion: ensure you are in an active chat session")
 			}
 
 			chatDAO := aidao.NewAIChatDAO(svcCtx.DB)
 			session, err := chatDAO.GetSession(ctx, meta.SessionID, meta.UserID, "")
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to load session history: %v. Suggestion: check session connectivity", err)
 			}
 			if session == nil {
-				return nil, fmt.Errorf("session not found or access denied")
+				return nil, fmt.Errorf("session not found or access denied. Suggestion: verify you have permission for this session")
 			}
 
 			messages, err := chatDAO.ListMessagesBySession(ctx, meta.SessionID)
@@ -108,23 +111,36 @@ func buildHistoryPayload(sessionID, mode string, messages []model.AIChatMessage,
 	}
 
 	recent := messages[recentStart:]
-	var formatted string
+	var formatted strings.Builder
+
+	// Tier 1: Semantic Memory (Core Facts/Preferences - currently derived from session metadata or key history)
+	formatted.WriteString("### SEMANTIC MEMORY (Core Facts)\n")
+	formatted.WriteString("- Role: OpsPilot AI assistant\n")
+	formatted.WriteString("- Session: " + sessionID + "\n")
+	formatted.WriteString("\n")
+
+	// Tier 2: Episodic Memory (Earlier Actions/Summary)
 	if mode == "compact" && recentStart > 0 {
 		older := messages[:recentStart]
 		summary := summarizeMessages(older)
 		if summary != "" {
-			formatted = "[Earlier conversation summary]\n" + summary + "\n\n"
+			formatted.WriteString("### EPISODIC MEMORY (Earlier History)\n")
+			formatted.WriteString(summary + "\n\n")
 		}
 	}
-	formatted += "[Recent conversation]\n" + formatMessages(recent, maxRecentMessageChars)
-	formatted = enforceCharLimit(formatted, maxChars)
+
+	// Tier 3: Working Memory (Recent Conversation)
+	formatted.WriteString("### WORKING MEMORY (Recent Turns)\n")
+	formatted.WriteString(formatMessages(recent, maxRecentMessageChars))
+
+	result := enforceCharLimit(formatted.String(), maxChars)
 
 	return map[string]any{
 		"session_id":        sessionID,
 		"mode":              mode,
 		"message_count":     len(messages),
 		"recent_messages":   len(recent),
-		"formatted_history": formatted,
+		"formatted_history": result,
 	}
 }
 
@@ -244,14 +260,20 @@ type PlatformDiscoverInput struct {
 func PlatformDiscoverResources(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"platform_discover_resources",
-		"Discover platform resources available for operations. Optional resource_type filters results: clusters (K8s clusters), hosts (server list), services (service catalog), namespaces (K8s namespaces, requires cluster_id), metrics (Prometheus metrics). Omit resource_type to get an overview of all resource types with counts. Example: {\"resource_type\":\"clusters\"} or {\"resource_type\":\"namespaces\",\"cluster_id\":1}.",
+		"Discover platform resources like clusters, hosts, services, and namespaces. "+
+			"Use when: you need to find IDs, list available environments, or need an overview of available resources. "+
+			"Don't use when: you already know the ID and want to perform specific operations (e.g., query pods, scale deployments). "+
+			"Example: {\"resource_type\":\"clusters\"}. Omit resource_type to get a general overview of all categories.",
 		func(ctx context.Context, input *PlatformDiscoverInput, opts ...tool.Option) (map[string]any, error) {
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
-				return nil, fmt.Errorf("service context unavailable")
+				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system status")
 			}
 
 			resourceType := strings.ToLower(strings.TrimSpace(input.ResourceType))
+			if resourceType == "namespaces" && input.ClusterID == 0 {
+				return nil, fmt.Errorf("cluster_id is required for resource_type='namespaces'. Suggestion: call platform_discover_resources(resource_type='clusters') first to find valid cluster IDs")
+			}
 			switch resourceType {
 			case "clusters":
 				return discoverClusters(ctx, svcCtx)
