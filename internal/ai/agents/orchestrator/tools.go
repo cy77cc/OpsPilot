@@ -12,6 +12,8 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	aiartifact "github.com/cy77cc/OpsPilot/internal/service/ai/artifact"
+	aicontext "github.com/cy77cc/OpsPilot/internal/service/ai/context"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +34,20 @@ type LoadSessionHistoryInput struct {
 	Mode     string `json:"mode,omitempty" jsonschema_description:"optional history mode: recent or compact. compact is recommended for longer sessions"`
 	MaxTurns int    `json:"max_turns,omitempty" jsonschema_description:"optional number of recent turns to include, default 6"`
 	MaxChars int    `json:"max_chars,omitempty" jsonschema_description:"optional maximum output size in characters, default 4000"`
+}
+
+type LoadTaskContextInput struct {
+	Instruction      string   `json:"instruction,omitempty" jsonschema_description:"optional stable instruction layer"`
+	SessionMemory    string   `json:"session_memory,omitempty" jsonschema_description:"optional session memory summary"`
+	TaskMemory       string   `json:"task_memory,omitempty" jsonschema_description:"optional task memory summary"`
+	RunScratchpad    string   `json:"run_scratchpad,omitempty" jsonschema_description:"optional run scratchpad summary"`
+	ArtifactExcerpts []string `json:"artifact_excerpts,omitempty" jsonschema_description:"optional artifact excerpts to inject"`
+}
+
+type LoadArtifactContextInput struct {
+	Content        string `json:"content" jsonschema_description:"required content to classify as inline or artifact reference"`
+	ArtifactID     string `json:"artifact_id,omitempty" jsonschema_description:"optional preferred artifact id"`
+	MaxInlineChars int    `json:"max_inline_chars,omitempty" jsonschema_description:"optional max inline chars before artifact reference, default 512"`
 }
 
 func LoadSessionHistory(ctx context.Context) tool.InvokableTool {
@@ -81,6 +97,69 @@ func LoadSessionHistory(ctx context.Context) tool.InvokableTool {
 	return t
 }
 
+func LoadTaskContext(ctx context.Context) tool.InvokableTool {
+	t, err := einoutils.InferOptionableTool(
+		"load_task_context",
+		"Assemble layered task context from instruction, session memory, task memory, run scratchpad, and artifact excerpts. "+
+			"Use this to produce deterministic context layers for task execution.",
+		func(_ context.Context, input *LoadTaskContextInput, _ ...tool.Option) (map[string]any, error) {
+			if input == nil {
+				input = &LoadTaskContextInput{}
+			}
+			assembler := aicontext.NewAssembler()
+			layers := assembler.Assemble(aicontext.Input{
+				Instruction:      input.Instruction,
+				SessionMemory:    input.SessionMemory,
+				TaskMemory:       input.TaskMemory,
+				RunScratchpad:    input.RunScratchpad,
+				ArtifactExcerpts: input.ArtifactExcerpts,
+			})
+			return map[string]any{
+				"layer_count":       len(layers),
+				"context_layers":    layers,
+				"assembled_context": strings.Join(layers, "\n\n"),
+			}, nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func LoadArtifactContext(ctx context.Context) tool.InvokableTool {
+	t, err := einoutils.InferOptionableTool(
+		"load_artifact_context",
+		"Convert large content into either inline context or artifact reference metadata. "+
+			"Use this to avoid prompt bloat while retaining a stable artifact handle.",
+		func(_ context.Context, input *LoadArtifactContextInput, _ ...tool.Option) (map[string]any, error) {
+			if input == nil {
+				return nil, fmt.Errorf("content is required")
+			}
+			content := strings.TrimSpace(input.Content)
+			if content == "" {
+				return nil, fmt.Errorf("content is required")
+			}
+			result := aiartifact.NewService(input.MaxInlineChars).BuildReference(content, input.ArtifactID)
+			payload := map[string]any{
+				"mode":    result.Mode,
+				"summary": result.Summary,
+			}
+			if result.ArtifactID != "" {
+				payload["artifact_id"] = result.ArtifactID
+			}
+			if result.Content != "" {
+				payload["content"] = result.Content
+			}
+			return payload, nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
 func filterFinalConversationMessages(messages []model.AIChatMessage) []model.AIChatMessage {
 	filtered := make([]model.AIChatMessage, 0, len(messages))
 	for _, message := range messages {
@@ -111,37 +190,41 @@ func buildHistoryPayload(sessionID, mode string, messages []model.AIChatMessage,
 	}
 
 	recent := messages[recentStart:]
-	var formatted strings.Builder
-
-	// Tier 1: Semantic Memory (Core Facts/Preferences - currently derived from session metadata or key history)
-	formatted.WriteString("### SEMANTIC MEMORY (Core Facts)\n")
-	formatted.WriteString("- Role: OpsPilot AI assistant\n")
-	formatted.WriteString("- Session: " + sessionID + "\n")
-	formatted.WriteString("\n")
-
-	// Tier 2: Episodic Memory (Earlier Actions/Summary)
+	instructionLayer := "### SEMANTIC MEMORY (Core Facts)\n- Role: OpsPilot AI assistant\n- Session: " + sessionID
+	episodicLayer := ""
 	if mode == "compact" && recentStart > 0 {
 		older := messages[:recentStart]
 		summary := summarizeMessages(older)
 		if summary != "" {
-			formatted.WriteString("### EPISODIC MEMORY (Earlier History)\n")
-			formatted.WriteString(summary + "\n\n")
+			episodicLayer = "### EPISODIC MEMORY (Earlier History)\n" + summary
 		}
 	}
+	workingLayer := "### WORKING MEMORY (Recent Turns)\n" + formatMessages(recent, maxRecentMessageChars)
+	assembler := aicontext.NewAssembler()
+	layers := assembler.Assemble(aicontext.Input{
+		Instruction:   instructionLayer,
+		SessionMemory: episodicLayer,
+		TaskMemory:    workingLayer,
+	})
+	assembled := strings.Join(layers, "\n\n")
+	artifactRef := aiartifact.NewService(maxChars).BuildReference(assembled, "")
+	result := assembled
+	if artifactRef.Mode == aiartifact.ModeArtifact {
+		result = artifactRef.Summary
+	}
 
-	// Tier 3: Working Memory (Recent Conversation)
-	formatted.WriteString("### WORKING MEMORY (Recent Turns)\n")
-	formatted.WriteString(formatMessages(recent, maxRecentMessageChars))
-
-	result := enforceCharLimit(formatted.String(), maxChars)
-
-	return map[string]any{
+	payload := map[string]any{
 		"session_id":        sessionID,
 		"mode":              mode,
 		"message_count":     len(messages),
 		"recent_messages":   len(recent),
+		"context_layers":    layers,
 		"formatted_history": result,
 	}
+	if artifactRef.ArtifactID != "" {
+		payload["history_artifact_id"] = artifactRef.ArtifactID
+	}
+	return payload
 }
 
 func summarizeMessages(messages []model.AIChatMessage) string {
@@ -208,23 +291,14 @@ func roleLabel(role string) string {
 
 func truncateText(value string, maxChars int) string {
 	value = strings.TrimSpace(strings.Join(strings.Fields(value), " "))
-	if maxChars <= 0 || len(value) <= maxChars {
+	valueRunes := []rune(value)
+	if maxChars <= 0 || len(valueRunes) <= maxChars {
 		return value
 	}
 	if maxChars <= len("...") {
-		return value[:maxChars]
+		return string(valueRunes[:maxChars])
 	}
-	return value[:maxChars-3] + "..."
-}
-
-func enforceCharLimit(value string, maxChars int) string {
-	if maxChars <= 0 || len(value) <= maxChars {
-		return value
-	}
-	if maxChars <= len("...(truncated)") {
-		return value[:maxChars]
-	}
-	return value[:maxChars-len("...(truncated)")] + "...(truncated)"
+	return string(valueRunes[:maxChars-3]) + "..."
 }
 
 func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {

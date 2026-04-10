@@ -43,6 +43,27 @@ func NewToolResultEvent(callID, toolName, content, status, agentName string) Pub
 	}
 }
 
+func NewContextLoadedEvent(layerCount int, layers []string) PublicStreamEvent {
+	return PublicStreamEvent{
+		Event: "context_loaded",
+		Data: map[string]any{
+			"layer_count": layerCount,
+			"layers":      layers,
+		},
+	}
+}
+
+func NewArtifactReferenceEvent(artifactID, mode, summary string) PublicStreamEvent {
+	return PublicStreamEvent{
+		Event: "artifact_reference",
+		Data: map[string]any{
+			"artifact_id": artifactID,
+			"mode":        mode,
+			"summary":     summary,
+		},
+	}
+}
+
 // mapAgentNameToIntentType 将 Agent 名称映射为意图类型。
 //
 // DeepAgents 架构下的 Agent 名称：
