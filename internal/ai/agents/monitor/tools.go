@@ -90,6 +90,28 @@ func NewMonitorReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	}
 }
 
+type CatalogMetadata struct {
+	ToolName         string
+	Domain           string
+	Capability       string
+	RiskLevel        string
+	OutputMode       string
+	Description      string
+	DirectlyCallable bool
+	AccessPath       string
+}
+
+// CatalogMetadataList returns monitor tool metadata for search-first indexing.
+func CatalogMetadataList() []CatalogMetadata {
+	return []CatalogMetadata{
+		{ToolName: "monitor_alert_rule_list", Domain: "monitoring", Capability: "listing", RiskLevel: "low", OutputMode: "inline", Description: "list monitoring alert rules", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "monitor_alert", Domain: "monitoring", Capability: "query", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "query active alerts", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "monitor_alert_active", Domain: "monitoring", Capability: "query", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "query firing alerts", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "monitor_metric", Domain: "monitoring", Capability: "metrics", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "query monitoring metrics", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "monitor_metric_query", Domain: "monitoring", Capability: "metrics", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "query monitoring timeseries", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+	}
+}
+
 func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
 	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
 	return svcCtx

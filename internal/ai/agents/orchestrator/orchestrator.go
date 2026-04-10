@@ -92,7 +92,7 @@ func NewOpsPilotAgent(ctx context.Context) (adk.ResumableAgent, error) {
 
 func newTools(ctx context.Context) []tool.BaseTool {
 	return []tool.BaseTool{
-		PlatformDiscoverResources(ctx),
+		ToolSearch(ctx),
 		LoadSessionHistory(ctx),
 		LoadTaskContext(ctx),
 		LoadArtifactContext(ctx),

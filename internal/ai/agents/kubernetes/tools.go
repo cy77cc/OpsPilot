@@ -133,6 +133,34 @@ func NewKubernetesWriteTools(ctx context.Context) []tool.InvokableTool {
 	}
 }
 
+type CatalogMetadata struct {
+	ToolName         string
+	Domain           string
+	Capability       string
+	RiskLevel        string
+	OutputMode       string
+	Description      string
+	DirectlyCallable bool
+	AccessPath       string
+}
+
+// CatalogMetadataList returns kubernetes tool metadata for search-first indexing.
+func CatalogMetadataList() []CatalogMetadata {
+	return []CatalogMetadata{
+		{ToolName: "k8s_query", Domain: "kubernetes", Capability: "query", RiskLevel: "low", OutputMode: "inline", Description: "query kubernetes resources with filters", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_list_resources", Domain: "kubernetes", Capability: "listing", RiskLevel: "low", OutputMode: "inline", Description: "list kubernetes resources", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_events", Domain: "kubernetes", Capability: "events", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "inspect kubernetes events", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_get_events", Domain: "kubernetes", Capability: "events", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "get filtered kubernetes events", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_logs", Domain: "kubernetes", Capability: "logs", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "read kubernetes pod logs", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_get_pod_logs", Domain: "kubernetes", Capability: "logs", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "get kubernetes pod logs", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_scale_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "scale a deployment", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_restart_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "restart a deployment", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_delete_pod", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "delete a pod", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_rollback_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "rollback a deployment", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_delete_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "delete a deployment", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+	}
+}
+
 type K8sQueryOutput struct {
 	Items []map[string]any `json:"items"`
 }
@@ -150,7 +178,7 @@ func K8sQuery(ctx context.Context) tool.InvokableTool {
 				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
 			}
 			if input.ClusterID == 0 {
-				return nil, fmt.Errorf("cluster_id is required. Suggestion: call platform_discover_resources(resource_type='clusters') to find the cluster ID")
+				return nil, fmt.Errorf("cluster_id is required. Suggestion: use tool_search(query='kubernetes clusters') or provide the known cluster id")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required (pods, services, deployments, or nodes). Suggestion: specify which resource type you want to query")
@@ -290,7 +318,7 @@ func K8sListResources(ctx context.Context) tool.InvokableTool {
 				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
 			}
 			if input.ClusterID == 0 {
-				return nil, fmt.Errorf("cluster_id is required. Suggestion: call platform_discover_resources(resource_type='clusters') to find the cluster ID")
+				return nil, fmt.Errorf("cluster_id is required. Suggestion: use tool_search(query='kubernetes clusters') or provide the known cluster id")
 			}
 			if strings.TrimSpace(input.Resource) == "" {
 				return nil, fmt.Errorf("resource is required (pods, services, deployments, or nodes). Suggestion: specify which resource type you want to list")

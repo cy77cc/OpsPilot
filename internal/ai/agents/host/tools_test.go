@@ -76,6 +76,22 @@ func TestLegacyHostExec_UsesPolicyEngine(t *testing.T) {
 	}
 }
 
+func TestCatalogMetadataList_ContainsHostExecAndNoLegacyNames(t *testing.T) {
+	metadata := CatalogMetadataList()
+	names := make([]string, 0, len(metadata))
+	for _, item := range metadata {
+		names = append(names, item.ToolName)
+	}
+	if !containsTool(names, "host_exec") {
+		t.Fatalf("expected host_exec in catalog metadata, got %v", names)
+	}
+	for _, legacy := range []string{"host_exec_readonly", "host_exec_change", "host_exec_by_target", "host_ssh_exec_readonly"} {
+		if containsTool(names, legacy) {
+			t.Fatalf("did not expect legacy tool %s in catalog metadata, got %v", legacy, names)
+		}
+	}
+}
+
 func toolNames(t *testing.T, tools []tool.InvokableTool) []string {
 	t.Helper()
 	result := make([]string, 0, len(tools))

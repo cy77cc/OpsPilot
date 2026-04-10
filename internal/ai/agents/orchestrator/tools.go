@@ -8,12 +8,16 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/host"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/kubernetes"
+	"github.com/cy77cc/OpsPilot/internal/ai/agents/monitor"
 	"github.com/cy77cc/OpsPilot/internal/config"
 	aidao "github.com/cy77cc/OpsPilot/internal/dao/ai"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	aiartifact "github.com/cy77cc/OpsPilot/internal/service/ai/artifact"
 	aicontext "github.com/cy77cc/OpsPilot/internal/service/ai/context"
+	aitools "github.com/cy77cc/OpsPilot/internal/service/ai/tools"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +52,53 @@ type LoadArtifactContextInput struct {
 	Content        string `json:"content" jsonschema_description:"required content to classify as inline or artifact reference"`
 	ArtifactID     string `json:"artifact_id,omitempty" jsonschema_description:"optional preferred artifact id"`
 	MaxInlineChars int    `json:"max_inline_chars,omitempty" jsonschema_description:"optional max inline chars before artifact reference, default 512"`
+}
+
+type ToolSearchInput struct {
+	Query  string `json:"query" jsonschema_description:"required search query for tool capability/domain"`
+	Limit  int    `json:"limit,omitempty" jsonschema_description:"optional max result count, default 5"`
+	Domain string `json:"domain,omitempty" jsonschema_description:"optional domain filter: host, kubernetes, monitoring"`
+}
+
+func defaultToolCatalog() aitools.Catalog {
+	entries := make([]aitools.ToolMetadata, 0, 32)
+	for _, item := range host.CatalogMetadataList() {
+		entries = append(entries, aitools.ToolMetadata{
+			ToolName:         item.ToolName,
+			Domain:           item.Domain,
+			Capability:       item.Capability,
+			RiskLevel:        item.RiskLevel,
+			OutputMode:       item.OutputMode,
+			Description:      item.Description,
+			DirectlyCallable: item.DirectlyCallable,
+			AccessPath:       item.AccessPath,
+		})
+	}
+	for _, item := range kubernetes.CatalogMetadataList() {
+		entries = append(entries, aitools.ToolMetadata{
+			ToolName:         item.ToolName,
+			Domain:           item.Domain,
+			Capability:       item.Capability,
+			RiskLevel:        item.RiskLevel,
+			OutputMode:       item.OutputMode,
+			Description:      item.Description,
+			DirectlyCallable: item.DirectlyCallable,
+			AccessPath:       item.AccessPath,
+		})
+	}
+	for _, item := range monitor.CatalogMetadataList() {
+		entries = append(entries, aitools.ToolMetadata{
+			ToolName:         item.ToolName,
+			Domain:           item.Domain,
+			Capability:       item.Capability,
+			RiskLevel:        item.RiskLevel,
+			OutputMode:       item.OutputMode,
+			Description:      item.Description,
+			DirectlyCallable: item.DirectlyCallable,
+			AccessPath:       item.AccessPath,
+		})
+	}
+	return aitools.NewCatalog(entries)
 }
 
 func LoadSessionHistory(ctx context.Context) tool.InvokableTool {
@@ -130,8 +181,8 @@ func LoadTaskContext(ctx context.Context) tool.InvokableTool {
 func LoadArtifactContext(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"load_artifact_context",
-		"Convert large content into either inline context or artifact reference metadata. "+
-			"Use this to avoid prompt bloat while retaining a stable artifact handle.",
+		"Convert large content into either inline context or scaffolding artifact-reference metadata. "+
+			"Use this to avoid prompt bloat while retaining a stable summary contract. Artifact handles may be absent until persistent artifact storage exists.",
 		func(_ context.Context, input *LoadArtifactContextInput, _ ...tool.Option) (map[string]any, error) {
 			if input == nil {
 				return nil, fmt.Errorf("content is required")
@@ -152,6 +203,38 @@ func LoadArtifactContext(ctx context.Context) tool.InvokableTool {
 				payload["content"] = result.Content
 			}
 			return payload, nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func ToolSearch(ctx context.Context) tool.InvokableTool {
+	t, err := einoutils.InferOptionableTool(
+		"tool_search",
+		"Search available tools from the metadata catalog by capability/domain keywords and return top candidates. "+
+			"Use this before calling domain tools directly when tool count is large.",
+		func(_ context.Context, input *ToolSearchInput, _ ...tool.Option) (map[string]any, error) {
+			if input == nil || strings.TrimSpace(input.Query) == "" {
+				return nil, fmt.Errorf("query is required")
+			}
+			limit := input.Limit
+			if limit <= 0 {
+				limit = 5
+			}
+			if limit > 20 {
+				limit = 20
+			}
+			domain := strings.ToLower(strings.TrimSpace(input.Domain))
+			results := defaultToolCatalog().Search(input.Query, limit, domain)
+			return map[string]any{
+				"query":   strings.TrimSpace(input.Query),
+				"domain":  domain,
+				"count":   len(results),
+				"results": results,
+			}, nil
 		},
 	)
 	if err != nil {

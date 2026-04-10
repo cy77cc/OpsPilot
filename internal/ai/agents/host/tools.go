@@ -113,6 +113,31 @@ func NewHostTools(ctx context.Context) []tool.InvokableTool {
 	}
 }
 
+type CatalogMetadata struct {
+	ToolName         string
+	Domain           string
+	Capability       string
+	RiskLevel        string
+	OutputMode       string
+	Description      string
+	DirectlyCallable bool
+	AccessPath       string
+}
+
+// CatalogMetadataList returns host tool metadata for search-first indexing.
+func CatalogMetadataList() []CatalogMetadata {
+	return []CatalogMetadata{
+		{ToolName: "host_exec", Domain: "host", Capability: "command_execution", RiskLevel: "high", OutputMode: "inline", Description: "execute a command on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "host_list_inventory", Domain: "host", Capability: "listing", RiskLevel: "low", OutputMode: "inline", Description: "list hosts in inventory", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_cpu_mem", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect cpu and memory on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_disk_fs", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect disks and filesystems on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_net_stat", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect network state on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_process_top", Domain: "host", Capability: "listing", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "inspect top processes on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_journal_tail", Domain: "host", Capability: "logs", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "tail systemd journal logs", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "os_get_container_runtime", Domain: "host", Capability: "query", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect host container runtime", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+	}
+}
+
 type HostExecOutput struct {
 	HostID   int    `json:"host_id"`
 	Command  string `json:"command"`
