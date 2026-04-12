@@ -16,7 +16,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -215,7 +215,7 @@ func (h *Handler) RolloutApply(c *gin.Context) {
 	}
 	raw, _ := json.Marshal(req)
 	uid := httpx.UIDFromCtx(c)
-	rec := model.ClusterReleaseRecord{ClusterID: cluster.ID, Namespace: req.Namespace, App: req.Name, Strategy: req.Strategy, RolloutName: req.Name, Revision: int(req.Replicas), Status: "applied", Operator: strconv.FormatUint(uid, 10), PayloadJSON: string(raw)}
+	rec := clustermodel.ClusterReleaseRecord{ClusterID: cluster.ID, Namespace: req.Namespace, App: req.Name, Strategy: req.Strategy, RolloutName: req.Name, Revision: int(req.Replicas), Status: "applied", Operator: strconv.FormatUint(uid, 10), PayloadJSON: string(raw)}
 	_ = h.svcCtx.DB.Create(&rec).Error
 	h.createAudit(cluster.ID, req.Namespace, "rollout.apply", "rollout", req.Name, "success", "rollout applied", uint(uid))
 	httpx.OK(c, gin.H{"applied": true, "name": req.Name})
@@ -412,7 +412,7 @@ func (h *Handler) rolloutAction(c *gin.Context, action, perm string) {
 //   - full: 是否完全推进
 //
 // 返回: 失败返回错误
-func (h *Handler) execRolloutCLI(ctx context.Context, cluster *model.Cluster, namespace, name, action string, full bool) error {
+func (h *Handler) execRolloutCLI(ctx context.Context, cluster *clustermodel.Cluster, namespace, name, action string, full bool) error {
 	if strings.TrimSpace(cluster.KubeConfig) == "" {
 		return errors.New("cluster kubeconfig required for rollout action")
 	}

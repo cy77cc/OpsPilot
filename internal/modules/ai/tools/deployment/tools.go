@@ -12,7 +12,9 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -111,7 +113,7 @@ func DeploymentTargetList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.DeploymentTarget{})
+			query := svcCtx.DB.Model(&deploymentmodel.DeploymentTarget{})
 			if env := strings.TrimSpace(input.Env); env != "" {
 				query = query.Where("env = ?", env)
 			}
@@ -122,7 +124,7 @@ func DeploymentTargetList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ?", pattern)
 			}
-			var rows []model.DeploymentTarget
+			var rows []deploymentmodel.DeploymentTarget
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -153,8 +155,8 @@ func DeploymentTargetList(ctx context.Context) tool.InvokableTool {
 }
 
 type DeploymentTargetDetailOutput struct {
-	Target model.DeploymentTarget       `json:"target"`
-	Nodes  []model.DeploymentTargetNode `json:"nodes"`
+	Target deploymentmodel.DeploymentTarget       `json:"target"`
+	Nodes  []deploymentmodel.DeploymentTargetNode `json:"nodes"`
 }
 
 func DeploymentTargetDetail(ctx context.Context) tool.InvokableTool {
@@ -169,11 +171,11 @@ func DeploymentTargetDetail(ctx context.Context) tool.InvokableTool {
 			if input.TargetID <= 0 {
 				return nil, fmt.Errorf("target_id is required")
 			}
-			var target model.DeploymentTarget
+			var target deploymentmodel.DeploymentTarget
 			if err := svcCtx.DB.First(&target, input.TargetID).Error; err != nil {
 				return nil, err
 			}
-			var nodes []model.DeploymentTargetNode
+			var nodes []deploymentmodel.DeploymentTargetNode
 			_ = svcCtx.DB.Where("target_id = ?", target.ID).Order("id asc").Find(&nodes).Error
 			return &DeploymentTargetDetailOutput{
 				Target: target,
@@ -193,8 +195,8 @@ type DeploymentBootstrapStatusOutput struct {
 	BootstrapJobID  string                            `json:"bootstrap_job_id"`
 	TargetStatus    string                            `json:"target_status"`
 	ReadinessStatus string                            `json:"readiness_status"`
-	BootstrapJob    *model.EnvironmentInstallJob      `json:"bootstrap_job,omitempty"`
-	Steps           []model.EnvironmentInstallJobStep `json:"steps,omitempty"`
+	BootstrapJob    *deploymentmodel.EnvironmentInstallJob      `json:"bootstrap_job,omitempty"`
+	Steps           []deploymentmodel.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
 
 func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
@@ -209,7 +211,7 @@ func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
 			if input.TargetID <= 0 {
 				return nil, fmt.Errorf("target_id is required")
 			}
-			var target model.DeploymentTarget
+			var target deploymentmodel.DeploymentTarget
 			if err := svcCtx.DB.First(&target, input.TargetID).Error; err != nil {
 				return nil, err
 			}
@@ -223,10 +225,10 @@ func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
 			if strings.TrimSpace(target.BootstrapJobID) == "" {
 				return result, nil
 			}
-			var job model.EnvironmentInstallJob
+			var job deploymentmodel.EnvironmentInstallJob
 			if err := svcCtx.DB.Where("id = ?", target.BootstrapJobID).First(&job).Error; err == nil {
 				result.BootstrapJob = &job
-				var steps []model.EnvironmentInstallJobStep
+				var steps []deploymentmodel.EnvironmentInstallJobStep
 				_ = svcCtx.DB.Where("job_id = ?", job.ID).Order("id asc").Find(&steps).Error
 				result.Steps = steps
 			}
@@ -261,7 +263,7 @@ func ClusterListInventory(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Cluster{})
+			query := svcCtx.DB.Model(&clustermodel.Cluster{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -269,7 +271,7 @@ func ClusterListInventory(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR endpoint LIKE ?", pattern, pattern)
 			}
-			var rows []model.Cluster
+			var rows []clustermodel.Cluster
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -324,7 +326,7 @@ func ServiceListInventory(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Service{})
+			query := svcCtx.DB.Model(&projectmodel.Service{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -338,7 +340,7 @@ func ServiceListInventory(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
 			}
-			var rows []model.Service
+			var rows []projectmodel.Service
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}

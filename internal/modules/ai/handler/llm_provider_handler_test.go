@@ -9,8 +9,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	aiService aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/llmprovider"
+	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/provider"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -22,7 +22,7 @@ func TestAdminLLMProviderRoutesRegistered(t *testing.T) {
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
-	aiService.RegisterAdminAIHandlers(v1, &svc.ServiceContext{})
+	aiapi.RegisterAdminAIHandlers(v1, &svc.ServiceContext{})
 
 	routes := r.Routes()
 	seen := make(map[string]bool, len(routes))

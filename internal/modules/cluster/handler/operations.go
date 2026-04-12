@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterlogic "github.com/cy77cc/OpsPilot/internal/modules/cluster/logic"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	governanceaudit "github.com/cy77cc/OpsPilot/internal/modules/governance/audit"
@@ -108,15 +108,15 @@ type OperationGateResult struct {
 }
 
 // RecordClusterOperationAudit 写入集群操作审计。
-func (h *Handler) RecordClusterOperationAudit(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, message string, operatorID uint) (model.ClusterOperationAudit, error) {
+func (h *Handler) RecordClusterOperationAudit(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, message string, operatorID uint) (clustermodel.ClusterOperationAudit, error) {
 	rec, err := h.recordClusterOperationAuditWithCode(ctx, clusterID, namespace, action, resource, resourceID, status, "", message, operatorID)
 	if err != nil {
-		return model.ClusterOperationAudit{}, err
+		return clustermodel.ClusterOperationAudit{}, err
 	}
 	return *rec, nil
 }
 
-func (h *Handler) recordClusterOperationAuditWithCode(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, code, message string, operatorID uint) (*model.ClusterOperationAudit, error) {
+func (h *Handler) recordClusterOperationAuditWithCode(ctx context.Context, clusterID uint, namespace, action, resource, resourceID, status, code, message string, operatorID uint) (*clustermodel.ClusterOperationAudit, error) {
 	msg := truncateOperationText(sanitizeOperationText(message), 255)
 	finalCode := strings.TrimSpace(code)
 	if finalCode == "" {
@@ -151,7 +151,7 @@ func (h *Handler) recordClusterOperationAuditWithCode(ctx context.Context, clust
 		return nil, err
 	}
 
-	return &model.ClusterOperationAudit{
+	return &clustermodel.ClusterOperationAudit{
 		ID:         id,
 		ClusterID:  clusterID,
 		Namespace:  strings.TrimSpace(namespace),
@@ -264,7 +264,7 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 		return
 	}
 
-	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.OperationAudit{}).
+	query := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&clustermodel.OperationAudit{}).
 		Where("domain = ? AND scope_cluster_id = ?", "cluster", clusterID)
 	if resource != "" {
 		query = query.Where("operation_audits.resource = ?", resource)
@@ -304,7 +304,7 @@ func (h *Handler) ListOperationHistory(c *gin.Context) {
 	}
 
 	offset := (currentPage - 1) * int(pageSize)
-	var rows []model.OperationAudit
+	var rows []clustermodel.OperationAudit
 	if err := query.Order("operation_audits.id DESC").Offset(offset).Limit(int(pageSize)).Find(&rows).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -329,7 +329,7 @@ func (h *Handler) GetOperationAudit(c *gin.Context) {
 		return
 	}
 
-	var row model.OperationAudit
+	var row clustermodel.OperationAudit
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 		Where("domain = ? AND scope_cluster_id = ? AND id = ?", "cluster", clusterID, auditID).
 		First(&row).Error; err != nil {
@@ -345,7 +345,7 @@ func (h *Handler) GetOperationAudit(c *gin.Context) {
 	httpx.OK(c, detail)
 }
 
-func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []model.OperationAudit) []OperationHistoryItem {
+func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []clustermodel.OperationAudit) []OperationHistoryItem {
 	operatorIDs := make([]uint, 0, len(rows))
 	seen := make(map[uint]struct{}, len(rows))
 	for _, row := range rows {
@@ -361,7 +361,7 @@ func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []mode
 
 	operatorNames := map[uint]string{}
 	if len(operatorIDs) > 0 {
-		var users []model.User
+		var users []clustermodel.User
 		if err := h.svcCtx.DB.WithContext(ctx).Select("id", "username").Where("id IN ?", operatorIDs).Find(&users).Error; err == nil {
 			for _, user := range users {
 				operatorNames[uint(user.ID)] = strings.TrimSpace(user.Username)
@@ -416,8 +416,8 @@ func (h *Handler) operationAuditsToHistoryItems(ctx context.Context, rows []mode
 	return items
 }
 
-func (h *Handler) operationAuditToDetail(ctx context.Context, row model.OperationAudit) *OperationAuditDetail {
-	item := h.operationAuditsToHistoryItems(ctx, []model.OperationAudit{row})
+func (h *Handler) operationAuditToDetail(ctx context.Context, row clustermodel.OperationAudit) *OperationAuditDetail {
+	item := h.operationAuditsToHistoryItems(ctx, []clustermodel.OperationAudit{row})
 	if len(item) == 0 {
 		return nil
 	}
@@ -428,7 +428,7 @@ func (h *Handler) operationAuditToDetail(ctx context.Context, row model.Operatio
 		Diagnostics:          decodeJSONStringSlice(row.DiagnosticsJSON),
 	}
 	if strings.TrimSpace(row.ApprovalTicket) != "" {
-		var approvalRow model.OperationApproval
+		var approvalRow clustermodel.OperationApproval
 		if err := h.svcCtx.DB.WithContext(ctx).Where("ticket = ?", row.ApprovalTicket).First(&approvalRow).Error; err == nil {
 			detail.Approval = operationApprovalFromGovernanceRecord(&approvalRow)
 		} else {
@@ -438,7 +438,7 @@ func (h *Handler) operationAuditToDetail(ctx context.Context, row model.Operatio
 	return detail
 }
 
-func operationApprovalFromGovernanceRecord(rec *model.OperationApproval) *OperationApproval {
+func operationApprovalFromGovernanceRecord(rec *clustermodel.OperationApproval) *OperationApproval {
 	if rec == nil {
 		return nil
 	}
@@ -519,7 +519,7 @@ func decodeJSONStringSlice(raw string) []any {
 	return []any{sanitizeOperationText(raw)}
 }
 
-func policyReleaseAuditDisplay(row model.OperationAudit) (string, string) {
+func policyReleaseAuditDisplay(row clustermodel.OperationAudit) (string, string) {
 	resourceName, version := policyReleaseAuditFields(decodeJSONStringMap(row.ResultSummaryJSON))
 	if resourceName != "" || version != "" {
 		return resourceName, version

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	model "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -284,7 +285,7 @@ func (s *NotificationService) Confirm(c *gin.Context) {
 	s.svcCtx.DB.Preload("Notification").First(&userNotif, id)
 	if userNotif.Notification.Type == "alert" && userNotif.Notification.SourceID != "" {
 		alertID := userNotif.Notification.SourceID
-		s.svcCtx.DB.Model(&model.AlertEvent{}).
+		s.svcCtx.DB.Model(&monitoringmodel.AlertEvent{}).
 			Where("id = ?", alertID).
 			Update("status", "confirmed")
 	}

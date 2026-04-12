@@ -12,7 +12,7 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 )
 
@@ -25,7 +25,7 @@ import (
 //   - manifest: Docker Compose 清单
 //
 // 返回: 执行输出
-func (l *Logic) applyComposeRelease(ctx context.Context, target *model.DeploymentTarget, releaseID uint, manifest string) (string, error) {
+func (l *Logic) applyComposeRelease(ctx context.Context, target *deploymentmodel.DeploymentTarget, releaseID uint, manifest string) (string, error) {
 	node, err := l.pickComposeNode(ctx, target.ID)
 	if err != nil {
 		return "", err
@@ -64,8 +64,8 @@ func (l *Logic) applyComposeRelease(ctx context.Context, target *model.Deploymen
 //   - targetID: 目标 ID
 //
 // 返回: 选中的节点
-func (l *Logic) pickComposeNode(ctx context.Context, targetID uint) (*model.Node, error) {
-	var links []model.DeploymentTargetNode
+func (l *Logic) pickComposeNode(ctx context.Context, targetID uint) (*deploymentmodel.Node, error) {
+	var links []deploymentmodel.DeploymentTargetNode
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("target_id = ? AND status = ?", targetID, "active").
 		Order("CASE WHEN role = 'manager' THEN 0 ELSE 1 END, id ASC").
@@ -75,7 +75,7 @@ func (l *Logic) pickComposeNode(ctx context.Context, targetID uint) (*model.Node
 	if len(links) == 0 {
 		return nil, fmt.Errorf("compose target has no active nodes")
 	}
-	var node model.Node
+	var node deploymentmodel.Node
 	if err := l.svcCtx.DB.WithContext(ctx).First(&node, links[0].HostID).Error; err != nil {
 		return nil, err
 	}
@@ -92,11 +92,11 @@ func (l *Logic) pickComposeNode(ctx context.Context, targetID uint) (*model.Node
 //   - node: 节点对象
 //
 // 返回: 私钥和密码
-func (l *Logic) loadNodePrivateKey(ctx context.Context, node *model.Node) (string, string, error) {
+func (l *Logic) loadNodePrivateKey(ctx context.Context, node *deploymentmodel.Node) (string, string, error) {
 	if node == nil || node.SSHKeyID == nil {
 		return "", "", nil
 	}
-	var key model.SSHKey
+	var key deploymentmodel.SSHKey
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Select("id", "private_key", "passphrase", "encrypted").
 		Where("id = ?", uint64(*node.SSHKeyID)).

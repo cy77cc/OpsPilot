@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -92,21 +92,21 @@ func (h *TopologyHandler) getTopology(ctx context.Context, envFilter string) (*D
 	}
 
 	// 查询部署目标
-	query := h.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentTarget{})
+	query := h.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentTarget{})
 	if envFilter != "" && envFilter != "all" {
 		query = query.Where("env = ?", envFilter)
 	}
 
-	var targets []model.DeploymentTarget
+	var targets []deploymentmodel.DeploymentTarget
 	if err := query.Find(&targets).Error; err != nil {
 		return nil, err
 	}
 
 	// 获取每个目标的最新发布
 	for _, target := range targets {
-		var latestRelease model.DeploymentRelease
+		var latestRelease deploymentmodel.DeploymentRelease
 		err := h.svcCtx.DB.WithContext(ctx).
-			Model(&model.DeploymentRelease{}).
+			Model(&deploymentmodel.DeploymentRelease{}).
 			Where("target_id = ?", target.ID).
 			Order("created_at desc").
 			First(&latestRelease).Error

@@ -17,7 +17,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -115,7 +115,7 @@ func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
 
 type MonitorAlertRuleListOutput struct {
 	Total int               `json:"total"`
-	List  []model.AlertRule `json:"list"`
+	List  []monitoringmodel.AlertRule `json:"list"`
 }
 
 func MonitorAlertRuleList(ctx context.Context) tool.InvokableTool {
@@ -134,7 +134,7 @@ func MonitorAlertRuleList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.AlertRule{})
+			query := svcCtx.DB.Model(&monitoringmodel.AlertRule{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("state = ? OR status = ?", status, status)
 			}
@@ -142,7 +142,7 @@ func MonitorAlertRuleList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR metric LIKE ?", pattern, pattern)
 			}
-			var rules []model.AlertRule
+			var rules []monitoringmodel.AlertRule
 			if err := query.Order("id desc").Limit(limit).Find(&rules).Error; err != nil {
 				return nil, err
 			}
@@ -160,7 +160,7 @@ func MonitorAlertRuleList(ctx context.Context) tool.InvokableTool {
 
 type MonitorAlertOutput struct {
 	Total int                `json:"total"`
-	List  []model.AlertEvent `json:"list"`
+	List  []monitoringmodel.AlertEvent `json:"list"`
 }
 
 func MonitorAlert(ctx context.Context) tool.InvokableTool {
@@ -179,14 +179,14 @@ func MonitorAlert(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
+			query := svcCtx.DB.Model(&monitoringmodel.AlertEvent{}).Where("status = ?", "firing")
 			if severity := strings.TrimSpace(input.Severity); severity != "" {
 				query = query.Where("severity = ?", severity)
 			}
 			if input.ServiceID > 0 {
 				query = query.Where("source LIKE ?", fmt.Sprintf("%%service:%d%%", input.ServiceID))
 			}
-			var alerts []model.AlertEvent
+			var alerts []monitoringmodel.AlertEvent
 			if err := query.Order("triggered_at desc").Limit(limit).Find(&alerts).Error; err != nil {
 				return nil, err
 			}
@@ -204,7 +204,7 @@ func MonitorAlert(ctx context.Context) tool.InvokableTool {
 
 type MonitorAlertActiveOutput struct {
 	Total int                `json:"total"`
-	List  []model.AlertEvent `json:"list"`
+	List  []monitoringmodel.AlertEvent `json:"list"`
 }
 
 func MonitorAlertActive(ctx context.Context) tool.InvokableTool {
@@ -223,14 +223,14 @@ func MonitorAlertActive(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.AlertEvent{}).Where("status = ?", "firing")
+			query := svcCtx.DB.Model(&monitoringmodel.AlertEvent{}).Where("status = ?", "firing")
 			if severity := strings.TrimSpace(input.Severity); severity != "" {
 				query = query.Where("severity = ?", severity)
 			}
 			if input.ServiceID > 0 {
 				query = query.Where("source LIKE ?", fmt.Sprintf("%%service:%d%%", input.ServiceID))
 			}
-			var alerts []model.AlertEvent
+			var alerts []monitoringmodel.AlertEvent
 			if err := query.Order("triggered_at desc").Limit(limit).Find(&alerts).Error; err != nil {
 				return nil, err
 			}

@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	automationmodel "github.com/cy77cc/OpsPilot/internal/modules/automation/model"
+	cmdbmodel "github.com/cy77cc/OpsPilot/internal/modules/cmdb/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -23,7 +26,7 @@ func (l *Logic) GetServiceTopology(ctx context.Context, serviceID uint) (GraphRe
 		Nodes: make([]GraphNode, 0, 8),
 		Edges: make([]GraphEdge, 0, 8),
 	}
-	var svc model.Service
+	var svc projectmodel.Service
 	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", serviceID).First(&svc).Error; err != nil {
 		return out, err
 	}
@@ -37,7 +40,7 @@ func (l *Logic) GetServiceTopology(ctx context.Context, serviceID uint) (GraphRe
 		},
 	})
 
-	targets := make([]model.DeploymentTarget, 0, 8)
+	targets := make([]deploymentmodel.DeploymentTarget, 0, 8)
 	_ = l.svcCtx.DB.WithContext(ctx).
 		Joins("JOIN deployment_releases ON deployment_releases.target_id = deployment_targets.id").
 		Where("deployment_releases.service_id = ?", serviceID).
@@ -127,7 +130,7 @@ func (l *Logic) QueryGraph(ctx context.Context, filter QueryFilter) (GraphRespon
 		Nodes: make([]GraphNode, 0, 64),
 		Edges: make([]GraphEdge, 0, 64),
 	}
-	q := l.svcCtx.DB.WithContext(ctx).Model(&model.CMDBCI{})
+	q := l.svcCtx.DB.WithContext(ctx).Model(&cmdbmodel.CMDBCI{})
 	if filter.ProjectID > 0 {
 		q = q.Where("project_id = ?", filter.ProjectID)
 	}
@@ -138,7 +141,7 @@ func (l *Logic) QueryGraph(ctx context.Context, filter QueryFilter) (GraphRespon
 		kw := "%" + strings.TrimSpace(filter.Keyword) + "%"
 		q = q.Where("name LIKE ?", kw)
 	}
-	cis := make([]model.CMDBCI, 0, 64)
+	cis := make([]cmdbmodel.CMDBCI, 0, 64)
 	if err := q.Order("id asc").Find(&cis).Error; err != nil {
 		return out, err
 	}
@@ -156,7 +159,7 @@ func (l *Logic) QueryGraph(ctx context.Context, filter QueryFilter) (GraphRespon
 			},
 		})
 	}
-	rels := make([]model.CMDBRelation, 0, 128)
+	rels := make([]cmdbmodel.CMDBRelation, 0, 128)
 	if err := l.svcCtx.DB.WithContext(ctx).Order("id asc").Find(&rels).Error; err != nil {
 		return out, err
 	}
@@ -192,7 +195,7 @@ func (l *Logic) QueryGraph(ctx context.Context, filter QueryFilter) (GraphRespon
 
 func (l *Logic) WriteAccessAudit(ctx context.Context, actor uint, action, scope string, filter any) {
 	buf, _ := json.Marshal(filter)
-	_ = l.svcCtx.DB.WithContext(ctx).Create(&model.TopologyAccessAudit{
+	_ = l.svcCtx.DB.WithContext(ctx).Create(&automationmodel.TopologyAccessAudit{
 		ActorID:    actor,
 		Action:     action,
 		Scope:      scope,

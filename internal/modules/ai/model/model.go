@@ -8,7 +8,7 @@
 //   - 追踪统计：AITraceSpan, AIUsageLog
 //   - 检查点：AICheckpoint
 //   - 审批流程：AIToolRiskPolicy, AIApprovalTask, AIApprovalOutboxEvent
-package ai
+package model
 
 import (
 	"time"

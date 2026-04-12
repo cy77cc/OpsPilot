@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/modules/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -74,7 +74,7 @@ func TestPhase3Governance_FinalizeWritesAuditEnvelope(t *testing.T) {
 		t.Fatalf("expected non-zero audit id")
 	}
 
-	var audit model.OperationAudit
+	var audit clustermodel.OperationAudit
 	if err := db.First(&audit, out.AuditID).Error; err != nil {
 		t.Fatalf("load audit record: %v", err)
 	}
@@ -91,7 +91,7 @@ func newPhase3GovernanceTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.OperationApproval{}, &model.OperationAudit{}); err != nil {
+	if err := db.AutoMigrate(&clustermodel.OperationApproval{}, &clustermodel.OperationAudit{}); err != nil {
 		t.Fatalf("migrate governance tables: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestHandlerPhase3Admission_RegistersPolicyAndVersion(t *testing.T) {
 	}
 
 	var count int64
-	if err := db.Model(&model.AdmissionPolicy{}).
+	if err := db.Model(&clustermodel.AdmissionPolicy{}).
 		Where("cluster_id = ? AND policy_name = ? AND version = ?", 42, "deny-privileged", "v1").
 		Count(&count).Error; err != nil {
 		t.Fatalf("count admission policy: %v", err)
@@ -160,7 +160,7 @@ func TestHandlerPhase3Admission_BlocksCriticalVulnFromTrivy(t *testing.T) {
 	}
 
 	var count int64
-	if err := db.Model(&model.AdmissionPolicy{}).Where("cluster_id = ? AND policy_name = ?", 42, "deny-privileged").Count(&count).Error; err != nil {
+	if err := db.Model(&clustermodel.AdmissionPolicy{}).Where("cluster_id = ? AND policy_name = ?", 42, "deny-privileged").Count(&count).Error; err != nil {
 		t.Fatalf("count admission policy: %v", err)
 	}
 	if count != 0 {
@@ -202,11 +202,11 @@ func newPhase3AdmissionTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Cluster{},
-		&model.OperationApproval{},
-		&model.OperationAudit{},
-		&model.AdmissionPolicy{},
-		&model.AdmissionExemption{},
+		&clustermodel.Cluster{},
+		&clustermodel.OperationApproval{},
+		&clustermodel.OperationAudit{},
+		&clustermodel.AdmissionPolicy{},
+		&clustermodel.AdmissionExemption{},
 	); err != nil {
 		t.Fatalf("migrate tables: %v", err)
 	}
@@ -223,7 +223,7 @@ func newPhase3AdmissionTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("create image_scan_reports: %v", err)
 	}
 
-	if err := db.Create(&model.Cluster{
+	if err := db.Create(&clustermodel.Cluster{
 		ID:      42,
 		Name:    "phase3-test-cluster",
 		Status:  "active",
@@ -267,7 +267,7 @@ func mustIssuePhase3Approval(t *testing.T, db *gorm.DB, action string, resourceI
 	if decision.Approval == nil || decision.Approval.Ticket == "" {
 		t.Fatalf("expected approval ticket to be issued")
 	}
-	if err := db.Model(&model.OperationApproval{}).
+	if err := db.Model(&clustermodel.OperationApproval{}).
 		Where("ticket = ?", decision.Approval.Ticket).
 		Updates(map[string]any{
 			"status":    "approved",

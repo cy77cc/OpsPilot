@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/kubernetes"
 )
 
-func (h *Handler) executeHighRiskNodeOperationImpl(c *gin.Context, clusterID uint, nodeName, action, approvalToken string, fn func(context.Context, *model.Cluster, *model.ClusterNode, *kubernetes.Clientset) (map[string]any, error)) (ClusterOperationResponse, error) {
+func (h *Handler) executeHighRiskNodeOperationImpl(c *gin.Context, clusterID uint, nodeName, action, approvalToken string, fn func(context.Context, *clustermodel.Cluster, *clustermodel.ClusterNode, *kubernetes.Clientset) (map[string]any, error)) (ClusterOperationResponse, error) {
 	ctx := c.Request.Context()
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(ctx).First(&cluster, clusterID).Error; err != nil {
 		return ClusterOperationResponse{}, fmt.Errorf("cluster not found: %w", err)
 	}
@@ -21,7 +21,7 @@ func (h *Handler) executeHighRiskNodeOperationImpl(c *gin.Context, clusterID uin
 		return ClusterOperationResponse{}, fmt.Errorf("cannot modify nodes in externally managed cluster")
 	}
 
-	var node model.ClusterNode
+	var node clustermodel.ClusterNode
 	if err := h.svcCtx.DB.WithContext(ctx).Where("cluster_id = ? AND name = ?", clusterID, nodeName).First(&node).Error; err != nil {
 		return ClusterOperationResponse{}, fmt.Errorf("node not found: %w", err)
 	}

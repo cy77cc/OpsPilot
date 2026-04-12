@@ -11,8 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
 	clustersecurity "github.com/cy77cc/OpsPilot/internal/modules/cluster/domain/security"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	dashboardmodel "github.com/cy77cc/OpsPilot/internal/modules/dashboard/model"
+	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"gorm.io/gorm"
 )
 
@@ -57,7 +60,7 @@ func (r *Repository) GetClusterCNIInfo(ctx context.Context, clusterID uint) (Clu
 	}
 
 	info := ClusterCNIInfoRecord{ClusterID: clusterID}
-	var task model.ClusterBootstrapTask
+	var task deploymentclustermodel.ClusterBootstrapTask
 	err := r.db.WithContext(ctx).
 		Where("cluster_id = ?", clusterID).
 		Order("updated_at DESC, created_at DESC, id DESC").
@@ -85,7 +88,7 @@ func (r *Repository) GetPolicyReleaseRecord(ctx context.Context, clusterID, rele
 	}
 
 	releaseKey := strconv.FormatUint(uint64(releaseID), 10)
-	var rows []model.OperationAudit
+	var rows []governanceclustermodel.AuditLog
 	if err := r.db.WithContext(ctx).
 		Where("domain = ? AND scope_cluster_id = ? AND resource = ? AND resource_id = ?", "cluster", clusterID, PolicyReleaseApprovalResource, releaseKey).
 		Order("id DESC").
@@ -155,8 +158,8 @@ func decodeNestedBool(payload map[string]any, path ...string) bool {
 //
 // 返回: 集群列表，失败返回错误
 func (r *Repository) ListClusters(ctx context.Context, status, source string) ([]ClusterListItem, error) {
-	var clusters []model.Cluster
-	q := r.db.WithContext(ctx).Model(&model.Cluster{})
+	var clusters []clusterclustermodel.Cluster
+	q := r.db.WithContext(ctx).Model(&clusterclustermodel.Cluster{})
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -177,7 +180,7 @@ func (r *Repository) ListClusters(ctx context.Context, status, source string) ([
 		for _, c := range clusters {
 			ids = append(ids, c.ID)
 		}
-		if err := r.db.WithContext(ctx).Model(&model.ClusterNode{}).
+		if err := r.db.WithContext(ctx).Model(&clusterclustermodel.ClusterNode{}).
 			Select("cluster_id, COUNT(1) as count").
 			Where("cluster_id IN ?", ids).
 			Group("cluster_id").
@@ -216,8 +219,8 @@ func (r *Repository) ListClusters(ctx context.Context, status, source string) ([
 //   - id: 集群 ID
 //
 // 返回: 集群模型，不存在返回 ErrRecordNotFound
-func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*model.Cluster, error) {
-	var row model.Cluster
+func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*clusterclustermodel.Cluster, error) {
+	var row clusterclustermodel.Cluster
 	if err := r.db.WithContext(ctx).First(&row, id).Error; err != nil {
 		return nil, err
 	}
@@ -232,13 +235,13 @@ func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*model.Clust
 //
 // 返回: 集群详情结构，不存在返回错误
 func (r *Repository) GetClusterDetail(ctx context.Context, id uint) (ClusterDetail, error) {
-	var cluster model.Cluster
+	var cluster clusterclustermodel.Cluster
 	if err := r.db.WithContext(ctx).First(&cluster, id).Error; err != nil {
 		return ClusterDetail{}, err
 	}
 
 	var nodeCount int64
-	if err := r.db.WithContext(ctx).Model(&model.ClusterNode{}).Where("cluster_id = ?", cluster.ID).Count(&nodeCount).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&clusterclustermodel.ClusterNode{}).Where("cluster_id = ?", cluster.ID).Count(&nodeCount).Error; err != nil {
 		return ClusterDetail{}, err
 	}
 
@@ -271,7 +274,7 @@ func (r *Repository) GetClusterDetail(ctx context.Context, id uint) (ClusterDeta
 //
 // 返回: 节点列表，失败返回错误
 func (r *Repository) ListClusterNodes(ctx context.Context, clusterID uint) ([]ClusterNode, error) {
-	var nodes []model.ClusterNode
+	var nodes []clustermodel.ClusterNode
 	if err := r.db.WithContext(ctx).
 		Where("cluster_id = ?", clusterID).
 		Order("role DESC, name ASC").
@@ -310,7 +313,7 @@ func (r *Repository) ListClusterNodes(ctx context.Context, clusterID uint) ([]Cl
 //
 // 返回: 引导配置列表，失败返回错误
 func (r *Repository) ListBootstrapProfiles(ctx context.Context) ([]BootstrapProfileItem, error) {
-	var rows []model.ClusterBootstrapProfile
+	var rows []clustermodel.ClusterBootstrapProfile
 	if err := r.db.WithContext(ctx).Order("id desc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -328,7 +331,7 @@ func (r *Repository) ListBootstrapProfiles(ctx context.Context) ([]BootstrapProf
 //   - in: 集群模型
 //
 // 返回: 失败返回错误
-func (r *Repository) CreateCluster(ctx context.Context, in *model.Cluster) error {
+func (r *Repository) CreateCluster(ctx context.Context, in *clustermodel.Cluster) error {
 	return r.db.WithContext(ctx).Create(in).Error
 }
 
@@ -339,7 +342,7 @@ func (r *Repository) CreateCluster(ctx context.Context, in *model.Cluster) error
 //   - in: 凭证模型
 //
 // 返回: 失败返回错误
-func (r *Repository) CreateClusterCredential(ctx context.Context, in *model.ClusterCredential) error {
+func (r *Repository) CreateClusterCredential(ctx context.Context, in *clustermodel.ClusterCredential) error {
 	return r.db.WithContext(ctx).Create(in).Error
 }
 
@@ -352,7 +355,7 @@ func (r *Repository) CreateClusterCredential(ctx context.Context, in *model.Clus
 //
 // 返回: 失败返回错误
 func (r *Repository) UpdateClusterCredentialID(ctx context.Context, clusterID, credentialID uint) error {
-	return r.db.WithContext(ctx).Model(&model.Cluster{}).Where("id = ?", clusterID).Update("credential_id", credentialID).Error
+	return r.db.WithContext(ctx).Model(&clustermodel.Cluster{}).Where("id = ?", clusterID).Update("credential_id", credentialID).Error
 }
 
 // UpdateCluster 更新集群信息。
@@ -368,7 +371,7 @@ func (r *Repository) UpdateCluster(ctx context.Context, id uint, updates map[str
 		return nil
 	}
 	updates["updated_at"] = time.Now().UTC()
-	res := r.db.WithContext(ctx).Model(&model.Cluster{}).Where("id = ?", id).Updates(updates)
+	res := r.db.WithContext(ctx).Model(&clustermodel.Cluster{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -387,13 +390,13 @@ func (r *Repository) UpdateCluster(ctx context.Context, id uint, updates map[str
 // 返回: 在事务中删除节点、凭证和集群记录
 func (r *Repository) DeleteClusterWithRelations(ctx context.Context, clusterID uint) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("cluster_id = ?", clusterID).Delete(&model.ClusterNode{}).Error; err != nil {
+		if err := tx.Where("cluster_id = ?", clusterID).Delete(&clustermodel.ClusterNode{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("cluster_id = ?", clusterID).Delete(&model.ClusterCredential{}).Error; err != nil {
+		if err := tx.Where("cluster_id = ?", clusterID).Delete(&clustermodel.ClusterCredential{}).Error; err != nil {
 			return err
 		}
-		res := tx.Where("id = ?", clusterID).Delete(&model.Cluster{})
+		res := tx.Where("id = ?", clusterID).Delete(&clustermodel.Cluster{})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -411,8 +414,8 @@ func (r *Repository) DeleteClusterWithRelations(ctx context.Context, clusterID u
 //   - clusterID: 集群 ID
 //
 // 返回: 凭证模型，不存在返回错误
-func (r *Repository) FindClusterCredentialByClusterID(ctx context.Context, clusterID uint) (*model.ClusterCredential, error) {
-	var cred model.ClusterCredential
+func (r *Repository) FindClusterCredentialByClusterID(ctx context.Context, clusterID uint) (*clustermodel.ClusterCredential, error) {
+	var cred clustermodel.ClusterCredential
 	if err := r.db.WithContext(ctx).Where("cluster_id = ?", clusterID).First(&cred).Error; err != nil {
 		return nil, err
 	}
@@ -429,8 +432,8 @@ func (r *Repository) FindClusterCredentialByClusterID(ctx context.Context, clust
 //   - updates: 更新字段映射 (用于更新)
 //
 // 返回: 失败返回错误
-func (r *Repository) UpsertClusterNode(ctx context.Context, clusterID uint, nodeName string, row model.ClusterNode, updates map[string]interface{}) error {
-	var existing model.ClusterNode
+func (r *Repository) UpsertClusterNode(ctx context.Context, clusterID uint, nodeName string, row clustermodel.ClusterNode, updates map[string]interface{}) error {
+	var existing clustermodel.ClusterNode
 	res := r.db.WithContext(ctx).Where("cluster_id = ? AND name = ?", clusterID, nodeName).First(&existing)
 	if res.Error == nil {
 		return r.db.WithContext(ctx).Model(&existing).Updates(updates).Error
@@ -450,7 +453,7 @@ func (r *Repository) UpsertClusterNode(ctx context.Context, clusterID uint, node
 //
 // 返回: 失败返回错误
 func (r *Repository) UpdateClusterLastSync(ctx context.Context, clusterID uint, ts *time.Time) error {
-	return r.db.WithContext(ctx).Model(&model.Cluster{}).Where("id = ?", clusterID).Update("last_sync_at", ts).Error
+	return r.db.WithContext(ctx).Model(&clustermodel.Cluster{}).Where("id = ?", clusterID).Update("last_sync_at", ts).Error
 }
 
 // MustNotBeNil 检查 Repository 是否已初始化。
@@ -477,7 +480,7 @@ func decodeJSONStringMap(raw string) map[string]any {
 }
 
 // toBootstrapProfileItem 将数据库模型转换为 API 响应结构。
-func toBootstrapProfileItem(row model.ClusterBootstrapProfile) BootstrapProfileItem {
+func toBootstrapProfileItem(row clustermodel.ClusterBootstrapProfile) BootstrapProfileItem {
 	return BootstrapProfileItem{
 		ID:                   row.ID,
 		Name:                 row.Name,

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -36,7 +36,7 @@ func TestHandlerPhase3Runtime_IngestFalcoEvent(t *testing.T) {
 		t.Fatalf("expected http 200, got %d", recorder.Code)
 	}
 	var count int64
-	if err := db.Model(&model.RuntimeSecurityEvent{}).Where("cluster_id = ? AND source = ?", 42, model.SecurityEventSourceFalco).Count(&count).Error; err != nil {
+	if err := db.Model(&clustermodel.RuntimeSecurityEvent{}).Where("cluster_id = ? AND source = ?", 42, clustermodel.SecurityEventSourceFalco).Count(&count).Error; err != nil {
 		t.Fatalf("count runtime events: %v", err)
 	}
 	if count != 1 {
@@ -47,10 +47,10 @@ func TestHandlerPhase3Runtime_IngestFalcoEvent(t *testing.T) {
 func TestHandlerPhase3Runtime_ListAlertsSupportsSeverityAndPageSize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3RuntimeTestHandler(t, ClusterModePlatformManaged)
-	seedRuntimeEvent(t, db, 42, "prod", "api-critical", "rule-1", model.SecuritySeverityCritical, model.SecurityEventSourceFalco)
-	seedRuntimeEvent(t, db, 42, "prod", "api-high-1", "rule-2", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
-	seedRuntimeEvent(t, db, 42, "prod", "api-high-2", "rule-3", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
-	seedRuntimeEvent(t, db, 42, "prod", "api-low", "rule-4", model.SecuritySeverityLow, model.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-critical", "rule-1", clustermodel.SecuritySeverityCritical, clustermodel.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-high-1", "rule-2", clustermodel.SecuritySeverityHigh, clustermodel.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-high-2", "rule-3", clustermodel.SecuritySeverityHigh, clustermodel.SecurityEventSourceFalco)
+	seedRuntimeEvent(t, db, 42, "prod", "api-low", "rule-4", clustermodel.SecuritySeverityLow, clustermodel.SecurityEventSourceFalco)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -66,7 +66,7 @@ func TestHandlerPhase3Runtime_ListAlertsSupportsSeverityAndPageSize(t *testing.T
 	if len(payload.Data.List) != 1 {
 		t.Fatalf("expected one alert by page_size=1, got %d", len(payload.Data.List))
 	}
-	if strings.ToLower(strings.TrimSpace(payload.Data.List[0].Severity)) != model.SecuritySeverityHigh {
+	if strings.ToLower(strings.TrimSpace(payload.Data.List[0].Severity)) != clustermodel.SecuritySeverityHigh {
 		t.Fatalf("expected severity high, got %q", payload.Data.List[0].Severity)
 	}
 	if payload.Data.Total != 1 {
@@ -77,7 +77,7 @@ func TestHandlerPhase3Runtime_ListAlertsSupportsSeverityAndPageSize(t *testing.T
 func TestHandlerPhase3Runtime_ContainPlatformManagedAuto(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3RuntimeTestHandler(t, ClusterModePlatformManaged)
-	eventID := seedRuntimeEvent(t, db, 42, "prod", "api-1", "rule-x", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
+	eventID := seedRuntimeEvent(t, db, 42, "prod", "api-1", "rule-x", clustermodel.SecuritySeverityHigh, clustermodel.SecurityEventSourceFalco)
 
 	body := strings.NewReader(`{"approval_token":"` + mustIssuePhase3RuntimeApproval(t, db, eventID) + `"}`)
 	recorder := httptest.NewRecorder()
@@ -97,7 +97,7 @@ func TestHandlerPhase3Runtime_ContainPlatformManagedAuto(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected contain result map in envelope data")
 	}
-	if contain["mode"] != model.DisposalModeAuto {
+	if contain["mode"] != clustermodel.DisposalModeAuto {
 		t.Fatalf("expected auto mode, got %v", contain["mode"])
 	}
 }
@@ -105,7 +105,7 @@ func TestHandlerPhase3Runtime_ContainPlatformManagedAuto(t *testing.T) {
 func TestHandlerPhase3Runtime_ContainExternalManagedSuggestOnlyWithAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, db := newPhase3RuntimeTestHandler(t, ClusterModeExternalManaged)
-	eventID := seedRuntimeEvent(t, db, 42, "prod", "api-1", "rule-x", model.SecuritySeverityHigh, model.SecurityEventSourceFalco)
+	eventID := seedRuntimeEvent(t, db, 42, "prod", "api-1", "rule-x", clustermodel.SecuritySeverityHigh, clustermodel.SecurityEventSourceFalco)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -124,7 +124,7 @@ func TestHandlerPhase3Runtime_ContainExternalManagedSuggestOnlyWithAudit(t *test
 	if !ok {
 		t.Fatalf("expected contain result map in envelope data")
 	}
-	if contain["mode"] != model.DisposalModeSuggestOnly {
+	if contain["mode"] != clustermodel.DisposalModeSuggestOnly {
 		t.Fatalf("expected suggest_only mode, got %v", contain["mode"])
 	}
 	if env.AuditID == 0 {
@@ -140,10 +140,10 @@ func newPhase3RuntimeTestHandler(t *testing.T, source string) (*Handler, *gorm.D
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Cluster{},
-		&model.OperationApproval{},
-		&model.OperationAudit{},
-		&model.RuntimeSecurityEvent{},
+		&clustermodel.Cluster{},
+		&clustermodel.OperationApproval{},
+		&clustermodel.OperationAudit{},
+		&clustermodel.RuntimeSecurityEvent{},
 	); err != nil {
 		t.Fatalf("migrate runtime tables: %v", err)
 	}
@@ -159,7 +159,7 @@ func newPhase3RuntimeTestHandler(t *testing.T, source string) (*Handler, *gorm.D
 	);`).Error; err != nil {
 		t.Fatalf("create runtime_disposal_actions: %v", err)
 	}
-	if err := db.Create(&model.Cluster{
+	if err := db.Create(&clustermodel.Cluster{
 		ID:      42,
 		Name:    "phase3-runtime-test-cluster",
 		Status:  "active",
@@ -179,7 +179,7 @@ func newPhase3RuntimeTestHandler(t *testing.T, source string) (*Handler, *gorm.D
 
 func seedRuntimeEvent(t *testing.T, db *gorm.DB, clusterID uint, namespace, workload, ruleID, severity, src string) uint {
 	t.Helper()
-	rec := model.RuntimeSecurityEvent{
+	rec := clustermodel.RuntimeSecurityEvent{
 		ClusterID:      clusterID,
 		Namespace:      namespace,
 		Workload:       workload,
@@ -219,7 +219,7 @@ func mustIssuePhase3RuntimeApproval(t *testing.T, db *gorm.DB, eventID uint) str
 	if decision.Approval == nil || decision.Approval.Ticket == "" {
 		t.Fatalf("expected runtime approval ticket")
 	}
-	if err := db.Model(&model.OperationApproval{}).Where("ticket = ?", decision.Approval.Ticket).Updates(map[string]any{"status": "approved", "review_by": 2001}).Error; err != nil {
+	if err := db.Model(&clustermodel.OperationApproval{}).Where("ticket = ?", decision.Approval.Ticket).Updates(map[string]any{"status": "approved", "review_by": 2001}).Error; err != nil {
 		t.Fatalf("approve runtime ticket: %v", err)
 	}
 	return decision.Approval.Ticket
@@ -229,7 +229,7 @@ type runtimeAlertsHTTPResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		List  []model.RuntimeSecurityEvent `json:"list"`
+		List  []clustermodel.RuntimeSecurityEvent `json:"list"`
 		Total int                          `json:"total"`
 	} `json:"data"`
 }

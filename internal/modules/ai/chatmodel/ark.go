@@ -6,7 +6,7 @@ import (
 
 	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
 	einomodel "github.com/cloudwego/eino/components/model"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	arkruntime "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 )
 

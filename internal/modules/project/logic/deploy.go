@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +35,7 @@ import (
 //   - 支持多 YAML 文档部署
 //   - 使用 Server-Side Apply 确保声明式管理
 //   - 自动处理命名空间资源 (默认 default)
-func DeployToCluster(ctx context.Context, cluster *model.Cluster, yamlContent string) error {
+func DeployToCluster(ctx context.Context, cluster *clustermodel.Cluster, yamlContent string) error {
 	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
 	if err != nil {
 		return err

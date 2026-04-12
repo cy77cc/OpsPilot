@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,7 +25,7 @@ func (h *Handler) UpgradeClusterImpl(c *gin.Context) {
 		return
 	}
 
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).First(&cluster, id).Error; err != nil {
 		httpx.NotFound(c, "cluster not found")
 		return

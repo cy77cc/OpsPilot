@@ -10,7 +10,9 @@ import (
 	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 )
 
@@ -58,7 +60,7 @@ func (l *Logic) ApplyClusterBootstrap(ctx context.Context, uid uint64, req Clust
 	if err != nil {
 		return ClusterBootstrapApplyResp{}, err
 	}
-	task := &model.ClusterBootstrapTask{
+	task := &deploymentmodel.ClusterBootstrapTask{
 		ID:             fmt.Sprintf("boot-%d", time.Now().UnixNano()),
 		Name:           preview.Name,
 		ControlPlaneID: req.ControlPlaneID,
@@ -105,7 +107,7 @@ func (l *Logic) ApplyClusterBootstrap(ctx context.Context, uid uint64, req Clust
 		return ClusterBootstrapApplyResp{TaskID: task.ID, Status: task.Status}, fmt.Errorf("%s", task.ErrorMessage)
 	}
 
-	cluster := model.Cluster{
+	cluster := clustermodel.Cluster{
 		Name:       preview.Name,
 		Endpoint:   preview.ExpectedEndpoint,
 		Status:     "provisioning",
@@ -118,7 +120,7 @@ func (l *Logic) ApplyClusterBootstrap(ctx context.Context, uid uint64, req Clust
 		_ = l.svcCtx.DB.WithContext(ctx).Save(task).Error
 		return ClusterBootstrapApplyResp{TaskID: task.ID, Status: task.Status}, err
 	}
-	target := model.DeploymentTarget{
+	target := deploymentmodel.DeploymentTarget{
 		Name:       fmt.Sprintf("%s-target", preview.Name),
 		TargetType: "k8s",
 		ClusterID:  cluster.ID,
@@ -154,11 +156,11 @@ func (l *Logic) ApplyClusterBootstrap(ctx context.Context, uid uint64, req Clust
 //   - taskID: 任务 ID
 //
 // 返回: 引导任务对象
-func (l *Logic) GetClusterBootstrapTask(ctx context.Context, taskID string) (*model.ClusterBootstrapTask, error) {
+func (l *Logic) GetClusterBootstrapTask(ctx context.Context, taskID string) (*deploymentmodel.ClusterBootstrapTask, error) {
 	if strings.TrimSpace(taskID) == "" {
 		return nil, fmt.Errorf("task_id is required")
 	}
-	var task model.ClusterBootstrapTask
+	var task deploymentmodel.ClusterBootstrapTask
 	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
 		return nil, err
 	}
@@ -173,20 +175,20 @@ func (l *Logic) GetClusterBootstrapTask(ctx context.Context, taskID string) (*mo
 //   - workerIDs: 工作节点 ID 列表
 //
 // 返回: 控制平面节点和工作节点列表
-func (l *Logic) loadBootstrapHosts(ctx context.Context, controlID uint, workerIDs []uint) (*model.Node, []model.Node, error) {
-	var control model.Node
+func (l *Logic) loadBootstrapHosts(ctx context.Context, controlID uint, workerIDs []uint) (*hostmodel.Node, []hostmodel.Node, error) {
+	var control hostmodel.Node
 	if err := l.svcCtx.DB.WithContext(ctx).First(&control, controlID).Error; err != nil {
 		return nil, nil, fmt.Errorf("control plane host not found: %w", err)
 	}
 	if ok, reason := hostlogic.EvaluateOperationalEligibility(&control); !ok {
 		return nil, nil, fmt.Errorf("control plane host unavailable: %s", reason)
 	}
-	workers := make([]model.Node, 0, len(workerIDs))
+	workers := make([]hostmodel.Node, 0, len(workerIDs))
 	for _, id := range workerIDs {
 		if id == 0 || id == controlID {
 			continue
 		}
-		var row model.Node
+		var row hostmodel.Node
 		if err := l.svcCtx.DB.WithContext(ctx).First(&row, id).Error; err != nil {
 			return nil, nil, fmt.Errorf("worker host %d not found", id)
 		}

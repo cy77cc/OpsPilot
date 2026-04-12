@@ -10,8 +10,8 @@ import (
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/gin-gonic/gin"
 )

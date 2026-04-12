@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	governanceapproval "github.com/cy77cc/OpsPilot/internal/modules/governance/approval"
 	governanceaudit "github.com/cy77cc/OpsPilot/internal/modules/governance/audit"
@@ -100,17 +100,17 @@ func PolicyReleaseApprovalScope(clusterID uint, namespace string, releaseID uint
 }
 
 // IssuePolicyReleaseApproval 创建策略发布审批票据。
-func IssuePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action string, requestedBy uint, expiresAt time.Time) (*model.ClusterDeployApproval, error) {
+func IssuePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action string, requestedBy uint, expiresAt time.Time) (*clustermodel.ClusterDeployApproval, error) {
 	return IssueClusterDeployApproval(ctx, db, PolicyReleaseApprovalScope(clusterID, namespace, releaseID, action), requestedBy, expiresAt)
 }
 
 // ConsumePolicyReleaseApproval 校验并消费策略发布审批票据。
-func ConsumePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action, ticket string, consumedBy uint, now time.Time) (*model.ClusterDeployApproval, error) {
+func ConsumePolicyReleaseApproval(ctx context.Context, db *gorm.DB, clusterID uint, namespace string, releaseID uint, action, ticket string, consumedBy uint, now time.Time) (*clustermodel.ClusterDeployApproval, error) {
 	return ConsumeClusterDeployApproval(ctx, db, ticket, PolicyReleaseApprovalScope(clusterID, namespace, releaseID, action), consumedBy, now)
 }
 
 // IssueClusterDeployApproval 创建审批票据记录。
-func IssueClusterDeployApproval(ctx context.Context, db *gorm.DB, scope ApprovalScope, requestedBy uint, expiresAt time.Time) (*model.ClusterDeployApproval, error) {
+func IssueClusterDeployApproval(ctx context.Context, db *gorm.DB, scope ApprovalScope, requestedBy uint, expiresAt time.Time) (*clustermodel.ClusterDeployApproval, error) {
 	govScope := governanceScopeFromApprovalScope(scope)
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().UTC().Add(30 * time.Minute)
@@ -123,7 +123,7 @@ func IssueClusterDeployApproval(ctx context.Context, db *gorm.DB, scope Approval
 	if err != nil {
 		return nil, toClusterApprovalError(err)
 	}
-	rec := model.ClusterDeployApproval{
+	rec := clustermodel.ClusterDeployApproval{
 		Ticket:     info.Ticket,
 		ClusterID:  govScope.ClusterID,
 		Namespace:  govScope.Namespace,
@@ -140,7 +140,7 @@ func IssueClusterDeployApproval(ctx context.Context, db *gorm.DB, scope Approval
 }
 
 // ConsumeClusterDeployApproval 校验并单次消费审批票据。
-func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket string, scope ApprovalScope, consumedBy uint, now time.Time) (*model.ClusterDeployApproval, error) {
+func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket string, scope ApprovalScope, consumedBy uint, now time.Time) (*clustermodel.ClusterDeployApproval, error) {
 	svc := governanceapproval.NewServiceWithOptions(db, func() time.Time {
 		if now.IsZero() {
 			return time.Now().UTC()
@@ -164,7 +164,7 @@ func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket strin
 			err = svc.Consume(ctx, legacyIntent)
 		}
 	}
-	rec := model.ClusterDeployApproval{
+	rec := clustermodel.ClusterDeployApproval{
 		Ticket:     strings.TrimSpace(ticket),
 		ClusterID:  govScope.ClusterID,
 		Namespace:  govScope.Namespace,
@@ -179,7 +179,7 @@ func ConsumeClusterDeployApproval(ctx context.Context, db *gorm.DB, ticket strin
 }
 
 // PersistClusterOperationAudit 持久化集群操作审计，并对 message 进行脱敏。
-func PersistClusterOperationAudit(ctx context.Context, db *gorm.DB, clusterID uint, namespace, action, resource, resourceID, status string, operatorID uint, message any) (*model.ClusterOperationAudit, error) {
+func PersistClusterOperationAudit(ctx context.Context, db *gorm.DB, clusterID uint, namespace, action, resource, resourceID, status string, operatorID uint, message any) (*clustermodel.ClusterOperationAudit, error) {
 	govAudit := governanceaudit.NewService(db, nil)
 	msg := strings.TrimSpace(stringifyAuditMessage(message))
 	finalize := governance.FinalizeInput{
@@ -209,7 +209,7 @@ func PersistClusterOperationAudit(ctx context.Context, db *gorm.DB, clusterID ui
 	if err != nil {
 		return nil, err
 	}
-	return &model.ClusterOperationAudit{
+	return &clustermodel.ClusterOperationAudit{
 		ID:         id,
 		ClusterID:  clusterID,
 		Namespace:  strings.TrimSpace(namespace),

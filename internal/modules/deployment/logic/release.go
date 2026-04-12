@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	projectlogic "github.com/cy77cc/OpsPilot/internal/modules/project/logic"
 )
 
@@ -105,7 +107,7 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 		return ReleaseApplyResp{ReasonCode: reasonCode}, err
 	}
 	approvalRequired := env == "production"
-	release := &model.DeploymentRelease{
+	release := &deploymentmodel.DeploymentRelease{
 		ServiceID:          svc.ID,
 		TargetID:           target.ID,
 		NamespaceOrProject: env,
@@ -139,7 +141,7 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 
 	if approvalRequired {
 		ticket := fmt.Sprintf("dep-appr-%d", time.Now().UnixNano())
-		approval := model.DeploymentReleaseApproval{
+		approval := deploymentmodel.DeploymentReleaseApproval{
 			ReleaseID:   release.ID,
 			Ticket:      ticket,
 			Decision:    "pending",
@@ -201,17 +203,17 @@ func (l *Logic) ApplyRelease(ctx context.Context, uid uint64, req ReleasePreview
 //
 // 返回: 回滚发布响应
 func (l *Logic) RollbackRelease(ctx context.Context, id uint, uid uint64) (ReleaseApplyResp, error) {
-	var current model.DeploymentRelease
+	var current deploymentmodel.DeploymentRelease
 	if err := l.svcCtx.DB.WithContext(ctx).First(&current, id).Error; err != nil {
 		return ReleaseApplyResp{}, err
 	}
-	var prev model.DeploymentRelease
+	var prev deploymentmodel.DeploymentRelease
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("service_id = ? AND target_id = ? AND id < ?", current.ServiceID, current.TargetID, current.ID).
 		Order("id DESC").First(&prev).Error; err != nil {
 		return ReleaseApplyResp{}, fmt.Errorf("no previous release to rollback")
 	}
-	rollback := &model.DeploymentRelease{
+	rollback := &deploymentmodel.DeploymentRelease{
 		ServiceID:          current.ServiceID,
 		TargetID:           current.TargetID,
 		NamespaceOrProject: current.NamespaceOrProject,
@@ -238,14 +240,14 @@ func (l *Logic) RollbackRelease(ctx context.Context, id uint, uid uint64) (Relea
 	l.writeReleaseAudit(ctx, rollback.ID, uint(uid), "release.rollback_started", map[string]any{"from_release_id": current.ID})
 	switch current.RuntimeType {
 	case "k8s":
-		var target model.DeploymentTarget
+		var target deploymentmodel.DeploymentTarget
 		if err := l.svcCtx.DB.WithContext(ctx).First(&target, current.TargetID).Error; err != nil {
 			rollback.Status = releaseStatusFailed
 			rollback.DiagnosticsJSON = toJSON([]releaseDiagnostic{{Runtime: "k8s", Stage: "rollback", Code: "target_not_found", Message: err.Error(), Summary: "rollback target missing"}})
 			_ = l.svcCtx.DB.WithContext(ctx).Save(rollback).Error
 			return ReleaseApplyResp{ReleaseID: rollback.ID, Status: rollback.Status, RuntimeType: rollback.RuntimeType}, err
 		}
-		var cluster model.Cluster
+		var cluster clustermodel.Cluster
 		if err := l.svcCtx.DB.WithContext(ctx).First(&cluster, target.ClusterID).Error; err != nil {
 			rollback.Status = releaseStatusFailed
 			rollback.DiagnosticsJSON = toJSON([]releaseDiagnostic{{Runtime: "k8s", Stage: "rollback", Code: "cluster_not_found", Message: err.Error(), Summary: "rollback cluster missing"}})
@@ -259,7 +261,7 @@ func (l *Logic) RollbackRelease(ctx context.Context, id uint, uid uint64) (Relea
 			return ReleaseApplyResp{ReleaseID: rollback.ID, Status: rollback.Status, RuntimeType: rollback.RuntimeType}, err
 		}
 	case "compose":
-		var target model.DeploymentTarget
+		var target deploymentmodel.DeploymentTarget
 		if err := l.svcCtx.DB.WithContext(ctx).First(&target, current.TargetID).Error; err != nil {
 			rollback.Status = releaseStatusFailed
 			rollback.DiagnosticsJSON = toJSON([]releaseDiagnostic{{Runtime: "compose", Stage: "rollback", Code: "target_not_found", Message: err.Error(), Summary: "rollback target missing"}})
@@ -306,14 +308,14 @@ func (l *Logic) RollbackRelease(ctx context.Context, id uint, uid uint64) (Relea
 //
 // 返回: 发布响应
 func (l *Logic) ApproveRelease(ctx context.Context, id uint, uid uint64, comment string) (ReleaseApplyResp, error) {
-	var release model.DeploymentRelease
+	var release deploymentmodel.DeploymentRelease
 	if err := l.svcCtx.DB.WithContext(ctx).First(&release, id).Error; err != nil {
 		return ReleaseApplyResp{}, err
 	}
 	if release.Status != releaseStatusPendingApproval {
 		return ReleaseApplyResp{}, fmt.Errorf("release state %s cannot be approved", release.Status)
 	}
-	var approval model.DeploymentReleaseApproval
+	var approval deploymentmodel.DeploymentReleaseApproval
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("release_id = ? AND decision = ?", release.ID, "pending").
 		Order("id DESC").First(&approval).Error; err != nil {
@@ -330,7 +332,7 @@ func (l *Logic) ApproveRelease(ctx context.Context, id uint, uid uint64, comment
 		return ReleaseApplyResp{}, err
 	}
 	l.writeReleaseAudit(ctx, release.ID, uint(uid), "release.approved", map[string]any{"ticket": approval.Ticket, "comment": approval.Comment})
-	var target model.DeploymentTarget
+	var target deploymentmodel.DeploymentTarget
 	if err := l.svcCtx.DB.WithContext(ctx).First(&target, release.TargetID).Error; err != nil {
 		return ReleaseApplyResp{}, err
 	}
@@ -368,14 +370,14 @@ func (l *Logic) ApproveRelease(ctx context.Context, id uint, uid uint64, comment
 //
 // 返回: 发布响应
 func (l *Logic) RejectRelease(ctx context.Context, id uint, uid uint64, comment string) (ReleaseApplyResp, error) {
-	var release model.DeploymentRelease
+	var release deploymentmodel.DeploymentRelease
 	if err := l.svcCtx.DB.WithContext(ctx).First(&release, id).Error; err != nil {
 		return ReleaseApplyResp{}, err
 	}
 	if release.Status != releaseStatusPendingApproval {
 		return ReleaseApplyResp{}, fmt.Errorf("release state %s cannot be rejected", release.Status)
 	}
-	var approval model.DeploymentReleaseApproval
+	var approval deploymentmodel.DeploymentReleaseApproval
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("release_id = ? AND decision = ?", release.ID, "pending").
 		Order("id DESC").First(&approval).Error; err != nil {
@@ -413,8 +415,8 @@ func (l *Logic) RejectRelease(ctx context.Context, id uint, uid uint64, comment 
 //   - runtimeType: 运行时类型 (可选筛选)
 //
 // 返回: 发布记录列表
-func (l *Logic) ListReleases(ctx context.Context, serviceID, targetID uint, runtimeType string) ([]model.DeploymentRelease, error) {
-	q := l.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentRelease{})
+func (l *Logic) ListReleases(ctx context.Context, serviceID, targetID uint, runtimeType string) ([]deploymentmodel.DeploymentRelease, error) {
+	q := l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentRelease{})
 	if serviceID > 0 {
 		q = q.Where("service_id = ?", serviceID)
 	}
@@ -424,7 +426,7 @@ func (l *Logic) ListReleases(ctx context.Context, serviceID, targetID uint, runt
 	if runtime := strings.TrimSpace(runtimeType); runtime != "" {
 		q = q.Where("runtime_type = ?", runtime)
 	}
-	var rows []model.DeploymentRelease
+	var rows []deploymentmodel.DeploymentRelease
 	if err := q.Order("id DESC").Limit(200).Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -438,8 +440,8 @@ func (l *Logic) ListReleases(ctx context.Context, serviceID, targetID uint, runt
 //   - id: 发布 ID
 //
 // 返回: 发布记录
-func (l *Logic) GetRelease(ctx context.Context, id uint) (*model.DeploymentRelease, error) {
-	var row model.DeploymentRelease
+func (l *Logic) GetRelease(ctx context.Context, id uint) (*deploymentmodel.DeploymentRelease, error) {
+	var row deploymentmodel.DeploymentRelease
 	if err := l.svcCtx.DB.WithContext(ctx).First(&row, id).Error; err != nil {
 		return nil, err
 	}
@@ -454,7 +456,7 @@ func (l *Logic) GetRelease(ctx context.Context, id uint) (*model.DeploymentRelea
 //
 // 返回: 时间线事件列表
 func (l *Logic) ListReleaseTimeline(ctx context.Context, releaseID uint) ([]ReleaseTimelineEventResp, error) {
-	var rows []model.DeploymentReleaseAudit
+	var rows []deploymentmodel.DeploymentReleaseAudit
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Where("release_id = ?", releaseID).
 		Order("id ASC").
@@ -488,12 +490,12 @@ func (l *Logic) ListReleaseTimeline(ctx context.Context, releaseID uint) ([]Rele
 //   - req: 发布预览请求
 //
 // 返回: 服务对象、目标对象、解析后的清单
-func (l *Logic) resolveReleaseContext(ctx context.Context, req ReleasePreviewReq) (*model.Service, *model.DeploymentTarget, string, error) {
-	var svc model.Service
+func (l *Logic) resolveReleaseContext(ctx context.Context, req ReleasePreviewReq) (*projectmodel.Service, *deploymentmodel.DeploymentTarget, string, error) {
+	var svc projectmodel.Service
 	if err := l.svcCtx.DB.WithContext(ctx).First(&svc, req.ServiceID).Error; err != nil {
 		return nil, nil, "", err
 	}
-	var target model.DeploymentTarget
+	var target deploymentmodel.DeploymentTarget
 	if err := l.svcCtx.DB.WithContext(ctx).First(&target, req.TargetID).Error; err != nil {
 		return nil, nil, "", err
 	}
@@ -505,7 +507,7 @@ func (l *Logic) resolveReleaseContext(ctx context.Context, req ReleasePreviewReq
 	}
 	if target.TargetType == "compose" {
 		var cnt int64
-		if err := l.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentTargetNode{}).
+		if err := l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentTargetNode{}).
 			Where("target_id = ? AND status = ?", target.ID, "active").Count(&cnt).Error; err != nil {
 			return nil, nil, "", err
 		}
@@ -537,13 +539,13 @@ func (l *Logic) resolveReleaseContext(ctx context.Context, req ReleasePreviewReq
 //   - target: 部署目标
 //
 // 返回: 执行错误
-func (l *Logic) executeRelease(ctx context.Context, release *model.DeploymentRelease, target *model.DeploymentTarget) error {
+func (l *Logic) executeRelease(ctx context.Context, release *deploymentmodel.DeploymentRelease, target *deploymentmodel.DeploymentTarget) error {
 	release.Status = releaseStatusApplying
 	_ = l.svcCtx.DB.WithContext(ctx).Save(release).Error
 	l.writeReleaseAudit(ctx, release.ID, release.Operator, "release.applying", map[string]any{"runtime": target.TargetType})
 	switch target.TargetType {
 	case "k8s":
-		var cluster model.Cluster
+		var cluster clustermodel.Cluster
 		if err := l.svcCtx.DB.WithContext(ctx).First(&cluster, target.ClusterID).Error; err != nil {
 			release.Status = releaseStatusFailed
 			release.DiagnosticsJSON = toJSON([]releaseDiagnostic{{
@@ -598,7 +600,7 @@ func (l *Logic) writeReleaseAudit(ctx context.Context, releaseID, actor uint, ac
 		return
 	}
 	now := time.Now().UnixNano()
-	_ = l.svcCtx.DB.WithContext(ctx).Create(&model.DeploymentReleaseAudit{
+	_ = l.svcCtx.DB.WithContext(ctx).Create(&deploymentmodel.DeploymentReleaseAudit{
 		ReleaseID:     releaseID,
 		CorrelationID: fmt.Sprintf("release-%d", releaseID),
 		TraceID:       fmt.Sprintf("trace-%d-%d", releaseID, now),

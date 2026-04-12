@@ -3,7 +3,7 @@ package logic
 import (
 	"testing"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 )
 
 func TestMatchRiskPolicy_PrecedenceOrder(t *testing.T) {

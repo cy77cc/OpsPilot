@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"gorm.io/gorm"
 )
 

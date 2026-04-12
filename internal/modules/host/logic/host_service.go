@@ -26,6 +26,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -613,7 +614,7 @@ func (s *HostService) emitMaintenanceLifecycle(ctx context.Context, node *model.
 			content = fmt.Sprintf("主机 %s(%s) 进入维护模式，原因：%s", node.Name, node.IP, strings.TrimSpace(reason))
 		}
 	}
-	_ = s.svcCtx.DB.WithContext(ctx).Create(&model.AuditLog{
+	_ = s.svcCtx.DB.WithContext(ctx).Create(&governancemodel.AuditLog{
 		ActionType:   action,
 		ResourceType: "host",
 		ResourceID:   uint(node.ID),

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	notificationmodel "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,7 +32,7 @@ type UserNotificationWS struct {
 	ReadAt         *time.Time         `json:"read_at"`         // 已读时间
 	DismissedAt    *time.Time         `json:"dismissed_at"`    // 忽略时间
 	ConfirmedAt    *time.Time         `json:"confirmed_at"`    // 确认时间
-	Notification   model.Notification `json:"notification"`    // 通知详情
+	Notification   notificationmodel.Notification `json:"notification"`    // 通知详情
 }
 
 // Client 是 WebSocket 客户端连接。
@@ -159,7 +159,7 @@ func (h *Hub) Unregister(client *Client) {
 }
 
 // PushNotification 推送新通知给指定用户。
-func (h *Hub) PushNotification(userID uint64, notif *model.UserNotification) {
+func (h *Hub) PushNotification(userID uint64, notif *notificationmodel.UserNotification) {
 	msg := WSMessage{
 		Type: "new",
 		Notification: &UserNotificationWS{

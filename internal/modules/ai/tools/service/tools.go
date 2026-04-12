@@ -16,7 +16,8 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -123,7 +124,7 @@ func NewServiceWriteTools(ctx context.Context) []tool.InvokableTool {
 }
 
 type ServiceGetDetailOutput struct {
-	Service model.Service `json:"service"`
+	Service projectmodel.Service `json:"service"`
 }
 
 func ServiceGetDetail(ctx context.Context) tool.InvokableTool {
@@ -139,7 +140,7 @@ func ServiceGetDetail(ctx context.Context) tool.InvokableTool {
 			if sid <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
-			var s model.Service
+			var s projectmodel.Service
 			if err := svcCtx.DB.First(&s, sid).Error; err != nil {
 				return nil, err
 			}
@@ -175,7 +176,7 @@ func ServiceStatus(ctx context.Context) tool.InvokableTool {
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
-			var svc model.Service
+			var svc projectmodel.Service
 			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
@@ -252,7 +253,7 @@ func ServiceDeployPreview(ctx context.Context) tool.InvokableTool {
 			if input.ClusterID <= 0 {
 				return nil, fmt.Errorf("cluster_id is required")
 			}
-			var s model.Service
+			var s projectmodel.Service
 			if err := svcCtx.DB.First(&s, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
@@ -295,11 +296,11 @@ func ServiceDeployApply(ctx context.Context) tool.InvokableTool {
 			if input.ClusterID <= 0 {
 				return nil, fmt.Errorf("cluster_id is required")
 			}
-			var svc model.Service
+			var svc projectmodel.Service
 			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
-			var cluster model.Cluster
+			var cluster clustermodel.Cluster
 			if err := svcCtx.DB.First(&cluster, input.ClusterID).Error; err != nil {
 				return nil, err
 			}
@@ -341,12 +342,12 @@ func ServiceDeploy(ctx context.Context) tool.InvokableTool {
 			if input.ClusterID <= 0 {
 				return nil, fmt.Errorf("cluster_id is required")
 			}
-			var svc model.Service
+			var svc projectmodel.Service
 			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
 			if input.Apply {
-				var cluster model.Cluster
+				var cluster clustermodel.Cluster
 				if err := svcCtx.DB.First(&cluster, input.ClusterID).Error; err != nil {
 					return nil, err
 				}
@@ -402,7 +403,7 @@ func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Service{})
+			query := svcCtx.DB.Model(&projectmodel.Service{})
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
@@ -413,7 +414,7 @@ func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 			case 2:
 				query = query.Where("service_kind = ?", "business")
 			}
-			var rows []model.Service
+			var rows []projectmodel.Service
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -465,7 +466,7 @@ func ServiceCategoryTree(ctx context.Context) tool.InvokableTool {
 				Count       int64
 			}
 			var rows []countRow
-			if err := svcCtx.DB.Model(&model.Service{}).
+			if err := svcCtx.DB.Model(&projectmodel.Service{}).
 				Select("service_kind, COUNT(1) AS count").
 				Group("service_kind").
 				Scan(&rows).Error; err != nil {
@@ -515,7 +516,7 @@ func ServiceVisibilityCheck(ctx context.Context) tool.InvokableTool {
 			if input.ServiceID <= 0 {
 				return nil, fmt.Errorf("service_id is required")
 			}
-			var svc model.Service
+			var svc projectmodel.Service
 			if err := svcCtx.DB.First(&svc, input.ServiceID).Error; err != nil {
 				return nil, err
 			}
@@ -541,7 +542,7 @@ func ServiceVisibilityCheck(ctx context.Context) tool.InvokableTool {
 	return t
 }
 
-func resolveServiceByTarget(svcCtx *svc.ServiceContext, target string) (*model.Service, error) {
+func resolveServiceByTarget(svcCtx *svc.ServiceContext, target string) (*projectmodel.Service, error) {
 	trimmed := strings.TrimSpace(target)
 	if trimmed == "" {
 		return nil, fmt.Errorf("target is required")
@@ -549,7 +550,7 @@ func resolveServiceByTarget(svcCtx *svc.ServiceContext, target string) (*model.S
 	if svcCtx == nil || svcCtx.DB == nil {
 		return nil, fmt.Errorf("service context is nil")
 	}
-	var svc model.Service
+	var svc projectmodel.Service
 	if id, err := strconv.ParseUint(trimmed, 10, 64); err == nil {
 		if err := svcCtx.DB.First(&svc, id).Error; err == nil {
 			return &svc, nil

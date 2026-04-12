@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 )
 
 type RuntimeIngestEvent struct {
@@ -32,7 +32,7 @@ func ParseFalcoEvent(raw []byte) (RuntimeIngestEvent, error) {
 		Workload:  payload.OutputFields.PodName,
 		RuleID:    strings.TrimSpace(payload.Rule),
 		Severity:  normalizeSeverity(payload.Priority),
-		Source:    model.SecurityEventSourceFalco,
+		Source:    clustermodel.SecurityEventSourceFalco,
 	}, nil
 }
 
@@ -51,7 +51,7 @@ func ParseTetragonEvent(raw []byte) (RuntimeIngestEvent, error) {
 		Workload:  payload.Pod,
 		RuleID:    strings.TrimSpace(payload.PolicyName),
 		Severity:  normalizeSeverity(payload.Severity),
-		Source:    model.SecurityEventSourceTetragon,
+		Source:    clustermodel.SecurityEventSourceTetragon,
 	}, nil
 }
 
@@ -59,12 +59,12 @@ func normalizeSeverity(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
 	switch value {
 	case "critical":
-		return model.SecuritySeverityCritical
+		return clustermodel.SecuritySeverityCritical
 	case "high":
-		return model.SecuritySeverityHigh
+		return clustermodel.SecuritySeverityHigh
 	case "medium":
-		return model.SecuritySeverityMedium
+		return clustermodel.SecuritySeverityMedium
 	default:
-		return model.SecuritySeverityLow
+		return clustermodel.SecuritySeverityLow
 	}
 }

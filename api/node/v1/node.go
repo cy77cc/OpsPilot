@@ -3,7 +3,7 @@ package v1
 import (
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 )
 
 // -------------------- Node APIs --------------------
@@ -17,7 +17,7 @@ type CreateNodeReq struct {
 	Port        int               `json:"port" binding:"required,min=1"` // SSH端口
 	SSHUser     string            `json:"ssh_user" binding:"required"`   // SSH用户名
 	SSHPassword string            `json:"ssh_password"`
-	SSHKeyID    model.NodeID      `json:"ssh_key_id" binding:"required"`           // SSH密钥ID
+	SSHKeyID    hostmodel.NodeID  `json:"ssh_key_id" binding:"required"`           // SSH密钥ID
 	ClusterID   int64             `json:"cluster_id"`                              // 所属集群ID (可选)
 	Labels      map[string]string `json:"labels"`                                  // 标签
 	Role        string            `json:"role" binding:"oneof=master worker none"` // 节点角色
@@ -25,7 +25,7 @@ type CreateNodeReq struct {
 
 // UpdateNodeReq 更新节点请求
 type UpdateNodeReq struct {
-	ID          model.NodeID      `json:"id" binding:"required"`
+	ID          hostmodel.NodeID  `json:"id" binding:"required"`
 	Name        string            `json:"name"`
 	Hostname    string            `json:"hostname"`
 	Description string            `json:"description"`
@@ -38,14 +38,14 @@ type UpdateNodeReq struct {
 
 // NodeResp 节点响应
 type NodeResp struct {
-	ID          model.NodeID `json:"id"`
+	ID          hostmodel.NodeID `json:"id"`
 	Name        string       `json:"name"`
 	Hostname    string       `json:"hostname"`
 	Description string       `json:"description"`
 	IP          string       `json:"ip"`
 	Port        int          `json:"port"`
 	SSHUser     string       `json:"ssh_user"`
-	SSHKeyID    model.NodeID `json:"ssh_key_id"`
+	SSHKeyID    hostmodel.NodeID `json:"ssh_key_id"`
 	OS          string       `json:"os"`
 	Arch        string       `json:"arch"`
 	Kernel      string       `json:"kernel"`
@@ -87,7 +87,7 @@ type CreateSSHKeyReq struct {
 
 // SSHKeyResp SSH密钥响应
 type SSHKeyResp struct {
-	ID        model.NodeID `json:"id"`
+	ID        hostmodel.NodeID `json:"id"`
 	Name      string       `json:"name"`
 	CreatedAt time.Time    `json:"created_at"`
 }
@@ -108,12 +108,12 @@ type ListSSHKeyResp struct {
 
 // NodeShellReq 节点Shell请求 (WebSocket)
 type NodeShellReq struct {
-	NodeID model.NodeID `form:"node_id" binding:"required"`
+	NodeID hostmodel.NodeID `form:"node_id" binding:"required"`
 }
 
 // NodeBatchOpReq 批量操作请求 (如批量安装Docker、加入集群)
 type NodeBatchOpReq struct {
-	NodeIDs []model.NodeID `json:"node_ids" binding:"required"`
+	NodeIDs []hostmodel.NodeID `json:"node_ids" binding:"required"`
 	OpType  string         `json:"op_type" binding:"required"` // install_docker, join_cluster, etc.
 	Params  string         `json:"params"`                     // JSON参数
 }

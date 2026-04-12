@@ -7,7 +7,7 @@ package logic
 import (
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clustercontracts "github.com/cy77cc/OpsPilot/internal/modules/cluster/contracts"
 )
 
@@ -75,7 +75,7 @@ func NewFailedOperationResponse(auditID uint, code, message string, data any) Op
 }
 
 // OperationApprovalFromRecord 将审批记录转换为响应信封中的审批信息。
-func OperationApprovalFromRecord(rec *model.ClusterDeployApproval) *OperationApproval {
+func OperationApprovalFromRecord(rec *clustermodel.ClusterDeployApproval) *OperationApproval {
 	if rec == nil {
 		return nil
 	}

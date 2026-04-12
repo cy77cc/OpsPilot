@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -83,8 +83,8 @@ func (h *AuditHandler) ListAuditLogs(c *gin.Context) {
 //   - req: 查询请求参数
 //
 // 返回: 审计日志列表和总数
-func (h *AuditHandler) listAuditLogs(ctx context.Context, req listAuditLogsReq) ([]model.AuditLog, int64, error) {
-	query := h.svcCtx.DB.WithContext(ctx).Model(&model.AuditLog{})
+func (h *AuditHandler) listAuditLogs(ctx context.Context, req listAuditLogsReq) ([]deploymentmodel.AuditLog, int64, error) {
+	query := h.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.AuditLog{})
 
 	if req.ActionType != "" {
 		query = query.Where("action_type = ?", req.ActionType)
@@ -98,7 +98,7 @@ func (h *AuditHandler) listAuditLogs(ctx context.Context, req listAuditLogsReq) 
 		return nil, 0, err
 	}
 
-	var logs []model.AuditLog
+	var logs []deploymentmodel.AuditLog
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Order("id desc").Offset(offset).Limit(req.PageSize).Find(&logs).Error; err != nil {
 		return nil, 0, err
@@ -121,7 +121,7 @@ func (h *AuditHandler) listAuditLogs(ctx context.Context, req listAuditLogsReq) 
 //
 // 返回: 错误信息
 func CreateAuditLog(ctx context.Context, db *svc.ServiceContext, actionType, resourceType string, resourceID, actorID uint, actorName string, detail map[string]interface{}) error {
-	log := model.AuditLog{
+	log := deploymentmodel.AuditLog{
 		ActionType:   actionType,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,

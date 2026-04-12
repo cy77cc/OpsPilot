@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/deployment/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -629,7 +629,7 @@ func (h *Handler) authorizeRuntime(c *gin.Context, runtime, action string) bool 
 //   - row: 发布记录模型
 //
 // 返回: 发布摘要响应
-func (h *Handler) toReleaseSummary(row model.DeploymentRelease) logic.ReleaseSummaryResp {
+func (h *Handler) toReleaseSummary(row deploymentmodel.DeploymentRelease) logic.ReleaseSummaryResp {
 	return logic.ReleaseSummaryResp{
 		ID:                 row.ID,
 		UnifiedReleaseID:   row.ID,

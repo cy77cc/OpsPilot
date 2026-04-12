@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	governanceapproval "github.com/cy77cc/OpsPilot/internal/modules/governance/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -45,7 +45,7 @@ func TestRequireHighRiskApproval_MissingTokenCreatesApprovalAndAudit(t *testing.
 		t.Fatalf("expected response state %q, got %q", OperationStateApprovalRequired, resp.State)
 	}
 
-	var approval model.OperationApproval
+	var approval clustermodel.OperationApproval
 	if err := db.Where("ticket = ?", result.ApprovalTicket).First(&approval).Error; err != nil {
 		t.Fatalf("expected approval record: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestRequireHighRiskApproval_MissingTokenCreatesApprovalAndAudit(t *testing.
 		t.Fatalf("expected pending approval status, got %q", approval.Status)
 	}
 
-	var audit model.OperationAudit
+	var audit clustermodel.OperationAudit
 	if err := db.First(&audit, result.AuditID).Error; err != nil {
 		t.Fatalf("expected audit record: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestRequireHighRiskApproval_ReplayedTokenReturnsStableFailure(t *testing.T)
 		t.Fatalf("expected response state %q, got %q", OperationStateFailed, resp.State)
 	}
 
-	var approval model.OperationApproval
+	var approval clustermodel.OperationApproval
 	if err := db.Where("ticket = ?", token).First(&approval).Error; err != nil {
 		t.Fatalf("expected approval record: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestRequireHighRiskApproval_LegacyEmptyContextApprovalStillConsumable(t *te
 	token := issueApprovalTicket(t, db, scope, 1001, time.Now().UTC().Add(5*time.Minute), true)
 
 	// Simulate pre-sentinel tickets that were issued with empty scope context.
-	if err := db.Model(&model.OperationApproval{}).Where("ticket = ?", token).Update("context_json", "").Error; err != nil {
+	if err := db.Model(&clustermodel.OperationApproval{}).Where("ticket = ?", token).Update("context_json", "").Error; err != nil {
 		t.Fatalf("clear approval context_json: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestRequireHighRiskApproval_BypassesApprovalForApprovePermissions(t *testin
 			}
 
 			var approvalCount int64
-			if err := db.Model(&model.OperationApproval{}).Count(&approvalCount).Error; err != nil {
+			if err := db.Model(&clustermodel.OperationApproval{}).Count(&approvalCount).Error; err != nil {
 				t.Fatalf("count approvals: %v", err)
 			}
 			if approvalCount != 0 {
@@ -221,7 +221,7 @@ func TestRequireHighRiskApproval_BypassesApprovalForApprovePermissions(t *testin
 			}
 
 			var auditCount int64
-			if err := db.Model(&model.OperationAudit{}).Count(&auditCount).Error; err != nil {
+			if err := db.Model(&clustermodel.OperationAudit{}).Count(&auditCount).Error; err != nil {
 				t.Fatalf("count audits: %v", err)
 			}
 			if auditCount != 0 {
@@ -236,7 +236,7 @@ func TestListOperationHistory_FiltersCanonicalStatusAndOtherConditions(t *testin
 	base := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
 	clusterID := uint(42)
 
-	if err := db.Create(&model.User{
+	if err := db.Create(&clustermodel.User{
 		ID:           2002,
 		Username:     "alice01",
 		PasswordHash: "hash",
@@ -244,7 +244,7 @@ func TestListOperationHistory_FiltersCanonicalStatusAndOtherConditions(t *testin
 	}).Error; err != nil {
 		t.Fatalf("seed alice user: %v", err)
 	}
-	if err := db.Create(&model.User{
+	if err := db.Create(&clustermodel.User{
 		ID:           2003,
 		Username:     "bobuser",
 		PasswordHash: "hash",
@@ -253,7 +253,7 @@ func TestListOperationHistory_FiltersCanonicalStatusAndOtherConditions(t *testin
 		t.Fatalf("seed bob user: %v", err)
 	}
 
-	fixtures := []model.OperationAudit{
+	fixtures := []clustermodel.OperationAudit{
 		{
 			Domain:         "cluster",
 			ScopeClusterID: &clusterID,
@@ -380,7 +380,7 @@ func TestListOperationHistory_ClampsPaginationToValidBounds(t *testing.T) {
 	clusterID := uint(42)
 	base := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
 
-	fixtures := []model.OperationAudit{
+	fixtures := []clustermodel.OperationAudit{
 		{
 			Domain:         "cluster",
 			ScopeClusterID: &clusterID,
@@ -462,17 +462,17 @@ func newHighRiskApprovalTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.OperationApproval{},
-		&model.OperationAudit{},
-		&model.User{},
-		&model.Role{},
-		&model.Permission{},
-		&model.UserRole{},
-		&model.RolePermission{},
+		&clustermodel.OperationApproval{},
+		&clustermodel.OperationAudit{},
+		&clustermodel.User{},
+		&clustermodel.Role{},
+		&clustermodel.Permission{},
+		&clustermodel.UserRole{},
+		&clustermodel.RolePermission{},
 	); err != nil {
 		t.Fatalf("migrate test schema: %v", err)
 	}
-	if err := db.Create(&model.User{
+	if err := db.Create(&clustermodel.User{
 		ID:           1001,
 		Username:     "operator",
 		PasswordHash: "hash",
@@ -490,10 +490,10 @@ func newOperationHistoryTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 
 	handler, db := newHighRiskApprovalTestHandler(t)
-	if err := db.AutoMigrate(&model.Cluster{}); err != nil {
+	if err := db.AutoMigrate(&clustermodel.Cluster{}); err != nil {
 		t.Fatalf("migrate cluster schema: %v", err)
 	}
-	if err := db.Create(&model.Cluster{
+	if err := db.Create(&clustermodel.Cluster{
 		ID:         42,
 		Name:       "cluster-42",
 		Status:     "active",
@@ -533,7 +533,7 @@ func issueApprovalTicket(t *testing.T, db *gorm.DB, scope ApprovalScope, request
 		t.Fatalf("issue approval: %v", err)
 	}
 	if !expiresAt.IsZero() {
-		if err := db.Model(&model.OperationApproval{}).Where("ticket = ?", rec.Ticket).Update("expires_at", expiresAt.UTC()).Error; err != nil {
+		if err := db.Model(&clustermodel.OperationApproval{}).Where("ticket = ?", rec.Ticket).Update("expires_at", expiresAt.UTC()).Error; err != nil {
 			t.Fatalf("pin approval expiry: %v", err)
 		}
 	}
@@ -543,7 +543,7 @@ func issueApprovalTicket(t *testing.T, db *gorm.DB, scope ApprovalScope, request
 		t.Fatalf("confirm approval: %v", err)
 	}
 
-	var approval model.OperationApproval
+	var approval clustermodel.OperationApproval
 	if err := db.Where("ticket = ?", rec.Ticket).First(&approval).Error; err != nil {
 		t.Fatalf("reload issued approval: %v", err)
 	}
@@ -578,7 +578,7 @@ func assertAuditRecord(t *testing.T, db *gorm.DB, auditID uint, wantStatus, want
 	if auditID == 0 {
 		t.Fatalf("expected audit id to be set")
 	}
-	var audit model.OperationAudit
+	var audit clustermodel.OperationAudit
 	if err := db.First(&audit, auditID).Error; err != nil {
 		t.Fatalf("load audit record: %v", err)
 	}
@@ -593,7 +593,7 @@ func assertAuditRecord(t *testing.T, db *gorm.DB, auditID uint, wantStatus, want
 func seedRBACPermission(t *testing.T, db *gorm.DB, username, roleCode, permissionCode string) uint64 {
 	t.Helper()
 
-	user := model.User{
+	user := clustermodel.User{
 		Username:     username,
 		PasswordHash: "hash",
 		Status:       1,
@@ -602,7 +602,7 @@ func seedRBACPermission(t *testing.T, db *gorm.DB, username, roleCode, permissio
 		t.Fatalf("create user: %v", err)
 	}
 
-	role := model.Role{
+	role := clustermodel.Role{
 		Name:   roleCode,
 		Code:   roleCode,
 		Status: 1,
@@ -610,7 +610,7 @@ func seedRBACPermission(t *testing.T, db *gorm.DB, username, roleCode, permissio
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("create role: %v", err)
 	}
-	if err := db.Create(&model.UserRole{UserID: int64(user.ID), RoleID: int64(role.ID)}).Error; err != nil {
+	if err := db.Create(&clustermodel.UserRole{UserID: int64(user.ID), RoleID: int64(role.ID)}).Error; err != nil {
 		t.Fatalf("create user role: %v", err)
 	}
 
@@ -618,7 +618,7 @@ func seedRBACPermission(t *testing.T, db *gorm.DB, username, roleCode, permissio
 		return uint64(user.ID)
 	}
 
-	permission := model.Permission{
+	permission := clustermodel.Permission{
 		Name:   permissionCode,
 		Code:   permissionCode,
 		Type:   1,
@@ -627,7 +627,7 @@ func seedRBACPermission(t *testing.T, db *gorm.DB, username, roleCode, permissio
 	if err := db.Create(&permission).Error; err != nil {
 		t.Fatalf("create permission: %v", err)
 	}
-	if err := db.Create(&model.RolePermission{RoleID: int64(role.ID), PermissionID: int64(permission.ID)}).Error; err != nil {
+	if err := db.Create(&clustermodel.RolePermission{RoleID: int64(role.ID), PermissionID: int64(permission.ID)}).Error; err != nil {
 		t.Fatalf("create role permission: %v", err)
 	}
 	return uint64(user.ID)

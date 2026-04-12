@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 )
 
 func TestRunTailer_WaitsForNewEventsWhenRunStillOpen(t *testing.T) {

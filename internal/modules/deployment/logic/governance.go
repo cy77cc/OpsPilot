@@ -6,7 +6,7 @@ package logic
 import (
 	"context"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 )
 
 // GetGovernance 获取服务治理策略。
@@ -17,13 +17,13 @@ import (
 //   - env: 环境
 //
 // 返回: 服务治理策略
-func (l *Logic) GetGovernance(ctx context.Context, serviceID uint, env string) (*model.ServiceGovernancePolicy, error) {
-	var row model.ServiceGovernancePolicy
+func (l *Logic) GetGovernance(ctx context.Context, serviceID uint, env string) (*deploymentmodel.ServiceGovernancePolicy, error) {
+	var row deploymentmodel.ServiceGovernancePolicy
 	err := l.svcCtx.DB.WithContext(ctx).
 		Where("service_id = ? AND env = ?", serviceID, defaultIfEmpty(env, "staging")).
 		First(&row).Error
 	if err != nil {
-		return &model.ServiceGovernancePolicy{ServiceID: serviceID, Env: defaultIfEmpty(env, "staging")}, nil
+		return &deploymentmodel.ServiceGovernancePolicy{ServiceID: serviceID, Env: defaultIfEmpty(env, "staging")}, nil
 	}
 	return &row, nil
 }
@@ -37,12 +37,12 @@ func (l *Logic) GetGovernance(ctx context.Context, serviceID uint, env string) (
 //   - req: 治理策略请求
 //
 // 返回: 服务治理策略
-func (l *Logic) UpsertGovernance(ctx context.Context, uid uint64, serviceID uint, req GovernanceReq) (*model.ServiceGovernancePolicy, error) {
+func (l *Logic) UpsertGovernance(ctx context.Context, uid uint64, serviceID uint, req GovernanceReq) (*deploymentmodel.ServiceGovernancePolicy, error) {
 	env := defaultIfEmpty(req.Env, "staging")
-	var row model.ServiceGovernancePolicy
+	var row deploymentmodel.ServiceGovernancePolicy
 	err := l.svcCtx.DB.WithContext(ctx).Where("service_id = ? AND env = ?", serviceID, env).First(&row).Error
 	if err != nil {
-		row = model.ServiceGovernancePolicy{ServiceID: serviceID, Env: env}
+		row = deploymentmodel.ServiceGovernancePolicy{ServiceID: serviceID, Env: env}
 	}
 	row.TrafficPolicyJSON = toJSON(req.TrafficPolicy)
 	row.ResiliencePolicyJSON = toJSON(req.ResiliencePolicy)

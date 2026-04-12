@@ -11,7 +11,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	corev1 "k8s.io/api/core/v1"
@@ -67,7 +67,7 @@ func (c *Collector) Start() {
 
 // Collect 执行一轮采集，遍历所有集群并采集指标。
 func (c *Collector) Collect(ctx context.Context) {
-	var clusters []model.Cluster
+	var clusters []clustermodel.Cluster
 	if err := c.svcCtx.DB.WithContext(ctx).Find(&clusters).Error; err != nil {
 		logger.L().Warn("failed to list clusters for metrics collection", logger.Error(err))
 		return
@@ -83,7 +83,7 @@ func (c *Collector) Collect(ctx context.Context) {
 }
 
 // collectClusterMetrics 采集单个集群的指标。
-func (c *Collector) collectClusterMetrics(ctx context.Context, cluster *model.Cluster) {
+func (c *Collector) collectClusterMetrics(ctx context.Context, cluster *clustermodel.Cluster) {
 	// 获取 K8s 客户端
 	cli, err := c.getK8sClient(cluster)
 	if err != nil {
@@ -159,7 +159,7 @@ func (c *Collector) collectClusterMetrics(ctx context.Context, cluster *model.Cl
 }
 
 // getK8sClient 获取集群的 K8s 客户端。
-func (c *Collector) getK8sClient(cluster *model.Cluster) (*kubernetes.Clientset, error) {
+func (c *Collector) getK8sClient(cluster *clustermodel.Cluster) (*kubernetes.Clientset, error) {
 	if cluster.KubeConfig == "" {
 		return nil, ErrKubeConfigNotFound
 	}

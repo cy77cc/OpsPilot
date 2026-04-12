@@ -12,7 +12,8 @@ import (
 	"fmt"
 	"time"
 
-	model "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
+	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
+	notificationmodel "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
 	"github.com/cy77cc/OpsPilot/internal/websocket"
 	"gorm.io/gorm"
 )
@@ -48,9 +49,9 @@ func NewNotificationIntegrator(db *gorm.DB) *NotificationIntegrator {
 //   - alert: 告警事件模型
 //
 // 返回: 成功返回 nil，失败返回错误
-func (n *NotificationIntegrator) CreateAlertNotification(ctx context.Context, alert *model.AlertEvent) error {
+func (n *NotificationIntegrator) CreateAlertNotification(ctx context.Context, alert *monitoringmodel.AlertEvent) error {
 	// 创建通知主体
-	notif := model.Notification{
+	notif := notificationmodel.Notification{
 		Type:       "alert",
 		Title:      alert.Title,
 		Content:    alert.Message,
@@ -80,7 +81,7 @@ func (n *NotificationIntegrator) CreateAlertNotification(ctx context.Context, al
 
 		// 创建用户通知关联并推送
 		for _, userID := range userIDs {
-			userNotif := model.UserNotification{
+			userNotif := notificationmodel.UserNotification{
 				UserID:         userID,
 				NotificationID: notif.ID,
 			}
@@ -114,7 +115,7 @@ func (n *NotificationIntegrator) CreateAlertNotification(ctx context.Context, al
 //
 // 返回: 成功返回 nil，失败返回错误
 func (n *NotificationIntegrator) CreateTaskNotification(ctx context.Context, taskID, userID uint64, title, content, status string) error {
-	notif := model.Notification{
+	notif := notificationmodel.Notification{
 		Type:      "task",
 		Title:     title,
 		Content:   content,
@@ -129,7 +130,7 @@ func (n *NotificationIntegrator) CreateTaskNotification(ctx context.Context, tas
 			return err
 		}
 
-		userNotif := model.UserNotification{
+		userNotif := notificationmodel.UserNotification{
 			UserID:         userID,
 			NotificationID: notif.ID,
 		}
@@ -157,7 +158,7 @@ func (n *NotificationIntegrator) CreateTaskNotification(ctx context.Context, tas
 //
 // 返回: 成功返回 nil，失败返回错误
 func (n *NotificationIntegrator) CreateSystemNotification(ctx context.Context, title, content string, userIDs []uint64) error {
-	notif := model.Notification{
+	notif := notificationmodel.Notification{
 		Type:     "system",
 		Title:    title,
 		Content:  content,
@@ -171,7 +172,7 @@ func (n *NotificationIntegrator) CreateSystemNotification(ctx context.Context, t
 		}
 
 		for _, userID := range userIDs {
-			userNotif := model.UserNotification{
+			userNotif := notificationmodel.UserNotification{
 				UserID:         userID,
 				NotificationID: notif.ID,
 			}
@@ -197,7 +198,7 @@ func (n *NotificationIntegrator) CreateSystemNotification(ctx context.Context, t
 //   - alert: 告警事件（预留扩展）
 //
 // 返回: 用户 ID 列表，失败返回错误
-func (n *NotificationIntegrator) getAlertNotificationUsers(ctx context.Context, alert *model.AlertEvent) ([]uint64, error) {
+func (n *NotificationIntegrator) getAlertNotificationUsers(ctx context.Context, alert *monitoringmodel.AlertEvent) ([]uint64, error) {
 	// 目前简单实现：获取所有管理员用户
 	// 后续可以根据告警规则的 channels 配置确定通知用户
 	var users []struct {

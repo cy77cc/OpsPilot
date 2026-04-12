@@ -15,7 +15,7 @@ import (
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
@@ -203,7 +203,7 @@ func (h *Handler) SyncClusterNodes(ctx context.Context, clusterID uint) error {
 		allocatablePods := node.Status.Allocatable.Pods().Value()
 
 		// Build node record
-		clusterNode := model.ClusterNode{
+		clusterNode := clustermodel.ClusterNode{
 			ClusterID:        clusterID,
 			Name:             node.Name,
 			IP:               ip,
@@ -224,7 +224,7 @@ func (h *Handler) SyncClusterNodes(ctx context.Context, clusterID uint) error {
 		}
 
 		// Try to find matching host by IP
-		var host model.Node
+		var host clustermodel.Node
 		if err := h.svcCtx.DB.WithContext(ctx).Where("ip = ?", ip).First(&host).Error; err == nil {
 			hostID := uint(host.ID)
 			clusterNode.HostID = &hostID
@@ -325,7 +325,7 @@ func (h *Handler) AddClusterNodes(c *gin.Context) {
 	}
 
 	// Get cluster
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.First(&cluster, id).Error; err != nil {
 		httpx.NotFound(c, "cluster not found")
 		return
@@ -338,7 +338,7 @@ func (h *Handler) AddClusterNodes(c *gin.Context) {
 	}
 
 	// Get credential to retrieve join command
-	var cred model.ClusterCredential
+	var cred clustermodel.ClusterCredential
 	if err := h.svcCtx.DB.Where("cluster_id = ?", cluster.ID).First(&cred).Error; err != nil {
 		httpx.ServerErr(c, fmt.Errorf("credential not found: %w", err))
 		return
@@ -356,7 +356,7 @@ func (h *Handler) AddClusterNodes(c *gin.Context) {
 	results := make([]map[string]interface{}, 0, len(req.HostIDs))
 
 	for _, hostID := range req.HostIDs {
-		var host model.Node
+		var host clustermodel.Node
 		if err := h.svcCtx.DB.First(&host, hostID).Error; err != nil {
 			results = append(results, map[string]interface{}{
 				"host_id": hostID,
@@ -431,10 +431,10 @@ func (h *Handler) RemoveClusterNode(c *gin.Context) {
 		return
 	}
 
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.delete", approvalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.delete", approvalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		if node.Role == "control-plane" {
 			var cpCount int64
-			if err := h.svcCtx.DB.WithContext(ctx).Model(&model.ClusterNode{}).
+			if err := h.svcCtx.DB.WithContext(ctx).Model(&clustermodel.ClusterNode{}).
 				Where("cluster_id = ? AND role = ?", clusterID, "control-plane").
 				Count(&cpCount).Error; err != nil {
 				return nil, err
@@ -449,17 +449,17 @@ func (h *Handler) RemoveClusterNode(c *gin.Context) {
 		}
 
 		if node.HostID != nil {
-			var host model.Node
+			var host clustermodel.Node
 			if err := h.svcCtx.DB.WithContext(ctx).First(&host, *node.HostID).Error; err == nil {
 				_ = h.executeResetOnHost(ctx, &host)
 			}
 		}
 
-		if err := h.svcCtx.DB.WithContext(ctx).Delete(&model.ClusterNode{}, node.ID).Error; err != nil {
+		if err := h.svcCtx.DB.WithContext(ctx).Delete(&clustermodel.ClusterNode{}, node.ID).Error; err != nil {
 			return nil, err
 		}
 		if node.HostID != nil {
-			_ = h.svcCtx.DB.WithContext(ctx).Model(&model.Node{}).Where("id = ?", *node.HostID).Update("cluster_id", nil).Error
+			_ = h.svcCtx.DB.WithContext(ctx).Model(&clustermodel.Node{}).Where("id = ?", *node.HostID).Update("cluster_id", nil).Error
 		}
 		h.invalidateClusterCache(ctx, clusterID)
 		return map[string]any{"removed": true, "node_name": nodeName}, nil
@@ -494,7 +494,7 @@ func (h *Handler) GetNodeDetail(c *gin.Context) {
 		return
 	}
 
-	var node model.ClusterNode
+	var node clustermodel.ClusterNode
 	if err := h.svcCtx.DB.Where("cluster_id = ? AND name = ?", clusterID, nodeName).First(&node).Error; err != nil {
 		httpx.NotFound(c, "node not found")
 		return
@@ -518,7 +518,7 @@ func (h *Handler) GetNodeDetail(c *gin.Context) {
 	// Get host name if linked
 	var hostName string
 	if node.HostID != nil {
-		var host model.Node
+		var host clustermodel.Node
 		if err := h.svcCtx.DB.First(&host, *node.HostID).Error; err == nil {
 			hostName = host.Name
 		}
@@ -565,7 +565,7 @@ func (h *Handler) CordonNode(c *gin.Context) {
 	}
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.cordon", req.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.cordon", req.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		return h.cordonNode(ctx, client, nodeName, true)
 	})
 	if err != nil {
@@ -587,7 +587,7 @@ func (h *Handler) UncordonNode(c *gin.Context) {
 	}
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.uncordon", req.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.uncordon", req.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		return h.cordonNode(ctx, client, nodeName, false)
 	})
 	if err != nil {
@@ -609,7 +609,7 @@ func (h *Handler) DrainNode(c *gin.Context) {
 	}
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.drain", drainReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.drain", drainReq.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		return h.drainNode(ctx, client, nodeName, drainReq)
 	})
 	if err != nil {
@@ -642,7 +642,7 @@ func (h *Handler) UpdateNodeTaints(c *gin.Context) {
 	}
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints", taintReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints", taintReq.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		return h.updateNodeTaints(ctx, client, nodeName, taintReq.Taints)
 	})
 	if err != nil {
@@ -671,7 +671,7 @@ func (h *Handler) UpdateNodeLabels(c *gin.Context) {
 	}
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels", labelReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels", labelReq.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		return h.updateNodeLabels(ctx, client, nodeName, labelReq.Labels)
 	})
 	if err != nil {
@@ -708,7 +708,7 @@ func (h *Handler) RemoveNodeTaints(c *gin.Context) {
 
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints.remove", taintReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.taints.remove", taintReq.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		nodeObj, getErr := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
 		if getErr != nil {
 			return nil, getErr
@@ -766,7 +766,7 @@ func (h *Handler) RemoveNodeLabels(c *gin.Context) {
 
 	clusterID := httpx.UintFromParam(c, "id")
 	nodeName := strings.TrimSpace(c.Param("name"))
-	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels.remove", labelReq.ApprovalToken, func(ctx context.Context, cluster *model.Cluster, node *model.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
+	result, err := h.executeHighRiskNodeOperation(c, clusterID, nodeName, "node.labels.remove", labelReq.ApprovalToken, func(ctx context.Context, cluster *clustermodel.Cluster, node *clustermodel.ClusterNode, client *kubernetes.Clientset) (map[string]any, error) {
 		nodeObj, getErr := client.CoreV1().Nodes().Get(ctx, nodeName, v1.GetOptions{})
 		if getErr != nil {
 			return nil, getErr
@@ -788,7 +788,7 @@ func (h *Handler) RemoveNodeLabels(c *gin.Context) {
 	httpx.OK(c, result)
 }
 
-func (h *Handler) executeHighRiskNodeOperation(c *gin.Context, clusterID uint, nodeName, action, approvalToken string, fn func(context.Context, *model.Cluster, *model.ClusterNode, *kubernetes.Clientset) (map[string]any, error)) (ClusterOperationResponse, error) {
+func (h *Handler) executeHighRiskNodeOperation(c *gin.Context, clusterID uint, nodeName, action, approvalToken string, fn func(context.Context, *clustermodel.Cluster, *clustermodel.ClusterNode, *kubernetes.Clientset) (map[string]any, error)) (ClusterOperationResponse, error) {
 	return h.executeHighRiskNodeOperationImpl(c, clusterID, nodeName, action, approvalToken, fn)
 }
 
@@ -934,7 +934,7 @@ func isDaemonSetPod(pod *corev1.Pod) bool {
 // 返回: 加入命令，失败返回错误
 func (h *Handler) getJoinCommand(ctx context.Context, clusterID uint) (string, error) {
 	// Get credential and build client
-	var cred model.ClusterCredential
+	var cred clustermodel.ClusterCredential
 	if err := h.svcCtx.DB.Where("cluster_id = ?", clusterID).First(&cred).Error; err != nil {
 		return "", err
 	}
@@ -966,7 +966,7 @@ func (h *Handler) getJoinCommand(ctx context.Context, clusterID uint) (string, e
 //   - role: 节点角色
 //
 // 返回: 失败返回错误
-func (h *Handler) executeJoinOnHost(ctx context.Context, host *model.Node, joinCommand, role string) error {
+func (h *Handler) executeJoinOnHost(ctx context.Context, host *clustermodel.Node, joinCommand, role string) error {
 	privateKey, passphrase, err := h.loadNodePrivateKey(ctx, host)
 	if err != nil {
 		return err
@@ -1001,7 +1001,7 @@ func (h *Handler) executeJoinOnHost(ctx context.Context, host *model.Node, joinC
 //   - host: 主机模型
 //
 // 返回: 失败返回错误
-func (h *Handler) executeResetOnHost(ctx context.Context, host *model.Node) error {
+func (h *Handler) executeResetOnHost(ctx context.Context, host *clustermodel.Node) error {
 	privateKey, passphrase, err := h.loadNodePrivateKey(ctx, host)
 	if err != nil {
 		return err
@@ -1032,7 +1032,7 @@ func (h *Handler) executeResetOnHost(ctx context.Context, host *model.Node) erro
 // 返回: 失败返回错误
 func (h *Handler) drainAndDeleteNode(ctx context.Context, clusterID uint, nodeName string) error {
 	// Get credential
-	var cred model.ClusterCredential
+	var cred clustermodel.ClusterCredential
 	if err := h.svcCtx.DB.Where("cluster_id = ?", clusterID).First(&cred).Error; err != nil {
 		return err
 	}

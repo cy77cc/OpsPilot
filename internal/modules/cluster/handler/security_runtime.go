@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
 	clustersecurity "github.com/cy77cc/OpsPilot/internal/modules/cluster/domain/security"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -72,9 +72,9 @@ func (h *Handler) IngestRuntimeEvent(c *gin.Context) {
 	var evt clustersecurity.RuntimeIngestEvent
 	var err error
 	switch source {
-	case model.SecurityEventSourceFalco:
+	case clusterclustermodel.SecurityEventSourceFalco:
 		evt, err = clustersecurity.ParseFalcoEvent(req.Payload)
-	case model.SecurityEventSourceTetragon:
+	case clusterclustermodel.SecurityEventSourceTetragon:
 		evt, err = clustersecurity.ParseTetragonEvent(req.Payload)
 	default:
 		httpx.BindErr(c, fmt.Errorf("unsupported source: %s", req.Source))
@@ -85,7 +85,7 @@ func (h *Handler) IngestRuntimeEvent(c *gin.Context) {
 		return
 	}
 
-	rec := model.RuntimeSecurityEvent{
+	rec := clusterclustermodel.RuntimeSecurityEvent{
 		ClusterID:      clusterID,
 		Namespace:      strings.TrimSpace(evt.Namespace),
 		Workload:       strings.TrimSpace(evt.Workload),
@@ -132,7 +132,7 @@ func (h *Handler) ListRuntimeAlerts(c *gin.Context) {
 		query = query.Where("LOWER(severity) = ?", severity)
 	}
 
-	var events []model.RuntimeSecurityEvent
+	var events []clusterclustermodel.RuntimeSecurityEvent
 	if err := query.
 		Order("id DESC").
 		Limit(pageSize).
@@ -159,7 +159,7 @@ func (h *Handler) GetRuntimeEvent(c *gin.Context) {
 		return
 	}
 
-	var event model.RuntimeSecurityEvent
+	var event clusterclustermodel.RuntimeSecurityEvent
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Where("cluster_id = ? AND id = ?", clusterID, eventID).First(&event).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			httpx.NotFound(c, "runtime event not found")
@@ -186,7 +186,7 @@ func (h *Handler) ResolveRuntimeAlert(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.RuntimeSecurityEvent{}).
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&clusterclustermodel.RuntimeSecurityEvent{}).
 		Where("cluster_id = ? AND id = ?", clusterID, alertID).
 		Update("dispose_status", "resolved").Error; err != nil {
 		httpx.ServerErr(c, err)
@@ -212,7 +212,7 @@ func (h *Handler) ContainRuntimeAlert(c *gin.Context) {
 		return
 	}
 
-	var event model.RuntimeSecurityEvent
+	var event clusterclustermodel.RuntimeSecurityEvent
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Where("cluster_id = ? AND id = ?", clusterID, alertID).First(&event).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			httpx.NotFound(c, "runtime alert not found")
@@ -249,10 +249,10 @@ func (h *Handler) ContainRuntimeAlert(c *gin.Context) {
 		RequestSummary: map[string]any{"event_id": alertID, "workload": event.Workload},
 	}
 
-	mode := model.DisposalModeAuto
+	mode := clusterclustermodel.DisposalModeAuto
 	decision := governance.Decision{Allowed: true, State: governance.StateCompleted, Code: governance.CodeSuccess}
 	if strings.TrimSpace(cluster.Source) == ClusterModeExternalManaged {
-		mode = model.DisposalModeSuggestOnly
+		mode = clusterclustermodel.DisposalModeSuggestOnly
 		decision.Message = "external_managed cluster uses suggest_only containment"
 	} else {
 		decision, err = h.phase3Preflight(c.Request.Context(), intent)
@@ -285,11 +285,11 @@ func (h *Handler) ContainRuntimeAlert(c *gin.Context) {
 
 	disposeStatus := "contained"
 	actionResult := "applied"
-	if mode == model.DisposalModeSuggestOnly {
+	if mode == clustermodel.DisposalModeSuggestOnly {
 		disposeStatus = "suggested"
 		actionResult = "suggested"
 	}
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&model.RuntimeSecurityEvent{}).
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&clustermodel.RuntimeSecurityEvent{}).
 		Where("id = ?", alertID).
 		Update("dispose_status", disposeStatus).Error; err != nil {
 		httpx.ServerErr(c, err)

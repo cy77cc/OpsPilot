@@ -12,7 +12,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -80,7 +80,7 @@ func CredentialList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.ClusterCredential{})
+			query := svcCtx.DB.Model(&deploymentmodel.ClusterCredential{})
 			if t := strings.TrimSpace(input.Type); t != "" {
 				query = query.Where("runtime_type = ? OR source = ?", t, t)
 			}
@@ -88,7 +88,7 @@ func CredentialList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR endpoint LIKE ?", pattern, pattern)
 			}
-			var rows []model.ClusterCredential
+			var rows []deploymentmodel.ClusterCredential
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -139,7 +139,7 @@ func CredentialTest(ctx context.Context) tool.InvokableTool {
 			if input.CredentialID <= 0 {
 				return nil, fmt.Errorf("credential_id is required")
 			}
-			var cred model.ClusterCredential
+			var cred deploymentmodel.ClusterCredential
 			if err := svcCtx.DB.First(&cred, input.CredentialID).Error; err != nil {
 				return nil, err
 			}

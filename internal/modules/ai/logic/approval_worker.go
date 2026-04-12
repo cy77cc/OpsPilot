@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"

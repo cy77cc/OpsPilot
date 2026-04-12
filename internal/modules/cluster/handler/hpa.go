@@ -11,7 +11,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -199,7 +199,7 @@ func (h *Handler) applyHPA(c *gin.Context, update bool) {
 		}
 	}
 	raw, _ := json.Marshal(req)
-	_ = h.svcCtx.DB.Save(&model.ClusterHPAPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, TargetRefKind: req.TargetRefKind, TargetRefName: req.TargetRefName, MinReplicas: req.MinReplicas, MaxReplicas: req.MaxReplicas, CPUUtilization: req.CPUUtilization, MemoryUtilization: req.MemoryUtilization, RawPolicyJSON: string(raw)}).Error
+	_ = h.svcCtx.DB.Save(&clustermodel.ClusterHPAPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, TargetRefKind: req.TargetRefKind, TargetRefName: req.TargetRefName, MinReplicas: req.MinReplicas, MaxReplicas: req.MaxReplicas, CPUUtilization: req.CPUUtilization, MemoryUtilization: req.MemoryUtilization, RawPolicyJSON: string(raw)}).Error
 	h.createAudit(cluster.ID, req.Namespace, "hpa.apply", "hpa", req.Name, "success", "hpa policy applied", uint(httpx.UIDFromCtx(c)))
 	httpx.OK(c, obj)
 }
@@ -250,7 +250,7 @@ func (h *Handler) DeleteHPA(c *gin.Context) {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	_ = h.svcCtx.DB.Where("cluster_id = ? AND namespace = ? AND name = ?", cluster.ID, namespace, name).Delete(&model.ClusterHPAPolicy{}).Error
+	_ = h.svcCtx.DB.Where("cluster_id = ? AND namespace = ? AND name = ?", cluster.ID, namespace, name).Delete(&clustermodel.ClusterHPAPolicy{}).Error
 	h.createAudit(cluster.ID, namespace, "hpa.delete", "hpa", name, "success", "hpa policy deleted", uint(httpx.UIDFromCtx(c)))
 	httpx.OK(c, nil)
 }
@@ -367,7 +367,7 @@ func (h *Handler) CreateOrUpdateQuota(c *gin.Context) {
 		}
 	}
 	raw, _ := json.Marshal(req)
-	_ = h.svcCtx.DB.Save(&model.ClusterQuotaPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, Type: "resourcequota", SpecJSON: string(raw)}).Error
+	_ = h.svcCtx.DB.Save(&clustermodel.ClusterQuotaPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, Type: "resourcequota", SpecJSON: string(raw)}).Error
 	h.createAudit(cluster.ID, req.Namespace, "quota.apply", "resourcequota", req.Name, "success", "quota applied", uint(httpx.UIDFromCtx(c)))
 	httpx.OK(c, obj)
 }
@@ -414,7 +414,7 @@ func (h *Handler) DeleteQuota(c *gin.Context) {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	_ = h.svcCtx.DB.Where("cluster_id = ? AND namespace = ? AND name = ? AND type = ?", cluster.ID, namespace, name, "resourcequota").Delete(&model.ClusterQuotaPolicy{}).Error
+	_ = h.svcCtx.DB.Where("cluster_id = ? AND namespace = ? AND name = ? AND type = ?", cluster.ID, namespace, name, "resourcequota").Delete(&clustermodel.ClusterQuotaPolicy{}).Error
 	h.createAudit(cluster.ID, namespace, "quota.delete", "resourcequota", name, "success", "quota deleted", uint(httpx.UIDFromCtx(c)))
 	httpx.OK(c, nil)
 }
@@ -552,7 +552,7 @@ func (h *Handler) CreateLimitRange(c *gin.Context) {
 		}
 	}
 	raw, _ := json.Marshal(req)
-	_ = h.svcCtx.DB.Save(&model.ClusterQuotaPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, Type: "limitrange", SpecJSON: string(raw)}).Error
+	_ = h.svcCtx.DB.Save(&clustermodel.ClusterQuotaPolicy{ClusterID: cluster.ID, Namespace: req.Namespace, Name: req.Name, Type: "limitrange", SpecJSON: string(raw)}).Error
 	h.createAudit(cluster.ID, req.Namespace, "limitrange.apply", "limitrange", req.Name, "success", "limitrange applied", uint(httpx.UIDFromCtx(c)))
 	httpx.OK(c, obj)
 }

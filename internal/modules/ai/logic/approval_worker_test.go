@@ -10,8 +10,8 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"

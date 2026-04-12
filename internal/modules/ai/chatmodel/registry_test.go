@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	domainmodel "github.com/cy77cc/OpsPilot/internal/model"
+	domainmodel "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chatmodel"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"

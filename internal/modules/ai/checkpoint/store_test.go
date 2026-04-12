@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

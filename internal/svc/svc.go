@@ -20,7 +20,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/chatmodel"
+	aiclient "github.com/cy77cc/OpsPilot/internal/modules/ai/provider/client"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -58,7 +58,7 @@ func MustNewServiceContext() *ServiceContext {
 		initCozeloopCallback(ctx)
 	}
 
-	if err := chatmodel.CheckModelHealth(ctx); err != nil {
+	if err := aiclient.CheckModelHealth(ctx); err != nil {
 		logger.L().Warn("Failed to check AI model health",
 			logger.String("base_url", aiBaseURL()),
 			logger.String("model", aiModel()),

@@ -11,7 +11,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 )
 
 func testDB(t *testing.T) *gorm.DB {
@@ -27,7 +27,7 @@ func testDB(t *testing.T) *gorm.DB {
 
 func TestPhase3Schema_AdmissionPolicyColumns(t *testing.T) {
 	db := testDB(t)
-	if err := db.AutoMigrate(&model.AdmissionPolicy{}); err != nil {
+	if err := db.AutoMigrate(&clustermodel.AdmissionPolicy{}); err != nil {
 		t.Fatalf("auto migrate admission_policies: %v", err)
 	}
 
@@ -62,7 +62,7 @@ func TestPhase3Schema_AdmissionPolicyColumns(t *testing.T) {
 
 func TestPhase3Schema_RuntimeEventIndexes(t *testing.T) {
 	db := testDB(t)
-	if err := db.AutoMigrate(&model.RuntimeSecurityEvent{}); err != nil {
+	if err := db.AutoMigrate(&clustermodel.RuntimeSecurityEvent{}); err != nil {
 		t.Fatalf("auto migrate runtime_security_events: %v", err)
 	}
 
@@ -106,22 +106,22 @@ func TestPhase3Schema_RuntimeEventIndexes(t *testing.T) {
 }
 
 func TestPhase3Model_RequiredEnums(t *testing.T) {
-	if model.DisposalModeAuto == "" || model.DisposalModeManual == "" || model.DisposalModeSuggestOnly == "" {
+	if clustermodel.DisposalModeAuto == "" || clustermodel.DisposalModeManual == "" || clustermodel.DisposalModeSuggestOnly == "" {
 		t.Fatalf("disposal mode constants must be defined")
 	}
-	if model.SecuritySeverityCritical == "" || model.SecuritySeverityHigh == "" {
+	if clustermodel.SecuritySeverityCritical == "" || clustermodel.SecuritySeverityHigh == "" {
 		t.Fatalf("security severity constants must be defined")
 	}
 }
 
 func TestPhase3Model_JSONRoundTrip(t *testing.T) {
-	record := model.RuntimeSecurityEvent{
+	record := clustermodel.RuntimeSecurityEvent{
 		ClusterID:      42,
 		Namespace:      "prod",
 		Workload:       "api",
 		RuleID:         "Falco-001",
-		Severity:       model.SecuritySeverityHigh,
-		Source:         model.SecurityEventSourceFalco,
+		Severity:       clustermodel.SecuritySeverityHigh,
+		Source:         clustermodel.SecurityEventSourceFalco,
 		RawPayloadJSON: `{"kind":"falco","priority":"high"}`,
 	}
 
@@ -130,7 +130,7 @@ func TestPhase3Model_JSONRoundTrip(t *testing.T) {
 		t.Fatalf("marshal runtime event: %v", err)
 	}
 
-	var decoded model.RuntimeSecurityEvent
+	var decoded clustermodel.RuntimeSecurityEvent
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		t.Fatalf("unmarshal runtime event: %v", err)
 	}

@@ -9,18 +9,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 func TestCNIInfo_ReportsClusterCapabilityMatrixFromBootstrapState(t *testing.T) {
 	handler, db := newOperationHistoryTestHandler(t)
-	if err := db.AutoMigrate(&model.ClusterBootstrapTask{}); err != nil {
+	if err := db.AutoMigrate(&clustermodel.ClusterBootstrapTask{}); err != nil {
 		t.Fatalf("migrate bootstrap task: %v", err)
 	}
 
-	if err := db.Create(&model.ClusterBootstrapTask{
+	if err := db.Create(&clustermodel.ClusterBootstrapTask{
 		ID:                 "bootstrap-42",
 		Name:               "cluster-42-bootstrap",
 		ClusterID:          uintPtr(42),
@@ -149,7 +149,7 @@ func TestReleaseVersion_ApplyReleaseRejectsMismatchedRequestVersion(t *testing.T
 	}
 
 	var auditCount int64
-	if err := db.Model(&model.OperationAudit{}).
+	if err := db.Model(&clustermodel.OperationAudit{}).
 		Where("domain = ? AND scope_cluster_id = ? AND resource = ? AND resource_id = ? AND action = ?", "cluster", 42, PolicyReleaseApprovalResource, "501", PolicyReleaseApprovalActionApply).
 		Count(&auditCount).Error; err != nil {
 		t.Fatalf("count apply audits: %v", err)
@@ -278,7 +278,7 @@ func seedPolicyReleaseAudit(t *testing.T, db *gorm.DB, clusterID uint, namespace
 	}
 	release.Status.Phase = phase
 
-	rec := model.OperationAudit{
+	rec := clustermodel.OperationAudit{
 		Domain:         "cluster",
 		ScopeClusterID: &clusterID,
 		Namespace:      namespace,

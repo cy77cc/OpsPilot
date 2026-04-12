@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -199,7 +199,7 @@ type PVInfo struct {
 //
 // 返回: Kubernetes 客户端，失败返回错误
 func (h *Handler) getClusterClient(ctx context.Context, clusterID uint) (*kubernetes.Clientset, error) {
-	var cred model.ClusterCredential
+	var cred clustermodel.ClusterCredential
 	if err := h.svcCtx.DB.WithContext(ctx).
 		Where("cluster_id = ?", clusterID).
 		First(&cred).Error; err != nil {
@@ -624,7 +624,7 @@ func (h *Handler) executeHighRiskWorkloadOperation(c *gin.Context, clusterID uin
 
 func (h *Handler) executeHighRiskWorkloadOperationWithClient(c *gin.Context, clusterID uint, target workloadOperationTarget, approvalToken string, client kubernetesWorkloadClient, fn func(context.Context, kubernetesWorkloadClient) (map[string]any, error)) (ClusterOperationResponse, error) {
 	ctx := c.Request.Context()
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(ctx).First(&cluster, clusterID).Error; err != nil {
 		return ClusterOperationResponse{}, fmt.Errorf("cluster not found: %w", err)
 	}

@@ -12,7 +12,7 @@ import (
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -572,7 +572,7 @@ func (h *Handler) GetUpgradePlan(c *gin.Context) {
 	currentVersion := version.GitVersion
 
 	// Get available versions from cluster model
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).First(&cluster, id).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -679,7 +679,7 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 	}
 
 	// Get cluster
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).First(&cluster, id).Error; err != nil {
 		httpx.NotFound(c, "cluster not found")
 		return
@@ -700,7 +700,7 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 	}
 
 	// Get control plane nodes
-	var controlPlaneNodes []model.ClusterNode
+	var controlPlaneNodes []clustermodel.ClusterNode
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 		Where("cluster_id = ? AND role = ?", id, "control-plane").
 		Find(&controlPlaneNodes).Error; err != nil {
@@ -725,7 +725,7 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 			continue
 		}
 
-		var host model.Node
+		var host clustermodel.Node
 		if err := h.svcCtx.DB.WithContext(c.Request.Context()).First(&host, *node.HostID).Error; err != nil {
 			results = append(results, map[string]interface{}{
 				"node_name": node.Name,
@@ -770,7 +770,7 @@ func (h *Handler) RenewCertificates(c *gin.Context) {
 //   - host: 主机模型
 //
 // 返回: 失败返回错误
-func (h *Handler) executeCertRenewal(ctx context.Context, host *model.Node) error {
+func (h *Handler) executeCertRenewal(ctx context.Context, host *clustermodel.Node) error {
 	privateKey, passphrase, err := h.loadNodePrivateKey(ctx, host)
 	if err != nil {
 		return err

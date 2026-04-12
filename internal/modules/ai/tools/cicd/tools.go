@@ -15,7 +15,8 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	cicdmodel "github.com/cy77cc/OpsPilot/internal/modules/cicd/model"
+	jobsmodel "github.com/cy77cc/OpsPilot/internal/modules/jobs/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -109,7 +110,7 @@ func NewCICDWriteTools(ctx context.Context) []tool.InvokableTool {
 
 type CICDPipelineListOutput struct {
 	Total int                         `json:"total"`
-	List  []model.CICDServiceCIConfig `json:"list"`
+	List  []cicdmodel.CICDServiceCIConfig `json:"list"`
 }
 
 func CICDPipelineList(ctx context.Context) tool.InvokableTool {
@@ -128,7 +129,7 @@ func CICDPipelineList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.CICDServiceCIConfig{})
+			query := svcCtx.DB.Model(&cicdmodel.CICDServiceCIConfig{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -136,7 +137,7 @@ func CICDPipelineList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("repo_url LIKE ? OR branch LIKE ?", pattern, pattern)
 			}
-			var rows []model.CICDServiceCIConfig
+			var rows []cicdmodel.CICDServiceCIConfig
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -153,8 +154,8 @@ func CICDPipelineList(ctx context.Context) tool.InvokableTool {
 }
 
 type CICDPipelineStatusOutput struct {
-	Pipeline   model.CICDServiceCIConfig `json:"pipeline"`
-	RecentRuns []model.CICDServiceCIRun  `json:"recent_runs"`
+	Pipeline   cicdmodel.CICDServiceCIConfig `json:"pipeline"`
+	RecentRuns []cicdmodel.CICDServiceCIRun  `json:"recent_runs"`
 }
 
 func CICDPipelineStatus(ctx context.Context) tool.InvokableTool {
@@ -169,11 +170,11 @@ func CICDPipelineStatus(ctx context.Context) tool.InvokableTool {
 			if input.PipelineID <= 0 {
 				return nil, fmt.Errorf("pipeline_id is required")
 			}
-			var cfg model.CICDServiceCIConfig
+			var cfg cicdmodel.CICDServiceCIConfig
 			if err := svcCtx.DB.First(&cfg, input.PipelineID).Error; err != nil {
 				return nil, err
 			}
-			var runs []model.CICDServiceCIRun
+			var runs []cicdmodel.CICDServiceCIRun
 			_ = svcCtx.DB.Where("ci_config_id = ?", cfg.ID).Order("id desc").Limit(10).Find(&runs).Error
 			return &CICDPipelineStatusOutput{
 				Pipeline:   cfg,
@@ -209,11 +210,11 @@ func CICDPipelineTrigger(ctx context.Context) tool.InvokableTool {
 			if strings.TrimSpace(input.Branch) == "" {
 				return nil, fmt.Errorf("branch is required")
 			}
-			var cfg model.CICDServiceCIConfig
+			var cfg cicdmodel.CICDServiceCIConfig
 			if err := svcCtx.DB.First(&cfg, input.PipelineID).Error; err != nil {
 				return nil, err
 			}
-			run := model.CICDServiceCIRun{
+			run := cicdmodel.CICDServiceCIRun{
 				ServiceID:   cfg.ServiceID,
 				CIConfigID:  cfg.ID,
 				TriggerType: "manual",
@@ -240,7 +241,7 @@ func CICDPipelineTrigger(ctx context.Context) tool.InvokableTool {
 
 type JobListOutput struct {
 	Total int         `json:"total"`
-	List  []model.Job `json:"list"`
+	List  []jobsmodel.Job `json:"list"`
 }
 
 func JobList(ctx context.Context) tool.InvokableTool {
@@ -259,7 +260,7 @@ func JobList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Job{})
+			query := svcCtx.DB.Model(&jobsmodel.Job{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -267,7 +268,7 @@ func JobList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR type LIKE ?", pattern, pattern)
 			}
-			var jobs []model.Job
+			var jobs []jobsmodel.Job
 			if err := query.Order("id desc").Limit(limit).Find(&jobs).Error; err != nil {
 				return nil, err
 			}
@@ -285,7 +286,7 @@ func JobList(ctx context.Context) tool.InvokableTool {
 
 type JobExecutionStatusOutput struct {
 	Total int                  `json:"total"`
-	List  []model.JobExecution `json:"list"`
+	List  []jobsmodel.JobExecution `json:"list"`
 }
 
 func JobExecutionStatus(ctx context.Context) tool.InvokableTool {
@@ -300,11 +301,11 @@ func JobExecutionStatus(ctx context.Context) tool.InvokableTool {
 			if input.JobID <= 0 {
 				return nil, fmt.Errorf("job_id is required")
 			}
-			query := svcCtx.DB.Model(&model.JobExecution{}).Where("job_id = ?", input.JobID)
+			query := svcCtx.DB.Model(&jobsmodel.JobExecution{}).Where("job_id = ?", input.JobID)
 			if input.ExecutionID > 0 {
 				query = query.Where("id = ?", input.ExecutionID)
 			}
-			var rows []model.JobExecution
+			var rows []jobsmodel.JobExecution
 			if err := query.Order("id desc").Limit(20).Find(&rows).Error; err != nil {
 				return nil, err
 			}
@@ -338,12 +339,12 @@ func JobRun(ctx context.Context) tool.InvokableTool {
 			if input.JobID <= 0 {
 				return nil, fmt.Errorf("job_id is required")
 			}
-			var job model.Job
+			var job jobsmodel.Job
 			if err := svcCtx.DB.First(&job, input.JobID).Error; err != nil {
 				return nil, err
 			}
 			now := time.Now()
-			exec := model.JobExecution{
+			exec := jobsmodel.JobExecution{
 				JobID:     job.ID,
 				Status:    "running",
 				ExitCode:  0,

@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 	"gorm.io/gorm"
 )
@@ -22,14 +23,14 @@ import (
 //
 // 返回: 目标响应列表
 func (l *Logic) ListTargets(ctx context.Context, projectID, teamID uint) ([]TargetResp, error) {
-	q := l.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentTarget{})
+	q := l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentTarget{})
 	if projectID > 0 {
 		q = q.Where("project_id = ?", projectID)
 	}
 	if teamID > 0 {
 		q = q.Where("team_id = ?", teamID)
 	}
-	var rows []model.DeploymentTarget
+	var rows []deploymentmodel.DeploymentTarget
 	if err := q.Order("id DESC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (l *Logic) ListTargets(ctx context.Context, projectID, teamID uint) ([]Targ
 //
 // 返回: 目标响应
 func (l *Logic) GetTarget(ctx context.Context, id uint) (TargetResp, error) {
-	var row model.DeploymentTarget
+	var row deploymentmodel.DeploymentTarget
 	if err := l.svcCtx.DB.WithContext(ctx).First(&row, id).Error; err != nil {
 		return TargetResp{}, err
 	}
@@ -73,12 +74,12 @@ func (l *Logic) GetTarget(ctx context.Context, id uint) (TargetResp, error) {
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}
-	var nodes []model.DeploymentTargetNode
+	var nodes []deploymentmodel.DeploymentTargetNode
 	if err := l.svcCtx.DB.WithContext(ctx).Where("target_id = ?", row.ID).Find(&nodes).Error; err == nil {
 		resp.Nodes = make([]TargetNodeResp, 0, len(nodes))
 		for _, n := range nodes {
 			item := TargetNodeResp{HostID: n.HostID, Role: n.Role, Weight: n.Weight, Status: n.Status}
-			var host model.Node
+			var host deploymentmodel.Node
 			if err := l.svcCtx.DB.WithContext(ctx).First(&host, n.HostID).Error; err == nil {
 				item.Name = host.Name
 				item.IP = host.IP
@@ -100,7 +101,7 @@ func (l *Logic) GetTarget(ctx context.Context, id uint) (TargetResp, error) {
 // 返回: 创建的目标响应
 func (l *Logic) CreateTarget(ctx context.Context, uid uint64, req TargetUpsertReq) (TargetResp, error) {
 	runtimeType := normalizedRuntime(req.TargetType, req.RuntimeType)
-	row := model.DeploymentTarget{
+	row := deploymentmodel.DeploymentTarget{
 		Name:            strings.TrimSpace(req.Name),
 		TargetType:      runtimeType,
 		RuntimeType:     runtimeType,
@@ -116,7 +117,7 @@ func (l *Logic) CreateTarget(ctx context.Context, uid uint64, req TargetUpsertRe
 		CreatedBy:       uint(uid),
 	}
 	if strings.TrimSpace(row.BootstrapJobID) != "" {
-		var job model.EnvironmentInstallJob
+		var job deploymentmodel.EnvironmentInstallJob
 		if err := l.svcCtx.DB.WithContext(ctx).Select("id,status").Where("id = ?", row.BootstrapJobID).First(&job).Error; err != nil {
 			return TargetResp{}, fmt.Errorf("bootstrap job not found")
 		}
@@ -152,7 +153,7 @@ func (l *Logic) CreateTarget(ctx context.Context, uid uint64, req TargetUpsertRe
 //
 // 返回: 更新后的目标响应
 func (l *Logic) UpdateTarget(ctx context.Context, id uint, req TargetUpsertReq) (TargetResp, error) {
-	var row model.DeploymentTarget
+	var row deploymentmodel.DeploymentTarget
 	if err := l.svcCtx.DB.WithContext(ctx).First(&row, id).Error; err != nil {
 		return TargetResp{}, err
 	}
@@ -177,7 +178,7 @@ func (l *Logic) UpdateTarget(ctx context.Context, id uint, req TargetUpsertReq) 
 	}
 	if strings.TrimSpace(req.BootstrapJobID) != "" {
 		row.BootstrapJobID = strings.TrimSpace(req.BootstrapJobID)
-		var job model.EnvironmentInstallJob
+		var job deploymentmodel.EnvironmentInstallJob
 		if err := l.svcCtx.DB.WithContext(ctx).Select("id,status").Where("id = ?", row.BootstrapJobID).First(&job).Error; err != nil {
 			return TargetResp{}, fmt.Errorf("bootstrap job not found")
 		}
@@ -220,10 +221,10 @@ func (l *Logic) UpdateTarget(ctx context.Context, id uint, req TargetUpsertReq) 
 // 返回: 错误信息
 func (l *Logic) DeleteTarget(ctx context.Context, id uint) error {
 	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("target_id = ?", id).Delete(&model.DeploymentTargetNode{}).Error; err != nil {
+		if err := tx.Where("target_id = ?", id).Delete(&deploymentmodel.DeploymentTargetNode{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.DeploymentTarget{}, id).Error
+		return tx.Delete(&deploymentmodel.DeploymentTarget{}, id).Error
 	})
 }
 
@@ -236,7 +237,7 @@ func (l *Logic) DeleteTarget(ctx context.Context, id uint) error {
 //
 // 返回: 错误信息
 func (l *Logic) ReplaceTargetNodes(ctx context.Context, targetID uint, nodes []TargetNodeReq) error {
-	var target model.DeploymentTarget
+	var target deploymentmodel.DeploymentTarget
 	if err := l.svcCtx.DB.WithContext(ctx).Select("id,target_type").First(&target, targetID).Error; err != nil {
 		return err
 	}
@@ -244,14 +245,14 @@ func (l *Logic) ReplaceTargetNodes(ctx context.Context, targetID uint, nodes []T
 		return fmt.Errorf("compose target requires at least one host node")
 	}
 	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("target_id = ?", targetID).Delete(&model.DeploymentTargetNode{}).Error; err != nil {
+		if err := tx.Where("target_id = ?", targetID).Delete(&deploymentmodel.DeploymentTargetNode{}).Error; err != nil {
 			return err
 		}
 		for _, n := range nodes {
 			if n.HostID == 0 {
 				continue
 			}
-			var host model.Node
+			var host deploymentmodel.Node
 			if err := tx.Select("id,ip,status").First(&host, n.HostID).Error; err != nil {
 				return fmt.Errorf("host node %d not found", n.HostID)
 			}
@@ -260,7 +261,7 @@ func (l *Logic) ReplaceTargetNodes(ctx context.Context, targetID uint, nodes []T
 					return fmt.Errorf("host node %d is unavailable: %s", n.HostID, reason)
 				}
 			}
-			row := model.DeploymentTargetNode{TargetID: targetID, HostID: n.HostID, Role: defaultIfEmpty(n.Role, "worker"), Weight: defaultInt(n.Weight, 100), Status: "active"}
+			row := deploymentmodel.DeploymentTargetNode{TargetID: targetID, HostID: n.HostID, Role: defaultIfEmpty(n.Role, "worker"), Weight: defaultInt(n.Weight, 100), Status: "active"}
 			if err := tx.Create(&row).Error; err != nil {
 				return err
 			}
@@ -287,13 +288,13 @@ func (l *Logic) validateTargetUpsert(ctx context.Context, targetType string, clu
 			return fmt.Errorf("cluster_id or credential_id is required for k8s target")
 		}
 		if clusterID > 0 {
-			var cluster model.Cluster
+			var cluster clustermodel.Cluster
 			if err := l.svcCtx.DB.WithContext(ctx).Select("id,status").First(&cluster, clusterID).Error; err != nil {
 				return fmt.Errorf("cluster binding not found: %w", err)
 			}
 		}
 		if credentialID > 0 {
-			var cred model.ClusterCredential
+			var cred deploymentmodel.ClusterCredential
 			if err := l.svcCtx.DB.WithContext(ctx).Select("id,runtime_type,status").First(&cred, credentialID).Error; err != nil {
 				return fmt.Errorf("cluster credential not found: %w", err)
 			}

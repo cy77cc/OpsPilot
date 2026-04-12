@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterlogic "github.com/cy77cc/OpsPilot/internal/modules/cluster/logic"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	governanceaudit "github.com/cy77cc/OpsPilot/internal/modules/governance/audit"
@@ -366,8 +366,8 @@ func (h *Handler) gatePolicyReleaseAction(ctx context.Context, release *PolicyRe
 	return true, operationApprovalFromClusterApprovalRecord(rec), OperationStateCompleted, OperationCodeSuccess, "", nil
 }
 
-func (h *Handler) findOrIssuePolicyReleaseApproval(ctx context.Context, release *PolicyReleaseRecord, action string, operatorID uint, now time.Time) (*model.OperationApproval, error) {
-	var rec model.OperationApproval
+func (h *Handler) findOrIssuePolicyReleaseApproval(ctx context.Context, release *PolicyReleaseRecord, action string, operatorID uint, now time.Time) (*clustermodel.OperationApproval, error) {
+	var rec clustermodel.OperationApproval
 	err := h.svcCtx.DB.WithContext(ctx).
 		Where("scope_cluster_id = ? AND namespace = ? AND action = ? AND resource = ? AND resource_id = ? AND status = ? AND consumed_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
 			release.TargetCluster.ClusterID,
@@ -392,7 +392,7 @@ func (h *Handler) findOrIssuePolicyReleaseApproval(ctx context.Context, release 
 		return nil, err
 	}
 
-	var approval model.OperationApproval
+	var approval clustermodel.OperationApproval
 	if err := h.svcCtx.DB.WithContext(ctx).Where("ticket = ?", issued.Ticket).First(&approval).Error; err != nil {
 		return nil, err
 	}
@@ -487,7 +487,7 @@ func approvalTicket(approval *OperationApproval) string {
 	return strings.TrimSpace(approval.Ticket)
 }
 
-func operationApprovalFromClusterApprovalRecord(rec *model.ClusterDeployApproval) *OperationApproval {
+func operationApprovalFromClusterApprovalRecord(rec *clustermodel.ClusterDeployApproval) *OperationApproval {
 	if rec == nil {
 		return nil
 	}

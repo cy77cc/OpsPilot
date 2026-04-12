@@ -13,7 +13,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -87,7 +87,7 @@ func (h *Handler) ImportCluster(ctx context.Context, uid uint64, req ClusterCrea
 	}
 
 	// Create cluster record
-	cluster := &model.Cluster{
+	cluster := &clustermodel.Cluster{
 		Name:        strings.TrimSpace(req.Name),
 		Description: strings.TrimSpace(req.Description),
 		Source:      "external_managed",
@@ -106,7 +106,7 @@ func (h *Handler) ImportCluster(ctx context.Context, uid uint64, req ClusterCrea
 	}
 
 	// Create credential record
-	cred := &model.ClusterCredential{
+	cred := &clustermodel.ClusterCredential{
 		Name:        fmt.Sprintf("%s-credential", cluster.Name),
 		RuntimeType: "k8s",
 		Source:      "external_managed",
@@ -261,7 +261,7 @@ func (h *Handler) buildRestConfigFromRequest(req ClusterCreateReq) (*rest.Config
 //   - req: 集群创建请求
 //
 // 返回: 失败返回错误
-func (h *Handler) encryptCredentialMaterials(cred *model.ClusterCredential, req ClusterCreateReq) error {
+func (h *Handler) encryptCredentialMaterials(cred *clustermodel.ClusterCredential, req ClusterCreateReq) error {
 	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if enc == "" {
 		return fmt.Errorf("security.encryption_key is required")
@@ -379,7 +379,7 @@ func (h *Handler) syncClusterNodes(ctx context.Context, clusterID uint, kubeconf
 		osImage := node.Status.NodeInfo.OSImage
 		kernelVersion := node.Status.NodeInfo.KernelVersion
 
-		clusterNode := model.ClusterNode{
+		clusterNode := clustermodel.ClusterNode{
 			ClusterID:        clusterID,
 			Name:             node.Name,
 			IP:               ip,
@@ -397,7 +397,7 @@ func (h *Handler) syncClusterNodes(ctx context.Context, clusterID uint, kubeconf
 		}
 
 		// Upsert node
-		var existing model.ClusterNode
+		var existing clustermodel.ClusterNode
 		result := h.svcCtx.DB.WithContext(ctx).
 			Where("cluster_id = ? AND name = ?", clusterID, node.Name).
 			First(&existing)
@@ -425,7 +425,7 @@ func (h *Handler) syncClusterNodes(ctx context.Context, clusterID uint, kubeconf
 	}
 
 	// Update cluster last_sync_at
-	h.svcCtx.DB.WithContext(ctx).Model(&model.Cluster{}).
+	h.svcCtx.DB.WithContext(ctx).Model(&clustermodel.Cluster{}).
 		Where("id = ?", clusterID).
 		Update("last_sync_at", &now)
 
@@ -440,7 +440,7 @@ func (h *Handler) syncClusterNodes(ctx context.Context, clusterID uint, kubeconf
 //   - cred: 凭证模型
 //
 // 返回: 失败返回错误
-func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, cred *model.ClusterCredential) error {
+func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, cred *clustermodel.ClusterCredential) error {
 	restConfig, err := h.buildRestConfigFromCredential(cred)
 	if err != nil {
 		return err
@@ -505,7 +505,7 @@ func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, 
 		osImage := node.Status.NodeInfo.OSImage
 		kernelVersion := node.Status.NodeInfo.KernelVersion
 
-		clusterNode := model.ClusterNode{
+		clusterNode := clustermodel.ClusterNode{
 			ClusterID:        clusterID,
 			Name:             node.Name,
 			IP:               ip,
@@ -523,7 +523,7 @@ func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, 
 		}
 
 		// Upsert node
-		var existing model.ClusterNode
+		var existing clustermodel.ClusterNode
 		result := h.svcCtx.DB.WithContext(ctx).
 			Where("cluster_id = ? AND name = ?", clusterID, node.Name).
 			First(&existing)
@@ -551,7 +551,7 @@ func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, 
 	}
 
 	// Update cluster last_sync_at
-	h.svcCtx.DB.WithContext(ctx).Model(&model.Cluster{}).
+	h.svcCtx.DB.WithContext(ctx).Model(&clustermodel.Cluster{}).
 		Where("id = ?", clusterID).
 		Update("last_sync_at", &now)
 
@@ -566,7 +566,7 @@ func (h *Handler) syncClusterNodesWithCred(ctx context.Context, clusterID uint, 
 //
 // 返回: 连通性测试结果
 func (h *Handler) TestConnectivity(ctx context.Context, clusterID uint) (*ClusterTestResp, error) {
-	var cred model.ClusterCredential
+	var cred clustermodel.ClusterCredential
 	if err := h.svcCtx.DB.WithContext(ctx).
 		Where("cluster_id = ?", clusterID).
 		First(&cred).Error; err != nil {
@@ -630,7 +630,7 @@ func (h *Handler) TestConnectivity(ctx context.Context, clusterID uint) (*Cluste
 //   - cred: 凭证模型
 //
 // 返回: REST 配置，失败返回错误
-func (h *Handler) buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+func (h *Handler) buildRestConfigFromCredential(cred *clustermodel.ClusterCredential) (*rest.Config, error) {
 	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if enc == "" {
 		return nil, fmt.Errorf("security.encryption_key is required")

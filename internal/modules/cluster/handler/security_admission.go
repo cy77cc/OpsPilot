@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/modules/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/gin-gonic/gin"
@@ -133,7 +133,7 @@ func (h *Handler) UpsertAdmissionPolicy(c *gin.Context) {
 	if status == "" {
 		status = "active"
 	}
-	policy, err := h.repo.Phase3.UpsertAdmissionPolicy(c.Request.Context(), model.AdmissionPolicy{
+	policy, err := h.repo.Phase3.UpsertAdmissionPolicy(c.Request.Context(), clustermodel.AdmissionPolicy{
 		ClusterID:   clusterID,
 		PolicyName:  strings.TrimSpace(req.PolicyName),
 		Version:     strings.TrimSpace(req.Version),
@@ -251,7 +251,7 @@ func (h *Handler) CreateAdmissionExemption(c *gin.Context) {
 		return
 	}
 
-	rec, err := h.repo.Phase3.CreateAdmissionExemption(c.Request.Context(), model.AdmissionExemption{
+	rec, err := h.repo.Phase3.CreateAdmissionExemption(c.Request.Context(), clustermodel.AdmissionExemption{
 		ClusterID: clusterID,
 		ScopeType: strings.TrimSpace(req.ScopeType),
 		ScopeRef:  strings.TrimSpace(req.ScopeRef),

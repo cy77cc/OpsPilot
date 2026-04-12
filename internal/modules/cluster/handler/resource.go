@@ -12,7 +12,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	projectlogic "github.com/cy77cc/OpsPilot/internal/modules/project/logic"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
@@ -38,7 +38,7 @@ func (h *Handler) List(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "k8s:read", "kubernetes:read") {
 		return
 	}
-	var list []model.Cluster
+	var list []clustermodel.Cluster
 	if err := h.svcCtx.DB.Find(&list).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -74,7 +74,7 @@ func (h *Handler) Create(c *gin.Context) {
 		httpx.BindErr(c, err)
 		return
 	}
-	cluster := model.Cluster{Name: req.Name, Description: req.Description, Endpoint: req.Server, KubeConfig: req.Kubeconfig, Status: "created", Type: "kubernetes", AuthMethod: "kubeconfig", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	cluster := clustermodel.Cluster{Name: req.Name, Description: req.Description, Endpoint: req.Server, KubeConfig: req.Kubeconfig, Status: "created", Type: "kubernetes", AuthMethod: "kubeconfig", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := h.svcCtx.DB.Create(&cluster).Error; err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -555,13 +555,13 @@ spec:
 //   - c: Gin 上下文
 //
 // 返回: 集群模型和成功标志
-func (h *Handler) mustCluster(c *gin.Context) (*model.Cluster, bool) {
+func (h *Handler) mustCluster(c *gin.Context) (*clustermodel.Cluster, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return nil, false
 	}
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.First(&cluster, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "cluster not found")
 		return nil, false
@@ -575,7 +575,7 @@ func (h *Handler) mustCluster(c *gin.Context) (*model.Cluster, bool) {
 //   - cluster: 集群模型
 //
 // 返回: 客户端、数据源标识和错误
-func (h *Handler) getClient(cluster *model.Cluster) (*kubernetes.Clientset, string, error) {
+func (h *Handler) getClient(cluster *clustermodel.Cluster) (*kubernetes.Clientset, string, error) {
 	if cluster != nil && strings.TrimSpace(cluster.KubeConfig) != "" {
 		cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
 		if err != nil {

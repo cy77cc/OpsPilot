@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 )
 
 func TestApprovalEventBus_PreservesPerAggregateSequence(t *testing.T) {

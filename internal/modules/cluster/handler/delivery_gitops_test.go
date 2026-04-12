@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/modules/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -86,9 +86,9 @@ func newPhase3GitOpsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Cluster{},
-		&model.OperationApproval{},
-		&model.OperationAudit{},
+		&clustermodel.Cluster{},
+		&clustermodel.OperationApproval{},
+		&clustermodel.OperationAudit{},
 	); err != nil {
 		t.Fatalf("migrate base tables: %v", err)
 	}
@@ -106,7 +106,7 @@ func newPhase3GitOpsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	);`).Error; err != nil {
 		t.Fatalf("create gitops_app_releases: %v", err)
 	}
-	if err := db.Create(&model.Cluster{
+	if err := db.Create(&clustermodel.Cluster{
 		ID:      42,
 		Name:    "phase3-gitops-test-cluster",
 		Status:  "active",
@@ -148,7 +148,7 @@ func mustIssuePhase3GitOpsApproval(t *testing.T, db *gorm.DB, appName string) st
 	if decision.Approval == nil || decision.Approval.Ticket == "" {
 		t.Fatalf("expected approval ticket")
 	}
-	if err := db.Model(&model.OperationApproval{}).Where("ticket = ?", decision.Approval.Ticket).Updates(map[string]any{"status": "approved", "review_by": 2001}).Error; err != nil {
+	if err := db.Model(&clustermodel.OperationApproval{}).Where("ticket = ?", decision.Approval.Ticket).Updates(map[string]any{"status": "approved", "review_by": 2001}).Error; err != nil {
 		t.Fatalf("approve gitops ticket: %v", err)
 	}
 	return decision.Approval.Ticket

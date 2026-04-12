@@ -21,12 +21,10 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aicore aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/checkpoint"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
-	serviceruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -82,11 +80,7 @@ type projectionBlockMeta struct {
 var ErrInvalidProjectionCursor = errors.New("invalid projection cursor")
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	return aicore.InitDeepAgent(ctx)
-}
-
-type runtimeKernel interface {
-	ResumeTransition(state serviceruntime.RunState) (serviceruntime.RunState, error)
+	return ai.InitDeepAgent(ctx)
 }
 
 // Logic 封装 AI 模块的核心业务逻辑。
@@ -103,7 +97,6 @@ type Logic struct {
 	AIRouter           adk.ResumableAgent
 	MigrationFlags     ApprovalEventMigrationFlags
 	projectionGroup    singleflight.Group
-	runtimeKernel      runtimeKernel
 }
 
 // NewAILogic 创建 Logic 实例。
@@ -130,7 +123,6 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 		MigrationFlags:     NewApprovalEventMigrationFlagsFromEnv(),
-		runtimeKernel:      serviceruntime.NewKernel(),
 	}
 }
 
@@ -148,18 +140,13 @@ func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(db),
 		RunContentDAO:      aidao.NewAIRunContentDAO(db),
 		AIRouter:           router,
-		runtimeKernel:      serviceruntime.NewKernel(),
 	}
 }
 
 // CanResumeSameRunStatus reports whether an approval resume transition should
 // remain within the same run attempt for the provided run status.
 func (l *Logic) CanResumeSameRunStatus(status string) bool {
-	if l == nil || l.runtimeKernel == nil {
-		return strings.EqualFold(strings.TrimSpace(status), "waiting_approval")
-	}
-	_, err := l.runtimeKernel.ResumeTransition(serviceruntime.RunState(strings.TrimSpace(status)))
-	return err == nil
+	return strings.EqualFold(strings.TrimSpace(status), "waiting_approval")
 }
 
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。

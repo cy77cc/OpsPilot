@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

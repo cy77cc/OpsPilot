@@ -10,7 +10,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -233,8 +233,8 @@ func (h *PolicyHandler) DeletePolicy(c *gin.Context) {
 //   - req: 查询请求参数
 //
 // 返回: 策略列表和总数
-func (h *PolicyHandler) listPolicies(ctx context.Context, req listPoliciesReq) ([]model.Policy, int64, error) {
-	query := h.svcCtx.DB.WithContext(ctx).Model(&model.Policy{})
+func (h *PolicyHandler) listPolicies(ctx context.Context, req listPoliciesReq) ([]deploymentmodel.Policy, int64, error) {
+	query := h.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.Policy{})
 
 	if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
@@ -248,7 +248,7 @@ func (h *PolicyHandler) listPolicies(ctx context.Context, req listPoliciesReq) (
 		return nil, 0, err
 	}
 
-	var policies []model.Policy
+	var policies []deploymentmodel.Policy
 	offset := (req.Page - 1) * req.PageSize
 	if err := query.Order("id desc").Offset(offset).Limit(req.PageSize).Find(&policies).Error; err != nil {
 		return nil, 0, err
@@ -264,8 +264,8 @@ func (h *PolicyHandler) listPolicies(ctx context.Context, req listPoliciesReq) (
 //   - id: 策略 ID
 //
 // 返回: 策略对象
-func (h *PolicyHandler) getPolicy(ctx context.Context, id uint) (*model.Policy, error) {
-	var policy model.Policy
+func (h *PolicyHandler) getPolicy(ctx context.Context, id uint) (*deploymentmodel.Policy, error) {
+	var policy deploymentmodel.Policy
 	if err := h.svcCtx.DB.WithContext(ctx).First(&policy, id).Error; err != nil {
 		return nil, err
 	}
@@ -279,8 +279,8 @@ func (h *PolicyHandler) getPolicy(ctx context.Context, id uint) (*model.Policy, 
 //   - req: 创建请求参数
 //
 // 返回: 创建的策略对象
-func (h *PolicyHandler) createPolicy(ctx context.Context, req createPolicyReq) (*model.Policy, error) {
-	policy := model.Policy{
+func (h *PolicyHandler) createPolicy(ctx context.Context, req createPolicyReq) (*deploymentmodel.Policy, error) {
+	policy := deploymentmodel.Policy{
 		Name:     req.Name,
 		Type:     req.Type,
 		TargetID: req.TargetID,
@@ -303,8 +303,8 @@ func (h *PolicyHandler) createPolicy(ctx context.Context, req createPolicyReq) (
 //   - req: 更新请求参数
 //
 // 返回: 更新后的策略对象
-func (h *PolicyHandler) updatePolicy(ctx context.Context, id uint, req updatePolicyReq) (*model.Policy, error) {
-	var policy model.Policy
+func (h *PolicyHandler) updatePolicy(ctx context.Context, id uint, req updatePolicyReq) (*deploymentmodel.Policy, error) {
+	var policy deploymentmodel.Policy
 	if err := h.svcCtx.DB.WithContext(ctx).First(&policy, id).Error; err != nil {
 		return nil, err
 	}
@@ -341,5 +341,5 @@ func (h *PolicyHandler) updatePolicy(ctx context.Context, id uint, req updatePol
 //
 // 返回: 错误信息
 func (h *PolicyHandler) deletePolicy(ctx context.Context, id uint) error {
-	return h.svcCtx.DB.WithContext(ctx).Delete(&model.Policy{}, id).Error
+	return h.svcCtx.DB.WithContext(ctx).Delete(&deploymentmodel.Policy{}, id).Error
 }

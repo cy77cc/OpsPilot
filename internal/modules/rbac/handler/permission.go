@@ -19,8 +19,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -122,7 +122,7 @@ func (h *Handler) Check(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /rbac/users [get]
 func (h *Handler) ListUsers(c *gin.Context) {
-	var users []model.User
+	var users []usermodel.User
 	if err := h.svcCtx.DB.Find(&users).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -164,7 +164,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var u model.User
+	var u usermodel.User
 	if err := h.svcCtx.DB.First(&u, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "user not found")
 		return
@@ -217,7 +217,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 
 	now := time.Now().Unix()
-	u := model.User{Username: req.Username, PasswordHash: hashed, Email: req.Email, CreateTime: now, UpdateTime: now, Status: toStatusInt(req.Status)}
+	u := usermodel.User{Username: req.Username, PasswordHash: hashed, Email: req.Email, CreateTime: now, UpdateTime: now, Status: toStatusInt(req.Status)}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&u).Error; err != nil {
 			return err
@@ -288,7 +288,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			}
 			updates["password_hash"] = hashed
 		}
-		if err := tx.Model(&model.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := tx.Model(&usermodel.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return err
 		}
 		if req.Roles != nil {
@@ -333,10 +333,10 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", id).Delete(&model.UserRole{}).Error; err != nil {
+		if err := tx.Where("user_id = ?", id).Delete(&usermodel.UserRole{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Delete(&model.User{}, id).Error; err != nil {
+		if err := tx.Delete(&usermodel.User{}, id).Error; err != nil {
 			return err
 		}
 		return nil
@@ -360,7 +360,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /rbac/roles [get]
 func (h *Handler) ListRoles(c *gin.Context) {
-	var roles []model.Role
+	var roles []usermodel.Role
 	if err := h.svcCtx.DB.Find(&roles).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -393,7 +393,7 @@ func (h *Handler) GetRole(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var r model.Role
+	var r usermodel.Role
 	if err := h.svcCtx.DB.First(&r, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "role not found")
 		return
@@ -428,7 +428,7 @@ func (h *Handler) CreateRole(c *gin.Context) {
 	}
 	now := time.Now().Unix()
 	code := strings.TrimSpace(req.Name)
-	r := model.Role{Name: req.Name, Code: code, Description: req.Description, Status: 1, CreateTime: now, UpdateTime: now}
+	r := usermodel.Role{Name: req.Name, Code: code, Description: req.Description, Status: 1, CreateTime: now, UpdateTime: now}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&r).Error; err != nil {
 			return err
@@ -482,7 +482,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		if req.Description != nil {
 			updates["description"] = strings.TrimSpace(*req.Description)
 		}
-		if err := tx.Model(&model.Role{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := tx.Model(&usermodel.Role{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return err
 		}
 		if req.Permissions != nil {
@@ -527,13 +527,13 @@ func (h *Handler) DeleteRole(c *gin.Context) {
 		return
 	}
 	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", id).Delete(&model.RolePermission{}).Error; err != nil {
+		if err := tx.Where("role_id = ?", id).Delete(&usermodel.RolePermission{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("role_id = ?", id).Delete(&model.UserRole{}).Error; err != nil {
+		if err := tx.Where("role_id = ?", id).Delete(&usermodel.UserRole{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.Role{}, id).Error
+		return tx.Delete(&usermodel.Role{}, id).Error
 	}); err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -554,7 +554,7 @@ func (h *Handler) DeleteRole(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /rbac/permissions [get]
 func (h *Handler) ListPermissions(c *gin.Context) {
-	var permissions []model.Permission
+	var permissions []usermodel.Permission
 	if err := h.svcCtx.DB.Find(&permissions).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -586,7 +586,7 @@ func (h *Handler) GetPermission(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	var p model.Permission
+	var p usermodel.Permission
 	if err := h.svcCtx.DB.First(&p, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "permission not found")
 		return
@@ -823,7 +823,7 @@ func (h *Handler) getPermissionCodesByRoleID(roleID uint64) ([]string, error) {
 //  2. 验证角色代码是否有效
 //  3. 创建新的用户角色关联
 func (h *Handler) syncUserRolesTx(tx *gorm.DB, userID uint64, roleCodes []string) error {
-	if err := tx.Where("user_id = ?", userID).Delete(&model.UserRole{}).Error; err != nil {
+	if err := tx.Where("user_id = ?", userID).Delete(&usermodel.UserRole{}).Error; err != nil {
 		return err
 	}
 	cleanCodes := make([]string, 0, len(roleCodes))
@@ -842,7 +842,7 @@ func (h *Handler) syncUserRolesTx(tx *gorm.DB, userID uint64, roleCodes []string
 	if len(cleanCodes) == 0 {
 		return nil
 	}
-	var roles []model.Role
+	var roles []usermodel.Role
 	if err := tx.Where("code IN ?", cleanCodes).Find(&roles).Error; err != nil {
 		return err
 	}
@@ -860,7 +860,7 @@ func (h *Handler) syncUserRolesTx(tx *gorm.DB, userID uint64, roleCodes []string
 		return &codeValidationError{field: "roles", codes: missing}
 	}
 	for _, role := range roles {
-		if err := tx.Create(&model.UserRole{UserID: int64(userID), RoleID: int64(role.ID)}).Error; err != nil {
+		if err := tx.Create(&usermodel.UserRole{UserID: int64(userID), RoleID: int64(role.ID)}).Error; err != nil {
 			return err
 		}
 	}
@@ -882,7 +882,7 @@ func (h *Handler) syncUserRolesTx(tx *gorm.DB, userID uint64, roleCodes []string
 //  2. 验证权限代码是否有效
 //  3. 创建新的角色权限关联
 func (h *Handler) syncRolePermissionsTx(tx *gorm.DB, roleID uint64, permissionCodes []string) error {
-	if err := tx.Where("role_id = ?", roleID).Delete(&model.RolePermission{}).Error; err != nil {
+	if err := tx.Where("role_id = ?", roleID).Delete(&usermodel.RolePermission{}).Error; err != nil {
 		return err
 	}
 	cleanCodes := make([]string, 0, len(permissionCodes))
@@ -901,7 +901,7 @@ func (h *Handler) syncRolePermissionsTx(tx *gorm.DB, roleID uint64, permissionCo
 	if len(cleanCodes) == 0 {
 		return nil
 	}
-	var perms []model.Permission
+	var perms []usermodel.Permission
 	if err := tx.Where("code IN ?", cleanCodes).Find(&perms).Error; err != nil {
 		return err
 	}
@@ -919,7 +919,7 @@ func (h *Handler) syncRolePermissionsTx(tx *gorm.DB, roleID uint64, permissionCo
 		return &codeValidationError{field: "permissions", codes: missing}
 	}
 	for _, perm := range perms {
-		if err := tx.Create(&model.RolePermission{RoleID: int64(roleID), PermissionID: int64(perm.ID)}).Error; err != nil {
+		if err := tx.Create(&usermodel.RolePermission{RoleID: int64(roleID), PermissionID: int64(perm.ID)}).Error; err != nil {
 			return err
 		}
 	}

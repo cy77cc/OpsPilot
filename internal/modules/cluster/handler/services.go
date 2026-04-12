@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -113,7 +113,7 @@ func (h *Handler) GetClusterServices(c *gin.Context) {
 		return
 	}
 
-	var targets []model.DeploymentTarget
+	var targets []clustermodel.DeploymentTarget
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 		Where("cluster_id = ?", id).
 		Find(&targets).Error; err != nil {
@@ -123,19 +123,19 @@ func (h *Handler) GetClusterServices(c *gin.Context) {
 
 	items := make([]ClusterServiceInfo, 0)
 	for _, target := range targets {
-		var release model.DeploymentRelease
+		var release clustermodel.DeploymentRelease
 		if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 			Where("target_id = ?", target.ID).
 			Order("id DESC").
 			First(&release).Error; err == nil {
 
-			var service model.Service
+			var service clustermodel.Service
 			if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 				First(&service, release.ServiceID).Error; err == nil {
 
 				projectName := ""
 				if target.ProjectID > 0 {
-					var project model.Project
+					var project clustermodel.Project
 					if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 						First(&project, target.ProjectID).Error; err == nil {
 						projectName = project.Name
@@ -517,7 +517,7 @@ func validateIngressMutationReq(req IngressMutationReq) error {
 func (h *Handler) executeServiceIngressMutationWithClient(c *gin.Context, clusterID uint, target serviceIngressMutationTarget, approvalToken string, client kubernetesServiceIngressClient, fn func(context.Context, kubernetesServiceIngressClient) (map[string]any, error)) (ClusterOperationResponse, error) {
 	ctx := c.Request.Context()
 
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := h.svcCtx.DB.WithContext(ctx).First(&cluster, clusterID).Error; err != nil {
 		return ClusterOperationResponse{}, fmt.Errorf("cluster not found: %w", err)
 	}

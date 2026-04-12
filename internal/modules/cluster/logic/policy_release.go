@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clustercontracts "github.com/cy77cc/OpsPilot/internal/modules/cluster/contracts"
 	clusterpolicy "github.com/cy77cc/OpsPilot/internal/modules/cluster/domain/policy"
 	"gorm.io/gorm"
@@ -202,14 +202,14 @@ func (r *PolicyReleaseRecord) hasValidatedApproval() bool {
 	return strings.TrimSpace(r.Approval.ApprovalToken) != "" && r.Approval.ApprovedAt != nil
 }
 
-func findPendingPolicyReleaseApproval(db *gorm.DB, release *PolicyReleaseRecord, now time.Time) (*model.OperationApproval, error) {
+func findPendingPolicyReleaseApproval(db *gorm.DB, release *PolicyReleaseRecord, now time.Time) (*clustermodel.OperationApproval, error) {
 	if db == nil || release == nil {
 		return nil, nil
 	}
 
 	now = normalizePolicyReleaseTime(now)
 
-	var approval model.OperationApproval
+	var approval clustermodel.OperationApproval
 	err := db.
 		Where("scope_cluster_id = ? AND namespace = ? AND action = ? AND resource = ? AND resource_id = ? AND status = ? AND consumed_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
 			release.TargetCluster.ClusterID,

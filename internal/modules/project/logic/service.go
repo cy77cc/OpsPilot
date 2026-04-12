@@ -10,7 +10,8 @@ import (
 	"fmt"
 
 	v1 "github.com/cy77cc/OpsPilot/api/project/v1"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -80,7 +81,7 @@ func (l *ServiceLogic) CreateService(ctx context.Context, req v1.CreateServiceRe
 		resourcesBytes, _ = json.Marshal(req.Resources)
 	}
 
-	service := &model.Service{
+	service := &projectmodel.Service{
 		ProjectID:     req.ProjectID,
 		Name:          req.Name,
 		Type:          req.Type,
@@ -109,7 +110,7 @@ func (l *ServiceLogic) CreateService(ctx context.Context, req v1.CreateServiceRe
 //
 // 返回: 服务列表，失败返回错误
 func (l *ServiceLogic) ListServices(ctx context.Context, projectID uint) ([]v1.ServiceResp, error) {
-	var services []model.Service
+	var services []projectmodel.Service
 	query := l.svcCtx.DB
 	if projectID > 0 {
 		query = query.Where("project_id = ?", projectID)
@@ -133,7 +134,7 @@ func (l *ServiceLogic) ListServices(ctx context.Context, projectID uint) ([]v1.S
 //
 // 返回: 服务详情，失败返回错误
 func (l *ServiceLogic) GetService(ctx context.Context, id uint) (v1.ServiceResp, error) {
-	var service model.Service
+	var service projectmodel.Service
 	if err := l.svcCtx.DB.First(&service, id).Error; err != nil {
 		return v1.ServiceResp{}, err
 	}
@@ -148,7 +149,7 @@ func (l *ServiceLogic) GetService(ctx context.Context, id uint) (v1.ServiceResp,
 //
 // 返回: 成功返回 nil，失败返回错误
 func (l *ServiceLogic) DeleteService(ctx context.Context, id uint) error {
-	return l.svcCtx.DB.Delete(&model.Service{}, id).Error
+	return l.svcCtx.DB.Delete(&projectmodel.Service{}, id).Error
 }
 
 // DeployService 部署服务到集群。
@@ -159,12 +160,12 @@ func (l *ServiceLogic) DeleteService(ctx context.Context, id uint) error {
 //
 // 返回: 成功返回 nil，失败返回错误
 func (l *ServiceLogic) DeployService(ctx context.Context, req v1.DeployServiceReq) error {
-	var service model.Service
+	var service projectmodel.Service
 	if err := l.svcCtx.DB.First(&service, req.ServiceID).Error; err != nil {
 		return err
 	}
 
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := l.svcCtx.DB.First(&cluster, req.ClusterID).Error; err != nil {
 		return err
 	}
@@ -186,7 +187,7 @@ func (l *ServiceLogic) DeployService(ctx context.Context, req v1.DeployServiceRe
 //  2. 重新生成或使用提供的 K8s YAML
 //  3. 更新数据库记录
 func (l *ServiceLogic) UpdateService(ctx context.Context, id uint, req v1.CreateServiceReq) (v1.ServiceResp, error) {
-	var service model.Service
+	var service projectmodel.Service
 	if err := l.svcCtx.DB.First(&service, id).Error; err != nil {
 		return v1.ServiceResp{}, err
 	}
@@ -236,7 +237,7 @@ func (l *ServiceLogic) UpdateService(ctx context.Context, id uint, req v1.Create
 //   - s: 服务模型
 //
 // 返回: 服务响应结构
-func (l *ServiceLogic) modelToResp(s *model.Service) v1.ServiceResp {
+func (l *ServiceLogic) modelToResp(s *projectmodel.Service) v1.ServiceResp {
 	var envVars []v1.EnvVar
 	if len(s.EnvVars) > 0 {
 		_ = json.Unmarshal([]byte(s.EnvVars), &envVars)

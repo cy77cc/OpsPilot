@@ -11,7 +11,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +52,7 @@ func (h *Handler) CreateApproval(c *gin.Context) {
 		return
 	}
 	ticket := fmt.Sprintf("k8s-appr-%d", time.Now().UnixNano())
-	rec := model.ClusterDeployApproval{Ticket: ticket, ClusterID: cluster.ID, Namespace: req.Namespace, Action: req.Action, Status: "pending", RequestBy: uint(httpx.UIDFromCtx(c)), ExpiresAt: time.Now().Add(30 * time.Minute)}
+	rec := clustermodel.ClusterDeployApproval{Ticket: ticket, ClusterID: cluster.ID, Namespace: req.Namespace, Action: req.Action, Status: "pending", RequestBy: uint(httpx.UIDFromCtx(c)), ExpiresAt: time.Now().Add(30 * time.Minute)}
 	if err := h.svcCtx.DB.Create(&rec).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -103,7 +103,7 @@ func (h *Handler) ConfirmApproval(c *gin.Context) {
 		return
 	}
 	uid := httpx.UIDFromCtx(c)
-	result := h.svcCtx.DB.Model(&model.ClusterDeployApproval{}).
+	result := h.svcCtx.DB.Model(&clustermodel.ClusterDeployApproval{}).
 		Where("ticket = ? AND cluster_id = ?", ticket, cluster.ID).
 		Updates(map[string]any{"status": status, "review_by": uid, "updated_at": time.Now()})
 	if result.Error != nil {
@@ -126,7 +126,7 @@ func (h *Handler) ConfirmApproval(c *gin.Context) {
 //   - req: 部署请求
 //
 // 返回: 成功返回 true
-func (h *Handler) legacyDeployWithApproval(c *gin.Context, cli *kubernetes.Clientset, cluster *model.Cluster, req struct {
+func (h *Handler) legacyDeployWithApproval(c *gin.Context, cli *kubernetes.Clientset, cluster *clustermodel.Cluster, req struct {
 	Namespace string `json:"namespace" binding:"required"`
 	Name      string `json:"name" binding:"required"`
 	Image     string `json:"image" binding:"required"`
@@ -178,7 +178,7 @@ func deploymentFromRollout(req rolloutApplyReq) *appsv1.Deployment {
 //   - paused: 是否暂停
 //
 // 返回: 失败返回错误
-func (h *Handler) patchRolloutPaused(c *gin.Context, cluster *model.Cluster, namespace, name string, paused bool) error {
+func (h *Handler) patchRolloutPaused(c *gin.Context, cluster *clustermodel.Cluster, namespace, name string, paused bool) error {
 	_, dc, err := h.getClients(cluster)
 	if err != nil {
 		return err

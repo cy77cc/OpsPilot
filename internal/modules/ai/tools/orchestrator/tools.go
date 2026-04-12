@@ -10,10 +10,13 @@ import (
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
 	aiartifact "github.com/cy77cc/OpsPilot/internal/modules/ai/artifact"
 	aicontext "github.com/cy77cc/OpsPilot/internal/modules/ai/context"
 	aitools "github.com/cy77cc/OpsPilot/internal/modules/ai/tools"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
@@ -462,7 +465,7 @@ func discoverClusters(ctx context.Context, svcCtx *svc.ServiceContext) (map[stri
 	if svcCtx.DB == nil {
 		return nil, fmt.Errorf("database unavailable")
 	}
-	var clusters []model.Cluster
+	var clusters []clustermodel.Cluster
 	if err := svcCtx.DB.Select("id", "name", "endpoint", "status", "type", "version", "env_type").
 		Order("id asc").Find(&clusters).Error; err != nil {
 		return nil, err
@@ -491,7 +494,7 @@ func discoverHosts(ctx context.Context, svcCtx *svc.ServiceContext) (map[string]
 	if svcCtx.DB == nil {
 		return nil, fmt.Errorf("database unavailable")
 	}
-	var nodes []model.Node
+	var nodes []hostmodel.Node
 	if err := svcCtx.DB.Select("id", "name", "ip", "hostname", "status", "os", "cluster_id").
 		Order("id asc").Find(&nodes).Error; err != nil {
 		return nil, err
@@ -520,7 +523,7 @@ func discoverServices(ctx context.Context, svcCtx *svc.ServiceContext) (map[stri
 	if svcCtx.DB == nil {
 		return nil, fmt.Errorf("database unavailable")
 	}
-	var services []model.Service
+	var services []projectmodel.Service
 	if err := svcCtx.DB.Select("id", "name", "env", "status", "runtime_type", "owner").
 		Order("id asc").Find(&services).Error; err != nil {
 		return nil, err
@@ -606,9 +609,9 @@ func discoverOverview(ctx context.Context, svcCtx *svc.ServiceContext) (map[stri
 
 	if svcCtx.DB != nil {
 		var clusterCount, hostCount, serviceCount int64
-		svcCtx.DB.Model(&model.Cluster{}).Count(&clusterCount)
-		svcCtx.DB.Model(&model.Node{}).Count(&hostCount)
-		svcCtx.DB.Model(&model.Service{}).Count(&serviceCount)
+		svcCtx.DB.Model(&clustermodel.Cluster{}).Count(&clusterCount)
+		svcCtx.DB.Model(&hostmodel.Node{}).Count(&hostCount)
+		svcCtx.DB.Model(&projectmodel.Service{}).Count(&serviceCount)
 		result["clusters"] = map[string]any{"total": clusterCount}
 		result["hosts"] = map[string]any{"total": hostCount}
 		result["services"] = map[string]any{"total": serviceCount}
@@ -642,7 +645,7 @@ func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetescli
 	if svcCtx.DB == nil {
 		return nil, "", fmt.Errorf("database unavailable")
 	}
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
 		return nil, "", fmt.Errorf("cluster not found: %v", err)
 	}
@@ -661,7 +664,7 @@ type clusterCredentialMeta struct {
 	SkipTLSVerify bool `json:"skip_tls_verify,omitempty"`
 }
 
-func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *model.Cluster) (*rest.Config, error) {
+func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *clustermodel.Cluster) (*rest.Config, error) {
 	if cluster == nil {
 		return nil, fmt.Errorf("cluster is nil")
 	}
@@ -675,18 +678,18 @@ func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster 
 		return nil, fmt.Errorf("cluster %d has no kubeconfig and database unavailable", cluster.ID)
 	}
 
-	query := svcCtx.DB.Model(&model.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
+	query := svcCtx.DB.Model(&deploymentmodel.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
 	if cluster.CredentialID != nil && *cluster.CredentialID > 0 {
 		query = query.Where("id = ?", *cluster.CredentialID)
 	}
-	var cred model.ClusterCredential
+	var cred deploymentmodel.ClusterCredential
 	if err := query.Order("id DESC").First(&cred).Error; err != nil {
 		return nil, fmt.Errorf("cluster %d has no kubeconfig or active credential", cluster.ID)
 	}
 	return buildRestConfigFromCredential(&cred)
 }
 
-func buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+func buildRestConfigFromCredential(cred *deploymentmodel.ClusterCredential) (*rest.Config, error) {
 	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if enc == "" {
 		return nil, fmt.Errorf("security.encryption_key is required")

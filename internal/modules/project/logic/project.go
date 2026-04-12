@@ -7,7 +7,8 @@ import (
 	"context"
 
 	v1 "github.com/cy77cc/OpsPilot/api/project/v1"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -40,7 +41,7 @@ func NewProjectLogic(svcCtx *svc.ServiceContext) *ProjectLogic {
 //
 // 返回: 创建的项目信息，失败返回错误
 func (l *ProjectLogic) CreateProject(ctx context.Context, req v1.CreateProjectReq) (v1.ProjectResp, error) {
-	project := &model.Project{
+	project := &projectmodel.Project{
 		Name:        req.Name,
 		Description: req.Description,
 		// OwnerID:     ctx.Value("uid").(int64), // TODO: Get from context
@@ -66,7 +67,7 @@ func (l *ProjectLogic) CreateProject(ctx context.Context, req v1.CreateProjectRe
 //
 // 返回: 项目列表，失败返回错误
 func (l *ProjectLogic) ListProjects(ctx context.Context) ([]v1.ProjectResp, error) {
-	var projects []model.Project
+	var projects []projectmodel.Project
 	if err := l.svcCtx.DB.Find(&projects).Error; err != nil {
 		return nil, err
 	}
@@ -98,13 +99,13 @@ func (l *ProjectLogic) ListProjects(ctx context.Context) ([]v1.ProjectResp, erro
 //  3. 逐个部署服务到集群
 func (l *ProjectLogic) DeployProject(ctx context.Context, req v1.DeployProjectReq) error {
 	// 1. Get Project with Services
-	var project model.Project
+	var project projectmodel.Project
 	if err := l.svcCtx.DB.Preload("Services").First(&project, req.ProjectID).Error; err != nil {
 		return err
 	}
 
 	// 2. Get Cluster
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := l.svcCtx.DB.First(&cluster, req.ClusterID).Error; err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -379,7 +379,7 @@ func resolveK8sClientForWrite(svcCtx *svc.ServiceContext, clusterID int) (*kuber
 	if svcCtx.DB == nil {
 		return nil, "", fmt.Errorf("database unavailable")
 	}
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
 		return nil, "", fmt.Errorf("cluster not found: %v", err)
 	}

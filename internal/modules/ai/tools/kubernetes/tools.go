@@ -16,7 +16,8 @@ import (
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	corev1 "k8s.io/api/core/v1"
@@ -618,7 +619,7 @@ func resolveK8sClient(svcCtx *svc.ServiceContext, clusterID int) (*kubernetes.Cl
 	}
 
 	if svcCtx != nil && svcCtx.DB != nil {
-		var cluster model.Cluster
+		var cluster clustermodel.Cluster
 		if err := svcCtx.DB.First(&cluster, clusterID).Error; err == nil {
 			cfg, source, err := buildRestConfigFromClusterOrCredential(svcCtx, &cluster)
 			if err == nil {
@@ -639,7 +640,7 @@ type clusterCredentialMeta struct {
 	SkipTLSVerify bool `json:"skip_tls_verify,omitempty"`
 }
 
-func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *model.Cluster) (*rest.Config, string, error) {
+func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster *clustermodel.Cluster) (*rest.Config, string, error) {
 	if cluster == nil {
 		return nil, "fallback", fmt.Errorf("cluster is nil")
 	}
@@ -652,11 +653,11 @@ func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster 
 	if svcCtx == nil || svcCtx.DB == nil {
 		return nil, "fallback", fmt.Errorf("database unavailable")
 	}
-	query := svcCtx.DB.Model(&model.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
+	query := svcCtx.DB.Model(&deploymentmodel.ClusterCredential{}).Where("cluster_id = ? AND status = ?", cluster.ID, "active")
 	if cluster.CredentialID != nil && *cluster.CredentialID > 0 {
 		query = query.Where("id = ?", *cluster.CredentialID)
 	}
-	var cred model.ClusterCredential
+	var cred deploymentmodel.ClusterCredential
 	if err := query.Order("id DESC").First(&cred).Error; err != nil {
 		return nil, "cluster_credential", fmt.Errorf("cluster %d has no active credential", cluster.ID)
 	}
@@ -667,7 +668,7 @@ func buildRestConfigFromClusterOrCredential(svcCtx *svc.ServiceContext, cluster 
 	return cfg, "cluster_credential", nil
 }
 
-func buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+func buildRestConfigFromCredential(cred *deploymentmodel.ClusterCredential) (*rest.Config, error) {
 	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if enc == "" {
 		return nil, fmt.Errorf("security.encryption_key is required")

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -118,7 +118,7 @@ func (h *MetricsHandler) getMetricsSummary(ctx context.Context) (*MetricsSummary
 	}
 
 	// 总发布数
-	if err := h.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentRelease{}).Count(&summary.TotalReleases).Error; err != nil {
+	if err := h.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentRelease{}).Count(&summary.TotalReleases).Error; err != nil {
 		return nil, err
 	}
 
@@ -127,7 +127,7 @@ func (h *MetricsHandler) getMetricsSummary(ctx context.Context) (*MetricsSummary
 		State string
 		Count int64
 	}
-	if err := h.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentRelease{}).
+	if err := h.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentRelease{}).
 		Select("state, count(*) as count").
 		Group("state").
 		Scan(&statusCounts).Error; err != nil {
@@ -175,14 +175,14 @@ func (h *MetricsHandler) getMetricsSummary(ctx context.Context) (*MetricsSummary
 	// 最近7天的统计
 	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
 	if err := h.svcCtx.DB.WithContext(ctx).
-		Model(&model.DeploymentRelease{}).
+		Model(&deploymentmodel.DeploymentRelease{}).
 		Where("created_at > ?", sevenDaysAgo).
 		Count(&summary.RecentReleases).Error; err != nil {
 		return nil, err
 	}
 
 	if err := h.svcCtx.DB.WithContext(ctx).
-		Model(&model.DeploymentRelease{}).
+		Model(&deploymentmodel.DeploymentRelease{}).
 		Where("state = ? AND created_at > ?", "failed", sevenDaysAgo).
 		Count(&summary.RecentFailures).Error; err != nil {
 		return nil, err
@@ -224,7 +224,7 @@ func (h *MetricsHandler) getMetricsTrends(ctx context.Context, timeRange string)
 
 	// 按日期分组统计
 	if err := h.svcCtx.DB.WithContext(ctx).
-		Model(&model.DeploymentRelease{}).
+		Model(&deploymentmodel.DeploymentRelease{}).
 		Select("DATE_FORMAT(created_at, '"+dateFormat+"') as date, count(*) as total, sum(case when state = 'failed' then 1 else 0 end) as failed").
 		Where("created_at > ?", startDate).
 		Group("date").

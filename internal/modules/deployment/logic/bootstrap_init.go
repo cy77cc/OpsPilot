@@ -17,7 +17,8 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -57,7 +58,7 @@ func (l *Logic) StartEnvironmentBootstrap(ctx context.Context, uid uint64, req E
 	if err != nil {
 		return EnvironmentBootstrapResp{}, err
 	}
-	job := &model.EnvironmentInstallJob{
+	job := &deploymentmodel.EnvironmentInstallJob{
 		ID:              fmt.Sprintf("envboot-%d", time.Now().UnixNano()),
 		Name:            strings.TrimSpace(req.Name),
 		RuntimeType:     runtimeType,
@@ -78,7 +79,7 @@ func (l *Logic) StartEnvironmentBootstrap(ctx context.Context, uid uint64, req E
 	job.Status = "running"
 	_ = l.svcCtx.DB.WithContext(ctx).Save(job).Error
 
-	var hosts []model.Node
+	var hosts []deploymentmodel.Node
 	switch runtimeType {
 	case "k8s":
 		control, workers, hostErr := l.loadBootstrapHosts(ctx, req.ControlPlaneID, req.WorkerIDs)
@@ -119,7 +120,7 @@ func (l *Logic) StartEnvironmentBootstrap(ctx context.Context, uid uint64, req E
 	}
 
 	if req.TargetID > 0 {
-		_ = l.svcCtx.DB.WithContext(ctx).Model(&model.DeploymentTarget{}).
+		_ = l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.DeploymentTarget{}).
 			Where("id = ?", req.TargetID).
 			Updates(map[string]any{"bootstrap_job_id": job.ID, "readiness_status": "ready"}).Error
 	}
@@ -134,11 +135,11 @@ func (l *Logic) StartEnvironmentBootstrap(ctx context.Context, uid uint64, req E
 //   - jobID: 任务 ID
 //
 // 返回: 环境安装任务对象
-func (l *Logic) GetEnvironmentBootstrapJob(ctx context.Context, jobID string) (*model.EnvironmentInstallJob, error) {
+func (l *Logic) GetEnvironmentBootstrapJob(ctx context.Context, jobID string) (*deploymentmodel.EnvironmentInstallJob, error) {
 	if strings.TrimSpace(jobID) == "" {
 		return nil, fmt.Errorf("job_id is required")
 	}
-	var job model.EnvironmentInstallJob
+	var job deploymentmodel.EnvironmentInstallJob
 	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", strings.TrimSpace(jobID)).First(&job).Error; err != nil {
 		return nil, err
 	}
@@ -154,7 +155,7 @@ func (l *Logic) GetEnvironmentBootstrapJob(ctx context.Context, jobID string) (*
 //
 // 返回: 凭证响应
 func (l *Logic) RegisterPlatformCredential(ctx context.Context, uid uint64, req PlatformCredentialRegisterReq) (ClusterCredentialResp, error) {
-	var cluster model.Cluster
+	var cluster clustermodel.Cluster
 	if err := l.svcCtx.DB.WithContext(ctx).First(&cluster, req.ClusterID).Error; err != nil {
 		return ClusterCredentialResp{}, fmt.Errorf("cluster not found: %w", err)
 	}
@@ -162,7 +163,7 @@ func (l *Logic) RegisterPlatformCredential(ctx context.Context, uid uint64, req 
 	if name == "" {
 		name = defaultIfEmpty(strings.TrimSpace(cluster.Name), fmt.Sprintf("cluster-%d", cluster.ID))
 	}
-	cred := model.ClusterCredential{
+	cred := deploymentmodel.ClusterCredential{
 		Name:         name,
 		RuntimeType:  normalizedRuntime(req.RuntimeType, "k8s"),
 		Source:       "platform_managed",
@@ -211,7 +212,7 @@ func (l *Logic) ImportExternalCredential(ctx context.Context, uid uint64, req Cl
 			return ClusterCredentialResp{}, fmt.Errorf("endpoint/ca_cert/cert/key are required for certificate auth")
 		}
 	}
-	cred := model.ClusterCredential{
+	cred := deploymentmodel.ClusterCredential{
 		Name:         strings.TrimSpace(req.Name),
 		RuntimeType:  normalizedRuntime(req.RuntimeType, "k8s"),
 		Source:       "external_managed",
@@ -238,7 +239,7 @@ func (l *Logic) ImportExternalCredential(ctx context.Context, uid uint64, req Cl
 //
 // 返回: 连通性测试响应
 func (l *Logic) TestCredentialConnectivity(ctx context.Context, credentialID uint) (ClusterCredentialTestResp, error) {
-	var cred model.ClusterCredential
+	var cred deploymentmodel.ClusterCredential
 	if err := l.svcCtx.DB.WithContext(ctx).First(&cred, credentialID).Error; err != nil {
 		return ClusterCredentialTestResp{}, err
 	}
@@ -265,7 +266,7 @@ func (l *Logic) TestCredentialConnectivity(ctx context.Context, credentialID uin
 	if connected {
 		status = "ok"
 	}
-	_ = l.svcCtx.DB.WithContext(ctx).Model(&model.ClusterCredential{}).Where("id = ?", cred.ID).Updates(map[string]any{
+	_ = l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.ClusterCredential{}).Where("id = ?", cred.ID).Updates(map[string]any{
 		"last_test_at":      &now,
 		"last_test_status":  status,
 		"last_test_message": truncateText(message, 500),
@@ -287,11 +288,11 @@ func (l *Logic) TestCredentialConnectivity(ctx context.Context, credentialID uin
 //
 // 返回: 凭证响应列表
 func (l *Logic) ListCredentials(ctx context.Context, runtimeType string) ([]ClusterCredentialResp, error) {
-	q := l.svcCtx.DB.WithContext(ctx).Model(&model.ClusterCredential{})
+	q := l.svcCtx.DB.WithContext(ctx).Model(&deploymentmodel.ClusterCredential{})
 	if rt := strings.TrimSpace(runtimeType); rt != "" {
 		q = q.Where("runtime_type = ?", rt)
 	}
-	var rows []model.ClusterCredential
+	var rows []deploymentmodel.ClusterCredential
 	if err := q.Order("id DESC").Limit(200).Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -355,10 +356,10 @@ func (l *Logic) resolveRuntimePackage(runtimeType, version string) (*runtimePack
 //   - runtimeType: 运行时类型
 //
 // 返回: 执行错误
-func (l *Logic) runBootstrapPhase(ctx context.Context, job *model.EnvironmentInstallJob, hosts []model.Node, phase, scriptRel, fallbackCmd, runtimeType string) error {
+func (l *Logic) runBootstrapPhase(ctx context.Context, job *deploymentmodel.EnvironmentInstallJob, hosts []deploymentmodel.Node, phase, scriptRel, fallbackCmd, runtimeType string) error {
 	for i := range hosts {
 		host := hosts[i]
-		step := model.EnvironmentInstallJobStep{JobID: job.ID, StepName: phase, Phase: phase, Status: "running", HostID: uint(host.ID)}
+		step := deploymentmodel.EnvironmentInstallJobStep{JobID: job.ID, StepName: phase, Phase: phase, Status: "running", HostID: uint(host.ID)}
 		now := time.Now().UTC()
 		step.StartedAt = &now
 		if err := l.svcCtx.DB.WithContext(ctx).Create(&step).Error; err != nil {
@@ -417,7 +418,7 @@ func (l *Logic) resolvePhaseCommand(runtimeType, version, scriptRel, fallbackCmd
 //   - step: 步骤记录
 //
 // 返回: 执行错误
-func (l *Logic) execCommandOnNode(ctx context.Context, host model.Node, cmd string, step *model.EnvironmentInstallJobStep) error {
+func (l *Logic) execCommandOnNode(ctx context.Context, host deploymentmodel.Node, cmd string, step *deploymentmodel.EnvironmentInstallJobStep) error {
 	privateKey, passphrase, err := l.loadNodePrivateKey(ctx, &host)
 	if err != nil {
 		return err
@@ -444,7 +445,7 @@ func (l *Logic) execCommandOnNode(ctx context.Context, host model.Node, cmd stri
 //   - status: 状态
 //   - output: 输出
 //   - errMsg: 错误信息
-func (l *Logic) finishStep(ctx context.Context, step *model.EnvironmentInstallJobStep, status, output, errMsg string) {
+func (l *Logic) finishStep(ctx context.Context, step *deploymentmodel.EnvironmentInstallJobStep, status, output, errMsg string) {
 	now := time.Now().UTC()
 	step.Status = status
 	step.Output = truncateText(output, 2000)
@@ -461,7 +462,7 @@ func (l *Logic) finishStep(ctx context.Context, step *model.EnvironmentInstallJo
 //   - status: 状态
 //   - errMsg: 错误信息
 //   - result: 结果数据
-func (l *Logic) finishInstallJob(ctx context.Context, job *model.EnvironmentInstallJob, status, errMsg string, result any) {
+func (l *Logic) finishInstallJob(ctx context.Context, job *deploymentmodel.EnvironmentInstallJob, status, errMsg string, result any) {
 	now := time.Now().UTC()
 	job.Status = status
 	job.ErrorMessage = truncateText(errMsg, 1000)
@@ -479,13 +480,13 @@ func (l *Logic) finishInstallJob(ctx context.Context, job *model.EnvironmentInst
 //   - nodeIDs: 节点 ID 列表
 //
 // 返回: 主机列表
-func (l *Logic) loadComposeHosts(ctx context.Context, nodeIDs []uint) ([]model.Node, error) {
+func (l *Logic) loadComposeHosts(ctx context.Context, nodeIDs []uint) ([]deploymentmodel.Node, error) {
 	if len(nodeIDs) == 0 {
 		return nil, fmt.Errorf("node_ids is required for compose runtime")
 	}
-	hosts := make([]model.Node, 0, len(nodeIDs))
+	hosts := make([]deploymentmodel.Node, 0, len(nodeIDs))
 	for _, id := range nodeIDs {
-		var host model.Node
+		var host deploymentmodel.Node
 		if err := l.svcCtx.DB.WithContext(ctx).First(&host, id).Error; err != nil {
 			return nil, fmt.Errorf("host node %d not found", id)
 		}
@@ -508,7 +509,7 @@ func (l *Logic) loadComposeHosts(ctx context.Context, nodeIDs []uint) ([]model.N
 //   - token: Bearer Token
 //
 // 返回: 错误信息
-func (l *Logic) fillEncryptedCredentialMaterials(cred *model.ClusterCredential, kubeconfig, caCert, cert, key, token string) error {
+func (l *Logic) fillEncryptedCredentialMaterials(cred *deploymentmodel.ClusterCredential, kubeconfig, caCert, cert, key, token string) error {
 	if cred == nil {
 		return fmt.Errorf("credential is nil")
 	}
@@ -556,7 +557,7 @@ func (l *Logic) fillEncryptedCredentialMaterials(cred *model.ClusterCredential, 
 //   - cred: 凭证对象
 //
 // 返回: Kubernetes REST 配置
-func (l *Logic) buildRestConfigFromCredential(cred *model.ClusterCredential) (*rest.Config, error) {
+func (l *Logic) buildRestConfigFromCredential(cred *deploymentmodel.ClusterCredential) (*rest.Config, error) {
 	enc := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if enc == "" {
 		return nil, fmt.Errorf("security.encryption_key is required")
@@ -604,7 +605,7 @@ func (l *Logic) buildRestConfigFromCredential(cred *model.ClusterCredential) (*r
 //   - row: 凭证模型
 //
 // 返回: 凭证响应
-func toCredentialResp(row model.ClusterCredential) ClusterCredentialResp {
+func toCredentialResp(row deploymentmodel.ClusterCredential) ClusterCredentialResp {
 	return ClusterCredentialResp{
 		ID:              row.ID,
 		Name:            row.Name,

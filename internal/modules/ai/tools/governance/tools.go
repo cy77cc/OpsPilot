@@ -15,7 +15,9 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
+	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -270,8 +272,8 @@ func TopologyGet(ctx context.Context) tool.InvokableTool {
 			if depth <= 0 {
 				depth = 2
 			}
-			services := make([]model.Service, 0)
-			query := svcCtx.DB.Model(&model.Service{})
+			services := make([]projectmodel.Service, 0)
+			query := svcCtx.DB.Model(&projectmodel.Service{})
 			if input.ServiceID > 0 {
 				query = query.Where("id = ?", input.ServiceID)
 			}
@@ -282,7 +284,7 @@ func TopologyGet(ctx context.Context) tool.InvokableTool {
 			edges := make([]map[string]any, 0)
 			for _, svc := range services {
 				nodes = append(nodes, map[string]any{"id": fmt.Sprintf("service-%d", svc.ID), "type": "service", "label": svc.Name, "service_id": svc.ID})
-				var releases []model.DeploymentRelease
+				var releases []deploymentmodel.DeploymentRelease
 				_ = svcCtx.DB.Where("service_id = ?", svc.ID).Order("id desc").Limit(depth).Find(&releases).Error
 				for _, rel := range releases {
 					targetNodeID := fmt.Sprintf("target-%d", rel.TargetID)
@@ -304,7 +306,7 @@ func TopologyGet(ctx context.Context) tool.InvokableTool {
 
 type AuditLogSearchOutput struct {
 	Total int              `json:"total"`
-	List  []model.AuditLog `json:"list"`
+	List  []governancemodel.AuditLog `json:"list"`
 }
 
 func AuditLogSearch(ctx context.Context) tool.InvokableTool {
@@ -324,7 +326,7 @@ func AuditLogSearch(ctx context.Context) tool.InvokableTool {
 				limit = 200
 			}
 			since := time.Now().Add(-parseTimeRange(strings.TrimSpace(input.TimeRange), 24*time.Hour))
-			query := svcCtx.DB.Model(&model.AuditLog{}).Where("created_at >= ?", since)
+			query := svcCtx.DB.Model(&governancemodel.AuditLog{}).Where("created_at >= ?", since)
 			if rt := strings.TrimSpace(input.ResourceType); rt != "" {
 				query = query.Where("resource_type = ?", rt)
 			}
@@ -334,7 +336,7 @@ func AuditLogSearch(ctx context.Context) tool.InvokableTool {
 			if input.UserID > 0 {
 				query = query.Where("actor_id = ?", input.UserID)
 			}
-			var rows []model.AuditLog
+			var rows []governancemodel.AuditLog
 			if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
 				return nil, err
 			}

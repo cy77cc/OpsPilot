@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"gorm.io/gorm"
 )
 
@@ -17,8 +17,8 @@ func NewPhase3Repository(db *gorm.DB) *Phase3Repository {
 	return &Phase3Repository{db: db}
 }
 
-func (r *Phase3Repository) UpsertAdmissionPolicy(ctx context.Context, policy model.AdmissionPolicy) (*model.AdmissionPolicy, error) {
-	var existing model.AdmissionPolicy
+func (r *Phase3Repository) UpsertAdmissionPolicy(ctx context.Context, policy clustermodel.AdmissionPolicy) (*clustermodel.AdmissionPolicy, error) {
+	var existing clustermodel.AdmissionPolicy
 	err := r.db.WithContext(ctx).
 		Where("cluster_id = ? AND policy_name = ?", policy.ClusterID, policy.PolicyName).
 		First(&existing).Error
@@ -29,7 +29,7 @@ func (r *Phase3Repository) UpsertAdmissionPolicy(ctx context.Context, policy mod
 			"content_json": policy.ContentJSON,
 			"updated_at":   time.Now().UTC(),
 		}
-		if uerr := r.db.WithContext(ctx).Model(&model.AdmissionPolicy{}).
+		if uerr := r.db.WithContext(ctx).Model(&clustermodel.AdmissionPolicy{}).
 			Where("id = ?", existing.ID).
 			Updates(updates).Error; uerr != nil {
 			return nil, uerr
@@ -51,15 +51,15 @@ func (r *Phase3Repository) UpsertAdmissionPolicy(ctx context.Context, policy mod
 	return &policy, nil
 }
 
-func (r *Phase3Repository) CreateAdmissionExemption(ctx context.Context, rec model.AdmissionExemption) (*model.AdmissionExemption, error) {
+func (r *Phase3Repository) CreateAdmissionExemption(ctx context.Context, rec clustermodel.AdmissionExemption) (*clustermodel.AdmissionExemption, error) {
 	if err := r.db.WithContext(ctx).Create(&rec).Error; err != nil {
 		return nil, err
 	}
 	return &rec, nil
 }
 
-func (r *Phase3Repository) GetAdmissionExemption(ctx context.Context, clusterID uint, id uint) (*model.AdmissionExemption, error) {
-	var rec model.AdmissionExemption
+func (r *Phase3Repository) GetAdmissionExemption(ctx context.Context, clusterID uint, id uint) (*clustermodel.AdmissionExemption, error) {
+	var rec clustermodel.AdmissionExemption
 	if err := r.db.WithContext(ctx).
 		Where("cluster_id = ? AND id = ?", clusterID, id).
 		First(&rec).Error; err != nil {
@@ -70,7 +70,7 @@ func (r *Phase3Repository) GetAdmissionExemption(ctx context.Context, clusterID 
 
 func (r *Phase3Repository) UpdateAdmissionExemptionStatus(ctx context.Context, clusterID uint, id uint, status string) error {
 	return r.db.WithContext(ctx).
-		Model(&model.AdmissionExemption{}).
+		Model(&clustermodel.AdmissionExemption{}).
 		Where("cluster_id = ? AND id = ?", clusterID, id).
 		Update("status", status).Error
 }

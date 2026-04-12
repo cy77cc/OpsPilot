@@ -20,7 +20,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	clusterlogic "github.com/cy77cc/OpsPilot/internal/modules/cluster/logic"
 	"github.com/gin-gonic/gin"
@@ -188,7 +188,7 @@ func (h *Handler) CreateBootstrapProfile(c *gin.Context) {
 		return
 	}
 
-	row := model.ClusterBootstrapProfile{
+	row := clustermodel.ClusterBootstrapProfile{
 		Name:                 strings.TrimSpace(req.Name),
 		Description:          strings.TrimSpace(req.Description),
 		VersionChannel:       cfg.VersionChannel,
@@ -225,7 +225,7 @@ func (h *Handler) UpdateBootstrapProfile(c *gin.Context) {
 		httpx.BindErr(c, err)
 		return
 	}
-	var row model.ClusterBootstrapProfile
+	var row clustermodel.ClusterBootstrapProfile
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).First(&row, id).Error; err != nil {
 		httpx.NotFound(c, "bootstrap profile not found")
 		return
@@ -290,7 +290,7 @@ func (h *Handler) DeleteBootstrapProfile(c *gin.Context) {
 		httpx.BindErr(c, fmt.Errorf("invalid profile id"))
 		return
 	}
-	res := h.svcCtx.DB.WithContext(c.Request.Context()).Delete(&model.ClusterBootstrapProfile{}, id)
+	res := h.svcCtx.DB.WithContext(c.Request.Context()).Delete(&clustermodel.ClusterBootstrapProfile{}, id)
 	if res.Error != nil {
 		httpx.ServerErr(c, res.Error)
 		return
@@ -403,7 +403,7 @@ func (h *Handler) ApplyBootstrap(c *gin.Context) {
 	}
 
 	// Create task record
-	task := &model.ClusterBootstrapTask{
+	task := &clustermodel.ClusterBootstrapTask{
 		ID:                   fmt.Sprintf("boot-%d", time.Now().UnixNano()),
 		Name:                 cfg.Name,
 		ControlPlaneID:       req.ControlPlaneID,
@@ -449,7 +449,7 @@ func (h *Handler) GetBootstrapTask(c *gin.Context) {
 		return
 	}
 
-	var task model.ClusterBootstrapTask
+	var task clustermodel.ClusterBootstrapTask
 	if err := h.svcCtx.DB.Where("id = ?", taskID).First(&task).Error; err != nil {
 		httpx.NotFound(c, "task not found")
 		return
@@ -490,7 +490,7 @@ func (h *Handler) GetBootstrapTask(c *gin.Context) {
 }
 
 // executeBootstrap executes the bootstrap workflow
-func (h *Handler) executeBootstrap(ctx context.Context, task *model.ClusterBootstrapTask) {
+func (h *Handler) executeBootstrap(ctx context.Context, task *clustermodel.ClusterBootstrapTask) {
 	// Update status to running
 	task.Status = "running"
 	h.svcCtx.DB.Save(task)
@@ -548,7 +548,7 @@ func (h *Handler) executeBootstrap(ctx context.Context, task *model.ClusterBoots
 		h.updateSteps(ctx, task, steps)
 
 		// Determine target hosts
-		var targetHosts []*model.Node
+		var targetHosts []*clustermodel.Node
 		for _, h := range step.Hosts {
 			switch h {
 			case "control-plane":
@@ -622,7 +622,7 @@ func (h *Handler) executeBootstrap(ctx context.Context, task *model.ClusterBoots
 	}
 
 	// Create cluster record
-	cluster := &model.Cluster{
+	cluster := &clustermodel.Cluster{
 		Name:        task.Name,
 		Source:      "platform_managed",
 		Type:        "kubernetes",
@@ -650,8 +650,8 @@ func (h *Handler) executeBootstrap(ctx context.Context, task *model.ClusterBoots
 }
 
 // loadBootstrapHosts loads control plane and worker hosts
-func (h *Handler) loadBootstrapHosts(ctx context.Context, controlID uint, workerIDs []uint) (*model.Node, []*model.Node, error) {
-	var control model.Node
+func (h *Handler) loadBootstrapHosts(ctx context.Context, controlID uint, workerIDs []uint) (*clustermodel.Node, []*clustermodel.Node, error) {
+	var control clustermodel.Node
 	if err := h.svcCtx.DB.WithContext(ctx).First(&control, controlID).Error; err != nil {
 		return nil, nil, fmt.Errorf("control plane host not found: %w", err)
 	}
@@ -659,12 +659,12 @@ func (h *Handler) loadBootstrapHosts(ctx context.Context, controlID uint, worker
 		return nil, nil, fmt.Errorf("control plane host missing IP")
 	}
 
-	workers := make([]*model.Node, 0, len(workerIDs))
+	workers := make([]*clustermodel.Node, 0, len(workerIDs))
 	for _, id := range workerIDs {
 		if id == 0 || id == controlID {
 			continue
 		}
-		var row model.Node
+		var row clustermodel.Node
 		if err := h.svcCtx.DB.WithContext(ctx).First(&row, id).Error; err != nil {
 			return nil, nil, fmt.Errorf("worker host %d not found", id)
 		}
@@ -675,7 +675,7 @@ func (h *Handler) loadBootstrapHosts(ctx context.Context, controlID uint, worker
 }
 
 // executeStepOnHosts executes a script step on target hosts
-func (h *Handler) executeStepOnHosts(ctx context.Context, step BootstrapStep, hosts []*model.Node, envVars map[string]string) error {
+func (h *Handler) executeStepOnHosts(ctx context.Context, step BootstrapStep, hosts []*clustermodel.Node, envVars map[string]string) error {
 	for _, host := range hosts {
 		privateKey, passphrase, err := h.loadNodePrivateKey(ctx, host)
 		if err != nil {
@@ -716,7 +716,7 @@ func (h *Handler) executeStepOnHosts(ctx context.Context, step BootstrapStep, ho
 }
 
 // installCNI installs the CNI plugin
-func (h *Handler) installCNI(ctx context.Context, control *model.Node, cni, podCIDR string) error {
+func (h *Handler) installCNI(ctx context.Context, control *clustermodel.Node, cni, podCIDR string) error {
 	var scriptPath string
 	switch strings.ToLower(cni) {
 	case "calico":
@@ -757,12 +757,12 @@ func (h *Handler) installCNI(ctx context.Context, control *model.Node, cni, podC
 }
 
 // loadNodePrivateKey loads the SSH private key for a node
-func (h *Handler) loadNodePrivateKey(ctx context.Context, node *model.Node) (string, string, error) {
+func (h *Handler) loadNodePrivateKey(ctx context.Context, node *clustermodel.Node) (string, string, error) {
 	if node.SSHKeyID == nil || *node.SSHKeyID == 0 {
 		return "", "", nil
 	}
 
-	var key model.SSHKey
+	var key clustermodel.SSHKey
 	if err := h.svcCtx.DB.WithContext(ctx).First(&key, *node.SSHKeyID).Error; err != nil {
 		return "", "", err
 	}
@@ -780,14 +780,14 @@ func (h *Handler) loadNodePrivateKey(ctx context.Context, node *model.Node) (str
 }
 
 // failTask marks a task as failed
-func (h *Handler) failTask(ctx context.Context, task *model.ClusterBootstrapTask, message string) {
+func (h *Handler) failTask(ctx context.Context, task *clustermodel.ClusterBootstrapTask, message string) {
 	task.Status = "failed"
 	task.ErrorMessage = message
 	h.svcCtx.DB.WithContext(ctx).Save(task)
 }
 
 // updateSteps updates the steps JSON in the task
-func (h *Handler) updateSteps(ctx context.Context, task *model.ClusterBootstrapTask, steps []BootstrapStepStatus) {
+func (h *Handler) updateSteps(ctx context.Context, task *clustermodel.ClusterBootstrapTask, steps []BootstrapStepStatus) {
 	stepsJSON, _ := json.Marshal(steps)
 	task.StepsJSON = string(stepsJSON)
 	h.svcCtx.DB.WithContext(ctx).Save(task)
@@ -813,7 +813,7 @@ type resolvedBootstrapConfig struct {
 }
 
 func (h *Handler) resolveAndValidateBootstrapReq(ctx context.Context, req BootstrapPreviewReq, controlPlaneIP string) (resolvedBootstrapConfig, []BootstrapValidationIssue, []string, map[string]interface{}) {
-	profile := model.ClusterBootstrapProfile{}
+	profile := clustermodel.ClusterBootstrapProfile{}
 	profileFound := false
 	if req.ProfileID != nil && *req.ProfileID > 0 {
 		if err := h.svcCtx.DB.WithContext(ctx).First(&profile, *req.ProfileID).Error; err != nil {
@@ -1042,7 +1042,7 @@ func scriptVersionDirFor(k8sVersion string) string {
 	return "v1.28"
 }
 
-func toBootstrapProfileItem(row model.ClusterBootstrapProfile) BootstrapProfileItem {
+func toBootstrapProfileItem(row clustermodel.ClusterBootstrapProfile) BootstrapProfileItem {
 	var external interface{}
 	if strings.TrimSpace(row.ExternalEtcdJSON) != "" {
 		tmp := map[string]interface{}{}
@@ -1134,7 +1134,7 @@ func resolveAndValidateBootstrapProfile(req BootstrapProfileCreateReq) (resolved
 	return cfg, issues
 }
 
-func buildKubeadmInitConfigYAML(task *model.ClusterBootstrapTask, advertiseAddress string) (string, error) {
+func buildKubeadmInitConfigYAML(task *clustermodel.ClusterBootstrapTask, advertiseAddress string) (string, error) {
 	clusterName := strings.TrimSpace(task.Name)
 	if clusterName == "" {
 		return "", fmt.Errorf("task name is empty")

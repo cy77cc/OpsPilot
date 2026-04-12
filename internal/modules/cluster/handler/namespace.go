@@ -10,7 +10,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	corev1 "k8s.io/api/core/v1"
@@ -133,9 +133,9 @@ func (h *Handler) CreateNamespace(c *gin.Context) {
 	uid := httpx.UIDFromCtx(c)
 	teamID := h.teamIDFromHeader(c)
 	if teamID > 0 {
-		var existing model.ClusterNamespaceBinding
+		var existing clustermodel.ClusterNamespaceBinding
 		if h.svcCtx.DB.Where("cluster_id = ? AND team_id = ? AND namespace = ?", cluster.ID, teamID, req.Name).First(&existing).Error != nil {
-			_ = h.svcCtx.DB.Create(&model.ClusterNamespaceBinding{ClusterID: cluster.ID, TeamID: teamID, Namespace: req.Name, Env: req.Env, Readonly: false, CreatedBy: uint(uid)}).Error
+			_ = h.svcCtx.DB.Create(&clustermodel.ClusterNamespaceBinding{ClusterID: cluster.ID, TeamID: teamID, Namespace: req.Name, Env: req.Env, Readonly: false, CreatedBy: uint(uid)}).Error
 		}
 	}
 	h.createAudit(cluster.ID, req.Name, "namespace.create", "namespace", req.Name, "success", "namespace created", uint(uid))
@@ -212,11 +212,11 @@ func (h *Handler) ListNamespaceBindings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	query := h.svcCtx.DB.Model(&model.ClusterNamespaceBinding{}).Where("cluster_id = ?", cluster.ID)
+	query := h.svcCtx.DB.Model(&clustermodel.ClusterNamespaceBinding{}).Where("cluster_id = ?", cluster.ID)
 	if teamRaw := strings.TrimSpace(c.Query("team_id")); teamRaw != "" {
 		query = query.Where("team_id = ?", teamRaw)
 	}
-	var rows []model.ClusterNamespaceBinding
+	var rows []clustermodel.ClusterNamespaceBinding
 	if err := query.Order("team_id ASC, namespace ASC").Find(&rows).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
@@ -267,14 +267,14 @@ func (h *Handler) PutNamespaceBindings(c *gin.Context) {
 	uid := uint(httpx.UIDFromCtx(c))
 	teamID := uint(teamID64)
 	if err := h.tx(func(tx *gorm.DB) error {
-		if err := tx.Where("cluster_id = ? AND team_id = ?", cluster.ID, teamID).Delete(&model.ClusterNamespaceBinding{}).Error; err != nil {
+		if err := tx.Where("cluster_id = ? AND team_id = ?", cluster.ID, teamID).Delete(&clustermodel.ClusterNamespaceBinding{}).Error; err != nil {
 			return err
 		}
 		for _, item := range req.Bindings {
 			if strings.TrimSpace(item.Namespace) == "" {
 				continue
 			}
-			row := model.ClusterNamespaceBinding{ClusterID: cluster.ID, TeamID: teamID, Namespace: strings.TrimSpace(item.Namespace), Env: strings.TrimSpace(item.Env), Readonly: item.Readonly, CreatedBy: uid}
+			row := clustermodel.ClusterNamespaceBinding{ClusterID: cluster.ID, TeamID: teamID, Namespace: strings.TrimSpace(item.Namespace), Env: strings.TrimSpace(item.Env), Readonly: item.Readonly, CreatedBy: uid}
 			if err := tx.Create(&row).Error; err != nil {
 				return err
 			}

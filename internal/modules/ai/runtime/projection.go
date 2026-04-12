@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/google/uuid"
 )
 

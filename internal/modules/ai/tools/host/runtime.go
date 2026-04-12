@@ -16,7 +16,7 @@ import (
 	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -94,7 +94,7 @@ func runOnTarget(ctx context.Context, svcCtx *svc.ServiceContext, target, localN
 //   - IP 地址或主机名：按 IP/name/hostname 查询
 //
 // 如果目标不在白名单中，返回错误。
-func resolveNodeByTarget(svcCtx *svc.ServiceContext, target string) (*model.Node, error) {
+func resolveNodeByTarget(svcCtx *svc.ServiceContext, target string) (*hostmodel.Node, error) {
 	trimmed := strings.TrimSpace(target)
 	if trimmed == "" || trimmed == "localhost" {
 		return nil, nil
@@ -102,7 +102,7 @@ func resolveNodeByTarget(svcCtx *svc.ServiceContext, target string) (*model.Node
 	if svcCtx.DB == nil {
 		return nil, errors.New("db unavailable")
 	}
-	var node model.Node
+	var node hostmodel.Node
 	// 尝试按 ID 解析
 	if id, err := strconv.ParseUint(trimmed, 10, 64); err == nil {
 		if err := svcCtx.DB.First(&node, id).Error; err == nil {

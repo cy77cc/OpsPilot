@@ -21,8 +21,9 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
+	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/common/hostpolicy"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -148,7 +149,7 @@ type HostExecOutput struct {
 
 	PolicyDecision string            `json:"policy_decision,omitempty"`
 	PolicyReasons  []string          `json:"policy_reasons,omitempty"`
-	Violations     []PolicyViolation `json:"violations,omitempty"`
+	Violations     []hostpolicy.PolicyViolation `json:"violations,omitempty"`
 }
 
 func HostExec(ctx context.Context) tool.InvokableTool {
@@ -184,14 +185,14 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 }
 
 func runPolicyAwareExecByTarget(ctx context.Context, svcCtx *svc.ServiceContext, toolName, target, cmd string) (*HostExecOutput, error) {
-	engine := NewHostCommandPolicyEngine(DefaultReadonlyAllowlist())
-	decision := engine.Evaluate(PolicyInput{
+	engine := hostpolicy.NewHostCommandPolicyEngine(hostpolicy.DefaultReadonlyAllowlist())
+	decision := engine.Evaluate(hostpolicy.PolicyInput{
 		ToolName:   toolName,
 		CommandRaw: cmd,
 		Target:     strings.TrimSpace(target),
 	})
 
-	if decision.DecisionType != DecisionAllowReadonlyExecute && !approvedHostResume(ctx) {
+	if decision.DecisionType != hostpolicy.DecisionAllowReadonlyExecute && !approvedHostResume(ctx) {
 		return nil, fmt.Errorf(
 			"approval required: decision=%s reasons=%v violations=%v",
 			decision.DecisionType,
@@ -295,7 +296,7 @@ func HostListInventory(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Node{})
+			query := svcCtx.DB.Model(&hostmodel.Node{})
 			if status := strings.TrimSpace(input.Status); status != "" {
 				query = query.Where("status = ?", status)
 			}
@@ -303,7 +304,7 @@ func HostListInventory(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR ip LIKE ? OR hostname LIKE ?", pattern, pattern, pattern)
 			}
-			var nodes []model.Node
+			var nodes []hostmodel.Node
 			if err := query.Order("id desc").Limit(limit).Find(&nodes).Error; err != nil {
 				return nil, err
 			}
@@ -546,7 +547,7 @@ func OSGetContainerRuntime(ctx context.Context) tool.InvokableTool {
 // executeHostCommand 在指定主机上执行命令。
 //
 // 通过 SSH 连接到目标主机并执行命令，支持密钥和密码认证。
-func executeHostCommand(svcCtx *svc.ServiceContext, node *model.Node, command string) (string, error) {
+func executeHostCommand(svcCtx *svc.ServiceContext, node *hostmodel.Node, command string) (string, error) {
 	privateKey, passphrase, err := loadNodePrivateKey(svcCtx, node)
 	if err != nil {
 		return "", err
@@ -566,11 +567,11 @@ func executeHostCommand(svcCtx *svc.ServiceContext, node *model.Node, command st
 // loadNodePrivateKey 加载节点的 SSH 私钥。
 //
 // 从数据库加载私钥，如果加密则先解密。
-func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *model.Node) (string, string, error) {
+func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *hostmodel.Node) (string, string, error) {
 	if svcCtx.DB == nil || node == nil || node.SSHKeyID == nil {
 		return "", "", nil
 	}
-	var key model.SSHKey
+	var key hostmodel.SSHKey
 	if err := svcCtx.DB.Select("id", "private_key", "passphrase", "encrypted").Where("id = ?", uint64(*node.SSHKeyID)).First(&key).Error; err != nil {
 		return "", "", err
 	}
@@ -589,15 +590,15 @@ func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *model.Node) (string, s
 // loadHostNodesMap 批量加载主机节点并构建映射。
 //
 // 返回节点映射和缺失的 ID 列表。
-func loadHostNodesMap(svcCtx *svc.ServiceContext, hostIDs []uint64) (map[uint64]*model.Node, []uint64, error) {
+func loadHostNodesMap(svcCtx *svc.ServiceContext, hostIDs []uint64) (map[uint64]*hostmodel.Node, []uint64, error) {
 	if svcCtx.DB == nil {
 		return nil, nil, fmt.Errorf("db unavailable")
 	}
-	var nodes []model.Node
+	var nodes []hostmodel.Node
 	if err := svcCtx.DB.Where("id IN ?", hostIDs).Find(&nodes).Error; err != nil {
 		return nil, nil, err
 	}
-	byID := make(map[uint64]*model.Node, len(nodes))
+	byID := make(map[uint64]*hostmodel.Node, len(nodes))
 	for i := range nodes {
 		byID[uint64(nodes[i].ID)] = &nodes[i]
 	}
@@ -653,7 +654,7 @@ func isReadonlyHostCommand(cmd string) bool {
 // detectNodeAuthType 检测节点的认证类型。
 //
 // 返回 "key"（密钥认证）、"password"（密码认证）或 "unknown"。
-func detectNodeAuthType(node *model.Node) string {
+func detectNodeAuthType(node *hostmodel.Node) string {
 	if node == nil {
 		return "unknown"
 	}

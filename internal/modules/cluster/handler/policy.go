@@ -13,7 +13,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"k8s.io/client-go/dynamic"
@@ -70,7 +70,7 @@ func (h *Handler) namespaceWritable(c *gin.Context, clusterID uint, namespace st
 		httpx.Fail(c, xcode.Forbidden, "missing team header")
 		return false
 	}
-	var binding model.ClusterNamespaceBinding
+	var binding clustermodel.ClusterNamespaceBinding
 	err := h.svcCtx.DB.Where("cluster_id = ? AND team_id = ? AND namespace = ?", clusterID, teamID, namespace).First(&binding).Error
 	if err != nil {
 		httpx.Fail(c, xcode.Forbidden, "namespace not bound to team")
@@ -105,7 +105,7 @@ func (h *Handler) namespaceReadable(c *gin.Context, clusterID uint, namespace st
 		return false
 	}
 	var count int64
-	h.svcCtx.DB.Model(&model.ClusterNamespaceBinding{}).
+	h.svcCtx.DB.Model(&clustermodel.ClusterNamespaceBinding{}).
 		Where("cluster_id = ? AND team_id = ? AND namespace = ?", clusterID, teamID, namespace).
 		Count(&count)
 	if count == 0 {
@@ -126,7 +126,7 @@ func (h *Handler) listBoundNamespaces(clusterID, teamID uint) ([]string, error) 
 	if teamID == 0 {
 		return nil, nil
 	}
-	var rows []model.ClusterNamespaceBinding
+	var rows []clustermodel.ClusterNamespaceBinding
 	err := h.svcCtx.DB.Where("cluster_id = ? AND team_id = ?", clusterID, teamID).Find(&rows).Error
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func (h *Handler) isProdNamespace(clusterID uint, namespace string) bool {
 		return true
 	}
 	var count int64
-	h.svcCtx.DB.Model(&model.ClusterNamespaceBinding{}).
+	h.svcCtx.DB.Model(&clustermodel.ClusterNamespaceBinding{}).
 		Where("cluster_id = ? AND namespace = ? AND env = ?", clusterID, namespace, "production").
 		Count(&count)
 	return count > 0
@@ -177,7 +177,7 @@ func (h *Handler) requireProdApproval(c *gin.Context, clusterID uint, namespace,
 	}
 	if strings.TrimSpace(approvalToken) == "" {
 		ticket := fmt.Sprintf("k8s-appr-%d", time.Now().UnixNano())
-		rec := model.ClusterDeployApproval{
+		rec := clustermodel.ClusterDeployApproval{
 			Ticket:    ticket,
 			ClusterID: clusterID,
 			Namespace: namespace,
@@ -190,7 +190,7 @@ func (h *Handler) requireProdApproval(c *gin.Context, clusterID uint, namespace,
 		httpx.Fail(c, xcode.Forbidden, "production action requires k8s:approve or approval_token")
 		return false
 	}
-	var rec model.ClusterDeployApproval
+	var rec clustermodel.ClusterDeployApproval
 	if err := h.svcCtx.DB.Where("ticket = ?", approvalToken).First(&rec).Error; err != nil {
 		httpx.Fail(c, xcode.Forbidden, "invalid approval token")
 		return false
@@ -222,7 +222,7 @@ func (h *Handler) requireProdApproval(c *gin.Context, clusterID uint, namespace,
 //   - message: 操作消息
 //   - operatorID: 操作人 ID
 func (h *Handler) createAudit(clusterID uint, namespace, action, resource, resourceID, status, message string, operatorID uint) {
-	rec := model.ClusterOperationAudit{
+	rec := clustermodel.ClusterOperationAudit{
 		ClusterID:  clusterID,
 		Namespace:  namespace,
 		Action:     action,
@@ -241,7 +241,7 @@ func (h *Handler) createAudit(clusterID uint, namespace, action, resource, resou
 //   - cluster: 集群模型
 //
 // 返回: REST 配置，失败返回错误
-func (h *Handler) buildRESTConfig(cluster *model.Cluster) (*rest.Config, error) {
+func (h *Handler) buildRESTConfig(cluster *clustermodel.Cluster) (*rest.Config, error) {
 	if cluster != nil && strings.TrimSpace(cluster.KubeConfig) != "" {
 		return clientcmd.RESTConfigFromKubeConfig([]byte(cluster.KubeConfig))
 	}
@@ -260,7 +260,7 @@ func (h *Handler) buildRESTConfig(cluster *model.Cluster) (*rest.Config, error) 
 //   - cluster: 集群模型
 //
 // 返回: 标准客户端和动态客户端，失败返回错误
-func (h *Handler) getClients(cluster *model.Cluster) (*kubernetes.Clientset, dynamic.Interface, error) {
+func (h *Handler) getClients(cluster *clustermodel.Cluster) (*kubernetes.Clientset, dynamic.Interface, error) {
 	cfg, err := h.buildRESTConfig(cluster)
 	if err != nil {
 		return nil, nil, err

@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	model "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
+	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 )
 
 // Provider 是可插拔的通知发送接口。
@@ -29,7 +29,7 @@ type Provider interface {
 	// Name 返回提供者名称，用于注册和查找。
 	Name() string
 	// Send 发送告警通知到指定通道。
-	Send(ctx context.Context, alert *model.AlertEvent, channel model.AlertNotificationChannel) error
+	Send(ctx context.Context, alert *monitoringmodel.AlertEvent, channel monitoringmodel.AlertNotificationChannel) error
 	// ValidateConfig 验证通道配置是否有效。
 	ValidateConfig(config map[string]any) error
 }
@@ -103,7 +103,7 @@ func (r *ProviderRegistry) Get(name string) (Provider, bool) {
 //   - channel: 告警通知通道模型
 //
 // 返回: 配置键值对
-func ParseChannelConfig(channel model.AlertNotificationChannel) map[string]any {
+func ParseChannelConfig(channel monitoringmodel.AlertNotificationChannel) map[string]any {
 	out := map[string]any{}
 	if strings.TrimSpace(channel.ConfigJSON) == "" {
 		return out
@@ -124,7 +124,7 @@ func (p *LogProvider) Name() string { return "log" }
 func (p *LogProvider) ValidateConfig(_ map[string]any) error { return nil }
 
 // Send 日志提供者不实际发送，直接返回 nil。
-func (p *LogProvider) Send(_ context.Context, alert *model.AlertEvent, channel model.AlertNotificationChannel) error {
+func (p *LogProvider) Send(_ context.Context, alert *monitoringmodel.AlertEvent, channel monitoringmodel.AlertNotificationChannel) error {
 	_ = alert
 	_ = channel
 	return nil
@@ -165,7 +165,7 @@ func (p *DingTalkProvider) ValidateConfig(config map[string]any) error {
 //   - channel: 告警通知通道模型
 //
 // 返回: 发送失败返回错误
-func (p *DingTalkProvider) Send(ctx context.Context, alert *model.AlertEvent, channel model.AlertNotificationChannel) error {
+func (p *DingTalkProvider) Send(ctx context.Context, alert *monitoringmodel.AlertEvent, channel monitoringmodel.AlertNotificationChannel) error {
 	cfg := ParseChannelConfig(channel)
 	if err := p.ValidateConfig(cfg); err != nil {
 		return err
@@ -219,7 +219,7 @@ func (p *WeComProvider) ValidateConfig(config map[string]any) error {
 //   - channel: 告警通知通道模型
 //
 // 返回: 发送失败返回错误
-func (p *WeComProvider) Send(ctx context.Context, alert *model.AlertEvent, channel model.AlertNotificationChannel) error {
+func (p *WeComProvider) Send(ctx context.Context, alert *monitoringmodel.AlertEvent, channel monitoringmodel.AlertNotificationChannel) error {
 	cfg := ParseChannelConfig(channel)
 	if err := p.ValidateConfig(cfg); err != nil {
 		return err
@@ -268,7 +268,7 @@ func (p *EmailProvider) ValidateConfig(config map[string]any) error {
 //   - _: 通知通道模型（未使用）
 //
 // 返回: 当前直接返回 nil
-func (p *EmailProvider) Send(_ context.Context, alert *model.AlertEvent, _ model.AlertNotificationChannel) error {
+func (p *EmailProvider) Send(_ context.Context, alert *monitoringmodel.AlertEvent, _ monitoringmodel.AlertNotificationChannel) error {
 	_ = alert
 	return nil
 }
@@ -292,7 +292,7 @@ func (p *SMSProvider) ValidateConfig(_ map[string]any) error { return nil }
 //   - _: 通知通道模型（未使用）
 //
 // 返回: 当前直接返回 nil
-func (p *SMSProvider) Send(_ context.Context, alert *model.AlertEvent, _ model.AlertNotificationChannel) error {
+func (p *SMSProvider) Send(_ context.Context, alert *monitoringmodel.AlertEvent, _ monitoringmodel.AlertNotificationChannel) error {
 	_ = alert
 	return nil
 }
