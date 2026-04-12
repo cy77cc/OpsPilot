@@ -8,8 +8,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
-	"github.com/cy77cc/OpsPilot/storage"
-	"github.com/cy77cc/OpsPilot/storage/migration"
+	"github.com/cy77cc/OpsPilot/internal/core/storage"
+	"github.com/cy77cc/OpsPilot/internal/core/storage/migration"
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 )

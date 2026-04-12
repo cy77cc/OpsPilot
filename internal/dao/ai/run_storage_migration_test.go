@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/storage/migration"
+	"github.com/cy77cc/OpsPilot/internal/core/storage/migration"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
