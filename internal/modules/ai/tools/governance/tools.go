@@ -16,6 +16,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -91,8 +92,8 @@ func NewGovernanceReadonlyTools(ctx context.Context) []tool.InvokableTool {
 }
 
 type UserListOutput struct {
-	Total int          `json:"total"`
-	List  []model.User `json:"list"`
+	Total int              `json:"total"`
+	List  []usermodel.User `json:"list"`
 }
 
 func UserList(ctx context.Context) tool.InvokableTool {
@@ -111,7 +112,7 @@ func UserList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.User{})
+			query := svcCtx.DB.Model(&usermodel.User{})
 			if input.Status != 0 {
 				query = query.Where("status = ?", input.Status)
 			}
@@ -119,7 +120,7 @@ func UserList(ctx context.Context) tool.InvokableTool {
 				pattern := "%" + kw + "%"
 				query = query.Where("username LIKE ? OR email LIKE ?", pattern, pattern)
 			}
-			var users []model.User
+			var users []usermodel.User
 			if err := query.Order("id desc").Limit(limit).Find(&users).Error; err != nil {
 				return nil, err
 			}
@@ -136,8 +137,8 @@ func UserList(ctx context.Context) tool.InvokableTool {
 }
 
 type RoleListOutput struct {
-	Total int          `json:"total"`
-	List  []model.Role `json:"list"`
+	Total int              `json:"total"`
+	List  []usermodel.Role `json:"list"`
 }
 
 func RoleList(ctx context.Context) tool.InvokableTool {
@@ -156,12 +157,12 @@ func RoleList(ctx context.Context) tool.InvokableTool {
 			if limit > 200 {
 				limit = 200
 			}
-			query := svcCtx.DB.Model(&model.Role{})
+			query := svcCtx.DB.Model(&usermodel.Role{})
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
 				pattern := "%" + kw + "%"
 				query = query.Where("name LIKE ? OR code LIKE ?", pattern, pattern)
 			}
-			var roles []model.Role
+			var roles []usermodel.Role
 			if err := query.Order("id desc").Limit(limit).Find(&roles).Error; err != nil {
 				return nil, err
 			}
@@ -180,7 +181,7 @@ func RoleList(ctx context.Context) tool.InvokableTool {
 type PermissionCheckOutput struct {
 	Allowed            bool               `json:"allowed"`
 	Reason             string             `json:"reason,omitempty"`
-	MatchedPermissions []model.Permission `json:"matched_permissions,omitempty"`
+	MatchedPermissions []usermodel.Permission `json:"matched_permissions,omitempty"`
 	Checked            map[string]any     `json:"checked"`
 }
 
@@ -206,7 +207,7 @@ func PermissionCheck(ctx context.Context) tool.InvokableTool {
 			}
 
 			var roleIDs []int64
-			if err := svcCtx.DB.Model(&model.UserRole{}).Where("user_id = ?", input.UserID).Pluck("role_id", &roleIDs).Error; err != nil {
+			if err := svcCtx.DB.Model(&usermodel.UserRole{}).Where("user_id = ?", input.UserID).Pluck("role_id", &roleIDs).Error; err != nil {
 				return nil, err
 			}
 			if len(roleIDs) == 0 {
@@ -217,7 +218,7 @@ func PermissionCheck(ctx context.Context) tool.InvokableTool {
 				}, nil
 			}
 			var permIDs []int64
-			if err := svcCtx.DB.Model(&model.RolePermission{}).Where("role_id IN ?", roleIDs).Pluck("permission_id", &permIDs).Error; err != nil {
+			if err := svcCtx.DB.Model(&usermodel.RolePermission{}).Where("role_id IN ?", roleIDs).Pluck("permission_id", &permIDs).Error; err != nil {
 				return nil, err
 			}
 			if len(permIDs) == 0 {
@@ -227,11 +228,11 @@ func PermissionCheck(ctx context.Context) tool.InvokableTool {
 					Checked: map[string]any{"user_id": input.UserID, "resource": resource, "action": action},
 				}, nil
 			}
-			var perms []model.Permission
+			var perms []usermodel.Permission
 			if err := svcCtx.DB.Where("id IN ?", permIDs).Find(&perms).Error; err != nil {
 				return nil, err
 			}
-			matched := make([]model.Permission, 0)
+			matched := make([]usermodel.Permission, 0)
 			for _, perm := range perms {
 				if strings.EqualFold(strings.TrimSpace(perm.Resource), resource) && strings.EqualFold(strings.TrimSpace(perm.Action), action) {
 					matched = append(matched, perm)

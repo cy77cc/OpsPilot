@@ -9,21 +9,21 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
-	servicemgr "github.com/cy77cc/OpsPilot/internal/service/application"
-	"github.com/cy77cc/OpsPilot/internal/service/automation"
-	"github.com/cy77cc/OpsPilot/internal/service/cicd"
-	"github.com/cy77cc/OpsPilot/internal/service/cluster"
-	"github.com/cy77cc/OpsPilot/internal/service/cmdb"
-	"github.com/cy77cc/OpsPilot/internal/service/dashboard"
-	"github.com/cy77cc/OpsPilot/internal/service/deployment"
-	"github.com/cy77cc/OpsPilot/internal/service/host"
-	"github.com/cy77cc/OpsPilot/internal/service/jobs"
-	"github.com/cy77cc/OpsPilot/internal/service/monitoring"
-	"github.com/cy77cc/OpsPilot/internal/service/notification"
-	"github.com/cy77cc/OpsPilot/internal/service/project"
-	"github.com/cy77cc/OpsPilot/internal/service/rbac"
-	"github.com/cy77cc/OpsPilot/internal/service/topology"
-	"github.com/cy77cc/OpsPilot/internal/service/user"
+	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
+	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
+	cicdapi "github.com/cy77cc/OpsPilot/internal/modules/cicd/api"
+	clusterapi "github.com/cy77cc/OpsPilot/internal/modules/cluster/api"
+	cmdbapi "github.com/cy77cc/OpsPilot/internal/modules/cmdb/api"
+	dashboardapi "github.com/cy77cc/OpsPilot/internal/modules/dashboard/api"
+	deploymentapi "github.com/cy77cc/OpsPilot/internal/modules/deployment/api"
+	hostapi "github.com/cy77cc/OpsPilot/internal/modules/host/api"
+	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
+	monitoringapi "github.com/cy77cc/OpsPilot/internal/modules/monitoring/api"
+	notificationapi "github.com/cy77cc/OpsPilot/internal/modules/notification/api"
+	projectapi "github.com/cy77cc/OpsPilot/internal/modules/project/api"
+	rbacapi "github.com/cy77cc/OpsPilot/internal/modules/rbac/api"
+	topologyapi "github.com/cy77cc/OpsPilot/internal/modules/topology/api"
+	userapi "github.com/cy77cc/OpsPilot/internal/modules/user/api"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/websocket"
 	webui "github.com/cy77cc/OpsPilot/web"
@@ -41,23 +41,23 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 	})
 
 	v1 := r.Group("/api/v1")
-	user.RegisterUserHandlers(v1, serverCtx)
+	userapi.RegisterUserHandlers(v1, serverCtx)
 	aiapi.RegisterAIHandlers(v1, serverCtx)
 	aiapi.RegisterAdminAIHandlers(v1, serverCtx)
-	project.RegisterProjectHandlers(v1, serverCtx)
-	servicemgr.RegisterServiceHandlers(v1, serverCtx)
-	cicd.RegisterCICDHandlers(v1, serverCtx)
-	automation.RegisterAutomationHandlers(v1, serverCtx)
-	host.RegisterHostHandlers(v1, serverCtx)
-	cluster.RegisterClusterHandlers(v1, serverCtx)
-	deployment.RegisterDeploymentHandlers(v1, serverCtx)
-	monitoring.RegisterMonitoringHandlers(v1, serverCtx)
-	dashboard.RegisterDashboardHandlers(v1, serverCtx)
-	cmdb.RegisterCMDBHandlers(v1, serverCtx)
-	topology.RegisterTopologyHandlers(v1, serverCtx)
-	rbac.RegisterRBACHandlers(v1, serverCtx)
-	notification.RegisterNotificationHandlers(v1, serverCtx)
-	jobs.RegisterJobsHandlers(v1, serverCtx)
+	projectapi.RegisterProjectHandlers(v1, serverCtx)
+	appapi.RegisterServiceHandlers(v1, serverCtx)
+	cicdapi.RegisterCICDHandlers(v1, serverCtx)
+	automationapi.RegisterAutomationHandlers(v1, serverCtx)
+	hostapi.RegisterHostHandlers(v1, serverCtx)
+	clusterapi.RegisterClusterHandlers(v1, serverCtx)
+	deploymentapi.RegisterDeploymentHandlers(v1, serverCtx)
+	monitoringapi.RegisterMonitoringHandlers(v1, serverCtx)
+	dashboardapi.RegisterDashboardHandlers(v1, serverCtx)
+	cmdbapi.RegisterCMDBHandlers(v1, serverCtx)
+	topologyapi.RegisterTopologyHandlers(v1, serverCtx)
+	rbacapi.RegisterRBACHandlers(v1, serverCtx)
+	notificationapi.RegisterNotificationHandlers(v1, serverCtx)
+	jobsapi.RegisterJobsHandlers(v1, serverCtx)
 
 	// WebSocket 路由
 	r.GET("/ws/notifications", websocket.HandleWebSocket)

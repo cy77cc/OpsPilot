@@ -3,17 +3,18 @@ package migration
 import (
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"gorm.io/gorm"
 )
 
 // RunDevAutoMigrate is only for local development convenience.
 func RunDevAutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&model.User{},
-		&model.Role{},
-		&model.Permission{},
-		&model.UserRole{},
-		&model.RolePermission{},
+		&usermodel.User{},
+		&usermodel.Role{},
+		&usermodel.Permission{},
+		&usermodel.UserRole{},
+		&usermodel.RolePermission{},
 		&model.Node{},
 		&model.NodeEvent{},
 		&model.SSHKey{},

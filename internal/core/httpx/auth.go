@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
+	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -22,7 +22,7 @@ func IsAdmin(db *gorm.DB, userID uint64) bool {
 	if userID == 0 {
 		return false
 	}
-	var u model.User
+	var u usermodel.User
 	if err := db.Select("id", "username").Where("id = ?", userID).First(&u).Error; err == nil {
 		if strings.EqualFold(strings.TrimSpace(u.Username), "admin") {
 			return true
