@@ -2,7 +2,7 @@ package migration
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"gorm.io/gorm"
 )

@@ -11,7 +11,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/approval"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
-	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/llmprovider"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )

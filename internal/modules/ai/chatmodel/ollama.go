@@ -6,7 +6,7 @@ import (
 
 	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
 	einomodel "github.com/cloudwego/eino/components/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
 func init() {

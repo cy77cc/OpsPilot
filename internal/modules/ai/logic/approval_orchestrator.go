@@ -6,7 +6,7 @@ package logic
 import (
 	"context"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
 	"gorm.io/gorm"
 )

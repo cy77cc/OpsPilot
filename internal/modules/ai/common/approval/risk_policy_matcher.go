@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
 // MatchRiskPolicy selects the best matching policy using specificity precedence.

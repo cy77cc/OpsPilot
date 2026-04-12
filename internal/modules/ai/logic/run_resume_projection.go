@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"gorm.io/gorm"
 )
 

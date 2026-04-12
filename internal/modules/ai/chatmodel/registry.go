@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	einomodel "github.com/cloudwego/eino/components/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
 // ModelFactory 根据数据库配置构建聊天模型。

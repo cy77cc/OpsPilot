@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	mysqlDriver "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

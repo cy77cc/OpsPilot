@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"gorm.io/gorm"
 )
 

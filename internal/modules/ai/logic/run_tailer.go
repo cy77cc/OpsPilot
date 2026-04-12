@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
 const (

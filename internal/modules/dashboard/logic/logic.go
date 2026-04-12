@@ -15,7 +15,7 @@ import (
 
 	dashboardv1 "github.com/cy77cc/OpsPilot/api/dashboard/v1"
 	model "github.com/cy77cc/OpsPilot/internal/modules/dashboard/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"

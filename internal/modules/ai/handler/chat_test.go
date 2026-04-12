@@ -14,8 +14,8 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aidao aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	airouter "github.com/cy77cc/OpsPilot/internal/modules/ai/router"

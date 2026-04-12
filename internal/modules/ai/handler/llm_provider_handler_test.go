@@ -9,8 +9,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	aiService "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aiService aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/llmprovider"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

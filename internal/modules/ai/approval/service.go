@@ -3,7 +3,7 @@ package approval
 import (
 	"context"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
