@@ -15,6 +15,7 @@ import (
 
 	dashboardv1 "github.com/cy77cc/OpsPilot/api/dashboard/v1"
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
@@ -372,7 +373,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 
 	var stats spanStats
 	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&model.AITraceSpan{}).
+		Model(&ai.AITraceSpan{}).
 		Where("start_time >= ? AND start_time <= ?", since, now).
 		Select("COUNT(*) as total_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms").
 		Scan(&stats).Error; err != nil {
@@ -382,7 +383,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	// 查询成功数量
 	var successCount int64
 	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&model.AITraceSpan{}).
+		Model(&ai.AITraceSpan{}).
 		Where("start_time >= ? AND start_time <= ?", since, now).
 		Where("status = ?", "success").
 		Count(&successCount).Error; err != nil {
@@ -414,7 +415,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 		Count int64
 	}
 	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&model.AIChatSession{}).
+		Model(&ai.AIChatSession{}).
 		Where("created_at >= ? AND created_at <= ?", since, now).
 		Select("scene, COUNT(*) as count").
 		Group("scene").
@@ -428,7 +429,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	}
 
 	// 查询最近的 AI 会话
-	sessions := make([]model.AIChatSession, 0, 5)
+	sessions := make([]ai.AIChatSession, 0, 5)
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Order("created_at DESC").
 		Limit(5).

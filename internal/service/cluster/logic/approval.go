@@ -23,8 +23,8 @@ const (
 	ApprovalTokenReplayedCode = "approval_token_replayed"
 	approvalTokenInvalidCode  = "approval_token_invalid"
 	// ApprovalTokenExpiredCode 是审批票据过期的稳定错误码。
-	ApprovalTokenExpiredCode  = "approval_token_expired"
-	approvalTokenScopeCode    = "approval_token_scope_mismatch"
+	ApprovalTokenExpiredCode = "approval_token_expired"
+	approvalTokenScopeCode   = "approval_token_scope_mismatch"
 
 	// PolicyReleaseApprovalResource 是策略发布审批记录绑定的资源类型。
 	PolicyReleaseApprovalResource = "policy_release"

@@ -35,9 +35,9 @@ const timelineTTL = 30 * time.Second
 //   - 记录审计事件
 //   - 管理时间线缓存
 type Logic struct {
-	svcCtx      *svc.ServiceContext     // 服务上下文
-	repo        *repo.Repository        // 数据访问层
-	deployLogic *deploymentlogic.Logic  // 部署逻辑层
+	svcCtx      *svc.ServiceContext    // 服务上下文
+	repo        *repo.Repository       // 数据访问层
+	deployLogic *deploymentlogic.Logic // 部署逻辑层
 }
 
 // NewLogic 创建 CI/CD 业务逻辑实例。

@@ -56,4 +56,3 @@ func TestOperationResponseConstructors(t *testing.T) {
 		}
 	})
 }
-

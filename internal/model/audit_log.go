@@ -20,13 +20,13 @@ func (AuditLog) TableName() string {
 
 // AuditLog action types
 const (
-	AuditActionReleaseApply    = "release_apply"
-	AuditActionReleaseApprove  = "release_approve"
-	AuditActionReleaseReject   = "release_reject"
-	AuditActionReleaseRollback = "release_rollback"
-	AuditActionTargetCreate    = "target_create"
-	AuditActionTargetUpdate    = "target_update"
-	AuditActionTargetDelete    = "target_delete"
+	AuditActionReleaseApply     = "release_apply"
+	AuditActionReleaseApprove   = "release_approve"
+	AuditActionReleaseReject    = "release_reject"
+	AuditActionReleaseRollback  = "release_rollback"
+	AuditActionTargetCreate     = "target_create"
+	AuditActionTargetUpdate     = "target_update"
+	AuditActionTargetDelete     = "target_delete"
 	AuditActionClusterBootstrap = "cluster_bootstrap"
 	AuditActionCredentialCreate = "credential_create"
 	AuditActionCredentialTest   = "credential_test"

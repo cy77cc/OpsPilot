@@ -36,9 +36,9 @@ var DefaultRetryConfig = RetryConfig{
 //
 // 键为云厂商标识，值为可重试的错误码列表。
 var RetryableErrors = map[string][]string{
-	"alicloud":  {"Throttling", "ServiceUnavailable", "InternalError"},
+	"alicloud":   {"Throttling", "ServiceUnavailable", "InternalError"},
 	"volcengine": {"RequestLimitExceeded", "ServiceUnavailable"},
-	"ucloud":    {"172", "5000"}, // 172: 请求频率限制, 5000: 服务内部错误
+	"ucloud":     {"172", "5000"}, // 172: 请求频率限制, 5000: 服务内部错误
 }
 
 // DoWithRetry 执行带重试的操作。

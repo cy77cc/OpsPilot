@@ -29,14 +29,14 @@ func NewTopologyHandler(svcCtx *svc.ServiceContext) *TopologyHandler {
 
 // TopologyService 是拓扑服务节点，表示一个部署目标。
 type TopologyService struct {
-	ID             uint   `json:"id"`                       // 服务 ID
-	Name           string `json:"name"`                     // 服务名称
-	Environment    string `json:"environment"`              // 环境
-	Status         string `json:"status"`                   // 状态
+	ID             uint   `json:"id"`                        // 服务 ID
+	Name           string `json:"name"`                      // 服务名称
+	Environment    string `json:"environment"`               // 环境
+	Status         string `json:"status"`                    // 状态
 	LastDeployment string `json:"last_deployment,omitempty"` // 最后部署时间
-	TargetID       uint   `json:"target_id"`                // 目标 ID
-	TargetName     string `json:"target_name,omitempty"`    // 目标名称
-	RuntimeType    string `json:"runtime_type,omitempty"`   // 运行时类型
+	TargetID       uint   `json:"target_id"`                 // 目标 ID
+	TargetName     string `json:"target_name,omitempty"`     // 目标名称
+	RuntimeType    string `json:"runtime_type,omitempty"`    // 运行时类型
 }
 
 // TopologyConnection 是拓扑连接，表示服务之间的依赖关系。

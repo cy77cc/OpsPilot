@@ -20,9 +20,9 @@ import (
 //   - 调用 DAO 层进行数据访问
 //   - 加载用户的角色和权限信息
 type UserLogic struct {
-	svcCtx       *svc.ServiceContext    // 服务上下文
-	userDAO      *dao.UserDAO           // 用户数据访问对象
-	whiteListDao *dao.WhiteListDao      // JWT 白名单数据访问对象
+	svcCtx       *svc.ServiceContext // 服务上下文
+	userDAO      *dao.UserDAO        // 用户数据访问对象
+	whiteListDao *dao.WhiteListDao   // JWT 白名单数据访问对象
 }
 
 // NewUserLogic 创建用户业务逻辑实例。

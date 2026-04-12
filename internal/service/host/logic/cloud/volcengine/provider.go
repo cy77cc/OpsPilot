@@ -175,10 +175,10 @@ func (p *Provider) ListInstances(ctx context.Context, req cloud.ListInstancesReq
 
 // regionNames 地域中文名称映射。
 var regionNames = map[string]string{
-	"cn-beijing":  "华北2（北京）",
-	"cn-shanghai": "华东2（上海）",
+	"cn-beijing":   "华北2（北京）",
+	"cn-shanghai":  "华东2（上海）",
 	"cn-guangzhou": "华南1（广州）",
-	"cn-nanjing":  "华东1（南京）",
+	"cn-nanjing":   "华东1（南京）",
 }
 
 // zoneNames 可用区中文名称映射（根据地域动态生成）。

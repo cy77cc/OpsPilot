@@ -27,19 +27,19 @@ type AIMetadata struct {
 // 通过 WithContext 注入到标准 context.Context 中，
 // 后续可通过 FromContext 提取使用。
 type Context struct {
-	TraceID   string         // 追踪 ID
-	UID       string         // 用户 ID
-	Role      string         // 用户角色
-	ClientIP  string         // 客户端 IP
-	RequestID string         // 请求 ID
-	StartTime int64          // 请求开始时间（Unix 时间戳）
-	EndTime   int64          // 请求结束时间（Unix 时间戳）
-	Latency   int64          // 请求耗时（毫秒）
-	Token     string         // 认证 Token
-	Services  any            // 服务依赖容器
-	AIMeta    AIMetadata     // AI 会话元数据
-	data      map[any]any    // 扩展数据存储
-	mu        sync.RWMutex   // 读写锁，保护 data
+	TraceID   string       // 追踪 ID
+	UID       string       // 用户 ID
+	Role      string       // 用户角色
+	ClientIP  string       // 客户端 IP
+	RequestID string       // 请求 ID
+	StartTime int64        // 请求开始时间（Unix 时间戳）
+	EndTime   int64        // 请求结束时间（Unix 时间戳）
+	Latency   int64        // 请求耗时（毫秒）
+	Token     string       // 认证 Token
+	Services  any          // 服务依赖容器
+	AIMeta    AIMetadata   // AI 会话元数据
+	data      map[any]any  // 扩展数据存储
+	mu        sync.RWMutex // 读写锁，保护 data
 }
 
 // NewContext 创建新的运行时上下文。

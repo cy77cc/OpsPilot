@@ -22,13 +22,13 @@ import (
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
-	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"gorm.io/gorm"
 )
 
@@ -70,12 +70,12 @@ func NewHostService(svcCtx *svc.ServiceContext) *HostService {
 
 // ProbeReq SSH 探测请求参数。
 type ProbeReq struct {
-	Name     string  `json:"name"`      // 主机名称
-	IP       string  `json:"ip"`        // 主机 IP 地址
-	Port     int     `json:"port"`      // SSH 端口
-	AuthType string  `json:"auth_type"` // 认证类型 (password/key)
-	Username string  `json:"username"`  // SSH 用户名
-	Password string  `json:"password"`  // SSH 密码
+	Name     string  `json:"name"`       // 主机名称
+	IP       string  `json:"ip"`         // 主机 IP 地址
+	Port     int     `json:"port"`       // SSH 端口
+	AuthType string  `json:"auth_type"`  // 认证类型 (password/key)
+	Username string  `json:"username"`   // SSH 用户名
+	Password string  `json:"password"`   // SSH 密码
 	SSHKeyID *uint64 `json:"ssh_key_id"` // SSH 密钥 ID
 }
 
@@ -92,11 +92,11 @@ type ProbeFacts struct {
 
 // ProbeResp SSH 探测响应。
 type ProbeResp struct {
-	ProbeToken string     `json:"probe_token"` // 探测令牌，用于后续创建主机
-	Reachable  bool       `json:"reachable"`   // 是否可达
-	LatencyMS  int64      `json:"latency_ms"`  // 延迟（毫秒）
-	Facts      ProbeFacts `json:"facts"`       // 系统信息
-	Warnings   []string   `json:"warnings"`    // 警告信息
+	ProbeToken string     `json:"probe_token"`          // 探测令牌，用于后续创建主机
+	Reachable  bool       `json:"reachable"`            // 是否可达
+	LatencyMS  int64      `json:"latency_ms"`           // 延迟（毫秒）
+	Facts      ProbeFacts `json:"facts"`                // 系统信息
+	Warnings   []string   `json:"warnings"`             // 警告信息
 	ErrorCode  string     `json:"error_code,omitempty"` // 错误码
 	Message    string     `json:"message,omitempty"`    // 错误消息
 	ExpiresAt  time.Time  `json:"expires_at"`           // 令牌过期时间
@@ -104,24 +104,24 @@ type ProbeResp struct {
 
 // CreateReq 创建主机请求参数。
 type CreateReq struct {
-	ProbeToken   string   `json:"probe_token"`        // 探测令牌
-	Name         string   `json:"name"`               // 主机名称
-	IP           string   `json:"ip"`                 // IP 地址
-	Port         int      `json:"port"`               // SSH 端口
-	AuthType     string   `json:"auth_type"`          // 认证类型
-	Username     string   `json:"username"`           // SSH 用户名
-	Password     string   `json:"password"`           // SSH 密码
-	SSHKeyID     *uint64  `json:"ssh_key_id"`         // SSH 密钥 ID
-	Description  string   `json:"description"`        // 描述
-	Labels       []string `json:"labels"`             // 标签列表
-	Role         string   `json:"role"`               // 角色
-	ClusterID    uint     `json:"cluster_id"`         // 集群 ID
-	Source       string   `json:"source"`             // 来源
-	Provider     string   `json:"provider"`           // 云厂商
+	ProbeToken   string   `json:"probe_token"`          // 探测令牌
+	Name         string   `json:"name"`                 // 主机名称
+	IP           string   `json:"ip"`                   // IP 地址
+	Port         int      `json:"port"`                 // SSH 端口
+	AuthType     string   `json:"auth_type"`            // 认证类型
+	Username     string   `json:"username"`             // SSH 用户名
+	Password     string   `json:"password"`             // SSH 密码
+	SSHKeyID     *uint64  `json:"ssh_key_id"`           // SSH 密钥 ID
+	Description  string   `json:"description"`          // 描述
+	Labels       []string `json:"labels"`               // 标签列表
+	Role         string   `json:"role"`                 // 角色
+	ClusterID    uint     `json:"cluster_id"`           // 集群 ID
+	Source       string   `json:"source"`               // 来源
+	Provider     string   `json:"provider"`             // 云厂商
 	ProviderID   string   `json:"provider_instance_id"` // 云实例 ID
-	ParentHostID *uint64  `json:"parent_host_id"`     // 父主机 ID（虚拟化场景）
-	Force        bool     `json:"force"`              // 强制创建（忽略探测失败）
-	Status       string   `json:"status"`             // 初始状态
+	ParentHostID *uint64  `json:"parent_host_id"`       // 父主机 ID（虚拟化场景）
+	Force        bool     `json:"force"`                // 强制创建（忽略探测失败）
+	Status       string   `json:"status"`               // 初始状态
 }
 
 // UpdateCredentialsReq 更新凭证请求参数。

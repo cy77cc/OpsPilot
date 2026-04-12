@@ -2,6 +2,7 @@ package migration
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai"
 	"gorm.io/gorm"
 )
 
@@ -81,23 +82,23 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&model.JobLog{},
 		&model.Notification{},
 		&model.UserNotification{},
-		&model.AIChatSession{},
-		&model.AIChatMessage{},
-		&model.AIRun{},
-		&model.AIRunEvent{},
-		&model.AIRunProjection{},
-		&model.AIRunContent{},
-		&model.AIDiagnosisReport{},
-		&model.AIScenePrompt{},
-		&model.AISceneConfig{},
-		&model.AITraceSpan{},
-		&model.AIUsageLog{},
-		&model.AICheckpoint{},
-		&model.AIToolRiskPolicy{},
-		&model.AIApprovalTask{},
-		&model.AIApprovalOutboxEvent{},
+		&ai.AIChatSession{},
+		&ai.AIChatMessage{},
+		&ai.AIRun{},
+		&ai.AIRunEvent{},
+		&ai.AIRunProjection{},
+		&ai.AIRunContent{},
+		&ai.AIDiagnosisReport{},
+		&ai.AIScenePrompt{},
+		&ai.AISceneConfig{},
+		&ai.AITraceSpan{},
+		&ai.AIUsageLog{},
+		&ai.AICheckpoint{},
+		&ai.AIToolRiskPolicy{},
+		&ai.AIApprovalTask{},
+		&ai.AIApprovalOutboxEvent{},
 		&model.AIHostExecutionRecord{},
-		&model.AILLMProvider{},
+		&ai.AILLMProvider{},
 		&model.AdmissionPolicy{},
 		&model.AdmissionExemption{},
 		&model.RuntimeSecurityEvent{},

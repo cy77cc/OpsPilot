@@ -44,11 +44,11 @@ func TestCNIInfo_ReportsClusterCapabilityMatrixFromBootstrapState(t *testing.T) 
 
 	var body struct {
 		Data struct {
-			ClusterID    uint                   `json:"cluster_id"`
-			CNIType      string                 `json:"cni_type"`
-			CNIVersion   string                 `json:"cni_version"`
-			Capabilities map[string]bool        `json:"capabilities"`
-			Constraints  map[string]any         `json:"constraints"`
+			ClusterID    uint            `json:"cluster_id"`
+			CNIType      string          `json:"cni_type"`
+			CNIVersion   string          `json:"cni_version"`
+			Capabilities map[string]bool `json:"capabilities"`
+			Constraints  map[string]any  `json:"constraints"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -262,7 +262,7 @@ func seedPolicyReleaseAudit(t *testing.T, db *gorm.DB, clusterID uint, namespace
 			CNIVersion: "1.17.0",
 		},
 		SimulationResult: PolicySimulationResult{
-			Passed: true,
+			Passed:                 true,
 			PolicySimulationStatus: PolicySimulationStatus{PassedAt: &now},
 			PolicyReleaseStatus: PolicyReleaseStatus{
 				Phase:     phase,

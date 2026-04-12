@@ -17,13 +17,13 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/alicloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/ucloud/ulighthost"
 	"github.com/cy77cc/OpsPilot/internal/service/host/logic/cloud/volcengine"
-	"github.com/cy77cc/OpsPilot/internal/core/utils"
 )
 
 // CloudAccountReq 创建云账号请求参数。
@@ -379,7 +379,8 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 				node.Port = template.Port
 				if template.AuthType == "key" && template.SSHKeyID != nil {
 					// 密钥认证：设置 SSHKeyID
-					keyID := model.NodeID(*template.SSHKeyID); node.SSHKeyID = &keyID
+					keyID := model.NodeID(*template.SSHKeyID)
+					node.SSHKeyID = &keyID
 				} else if template.AuthType == "password" && template.Password != "" {
 					// 密码认证：解密并存储密码
 					if decryptedPwd, err := utils.DecryptText(template.Password, config.CFG.Security.EncryptionKey); err == nil {

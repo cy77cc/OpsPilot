@@ -18,14 +18,14 @@ import (
 
 // PKI 文件名常量。
 const (
-	CACertName            = "ca.crt"            // Kubernetes CA 证书
-	CAKeyName             = "ca.key"            // Kubernetes CA 私钥
-	EtcdCACertName        = "etcd/ca.crt"       // etcd CA 证书
-	EtcdCAKeyName         = "etcd/ca.key"       // etcd CA 私钥
+	CACertName            = "ca.crt"             // Kubernetes CA 证书
+	CAKeyName             = "ca.key"             // Kubernetes CA 私钥
+	EtcdCACertName        = "etcd/ca.crt"        // etcd CA 证书
+	EtcdCAKeyName         = "etcd/ca.key"        // etcd CA 私钥
 	FrontProxyCAName      = "front-proxy-ca.crt" // 前端代理 CA 证书
 	FrontProxyCAKeyName   = "front-proxy-ca.key" // 前端代理 CA 私钥
-	ServiceAccountKeyName = "sa.key"            // Service Account 私钥
-	ServiceAccountPubName = "sa.pub"            // Service Account 公钥
+	ServiceAccountKeyName = "sa.key"             // Service Account 私钥
+	ServiceAccountPubName = "sa.pub"             // Service Account 公钥
 )
 
 // Manager 是 PKI 管理器，管理证书的生成和存储。

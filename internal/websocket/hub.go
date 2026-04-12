@@ -37,10 +37,10 @@ type UserNotificationWS struct {
 
 // Client 是 WebSocket 客户端连接。
 type Client struct {
-	UserID uint64            // 用户 ID
-	Conn   *websocket.Conn   // WebSocket 连接
-	Send   chan []byte       // 发送消息队列
-	Hub    *Hub              // 所属 Hub
+	UserID uint64          // 用户 ID
+	Conn   *websocket.Conn // WebSocket 连接
+	Send   chan []byte     // 发送消息队列
+	Hub    *Hub            // 所属 Hub
 }
 
 // Hub 是 WebSocket 连接中心，管理所有客户端连接。
@@ -54,8 +54,8 @@ type Hub struct {
 
 // BroadcastMessage 是广播消息结构。
 type BroadcastMessage struct {
-	UserID  uint64  // 目标用户 ID
-	Message []byte  // 消息内容
+	UserID  uint64 // 目标用户 ID
+	Message []byte // 消息内容
 }
 
 // hubInstance 是 Hub 单例实例。

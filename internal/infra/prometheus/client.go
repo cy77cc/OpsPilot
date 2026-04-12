@@ -19,9 +19,9 @@ import (
 
 // Client 是 Prometheus 客户端接口。
 type Client interface {
-	Query(ctx context.Context, query string, ts time.Time) (*QueryResult, error)                                                          // 即时查询
-	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error)                        // 范围查询
-	Metadata(ctx context.Context, metric string) ([]MetadataItem, error)                                                                 // 元数据查询
+	Query(ctx context.Context, query string, ts time.Time) (*QueryResult, error)                                  // 即时查询
+	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error) // 范围查询
+	Metadata(ctx context.Context, metric string) ([]MetadataItem, error)                                          // 元数据查询
 }
 
 // HTTPClient 是基于 HTTP 的 Prometheus 客户端实现。

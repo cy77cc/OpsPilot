@@ -229,8 +229,8 @@ type runtimeAlertsHTTPResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		List []model.RuntimeSecurityEvent `json:"list"`
-		Total int                         `json:"total"`
+		List  []model.RuntimeSecurityEvent `json:"list"`
+		Total int                          `json:"total"`
 	} `json:"data"`
 }
 

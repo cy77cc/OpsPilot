@@ -8,7 +8,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
-	"github.com/cy77cc/OpsPilot/internal/service/ai"
+	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	servicemgr "github.com/cy77cc/OpsPilot/internal/service/application"
 	"github.com/cy77cc/OpsPilot/internal/service/automation"
 	"github.com/cy77cc/OpsPilot/internal/service/cicd"
 	"github.com/cy77cc/OpsPilot/internal/service/cluster"
@@ -21,7 +22,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/service/notification"
 	"github.com/cy77cc/OpsPilot/internal/service/project"
 	"github.com/cy77cc/OpsPilot/internal/service/rbac"
-	servicemgr "github.com/cy77cc/OpsPilot/internal/service/application"
 	"github.com/cy77cc/OpsPilot/internal/service/topology"
 	"github.com/cy77cc/OpsPilot/internal/service/user"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -42,8 +42,8 @@ func Init(r *gin.Engine, serverCtx *svc.ServiceContext) {
 
 	v1 := r.Group("/api/v1")
 	user.RegisterUserHandlers(v1, serverCtx)
-	ai.RegisterAIHandlers(v1, serverCtx)
-	ai.RegisterAdminAIHandlers(v1, serverCtx)
+	aiapi.RegisterAIHandlers(v1, serverCtx)
+	aiapi.RegisterAdminAIHandlers(v1, serverCtx)
 	project.RegisterProjectHandlers(v1, serverCtx)
 	servicemgr.RegisterServiceHandlers(v1, serverCtx)
 	cicd.RegisterCICDHandlers(v1, serverCtx)

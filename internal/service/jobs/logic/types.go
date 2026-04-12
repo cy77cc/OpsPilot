@@ -57,6 +57,6 @@ type UpdateJobReq struct {
 //   - Page: 页码，从 1 开始，最小值 1
 //   - PageSize: 每页数量，最小值 1，最大值 100
 type ListJobsReq struct {
-	Page     int `form:"page" binding:"omitempty,min=1"`       // 页码 (从 1 开始)
+	Page     int `form:"page" binding:"omitempty,min=1"`              // 页码 (从 1 开始)
 	PageSize int `form:"page_size" binding:"omitempty,min=1,max=100"` // 每页数量 (1-100)
 }

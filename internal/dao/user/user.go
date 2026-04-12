@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/constants"
-	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -19,9 +19,9 @@ import (
 
 // UserDAO 是用户数据访问对象。
 type UserDAO struct {
-	db    *gorm.DB                       // GORM 数据库实例
-	cache *expirable.LRU[string, any]    // 本地 LRU 缓存
-	rdb   redis.UniversalClient          // Redis 客户端
+	db    *gorm.DB                    // GORM 数据库实例
+	cache *expirable.LRU[string, any] // 本地 LRU 缓存
+	rdb   redis.UniversalClient       // Redis 客户端
 }
 
 // NewUserDAO 创建用户 DAO 实例。

@@ -17,9 +17,9 @@ import "time"
 //
 // 表名: automation_inventories
 type AutomationInventory struct {
-	ID        uint      `gorm:"primaryKey;column:id" json:"id"`          // 清单 ID
+	ID        uint      `gorm:"primaryKey;column:id" json:"id"`                           // 清单 ID
 	Name      string    `gorm:"column:name;type:varchar(128);not null;index" json:"name"` // 清单名称
-	HostsJSON string    `gorm:"column:hosts_json;type:text" json:"hosts_json"`        // 主机配置 JSON
+	HostsJSON string    `gorm:"column:hosts_json;type:text" json:"hosts_json"`            // 主机配置 JSON
 	CreatedBy uint      `gorm:"column:created_by;default:0;index" json:"created_by"`      // 创建者 ID
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`       // 创建时间
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`       // 更新时间
@@ -36,13 +36,13 @@ func (AutomationInventory) TableName() string { return "automation_inventories" 
 //
 // 表名: automation_playbooks
 type AutomationPlaybook struct {
-	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                              // Playbook ID
-	Name       string    `gorm:"column:name;type:varchar(128);not null;index" json:"name"`    // Playbook 名称
-	ContentYML string    `gorm:"column:content_yml;type:text" json:"content_yml"`         // YAML 格式内容
+	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                                                 // Playbook ID
+	Name       string    `gorm:"column:name;type:varchar(128);not null;index" json:"name"`                       // Playbook 名称
+	ContentYML string    `gorm:"column:content_yml;type:text" json:"content_yml"`                                // YAML 格式内容
 	RiskLevel  string    `gorm:"column:risk_level;type:varchar(32);not null;default:'medium'" json:"risk_level"` // 风险等级 (low/medium/high)
-	CreatedBy  uint      `gorm:"column:created_by;default:0;index" json:"created_by"`         // 创建者 ID
-	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`          // 创建时间
-	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`          // 更新时间
+	CreatedBy  uint      `gorm:"column:created_by;default:0;index" json:"created_by"`                            // 创建者 ID
+	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                             // 创建时间
+	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                             // 更新时间
 }
 
 // TableName 返回 AutomationPlaybook 的表名。
@@ -56,11 +56,11 @@ func (AutomationPlaybook) TableName() string { return "automation_playbooks" }
 //
 // 表名: automation_runs
 type AutomationRun struct {
-	ID         string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`       // 执行记录 ID（格式: run-{timestamp}）
+	ID         string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`              // 执行记录 ID（格式: run-{timestamp}）
 	Action     string    `gorm:"column:action;type:varchar(128);not null;index" json:"action"` // 执行动作类型
 	Status     string    `gorm:"column:status;type:varchar(32);not null;index" json:"status"`  // 执行状态 (running/succeeded/failed)
-	ResultJSON string    `gorm:"column:result_json;type:text" json:"result_json"`          // 执行结果 JSON
-	ParamsJSON string    `gorm:"column:params_json;type:text" json:"params_json"`          // 执行参数 JSON
+	ResultJSON string    `gorm:"column:result_json;type:text" json:"result_json"`              // 执行结果 JSON
+	ParamsJSON string    `gorm:"column:params_json;type:text" json:"params_json"`              // 执行参数 JSON
 	Error      string    `gorm:"column:error;type:text" json:"error"`                          // 错误信息
 	OperatorID uint      `gorm:"column:operator_id;default:0;index" json:"operator_id"`        // 操作者 ID
 	StartedAt  time.Time `gorm:"column:started_at;index" json:"started_at"`                    // 开始时间
@@ -80,11 +80,11 @@ func (AutomationRun) TableName() string { return "automation_runs" }
 //
 // 表名: automation_run_logs
 type AutomationRunLog struct {
-	ID        uint      `gorm:"primaryKey;column:id" json:"id"`                          // 日志 ID
-	RunID     string    `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"` // 关联的执行记录 ID
+	ID        uint      `gorm:"primaryKey;column:id" json:"id"`                                     // 日志 ID
+	RunID     string    `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"`        // 关联的执行记录 ID
 	Level     string    `gorm:"column:level;type:varchar(16);not null;default:'info'" json:"level"` // 日志级别 (info/warning/error)
-	Message   string    `gorm:"column:message;type:text;not null" json:"message"`        // 日志消息
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"` // 创建时间
+	Message   string    `gorm:"column:message;type:text;not null" json:"message"`                   // 日志消息
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`           // 创建时间
 }
 
 // TableName 返回 AutomationRunLog 的表名。
@@ -98,12 +98,12 @@ func (AutomationRunLog) TableName() string { return "automation_run_logs" }
 //
 // 表名: automation_execution_audits
 type AutomationExecutionAudit struct {
-	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                              // 审计记录 ID
-	RunID      string    `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"` // 关联的执行记录 ID
+	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                               // 审计记录 ID
+	RunID      string    `gorm:"column:run_id;type:varchar(64);not null;index" json:"run_id"`  // 关联的执行记录 ID
 	Action     string    `gorm:"column:action;type:varchar(128);not null;index" json:"action"` // 执行动作类型
 	Status     string    `gorm:"column:status;type:varchar(32);not null;index" json:"status"`  // 执行状态
 	ActorID    uint      `gorm:"column:actor_id;default:0;index" json:"actor_id"`              // 操作者 ID
-	DetailJSON string    `gorm:"column:detail_json;type:text" json:"detail_json"`          // 详细信息 JSON
+	DetailJSON string    `gorm:"column:detail_json;type:text" json:"detail_json"`              // 详细信息 JSON
 	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`     // 创建时间
 }
 
@@ -118,12 +118,12 @@ func (AutomationExecutionAudit) TableName() string { return "automation_executio
 //
 // 表名: topology_access_audits
 type TopologyAccessAudit struct {
-	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                            // 审计记录 ID
-	ActorID    uint      `gorm:"column:actor_id;default:0;index" json:"actor_id"`           // 操作者 ID
+	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                              // 审计记录 ID
+	ActorID    uint      `gorm:"column:actor_id;default:0;index" json:"actor_id"`             // 操作者 ID
 	Action     string    `gorm:"column:action;type:varchar(64);not null;index" json:"action"` // 访问动作
-	Scope      string    `gorm:"column:scope;type:varchar(128);not null;index" json:"scope"` // 访问范围
-	FilterJSON string    `gorm:"column:filter_json;type:text" json:"filter_json"`       // 过滤条件 JSON
-	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`  // 创建时间
+	Scope      string    `gorm:"column:scope;type:varchar(128);not null;index" json:"scope"`  // 访问范围
+	FilterJSON string    `gorm:"column:filter_json;type:text" json:"filter_json"`             // 过滤条件 JSON
+	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`    // 创建时间
 }
 
 // TableName 返回 TopologyAccessAudit 的表名。

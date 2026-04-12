@@ -18,25 +18,25 @@ import "time"
 //
 // 表名: alert_rules
 type AlertRule struct {
-	ID              uint      `gorm:"primaryKey;column:id" json:"id"`                                          // 规则 ID
-	Name            string    `gorm:"column:name;type:varchar(128);not null" json:"name"`                     // 规则名称
-	Metric          string    `gorm:"column:metric;type:varchar(64);not null;index" json:"metric"`            // 监控指标名称
-	PromQLExpr      string    `gorm:"column:promql_expr;type:varchar(512);default:''" json:"promql_expr"`     // 自定义 PromQL 表达式
-	Operator        string    `gorm:"column:operator;type:varchar(8);default:'gt'" json:"operator"`           // 比较运算符 (gt/gte/lt/lte/eq)
-	Threshold       float64   `gorm:"column:threshold;type:decimal(12,4);default:0" json:"threshold"`         // 告警阈值
-	DurationSec     int       `gorm:"column:duration_sec;default:300" json:"duration_sec"`                    // 持续时间 (秒)
-	WindowSec       int       `gorm:"column:window_sec;default:3600" json:"window_sec"`                       // 时间窗口 (秒)
-	GranularitySec  int       `gorm:"column:granularity_sec;default:60" json:"granularity_sec"`               // 采集粒度 (秒)
+	ID              uint      `gorm:"primaryKey;column:id" json:"id"`                                     // 规则 ID
+	Name            string    `gorm:"column:name;type:varchar(128);not null" json:"name"`                 // 规则名称
+	Metric          string    `gorm:"column:metric;type:varchar(64);not null;index" json:"metric"`        // 监控指标名称
+	PromQLExpr      string    `gorm:"column:promql_expr;type:varchar(512);default:''" json:"promql_expr"` // 自定义 PromQL 表达式
+	Operator        string    `gorm:"column:operator;type:varchar(8);default:'gt'" json:"operator"`       // 比较运算符 (gt/gte/lt/lte/eq)
+	Threshold       float64   `gorm:"column:threshold;type:decimal(12,4);default:0" json:"threshold"`     // 告警阈值
+	DurationSec     int       `gorm:"column:duration_sec;default:300" json:"duration_sec"`                // 持续时间 (秒)
+	WindowSec       int       `gorm:"column:window_sec;default:3600" json:"window_sec"`                   // 时间窗口 (秒)
+	GranularitySec  int       `gorm:"column:granularity_sec;default:60" json:"granularity_sec"`           // 采集粒度 (秒)
 	DimensionsJSON  string    `gorm:"column:dimensions_json;type:text" json:"dimensions_json"`            // 维度标签 JSON
 	LabelsJSON      string    `gorm:"column:labels_json;type:text" json:"labels_json"`                    // 自定义标签 JSON
 	AnnotationsJSON string    `gorm:"column:annotations_json;type:text" json:"annotations_json"`          // 注解 JSON
-	Severity        string    `gorm:"column:severity;type:varchar(16);default:'warning'" json:"severity"`     // 严重级别 (critical/warning/info)
-	Source          string    `gorm:"column:source;type:varchar(32);default:'system'" json:"source"`          // 规则来源 (system/custom)
-	Scope           string    `gorm:"column:scope;type:varchar(32);default:'global'" json:"scope"`            // 作用域 (global/cluster/host)
-	State           string    `gorm:"column:state;type:varchar(16);default:'enabled'" json:"state"`           // 规则状态 (enabled/disabled)
-	Enabled         bool      `gorm:"column:enabled;default:true" json:"enabled"`                             // 是否启用
-	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                     // 创建时间
-	UpdatedAt       time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                     // 更新时间
+	Severity        string    `gorm:"column:severity;type:varchar(16);default:'warning'" json:"severity"` // 严重级别 (critical/warning/info)
+	Source          string    `gorm:"column:source;type:varchar(32);default:'system'" json:"source"`      // 规则来源 (system/custom)
+	Scope           string    `gorm:"column:scope;type:varchar(32);default:'global'" json:"scope"`        // 作用域 (global/cluster/host)
+	State           string    `gorm:"column:state;type:varchar(16);default:'enabled'" json:"state"`       // 规则状态 (enabled/disabled)
+	Enabled         bool      `gorm:"column:enabled;default:true" json:"enabled"`                         // 是否启用
+	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                 // 创建时间
+	UpdatedAt       time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                 // 更新时间
 }
 
 // TableName 返回 AlertRule 的数据库表名。
@@ -75,15 +75,15 @@ func (AlertEvent) TableName() string { return "alerts" }
 //
 // 表名: alert_notification_channels
 type AlertNotificationChannel struct {
-	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                             // 渠道 ID
-	Name       string    `gorm:"column:name;type:varchar(128);not null" json:"name"`         // 渠道名称
-	Type       string    `gorm:"column:type;type:varchar(32);not null;index" json:"type"`    // 渠道类型 (log/webhook)
+	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                              // 渠道 ID
+	Name       string    `gorm:"column:name;type:varchar(128);not null" json:"name"`          // 渠道名称
+	Type       string    `gorm:"column:type;type:varchar(32);not null;index" json:"type"`     // 渠道类型 (log/webhook)
 	Provider   string    `gorm:"column:provider;type:varchar(64);default:''" json:"provider"` // 通知提供者
-	Target     string    `gorm:"column:target;type:varchar(512);default:''" json:"target"`   // 目标地址 (URL/邮箱/手机号等)
-	ConfigJSON string    `gorm:"column:config_json;type:text" json:"config_json"`        // 配置参数 JSON
-	Enabled    bool      `gorm:"column:enabled;default:true;index" json:"enabled"`           // 是否启用
-	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`         // 创建时间
-	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`         // 更新时间
+	Target     string    `gorm:"column:target;type:varchar(512);default:''" json:"target"`    // 目标地址 (URL/邮箱/手机号等)
+	ConfigJSON string    `gorm:"column:config_json;type:text" json:"config_json"`             // 配置参数 JSON
+	Enabled    bool      `gorm:"column:enabled;default:true;index" json:"enabled"`            // 是否启用
+	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`          // 创建时间
+	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`          // 更新时间
 }
 
 // TableName 返回 AlertNotificationChannel 的数据库表名。
@@ -96,16 +96,16 @@ func (AlertNotificationChannel) TableName() string { return "alert_notification_
 //
 // 表名: alert_notification_deliveries
 type AlertNotificationDelivery struct {
-	ID           uint      `gorm:"primaryKey;column:id" json:"id"`                                 // 投递记录 ID
-	AlertID      uint      `gorm:"column:alert_id;index" json:"alert_id"`                          // 关联告警 ID
-	RuleID       uint      `gorm:"column:rule_id;index" json:"rule_id"`                            // 关联规则 ID
-	ChannelID    uint      `gorm:"column:channel_id;index" json:"channel_id"`                      // 关联渠道 ID
-	ChannelType  string    `gorm:"column:channel_type;type:varchar(32);index" json:"channel_type"` // 渠道类型
-	Target       string    `gorm:"column:target;type:varchar(512);default:''" json:"target"`       // 目标地址
+	ID           uint      `gorm:"primaryKey;column:id" json:"id"`                                    // 投递记录 ID
+	AlertID      uint      `gorm:"column:alert_id;index" json:"alert_id"`                             // 关联告警 ID
+	RuleID       uint      `gorm:"column:rule_id;index" json:"rule_id"`                               // 关联规则 ID
+	ChannelID    uint      `gorm:"column:channel_id;index" json:"channel_id"`                         // 关联渠道 ID
+	ChannelType  string    `gorm:"column:channel_type;type:varchar(32);index" json:"channel_type"`    // 渠道类型
+	Target       string    `gorm:"column:target;type:varchar(512);default:''" json:"target"`          // 目标地址
 	Status       string    `gorm:"column:status;type:varchar(16);default:'sent';index" json:"status"` // 投递状态 (sent/failed)
-	ErrorMessage string    `gorm:"column:error_message;type:text" json:"error_message"`            // 错误信息
-	DeliveredAt  time.Time `gorm:"column:delivered_at;index" json:"delivered_at"`                  // 投递时间
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`       // 创建时间
+	ErrorMessage string    `gorm:"column:error_message;type:text" json:"error_message"`               // 错误信息
+	DeliveredAt  time.Time `gorm:"column:delivered_at;index" json:"delivered_at"`                     // 投递时间
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`          // 创建时间
 }
 
 // TableName 返回 AlertNotificationDelivery 的数据库表名。
@@ -118,16 +118,16 @@ func (AlertNotificationDelivery) TableName() string { return "alert_notification
 //
 // 表名: alert_silences
 type AlertSilence struct {
-	ID           uint64    `gorm:"primaryKey;column:id" json:"id"`                                                // 静默配置 ID
-	SilenceID    string    `gorm:"column:silence_id;type:varchar(64);not null;index" json:"silence_id"`           // 静默规则标识
-	MatchersJSON string    `gorm:"column:matchers_json;type:text;not null" json:"matchers_json"`              // 匹配器配置 JSON
-	StartsAt     time.Time `gorm:"column:starts_at;index:idx_alert_silences_time,priority:1" json:"starts_at"`    // 静默开始时间
-	EndsAt       time.Time `gorm:"column:ends_at;index:idx_alert_silences_time,priority:2" json:"ends_at"`        // 静默结束时间
-	CreatedBy    uint64    `gorm:"column:created_by;not null" json:"created_by"`                                  // 创建者 ID
-	Comment      string    `gorm:"column:comment;type:varchar(512);default:''" json:"comment"`                    // 备注说明
-	Status       string    `gorm:"column:status;type:varchar(16);default:'active';index" json:"status"`           // 状态 (active/expired)
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                            // 创建时间
-	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                            // 更新时间
+	ID           uint64    `gorm:"primaryKey;column:id" json:"id"`                                             // 静默配置 ID
+	SilenceID    string    `gorm:"column:silence_id;type:varchar(64);not null;index" json:"silence_id"`        // 静默规则标识
+	MatchersJSON string    `gorm:"column:matchers_json;type:text;not null" json:"matchers_json"`               // 匹配器配置 JSON
+	StartsAt     time.Time `gorm:"column:starts_at;index:idx_alert_silences_time,priority:1" json:"starts_at"` // 静默开始时间
+	EndsAt       time.Time `gorm:"column:ends_at;index:idx_alert_silences_time,priority:2" json:"ends_at"`     // 静默结束时间
+	CreatedBy    uint64    `gorm:"column:created_by;not null" json:"created_by"`                               // 创建者 ID
+	Comment      string    `gorm:"column:comment;type:varchar(512);default:''" json:"comment"`                 // 备注说明
+	Status       string    `gorm:"column:status;type:varchar(16);default:'active';index" json:"status"`        // 状态 (active/expired)
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                         // 创建时间
+	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                         // 更新时间
 }
 
 // TableName 返回 AlertSilence 的数据库表名。
@@ -140,33 +140,33 @@ func (AlertSilence) TableName() string { return "alert_silences" }
 //
 // 表名: cluster_bootstrap_tasks
 type ClusterBootstrapTask struct {
-	ID                   string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`                            // 任务 ID
-	Name                 string    `gorm:"column:name;type:varchar(128);not null" json:"name"`                         // 任务名称
-	ClusterID            *uint     `gorm:"column:cluster_id;index" json:"cluster_id"`                                  // 关联集群 ID
-	ControlPlaneID       uint      `gorm:"column:control_plane_host_id;index" json:"control_plane_host_id"`            // 控制平面主机 ID
-	WorkerIDsJSON        string    `gorm:"column:worker_ids_json;type:text" json:"worker_ids_json"`                // Worker 节点 ID 列表 JSON
-	K8sVersion           string    `gorm:"column:k8s_version;type:varchar(32)" json:"k8s_version"`                     // Kubernetes 版本
-	VersionChannel       string    `gorm:"column:version_channel;type:varchar(32)" json:"version_channel"`             // 版本通道 (stable/edge)
-	RepoMode             string    `gorm:"column:repo_mode;type:varchar(16);default:'online'" json:"repo_mode"`        // 仓库模式 (online/offline)
-	RepoURL              string    `gorm:"column:repo_url;type:varchar(512)" json:"repo_url"`                          // 自定义仓库地址
-	ImageRepository      string    `gorm:"column:image_repository;type:varchar(256)" json:"image_repository"`         // 镜像仓库地址
-	EndpointMode         string    `gorm:"column:endpoint_mode;type:varchar(16);default:'nodeIP'" json:"endpoint_mode"` // 端点模式 (nodeIP/vip)
+	ID                   string    `gorm:"column:id;type:varchar(64);primaryKey" json:"id"`                               // 任务 ID
+	Name                 string    `gorm:"column:name;type:varchar(128);not null" json:"name"`                            // 任务名称
+	ClusterID            *uint     `gorm:"column:cluster_id;index" json:"cluster_id"`                                     // 关联集群 ID
+	ControlPlaneID       uint      `gorm:"column:control_plane_host_id;index" json:"control_plane_host_id"`               // 控制平面主机 ID
+	WorkerIDsJSON        string    `gorm:"column:worker_ids_json;type:text" json:"worker_ids_json"`                       // Worker 节点 ID 列表 JSON
+	K8sVersion           string    `gorm:"column:k8s_version;type:varchar(32)" json:"k8s_version"`                        // Kubernetes 版本
+	VersionChannel       string    `gorm:"column:version_channel;type:varchar(32)" json:"version_channel"`                // 版本通道 (stable/edge)
+	RepoMode             string    `gorm:"column:repo_mode;type:varchar(16);default:'online'" json:"repo_mode"`           // 仓库模式 (online/offline)
+	RepoURL              string    `gorm:"column:repo_url;type:varchar(512)" json:"repo_url"`                             // 自定义仓库地址
+	ImageRepository      string    `gorm:"column:image_repository;type:varchar(256)" json:"image_repository"`             // 镜像仓库地址
+	EndpointMode         string    `gorm:"column:endpoint_mode;type:varchar(16);default:'nodeIP'" json:"endpoint_mode"`   // 端点模式 (nodeIP/vip)
 	ControlPlaneEndpoint string    `gorm:"column:control_plane_endpoint;type:varchar(256)" json:"control_plane_endpoint"` // 控制平面端点
-	VIPProvider          string    `gorm:"column:vip_provider;type:varchar(32)" json:"vip_provider"`                   // VIP 提供者 (keepalived/haproxy)
-	EtcdMode             string    `gorm:"column:etcd_mode;type:varchar(16);default:'stacked'" json:"etcd_mode"`       // etcd 模式 (stacked/external)
-	ExternalEtcdJSON     string    `gorm:"column:external_etcd_json;type:text" json:"external_etcd_json"`          // 外部 etcd 配置 JSON
-	CNI                  string    `gorm:"column:cni;type:varchar(32);default:'flannel'" json:"cni"`                   // CNI 插件 (flannel/calico/cilium)
-	PodCIDR              string    `gorm:"column:pod_cidr;type:varchar(32)" json:"pod_cidr"`                           // Pod CIDR
-	ServiceCIDR          string    `gorm:"column:service_cidr;type:varchar(32)" json:"service_cidr"`                   // Service CIDR
-	StepsJSON            string    `gorm:"column:steps_json;type:text" json:"steps_json"`                          // 执行步骤 JSON
-	ResolvedConfigJSON   string    `gorm:"column:resolved_config_json;type:text" json:"resolved_config_json"`      // 解析后的配置 JSON
-	DiagnosticsJSON      string    `gorm:"column:diagnostics_json;type:text" json:"diagnostics_json"`              // 诊断信息 JSON
-	Status               string    `gorm:"column:status;type:varchar(32);index" json:"status"`                         // 任务状态 (pending/running/success/failed)
-	ResultJSON           string    `gorm:"column:result_json;type:text" json:"result_json"`                        // 执行结果 JSON
-	ErrorMessage         string    `gorm:"column:error_message;type:text" json:"error_message"`                        // 错误信息
-	CreatedBy            uint64    `gorm:"column:created_by;index" json:"created_by"`                                  // 创建者 ID
-	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`                   // 创建时间
-	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                         // 更新时间
+	VIPProvider          string    `gorm:"column:vip_provider;type:varchar(32)" json:"vip_provider"`                      // VIP 提供者 (keepalived/haproxy)
+	EtcdMode             string    `gorm:"column:etcd_mode;type:varchar(16);default:'stacked'" json:"etcd_mode"`          // etcd 模式 (stacked/external)
+	ExternalEtcdJSON     string    `gorm:"column:external_etcd_json;type:text" json:"external_etcd_json"`                 // 外部 etcd 配置 JSON
+	CNI                  string    `gorm:"column:cni;type:varchar(32);default:'flannel'" json:"cni"`                      // CNI 插件 (flannel/calico/cilium)
+	PodCIDR              string    `gorm:"column:pod_cidr;type:varchar(32)" json:"pod_cidr"`                              // Pod CIDR
+	ServiceCIDR          string    `gorm:"column:service_cidr;type:varchar(32)" json:"service_cidr"`                      // Service CIDR
+	StepsJSON            string    `gorm:"column:steps_json;type:text" json:"steps_json"`                                 // 执行步骤 JSON
+	ResolvedConfigJSON   string    `gorm:"column:resolved_config_json;type:text" json:"resolved_config_json"`             // 解析后的配置 JSON
+	DiagnosticsJSON      string    `gorm:"column:diagnostics_json;type:text" json:"diagnostics_json"`                     // 诊断信息 JSON
+	Status               string    `gorm:"column:status;type:varchar(32);index" json:"status"`                            // 任务状态 (pending/running/success/failed)
+	ResultJSON           string    `gorm:"column:result_json;type:text" json:"result_json"`                               // 执行结果 JSON
+	ErrorMessage         string    `gorm:"column:error_message;type:text" json:"error_message"`                           // 错误信息
+	CreatedBy            uint64    `gorm:"column:created_by;index" json:"created_by"`                                     // 创建者 ID
+	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`                      // 创建时间
+	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                            // 更新时间
 }
 
 // TableName 返回 ClusterBootstrapTask 的数据库表名。

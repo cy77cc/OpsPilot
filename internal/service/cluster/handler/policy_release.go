@@ -30,15 +30,15 @@ type ClusterCNIInfoRecord = clusterlogic.ClusterCNIInfoRecord
 
 // Re-export functions and constants
 var (
-	NewPolicyRelease                   = clusterlogic.NewPolicyRelease
-	NewCompletedOperationResponse      = clusterlogic.NewCompletedOperationResponse
+	NewPolicyRelease                     = clusterlogic.NewPolicyRelease
+	NewCompletedOperationResponse        = clusterlogic.NewCompletedOperationResponse
 	NewApprovalRequiredOperationResponse = clusterlogic.NewApprovalRequiredOperationResponse
-	NewRejectedOperationResponse       = clusterlogic.NewRejectedOperationResponse
-	NewFailedOperationResponse         = clusterlogic.NewFailedOperationResponse
-	ConsumePolicyReleaseApproval       = clusterlogic.ConsumePolicyReleaseApproval
-	IssuePolicyReleaseApproval         = clusterlogic.IssuePolicyReleaseApproval
-	ObservePolicyReleaseDuration       = clusterlogic.ObservePolicyReleaseDuration
-	TimePtrOrNil                       = clusterlogic.TimePtrOrNil
+	NewRejectedOperationResponse         = clusterlogic.NewRejectedOperationResponse
+	NewFailedOperationResponse           = clusterlogic.NewFailedOperationResponse
+	ConsumePolicyReleaseApproval         = clusterlogic.ConsumePolicyReleaseApproval
+	IssuePolicyReleaseApproval           = clusterlogic.IssuePolicyReleaseApproval
+	ObservePolicyReleaseDuration         = clusterlogic.ObservePolicyReleaseDuration
+	TimePtrOrNil                         = clusterlogic.TimePtrOrNil
 )
 
 const (
@@ -71,11 +71,11 @@ type policyReleaseActionRequest struct {
 }
 
 type clusterCNIInfoResponse struct {
-	ClusterID    uint           `json:"cluster_id"`
-	CNIType      string         `json:"cni_type,omitempty"`
-	CNIVersion   string         `json:"cni_version,omitempty"`
+	ClusterID    uint            `json:"cluster_id"`
+	CNIType      string          `json:"cni_type,omitempty"`
+	CNIVersion   string          `json:"cni_version,omitempty"`
 	Capabilities map[string]bool `json:"capabilities"`
-	Constraints  map[string]any `json:"constraints,omitempty"`
+	Constraints  map[string]any  `json:"constraints,omitempty"`
 }
 
 // GetCNIInfo 返回集群 CNI 能力信息。
@@ -426,8 +426,8 @@ func (h *Handler) recordPolicyReleaseAudit(ctx context.Context, release *PolicyR
 			"release": release,
 		},
 		Diagnostics: map[string]any{
-			"policy_name":    release.Policy.Name,
-			"release_phase":  release.Status.Phase,
+			"policy_name":     release.Policy.Name,
+			"release_phase":   release.Status.Phase,
 			"rollback_target": release.RollbackTargetVersion,
 		},
 	})
@@ -435,22 +435,22 @@ func (h *Handler) recordPolicyReleaseAudit(ctx context.Context, release *PolicyR
 
 func policyReleaseAuditSummary(release *PolicyReleaseRecord) map[string]any {
 	return map[string]any{
-		"release": release,
+		"release":     release,
 		"policy_name": release.Policy.Name,
-		"namespace": release.Policy.Namespace,
-		"version": release.Version,
+		"namespace":   release.Policy.Namespace,
+		"version":     release.Version,
 	}
 }
 
 func buildCNICapabilityMatrix(info ClusterCNIInfoRecord) map[string]bool {
 	cniType := strings.ToLower(strings.TrimSpace(info.CNIType))
 	capabilities := map[string]bool{
-		"standard_np": true,
-		"l7":          false,
-		"fqdn":        false,
-		"order":       false,
+		"standard_np":     true,
+		"l7":              false,
+		"fqdn":            false,
+		"order":           false,
 		"service_account": false,
-		"publishable": true,
+		"publishable":     true,
 	}
 	switch cniType {
 	case "cilium":

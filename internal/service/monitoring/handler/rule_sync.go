@@ -28,11 +28,11 @@ import (
 // 负责将数据库中的启用状态告警规则同步到 Prometheus 告警规则文件，
 // 并通过 HTTP 请求触发 Prometheus 重载配置。
 type RuleSyncService struct {
-	db        *gorm.DB       // 数据库连接
-	rulesFile string         // 规则文件路径
-	reloadURL string         // Prometheus 重载 URL
-	client    *http.Client   // HTTP 客户端
-	mu        sync.Mutex     // 并发锁
+	db        *gorm.DB     // 数据库连接
+	rulesFile string       // 规则文件路径
+	reloadURL string       // Prometheus 重载 URL
+	client    *http.Client // HTTP 客户端
+	mu        sync.Mutex   // 并发锁
 }
 
 // promRulesFile 是 Prometheus 规则文件结构。

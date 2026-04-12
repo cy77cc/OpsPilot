@@ -2,15 +2,15 @@ package ulighthost
 
 // 地域和可用区名称映射（复用 UHost 的定义）
 var regionNames = map[string]string{
-	"cn-bj2":  "华北二（北京）",
-	"cn-sh2":  "华东二（上海）",
-	"cn-gd":   "华南一（广州）",
-	"hk":      "香港",
-	"tw-tp":   "台北",
-	"sg":      "亚太一（新加坡）",
-	"us-ca":   "美国西（洛杉矶）",
-	"us-ws":   "美国东（华盛顿）",
-	"ge-fra":  "欧洲（法兰克福）",
+	"cn-bj2": "华北二（北京）",
+	"cn-sh2": "华东二（上海）",
+	"cn-gd":  "华南一（广州）",
+	"hk":     "香港",
+	"tw-tp":  "台北",
+	"sg":     "亚太一（新加坡）",
+	"us-ca":  "美国西（洛杉矶）",
+	"us-ws":  "美国东（华盛顿）",
+	"ge-fra": "欧洲（法兰克福）",
 }
 
 var zoneNames = map[string]string{

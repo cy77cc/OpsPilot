@@ -58,8 +58,8 @@ type AggregationQuery struct {
 // 包含时间窗口信息和查询到的数据序列。
 type MetricQueryResult struct {
 	Window struct {
-		Start          time.Time `json:"start"`          // 窗口开始时间
-		End            time.Time `json:"end"`            // 窗口结束时间
+		Start          time.Time `json:"start"`           // 窗口开始时间
+		End            time.Time `json:"end"`             // 窗口结束时间
 		GranularitySec int       `json:"granularity_sec"` // 采样粒度
 	} `json:"window"`
 	Dimensions map[string]any   `json:"dimensions"` // 维度信息

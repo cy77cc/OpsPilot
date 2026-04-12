@@ -49,11 +49,11 @@ type serviceIngressMutationTarget struct {
 }
 
 type ServiceMutationReq struct {
-	Name          string               `json:"name"`
-	Type          string               `json:"type"`
-	Selector      map[string]string    `json:"selector"`
+	Name          string                `json:"name"`
+	Type          string                `json:"type"`
+	Selector      map[string]string     `json:"selector"`
 	Ports         []ServiceMutationPort `json:"ports"`
-	ApprovalToken string               `json:"approval_token"`
+	ApprovalToken string                `json:"approval_token"`
 }
 
 type ServiceMutationPort struct {

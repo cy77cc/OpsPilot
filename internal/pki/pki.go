@@ -19,16 +19,16 @@ import (
 
 // CertSpec 是证书规格定义。
 type CertSpec struct {
-	CommonName string          // 通用名称 (CN)
-	Orgs       []string        // 组织 (O)
+	CommonName string   // 通用名称 (CN)
+	Orgs       []string // 组织 (O)
 
-	DNSNames []string          // DNS 名称列表
-	IPs      []net.IP          // IP 地址列表
+	DNSNames []string // DNS 名称列表
+	IPs      []net.IP // IP 地址列表
 
-	IsCA       bool            // 是否为 CA 证书
-	ValidYears int             // 有效年限
+	IsCA       bool // 是否为 CA 证书
+	ValidYears int  // 有效年限
 
-	KeyUsage    x509.KeyUsage     // 密钥用途
+	KeyUsage    x509.KeyUsage      // 密钥用途
 	ExtKeyUsage []x509.ExtKeyUsage // 扩展密钥用途
 }
 

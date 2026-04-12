@@ -42,9 +42,9 @@ type MatrixPoint struct {
 
 // QueryResult 是统一的查询结果。
 type QueryResult struct {
-	ResultType string         // 结果类型
-	Vector     []VectorPoint  // 即时向量结果
-	Matrix     []MatrixPoint  // 范围向量结果
+	ResultType string        // 结果类型
+	Vector     []VectorPoint // 即时向量结果
+	Matrix     []MatrixPoint // 范围向量结果
 }
 
 // MetadataItem 是指标元数据项。

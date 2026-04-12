@@ -30,14 +30,14 @@ func NewMetricsHandler(svcCtx *svc.ServiceContext) *MetricsHandler {
 
 // MetricsSummary 是部署指标汇总数据。
 type MetricsSummary struct {
-	TotalReleases   int64                 `json:"total_releases"`   // 总发布数
-	SuccessRate     float64               `json:"success_rate"`     // 成功率 (%)
-	FailureRate     float64               `json:"failure_rate"`     // 失败率 (%)
+	TotalReleases   int64                 `json:"total_releases"`       // 总发布数
+	SuccessRate     float64               `json:"success_rate"`         // 成功率 (%)
+	FailureRate     float64               `json:"failure_rate"`         // 失败率 (%)
 	AvgDurationSecs float64               `json:"avg_duration_seconds"` // 平均耗时 (秒)
-	ByEnvironment   map[string]EnvMetrics `json:"by_environment"`   // 按环境统计
-	ByStatus        map[string]int64      `json:"by_status"`        // 按状态统计
-	RecentFailures  int64                 `json:"recent_failures"`  // 最近失败数
-	RecentReleases  int64                 `json:"recent_releases"`  // 最近发布数
+	ByEnvironment   map[string]EnvMetrics `json:"by_environment"`       // 按环境统计
+	ByStatus        map[string]int64      `json:"by_status"`            // 按状态统计
+	RecentFailures  int64                 `json:"recent_failures"`      // 最近失败数
+	RecentReleases  int64                 `json:"recent_releases"`      // 最近发布数
 }
 
 // EnvMetrics 是环境维度的指标数据。
@@ -48,7 +48,7 @@ type EnvMetrics struct {
 
 // MetricsTrend 是指标趋势数据点。
 type MetricsTrend struct {
-	Date            string  `json:"date"`            // 日期
+	Date            string  `json:"date"`             // 日期
 	DeploymentCount int     `json:"deployment_count"` // 部署次数
 	SuccessCount    int     `json:"success_count"`    // 成功次数
 	FailureCount    int     `json:"failure_count"`    // 失败次数

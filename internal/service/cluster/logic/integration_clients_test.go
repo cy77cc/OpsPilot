@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	clustersecurity "github.com/cy77cc/OpsPilot/internal/service/cluster/domain/security"
+	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 )
 
 func TestHarborClient_ListProjects(t *testing.T) {

@@ -32,7 +32,7 @@ import "time"
 type Job struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`                                      // 任务 ID
 	Name        string     `gorm:"type:varchar(255);not null" json:"name"`                    // 任务名称
-	Type        string     `gorm:"type:varchar(32);not null;default:'shell'" json:"type"`    // 任务类型 (shell, script)
+	Type        string     `gorm:"type:varchar(32);not null;default:'shell'" json:"type"`     // 任务类型 (shell, script)
 	Command     string     `gorm:"type:text" json:"command"`                                  // 要执行的命令
 	HostIDs     string     `gorm:"type:text" json:"host_ids"`                                 // 目标主机 ID 列表
 	Cron        string     `gorm:"type:varchar(64)" json:"cron"`                              // Cron 调度表达式
@@ -103,12 +103,12 @@ func (JobExecution) TableName() string {
 //   - Message: 日志消息内容
 //   - CreatedAt: 日志创建时间
 type JobLog struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`                            // 日志记录 ID
-	JobID       uint      `gorm:"not null;index" json:"job_id"`                     // 关联的任务 ID
-	ExecutionID uint      `gorm:"index" json:"execution_id"`                        // 关联的执行记录 ID
-	Level       string    `gorm:"type:varchar(16);default:'info'" json:"level"`    // 日志级别 (info, warn, error)
-	Message     string    `gorm:"type:text" json:"message"`                         // 日志消息内容
-	CreatedAt   time.Time `json:"created_at"`                                       // 日志创建时间
+	ID          uint      `gorm:"primaryKey" json:"id"`                         // 日志记录 ID
+	JobID       uint      `gorm:"not null;index" json:"job_id"`                 // 关联的任务 ID
+	ExecutionID uint      `gorm:"index" json:"execution_id"`                    // 关联的执行记录 ID
+	Level       string    `gorm:"type:varchar(16);default:'info'" json:"level"` // 日志级别 (info, warn, error)
+	Message     string    `gorm:"type:text" json:"message"`                     // 日志消息内容
+	CreatedAt   time.Time `json:"created_at"`                                   // 日志创建时间
 }
 
 // TableName 返回 JobLog 模型对应的数据库表名。

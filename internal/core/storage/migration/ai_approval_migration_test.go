@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/model"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai"
 	mysqlDriver "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -53,23 +53,23 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	if !db.Migrator().HasTable(&model.AIToolRiskPolicy{}) {
+	if !db.Migrator().HasTable(&ai.AIToolRiskPolicy{}) {
 		t.Fatal("expected ai_tool_risk_policies table")
 	}
 	for _, column := range []string{"lock_expires_at", "matched_rule_id", "policy_version", "decision_source"} {
-		if !db.Migrator().HasColumn(&model.AIApprovalTask{}, column) {
+		if !db.Migrator().HasColumn(&ai.AIApprovalTask{}, column) {
 			t.Fatalf("expected ai_approval_tasks.%s column", column)
 		}
 	}
 	for _, indexName := range []string{"idx_ai_approval_tasks_lock_expires_at", "idx_ai_approval_tasks_matched_rule_id"} {
-		if !db.Migrator().HasIndex(&model.AIApprovalTask{}, indexName) {
+		if !db.Migrator().HasIndex(&ai.AIApprovalTask{}, indexName) {
 			t.Fatalf("expected ai_approval_tasks.%s index", indexName)
 		}
 	}
-	if !db.Migrator().HasTable(&model.AIApprovalOutboxEvent{}) {
+	if !db.Migrator().HasTable(&ai.AIApprovalOutboxEvent{}) {
 		t.Fatal("expected ai_approval_outbox_events table")
 	}
-	if !db.Migrator().HasColumn(&model.AIApprovalOutboxEvent{}, "tool_call_id") {
+	if !db.Migrator().HasColumn(&ai.AIApprovalOutboxEvent{}, "tool_call_id") {
 		t.Fatal("expected ai_approval_outbox_events.tool_call_id column")
 	}
 	for _, indexName := range []string{
@@ -79,7 +79,7 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 		"idx_ai_approval_outbox_events_session_id",
 		"idx_ai_approval_outbox_events_tool_call_id",
 	} {
-		if !db.Migrator().HasIndex(&model.AIApprovalOutboxEvent{}, indexName) {
+		if !db.Migrator().HasIndex(&ai.AIApprovalOutboxEvent{}, indexName) {
 			t.Fatalf("expected ai_approval_outbox_events.%s index", indexName)
 		}
 	}
@@ -88,13 +88,13 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 		t.Fatalf("rollback one migration: %v", err)
 	}
 
-	if !db.Migrator().HasTable(&model.AIApprovalOutboxEvent{}) {
+	if !db.Migrator().HasTable(&ai.AIApprovalOutboxEvent{}) {
 		t.Fatal("expected ai_approval_outbox_events table to remain after first rollback")
 	}
-	if db.Migrator().HasColumn(&model.AIApprovalOutboxEvent{}, "tool_call_id") {
+	if db.Migrator().HasColumn(&ai.AIApprovalOutboxEvent{}, "tool_call_id") {
 		t.Fatal("expected ai_approval_outbox_events.tool_call_id to be removed after first rollback")
 	}
-	if !db.Migrator().HasTable(&model.AIToolRiskPolicy{}) {
+	if !db.Migrator().HasTable(&ai.AIToolRiskPolicy{}) {
 		t.Fatal("expected ai_tool_risk_policies table to remain after first rollback")
 	}
 
@@ -102,7 +102,7 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 		t.Fatalf("rollback second migration: %v", err)
 	}
 
-	if db.Migrator().HasTable(&model.AIApprovalOutboxEvent{}) {
+	if db.Migrator().HasTable(&ai.AIApprovalOutboxEvent{}) {
 		t.Fatal("expected ai_approval_outbox_events table to be removed after second rollback")
 	}
 
@@ -110,20 +110,20 @@ func TestAIApprovalRiskPolicyMigration(t *testing.T) {
 		t.Fatalf("rollback third migration: %v", err)
 	}
 
-	if db.Migrator().HasTable(&model.AIToolRiskPolicy{}) {
+	if db.Migrator().HasTable(&ai.AIToolRiskPolicy{}) {
 		t.Fatal("expected ai_tool_risk_policies table to be removed after third rollback")
 	}
 	for _, column := range []string{"lock_expires_at", "matched_rule_id", "policy_version", "decision_source"} {
-		if db.Migrator().HasColumn(&model.AIApprovalTask{}, column) {
+		if db.Migrator().HasColumn(&ai.AIApprovalTask{}, column) {
 			t.Fatalf("expected ai_approval_tasks.%s column to be removed after second rollback", column)
 		}
 	}
 	for _, indexName := range []string{"idx_ai_approval_tasks_lock_expires_at", "idx_ai_approval_tasks_matched_rule_id"} {
-		if db.Migrator().HasIndex(&model.AIApprovalTask{}, indexName) {
+		if db.Migrator().HasIndex(&ai.AIApprovalTask{}, indexName) {
 			t.Fatalf("expected ai_approval_tasks.%s index to be removed after second rollback", indexName)
 		}
 	}
-	if !db.Migrator().HasTable(&model.AIApprovalTask{}) {
+	if !db.Migrator().HasTable(&ai.AIApprovalTask{}) {
 		t.Fatal("expected ai_approval_tasks table to remain after rollback")
 	}
 }

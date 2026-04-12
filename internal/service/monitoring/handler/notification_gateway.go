@@ -22,13 +22,13 @@ import (
 //
 // 包含完整的告警信息，由 Prometheus Alertmanager 发送。
 type AlertmanagerWebhook struct {
-	Receiver          string              `json:"receiver"`           // 接收器名称
-	Status            string              `json:"status"`             // 整体状态 (firing/resolved)
-	Alerts            []AlertmanagerAlert `json:"alerts"`             // 告警列表
-	GroupLabels       map[string]string   `json:"groupLabels"`        // 分组标签
-	CommonLabels      map[string]string   `json:"commonLabels"`       // 公共标签
-	CommonAnnotations map[string]string   `json:"commonAnnotations"`  // 公共注解
-	ExternalURL       string              `json:"externalURL"`        // Alertmanager 外部 URL
+	Receiver          string              `json:"receiver"`          // 接收器名称
+	Status            string              `json:"status"`            // 整体状态 (firing/resolved)
+	Alerts            []AlertmanagerAlert `json:"alerts"`            // 告警列表
+	GroupLabels       map[string]string   `json:"groupLabels"`       // 分组标签
+	CommonLabels      map[string]string   `json:"commonLabels"`      // 公共标签
+	CommonAnnotations map[string]string   `json:"commonAnnotations"` // 公共注解
+	ExternalURL       string              `json:"externalURL"`       // Alertmanager 外部 URL
 }
 
 // AlertmanagerAlert 是单个 Alertmanager 告警的结构。
@@ -49,7 +49,7 @@ type AlertmanagerAlert struct {
 // 接收 Alertmanager Webhook 请求，处理告警事件的生命周期，
 // 并异步分发给所有启用的通知渠道。
 type NotificationGateway struct {
-	svcCtx    *svc.ServiceContext        // 服务上下文
+	svcCtx    *svc.ServiceContext            // 服务上下文
 	providers *notifhandler.ProviderRegistry // 通知提供者注册表
 }
 

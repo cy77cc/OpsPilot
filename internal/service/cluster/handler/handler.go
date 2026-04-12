@@ -97,7 +97,7 @@ func (gitopsReleaseRow) TableName() string { return "gitops_app_releases" }
 //   - 管理缓存策略
 //   - 协调 Repository 和业务逻辑
 type Handler struct {
-	svcCtx *svc.ServiceContext // 服务上下文
+	svcCtx *svc.ServiceContext      // 服务上下文
 	repo   *clusterlogic.Repository // 数据访问层
 	trivy  clusterintegration.TrivyClient
 	argocd clusterintegration.ArgoCDClient

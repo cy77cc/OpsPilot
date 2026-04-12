@@ -21,14 +21,14 @@ const (
 )
 
 type AdmissionPolicy struct {
-	ID        uint      `gorm:"primaryKey;column:id" json:"id"`
-	ClusterID uint      `gorm:"column:cluster_id;not null;index" json:"cluster_id"`
-	PolicyName string   `gorm:"column:policy_name;type:varchar(191);not null;index" json:"policy_name"`
-	Version   string    `gorm:"column:version;type:varchar(64);not null" json:"version"`
-	Status    string    `gorm:"column:status;type:varchar(32);not null;default:'draft';index" json:"status"`
-	ContentJSON string  `gorm:"column:content_json;type:text;not null;default:''" json:"content_json"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID          uint      `gorm:"primaryKey;column:id" json:"id"`
+	ClusterID   uint      `gorm:"column:cluster_id;not null;index" json:"cluster_id"`
+	PolicyName  string    `gorm:"column:policy_name;type:varchar(191);not null;index" json:"policy_name"`
+	Version     string    `gorm:"column:version;type:varchar(64);not null" json:"version"`
+	Status      string    `gorm:"column:status;type:varchar(32);not null;default:'draft';index" json:"status"`
+	ContentJSON string    `gorm:"column:content_json;type:text;not null;default:''" json:"content_json"`
+	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (AdmissionPolicy) TableName() string { return "admission_policies" }

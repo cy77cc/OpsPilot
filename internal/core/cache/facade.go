@@ -25,9 +25,9 @@ const (
 
 // L2Store 定义二级缓存接口。
 type L2Store interface {
-	Get(ctx context.Context, key string) (string, error)          // 获取缓存
+	Get(ctx context.Context, key string) (string, error)                      // 获取缓存
 	Set(ctx context.Context, key string, val string, ttl time.Duration) error // 设置缓存
-	Delete(ctx context.Context, keys ...string) error             // 删除缓存
+	Delete(ctx context.Context, keys ...string) error                         // 删除缓存
 }
 
 // Stats 包含缓存命中率统计。
@@ -44,7 +44,7 @@ type Stats struct {
 // 所有计数器使用 atomic 保证线程安全。
 type Facade struct {
 	l1 *expirable.LRU[string, string] // 内存 LRU 缓存
-	l2 L2Store                         // 二级缓存存储
+	l2 L2Store                        // 二级缓存存储
 
 	l1Hits        atomic.Int64 // L1 命中计数
 	l2Hits        atomic.Int64 // L2 命中计数

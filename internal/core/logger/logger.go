@@ -10,16 +10,16 @@ import (
 
 // Logger 是统一的结构化日志接口。
 type Logger interface {
-	Debug(msg string, fields ...Field)                               // 记录调试级别日志
-	Debugf(format string, a []any, fields ...Field)                   // 记录格式化调试日志
-	Info(msg string, fields ...Field)                                 // 记录信息级别日志
-	Infof(format string, a []any, fields ...Field)                    // 记录格式化信息日志
-	Warn(msg string, fields ...Field)                                 // 记录警告级别日志
-	Warnf(msg string, a []any, fields ...Field)                       // 记录格式化警告日志
-	Error(msg string, fields ...Field)                                // 记录错误级别日志
-	Errorf(msg string, a []any, fields ...Field)                      // 记录格式化错误日志
-	With(fields ...Field) Logger                                      // 创建带有固定字段的子 Logger
-	WithContext(ctx context.Context) Logger                           // 创建带有上下文信息的子 Logger
+	Debug(msg string, fields ...Field)              // 记录调试级别日志
+	Debugf(format string, a []any, fields ...Field) // 记录格式化调试日志
+	Info(msg string, fields ...Field)               // 记录信息级别日志
+	Infof(format string, a []any, fields ...Field)  // 记录格式化信息日志
+	Warn(msg string, fields ...Field)               // 记录警告级别日志
+	Warnf(msg string, a []any, fields ...Field)     // 记录格式化警告日志
+	Error(msg string, fields ...Field)              // 记录错误级别日志
+	Errorf(msg string, a []any, fields ...Field)    // 记录格式化错误日志
+	With(fields ...Field) Logger                    // 创建带有固定字段的子 Logger
+	WithContext(ctx context.Context) Logger         // 创建带有上下文信息的子 Logger
 }
 
 // std 是全局 Logger 实例。

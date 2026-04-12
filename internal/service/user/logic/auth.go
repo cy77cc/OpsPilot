@@ -13,8 +13,8 @@ import (
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	"github.com/cy77cc/OpsPilot/internal/model"
 	"gorm.io/gorm"
 )
 

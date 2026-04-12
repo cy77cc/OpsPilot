@@ -44,7 +44,7 @@ type ClusterReleaseRecord struct {
 	Revision    int       `gorm:"column:revision;not null;default:1" json:"revision"`                            // 版本号
 	Status      string    `gorm:"column:status;type:varchar(32);not null;default:'pending'" json:"status"`       // 状态: pending/running/succeeded/failed
 	Operator    string    `gorm:"column:operator;type:varchar(64);not null;default:''" json:"operator"`          // 操作人
-	PayloadJSON string    `gorm:"column:payload_json;type:text" json:"payload_json"`                         // 发布参数 (JSON)
+	PayloadJSON string    `gorm:"column:payload_json;type:text" json:"payload_json"`                             // 发布参数 (JSON)
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                            // 创建时间
 	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                            // 更新时间
 }
@@ -72,7 +72,7 @@ type ClusterHPAPolicy struct {
 	MaxReplicas       int32     `gorm:"column:max_replicas;not null;default:1" json:"max_replicas"`                                       // 最大副本数
 	CPUUtilization    *int32    `gorm:"column:cpu_utilization" json:"cpu_utilization,omitempty"`                                          // CPU 使用率阈值 (%)
 	MemoryUtilization *int32    `gorm:"column:memory_utilization" json:"memory_utilization,omitempty"`                                    // 内存使用率阈值 (%)
-	RawPolicyJSON     string    `gorm:"column:raw_policy_json;type:text" json:"raw_policy_json"`                                      // 原始策略 (JSON)
+	RawPolicyJSON     string    `gorm:"column:raw_policy_json;type:text" json:"raw_policy_json"`                                          // 原始策略 (JSON)
 	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                               // 创建时间
 	UpdatedAt         time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                               // 更新时间
 }
@@ -95,7 +95,7 @@ type ClusterQuotaPolicy struct {
 	Namespace string    `gorm:"column:namespace;type:varchar(128);not null;index:idx_cluster_ns_quota,priority:2" json:"namespace"` // 命名空间
 	Name      string    `gorm:"column:name;type:varchar(128);not null;index:idx_cluster_ns_quota,priority:3" json:"name"`           // 策略名称
 	Type      string    `gorm:"column:type;type:varchar(32);not null;default:'resourcequota'" json:"type"`                          // 类型: resourcequota/limitrange
-	SpecJSON  string    `gorm:"column:spec_json;type:text" json:"spec_json"`                                                    // 配置规格 (JSON)
+	SpecJSON  string    `gorm:"column:spec_json;type:text" json:"spec_json"`                                                        // 配置规格 (JSON)
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                                 // 创建时间
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                                 // 更新时间
 }

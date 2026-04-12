@@ -16,25 +16,25 @@ import (
 //
 // 包含所有模块的配置，通过 mapstructure 标签映射配置文件。
 type Config struct {
-	App          App          `mapstructure:"app"`           // 应用基本配置
-	Server       Server       `mapstructure:"server"`        // HTTP 服务器配置
-	Log          Log          `mapstructure:"log"`           // 日志配置
-	MySQL        MySQL        `mapstructure:"mysql"`         // MySQL 数据库配置
-	Postgres     Postgres     `mapstructure:"postgres"`      // PostgreSQL 数据库配置
-	SQLite       SQLite       `mapstructure:"sqlite"`        // SQLite 数据库配置
-	Redis        Redis        `mapstructure:"redis"`         // Redis 缓存配置
-	JWT          JWT          `mapstructure:"jwt"`           // JWT 认证配置
-	Cors         Cors         `mapstructure:"cors"`          // CORS 跨域配置
-	RateLimit    RateLimit    `mapstructure:"rate_limit"`    // 限流配置
-	Pprof        Pprof        `mapstructure:"pprof"`         // pprof 性能分析配置
-	Metrics      Metrics      `mapstructure:"metrics"`       // 指标暴露配置
-	Security     Security     `mapstructure:"security"`      // 安全配置
-	LLM          LLM          `mapstructure:"llm"`           // 大语言模型配置
-	AI           AI           `mapstructure:"ai"`            // AI 功能配置
-	Embedder     Embedder     `mapstructure:"embedder"`      // 向量嵌入模型配置
-	Milvus       Milvus       `mapstructure:"milvus"`        // Milvus 向量数据库配置
-	Prometheus   Prometheus   `mapstructure:"prometheus"`    // Prometheus 监控配置
-	Swagger      Swagger      `mapstructure:"swagger"`       // Swagger API 文档配置
+	App        App        `mapstructure:"app"`        // 应用基本配置
+	Server     Server     `mapstructure:"server"`     // HTTP 服务器配置
+	Log        Log        `mapstructure:"log"`        // 日志配置
+	MySQL      MySQL      `mapstructure:"mysql"`      // MySQL 数据库配置
+	Postgres   Postgres   `mapstructure:"postgres"`   // PostgreSQL 数据库配置
+	SQLite     SQLite     `mapstructure:"sqlite"`     // SQLite 数据库配置
+	Redis      Redis      `mapstructure:"redis"`      // Redis 缓存配置
+	JWT        JWT        `mapstructure:"jwt"`        // JWT 认证配置
+	Cors       Cors       `mapstructure:"cors"`       // CORS 跨域配置
+	RateLimit  RateLimit  `mapstructure:"rate_limit"` // 限流配置
+	Pprof      Pprof      `mapstructure:"pprof"`      // pprof 性能分析配置
+	Metrics    Metrics    `mapstructure:"metrics"`    // 指标暴露配置
+	Security   Security   `mapstructure:"security"`   // 安全配置
+	LLM        LLM        `mapstructure:"llm"`        // 大语言模型配置
+	AI         AI         `mapstructure:"ai"`         // AI 功能配置
+	Embedder   Embedder   `mapstructure:"embedder"`   // 向量嵌入模型配置
+	Milvus     Milvus     `mapstructure:"milvus"`     // Milvus 向量数据库配置
+	Prometheus Prometheus `mapstructure:"prometheus"` // Prometheus 监控配置
+	Swagger    Swagger    `mapstructure:"swagger"`    // Swagger API 文档配置
 }
 
 // App 包含应用程序基本配置。

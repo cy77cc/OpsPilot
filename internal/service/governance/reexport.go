@@ -55,9 +55,9 @@ type Policy = logic.Policy
 // logic 包函数重新导出
 
 var (
-	WithOperationContext    = logic.WithOperationContext
+	WithOperationContext        = logic.WithOperationContext
 	OperationContextFromContext = logic.OperationContextFromContext
-	MergeScopeFromContext   = logic.MergeScopeFromContext
+	MergeScopeFromContext       = logic.MergeScopeFromContext
 )
 
 // === handler 包类型和函数重新导出 ===
@@ -84,9 +84,9 @@ type AuditService = handler.AuditService
 type Redactor = handler.Redactor
 
 var (
-	NewGovError    = handler.NewGovError
-	IsGovError     = handler.IsGovError
-	NewService     = handler.NewService
-	BuildEnvelope  = handler.BuildEnvelope
-	IsCode         = handler.IsCode
+	NewGovError   = handler.NewGovError
+	IsGovError    = handler.IsGovError
+	NewService    = handler.NewService
+	BuildEnvelope = handler.BuildEnvelope
+	IsCode        = handler.IsCode
 )

@@ -16,9 +16,9 @@ import (
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/service/host/logic"
-	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -26,17 +26,17 @@ import (
 
 // runtimePackageManifest 是运行时安装包清单结构。
 type runtimePackageManifest struct {
-	Runtime         string `json:"runtime"`          // 运行时类型
-	Version         string `json:"version"`          // 版本
-	PackageFile     string `json:"package_file"`     // 安装包文件名
-	SHA256          string `json:"sha256"`           // 校验和
-	PreflightScript string `json:"preflight_script"` // 预检查脚本
-	InstallScript   string `json:"install_script"`   // 安装脚本
-	VerifyScript    string `json:"verify_script"`    // 验证脚本
-	UninstallScript string `json:"uninstall_script"` // 卸载脚本
+	Runtime         string `json:"runtime"`           // 运行时类型
+	Version         string `json:"version"`           // 版本
+	PackageFile     string `json:"package_file"`      // 安装包文件名
+	SHA256          string `json:"sha256"`            // 校验和
+	PreflightScript string `json:"preflight_script"`  // 预检查脚本
+	InstallScript   string `json:"install_script"`    // 安装脚本
+	VerifyScript    string `json:"verify_script"`     // 验证脚本
+	UninstallScript string `json:"uninstall_script"`  // 卸载脚本
 	PreflightCmd    string `json:"preflight_command"` // 预检查命令
-	InstallCmd      string `json:"install_command"`  // 安装命令
-	VerifyCmd       string `json:"verify_command"`   // 验证命令
+	InstallCmd      string `json:"install_command"`   // 安装命令
+	VerifyCmd       string `json:"verify_command"`    // 验证命令
 	UninstallCmd    string `json:"uninstall_command"` // 卸载命令
 }
 

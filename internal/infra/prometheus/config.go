@@ -11,12 +11,12 @@ import (
 
 // Config 是 Prometheus 客户端配置。
 type Config struct {
-	Address       string        `yaml:"address" json:"address"`             // Prometheus 地址 (如 http://prometheus:9090)
-	Host          string        `yaml:"host" json:"host"`                   // Prometheus 主机
-	Port          string        `yaml:"port" json:"port"`                   // Prometheus 端口
-	Timeout       time.Duration `yaml:"timeout" json:"timeout"`             // 请求超时
+	Address       string        `yaml:"address" json:"address"`               // Prometheus 地址 (如 http://prometheus:9090)
+	Host          string        `yaml:"host" json:"host"`                     // Prometheus 主机
+	Port          string        `yaml:"port" json:"port"`                     // Prometheus 端口
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`               // 请求超时
 	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent"` // 最大并发数
-	RetryCount    int           `yaml:"retry_count" json:"retry_count"`     // 重试次数
+	RetryCount    int           `yaml:"retry_count" json:"retry_count"`       // 重试次数
 }
 
 // Normalize 规范化配置，填充默认值。
