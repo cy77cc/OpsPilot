@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/todo"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/todo"
 )
 
 // EventType 事件类型枚举。

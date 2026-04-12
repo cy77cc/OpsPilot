@@ -31,8 +31,8 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/approval"
-	host "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/hostpolicy"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
+	host "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/hostpolicy"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 )
 

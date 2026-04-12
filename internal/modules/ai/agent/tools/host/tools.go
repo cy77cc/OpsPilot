@@ -22,8 +22,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
-	common "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/approval"
-	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/hostpolicy"
+	common "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
+	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/hostpolicy"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )

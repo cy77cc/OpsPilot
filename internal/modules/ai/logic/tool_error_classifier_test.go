@@ -1,4 +1,4 @@
-package logic_test
+package logic
 
 import (
 	"encoding/json"

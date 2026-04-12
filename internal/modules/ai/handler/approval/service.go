@@ -2,7 +2,6 @@ package approvalhandler
 
 import (
 	"context"
-	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"

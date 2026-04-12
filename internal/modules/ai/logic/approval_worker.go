@@ -23,8 +23,8 @@ import (
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/approval"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/runtime"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"gorm.io/gorm"
 )

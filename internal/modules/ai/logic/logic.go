@@ -29,7 +29,7 @@ import (
 	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
 	aidaocheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/runtime"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"

@@ -1,4 +1,4 @@
-package logic_test
+package logic
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
