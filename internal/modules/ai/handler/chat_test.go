@@ -15,10 +15,10 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
-	airouter "github.com/cy77cc/OpsPilot/internal/modules/ai/router"
+	airouter "github.com/cy77cc/OpsPilot/internal/modules/ai/routing"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 )

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	"github.com/gin-gonic/gin"
 )
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

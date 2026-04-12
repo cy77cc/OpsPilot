@@ -9,7 +9,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
 )
 
 func TestClassifyRecoverableToolInvocationError(t *testing.T) {

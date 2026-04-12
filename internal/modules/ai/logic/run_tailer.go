@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 )
 
 const (

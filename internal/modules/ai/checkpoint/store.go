@@ -21,7 +21,7 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/redis/go-redis/v9"
 )

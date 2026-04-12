@@ -8,7 +8,7 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	common "github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
+	common "github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

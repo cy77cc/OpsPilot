@@ -20,9 +20,9 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/common/approval"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"gorm.io/gorm"
 )

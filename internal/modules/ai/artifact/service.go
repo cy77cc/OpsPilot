@@ -1,8 +1,6 @@
 package artifact
 
-import (
-	"strings"
-)
+import "strings"
 
 const (
 	ModeInline   = "inline"
@@ -50,10 +48,8 @@ func (s *Service) BuildReference(content, preferredArtifactID string) Result {
 	}
 
 	return Result{
-		Mode:    ModeArtifact,
-		Summary: summary,
-		// Scaffolding only: no resolvable artifact handle is emitted until
-		// a persistent artifact backend exists.
+		Mode:       ModeArtifact,
+		Summary:    summary,
 		ArtifactID: strings.TrimSpace(preferredArtifactID),
 	}
 }

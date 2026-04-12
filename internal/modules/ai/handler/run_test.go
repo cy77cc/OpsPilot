@@ -9,8 +9,8 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	serviceruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
+	serviceruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
 	"github.com/gin-gonic/gin"
 )
 

@@ -20,7 +20,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	aiclient "github.com/cy77cc/OpsPilot/internal/modules/ai/provider/client"
+	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
