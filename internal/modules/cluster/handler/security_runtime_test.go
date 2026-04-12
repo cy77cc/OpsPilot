@@ -11,7 +11,7 @@ import (
 	"time"
 
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -230,7 +230,7 @@ type runtimeAlertsHTTPResponse struct {
 	Msg  string `json:"msg"`
 	Data struct {
 		List  []clustermodel.RuntimeSecurityEvent `json:"list"`
-		Total int                          `json:"total"`
+		Total int                                 `json:"total"`
 	} `json:"data"`
 }
 

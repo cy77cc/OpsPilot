@@ -1,16 +1,18 @@
-// Package ai 实现 AI 模块的 HTTP 路由注册。
+// Package api 实现 AI 模块的 HTTP 路由注册。
 //
 // 本文件注册 AI 模块的所有 HTTP 路由:
 //   - 用户路由: /api/v1/ai/* (需要 JWT 认证)
 //   - 管理路由: /api/v1/admin/ai/* (需要 JWT + Casbin 权限)
-package aiapi
+package api
 
 import (
 	"context"
 
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/approval"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
+	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
+	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
+	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
+	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/approval"
 	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -33,8 +35,8 @@ import (
 //   - POST /ai/approvals/:id/submit - 提交审批结果
 //   - POST /ai/approvals/:id/retry-resume - 重新入队可重试恢复
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	chatHandler := chat.NewHTTPHandler(chat.NewService(svcCtx))
-	approvalHandler := approval.NewHTTPHandler(approval.NewService(svcCtx))
+	chatHandler := aichathandler.NewHTTPHandler(aichat.NewService(svcCtx))
+	approvalHandler := aiapprovalhandler.NewHTTPHandler(aiapproval.NewService(svcCtx))
 	approvalHandler.StartApprovalWorker(context.Background())
 	approvalHandler.StartApprovalExpirer(context.Background())
 

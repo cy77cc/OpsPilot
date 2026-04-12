@@ -9,8 +9,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
-	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
+	llmapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
+	llmmodel "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -22,7 +22,18 @@ func TestAdminLLMProviderRoutesRegistered(t *testing.T) {
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
-	aiapi.RegisterAdminAIHandlers(v1, &svc.ServiceContext{})
+	h := llmapi.NewHTTPHandler(&svc.ServiceContext{})
+	models := v1.Group("/admin/ai/models")
+	{
+		models.GET("", h.ListModels)
+		models.GET("/:id", h.GetModel)
+		models.POST("", h.CreateModel)
+		models.PUT("/:id", h.UpdateModel)
+		models.PUT("/:id/default", h.SetDefaultModel)
+		models.DELETE("/:id", h.DeleteModel)
+		models.POST("/import/preview", h.PreviewImport)
+		models.POST("/import", h.ImportModels)
+	}
 
 	routes := r.Routes()
 	seen := make(map[string]bool, len(routes))
@@ -51,7 +62,7 @@ func TestLLMProviderHandler_CreateAndListModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := model.NewHTTPHandlerWithDB(db)
+	h := llmapi.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -79,7 +90,7 @@ func TestLLMProviderHandler_CreateAndListModels(t *testing.T) {
 		t.Fatal("expected masked api key in create response")
 	}
 
-	var stored model.LLMProviderRecord
+	var stored llmmodel.AILLMProvider
 	if err := db.First(&stored).Error; err != nil {
 		t.Fatalf("reload stored provider: %v", err)
 	}
@@ -119,7 +130,7 @@ func TestLLMProviderHandler_PreviewImportInvalidJSONReturnsLLMImportInvalidJSON(
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := model.NewHTTPHandlerWithDB(db)
+	h := llmapi.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -144,7 +155,7 @@ func TestLLMProviderHandler_PreviewImportValidationFailureReturnsLLMImportValida
 	gin.SetMode(gin.TestMode)
 	setHandlerTestEncryptionKey(t)
 	db := newLLMProviderHandlerTestDB(t)
-	h := model.NewHTTPHandlerWithDB(db)
+	h := llmapi.NewHTTPHandlerWithDB(db)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -172,7 +183,7 @@ func newLLMProviderHandlerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.LLMProviderRecord{}); err != nil {
+	if err := db.AutoMigrate(&llmmodel.AILLMProvider{}); err != nil {
 		t.Fatalf("auto migrate provider record: %v", err)
 	}
 	return db

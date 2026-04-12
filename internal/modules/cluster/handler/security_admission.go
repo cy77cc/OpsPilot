@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/modules/cluster/integration"
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

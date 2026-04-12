@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	governanceapproval "github.com/cy77cc/OpsPilot/internal/modules/governance/approval"
 	governanceaudit "github.com/cy77cc/OpsPilot/internal/modules/governance/audit"
 	governancepolicy "github.com/cy77cc/OpsPilot/internal/modules/governance/policy"

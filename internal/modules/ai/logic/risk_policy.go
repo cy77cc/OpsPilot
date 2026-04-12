@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
 // MatchRiskPolicy 选择最佳匹配的风险策略。

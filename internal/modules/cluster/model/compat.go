@@ -17,9 +17,9 @@ type ClusterCredential = deploymentmodel.ClusterCredential
 type DeploymentRelease = deploymentmodel.DeploymentRelease
 type DeploymentTarget = deploymentmodel.DeploymentTarget
 
-type OperationApproval = governancemodel.AuditLog
-type OperationAudit = governancemodel.AuditLog
-type ClusterOperationAuditRecord = governancemodel.AuditLog
+type OperationApproval = governancemodel.OperationApproval
+type OperationAudit = governancemodel.OperationAudit
+type ClusterOperationAuditRecord = governancemodel.OperationAudit
 
 type Project = projectmodel.Project
 type Service = projectmodel.Service

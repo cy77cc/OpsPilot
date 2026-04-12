@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 )
 
 func TestResolver_UsesTeamEnvironmentAndExtensibleContext(t *testing.T) {

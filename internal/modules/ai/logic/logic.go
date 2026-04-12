@@ -21,10 +21,16 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	aimodule "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
+	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
+	aidaocheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/checkpoint"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -51,7 +57,7 @@ type projectedRunUpdate struct {
 	IntentType    string
 }
 
-type chatShell struct {
+type ChatShell struct {
 	SessionID        string
 	Scene            string
 	Run              *ai.AIRun
@@ -80,22 +86,22 @@ type projectionBlockMeta struct {
 var ErrInvalidProjectionCursor = errors.New("invalid projection cursor")
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	return ai.InitDeepAgent(ctx)
+	return aimodule.InitDeepAgent(ctx)
 }
 
 // Logic 封装 AI 模块的核心业务逻辑。
 type Logic struct {
 	svcCtx             *svc.ServiceContext
-	ChatDAO            *aidao.AIChatDAO
+	ChatDAO            *aidaochat.AIChatDAO
 	RunDAO             *aidao.AIRunDAO
-	DiagnosisReportDAO *aidao.AIDiagnosisReportDAO
-	ApprovalDAO        *aidao.AIApprovalTaskDAO
+	DiagnosisReportDAO *aidaodiagnosis.AIDiagnosisReportDAO
+	ApprovalDAO        *aidaoapproval.AIApprovalTaskDAO
 	RunEventDAO        *aidao.AIRunEventDAO
 	RunProjectionDAO   *aidao.AIRunProjectionDAO
 	RunContentDAO      *aidao.AIRunContentDAO
 	CheckpointStore    adk.CheckPointStore
 	AIRouter           adk.ResumableAgent
-	MigrationFlags     ApprovalEventMigrationFlags
+	MigrationFlags     event.ApprovalEventMigrationFlags
 	projectionGroup    singleflight.Group
 }
 
@@ -113,16 +119,16 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 
 	return &Logic{
 		svcCtx:             svcCtx,
-		ChatDAO:            aidao.NewAIChatDAO(svcCtx.DB),
+		ChatDAO:            aidaochat.NewAIChatDAO(svcCtx.DB),
 		RunDAO:             aidao.NewAIRunDAO(svcCtx.DB),
-		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(svcCtx.DB),
-		ApprovalDAO:        aidao.NewAIApprovalTaskDAO(svcCtx.DB),
+		DiagnosisReportDAO: aidaodiagnosis.NewAIDiagnosisReportDAO(svcCtx.DB),
+		ApprovalDAO:        aidaoapproval.NewAIApprovalTaskDAO(svcCtx.DB),
 		RunEventDAO:        aidao.NewAIRunEventDAO(svcCtx.DB),
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(svcCtx.DB),
 		RunContentDAO:      aidao.NewAIRunContentDAO(svcCtx.DB),
-		CheckpointStore:    aicheckpoint.NewStore(aidao.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
+		CheckpointStore:    aicheckpoint.NewStore(aidaocheckpoint.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
-		MigrationFlags:     NewApprovalEventMigrationFlagsFromEnv(),
+		MigrationFlags:     event.NewApprovalEventMigrationFlagsFromEnv(),
 	}
 }
 
@@ -132,10 +138,10 @@ func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 	}
 	return &Logic{
 		svcCtx:             &svc.ServiceContext{DB: db},
-		ChatDAO:            aidao.NewAIChatDAO(db),
+		ChatDAO:            aidaochat.NewAIChatDAO(db),
 		RunDAO:             aidao.NewAIRunDAO(db),
-		DiagnosisReportDAO: aidao.NewAIDiagnosisReportDAO(db),
-		ApprovalDAO:        aidao.NewAIApprovalTaskDAO(db),
+		DiagnosisReportDAO: aidaodiagnosis.NewAIDiagnosisReportDAO(db),
+		ApprovalDAO:        aidaoapproval.NewAIApprovalTaskDAO(db),
 		RunEventDAO:        aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(db),
 		RunContentDAO:      aidao.NewAIRunContentDAO(db),
@@ -300,8 +306,8 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 	return nil
 }
 
-func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (chatShell, error) {
-	shell := chatShell{}
+func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (ChatShell, error) {
+	shell := ChatShell{}
 	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		sessionID = uuid.NewString()
@@ -359,7 +365,7 @@ func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (chatShell
 		return shell, fmt.Errorf("create run shell: %w", err)
 	}
 
-	shell = chatShell{
+	shell = ChatShell{
 		SessionID: sessionID,
 		Scene:     scene,
 		Run:       run,
@@ -387,7 +393,7 @@ func (l *Logic) ensureChatShell(ctx context.Context, input ChatInput) (chatShell
 	return shell, nil
 }
 
-func (l *Logic) emitTerminalFailure(ctx context.Context, shell chatShell, seqCounter *int, internalErr error, summaryBody string, assistantBody string, emit EventEmitter) error {
+func (l *Logic) emitTerminalFailure(ctx context.Context, shell ChatShell, seqCounter *int, internalErr error, summaryBody string, assistantBody string, emit EventEmitter) error {
 	publicError := sanitizeUserFacingError(internalErr)
 	projected := airuntime.NewErrorEvent(shell.Run.ID, errors.New(publicError))
 	eventID, err := l.appendRunEventWithID(ctx, shell.Run.ID, shell.SessionID, seqCounter, projected.Event, projected.Data)
@@ -430,7 +436,7 @@ func decodeRunEventPayload(raw string) (any, error) {
 	return payload, nil
 }
 
-func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell chatShell, emit EventEmitter) {
+func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell ChatShell, emit EventEmitter) {
 	switch shell.Run.Status {
 	case "failed", "failed_runtime":
 		emit("error", map[string]any{
@@ -521,13 +527,13 @@ func (l *Logic) emitExistingShellTerminal(ctx context.Context, shell chatShell, 
 	}
 }
 
-func (l *Logic) finalizeRunCritical(ctx context.Context, shell chatShell, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
+func (l *Logic) finalizeRunCritical(ctx context.Context, shell ChatShell, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
 	if l.svcCtx == nil || l.svcCtx.DB == nil {
 		return nil
 	}
 
 	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		chatDAO := aidao.NewAIChatDAO(tx)
+		chatDAO := aidaochat.NewAIChatDAO(tx)
 		runDAO := aidao.NewAIRunDAO(tx)
 		if err := chatDAO.UpdateMessage(ctx, shell.AssistantMessage.ID, map[string]any{
 			"content": assistantContent,

@@ -14,7 +14,6 @@ import (
 	clustersecurity "github.com/cy77cc/OpsPilot/internal/modules/cluster/domain/security"
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
-	dashboardmodel "github.com/cy77cc/OpsPilot/internal/modules/dashboard/model"
 	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	"gorm.io/gorm"
 )
@@ -60,7 +59,7 @@ func (r *Repository) GetClusterCNIInfo(ctx context.Context, clusterID uint) (Clu
 	}
 
 	info := ClusterCNIInfoRecord{ClusterID: clusterID}
-	var task deploymentclustermodel.ClusterBootstrapTask
+	var task deploymentmodel.ClusterBootstrapTask
 	err := r.db.WithContext(ctx).
 		Where("cluster_id = ?", clusterID).
 		Order("updated_at DESC, created_at DESC, id DESC").
@@ -88,7 +87,7 @@ func (r *Repository) GetPolicyReleaseRecord(ctx context.Context, clusterID, rele
 	}
 
 	releaseKey := strconv.FormatUint(uint64(releaseID), 10)
-	var rows []governanceclustermodel.AuditLog
+	var rows []governancemodel.OperationAudit
 	if err := r.db.WithContext(ctx).
 		Where("domain = ? AND scope_cluster_id = ? AND resource = ? AND resource_id = ?", "cluster", clusterID, PolicyReleaseApprovalResource, releaseKey).
 		Order("id DESC").
@@ -158,8 +157,8 @@ func decodeNestedBool(payload map[string]any, path ...string) bool {
 //
 // 返回: 集群列表，失败返回错误
 func (r *Repository) ListClusters(ctx context.Context, status, source string) ([]ClusterListItem, error) {
-	var clusters []clusterclustermodel.Cluster
-	q := r.db.WithContext(ctx).Model(&clusterclustermodel.Cluster{})
+	var clusters []clustermodel.Cluster
+	q := r.db.WithContext(ctx).Model(&clustermodel.Cluster{})
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -180,7 +179,7 @@ func (r *Repository) ListClusters(ctx context.Context, status, source string) ([
 		for _, c := range clusters {
 			ids = append(ids, c.ID)
 		}
-		if err := r.db.WithContext(ctx).Model(&clusterclustermodel.ClusterNode{}).
+		if err := r.db.WithContext(ctx).Model(&clustermodel.ClusterNode{}).
 			Select("cluster_id, COUNT(1) as count").
 			Where("cluster_id IN ?", ids).
 			Group("cluster_id").
@@ -219,8 +218,8 @@ func (r *Repository) ListClusters(ctx context.Context, status, source string) ([
 //   - id: 集群 ID
 //
 // 返回: 集群模型，不存在返回 ErrRecordNotFound
-func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*clusterclustermodel.Cluster, error) {
-	var row clusterclustermodel.Cluster
+func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*clustermodel.Cluster, error) {
+	var row clustermodel.Cluster
 	if err := r.db.WithContext(ctx).First(&row, id).Error; err != nil {
 		return nil, err
 	}
@@ -235,13 +234,13 @@ func (r *Repository) GetClusterModel(ctx context.Context, id uint) (*clusterclus
 //
 // 返回: 集群详情结构，不存在返回错误
 func (r *Repository) GetClusterDetail(ctx context.Context, id uint) (ClusterDetail, error) {
-	var cluster clusterclustermodel.Cluster
+	var cluster clustermodel.Cluster
 	if err := r.db.WithContext(ctx).First(&cluster, id).Error; err != nil {
 		return ClusterDetail{}, err
 	}
 
 	var nodeCount int64
-	if err := r.db.WithContext(ctx).Model(&clusterclustermodel.ClusterNode{}).Where("cluster_id = ?", cluster.ID).Count(&nodeCount).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&clustermodel.ClusterNode{}).Where("cluster_id = ?", cluster.ID).Count(&nodeCount).Error; err != nil {
 		return ClusterDetail{}, err
 	}
 

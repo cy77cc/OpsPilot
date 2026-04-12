@@ -12,7 +12,7 @@ import (
 	"time"
 
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	governanceapproval "github.com/cy77cc/OpsPilot/internal/modules/governance/approval"
 	governanceaudit "github.com/cy77cc/OpsPilot/internal/modules/governance/audit"
 	"gorm.io/gorm"

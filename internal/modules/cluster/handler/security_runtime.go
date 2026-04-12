@@ -10,7 +10,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	clustersecurity "github.com/cy77cc/OpsPilot/internal/modules/cluster/domain/security"
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -72,9 +72,9 @@ func (h *Handler) IngestRuntimeEvent(c *gin.Context) {
 	var evt clustersecurity.RuntimeIngestEvent
 	var err error
 	switch source {
-	case clusterclustermodel.SecurityEventSourceFalco:
+	case clustermodel.SecurityEventSourceFalco:
 		evt, err = clustersecurity.ParseFalcoEvent(req.Payload)
-	case clusterclustermodel.SecurityEventSourceTetragon:
+	case clustermodel.SecurityEventSourceTetragon:
 		evt, err = clustersecurity.ParseTetragonEvent(req.Payload)
 	default:
 		httpx.BindErr(c, fmt.Errorf("unsupported source: %s", req.Source))
@@ -85,7 +85,7 @@ func (h *Handler) IngestRuntimeEvent(c *gin.Context) {
 		return
 	}
 
-	rec := clusterclustermodel.RuntimeSecurityEvent{
+	rec := clustermodel.RuntimeSecurityEvent{
 		ClusterID:      clusterID,
 		Namespace:      strings.TrimSpace(evt.Namespace),
 		Workload:       strings.TrimSpace(evt.Workload),
@@ -132,7 +132,7 @@ func (h *Handler) ListRuntimeAlerts(c *gin.Context) {
 		query = query.Where("LOWER(severity) = ?", severity)
 	}
 
-	var events []clusterclustermodel.RuntimeSecurityEvent
+	var events []clustermodel.RuntimeSecurityEvent
 	if err := query.
 		Order("id DESC").
 		Limit(pageSize).
@@ -159,7 +159,7 @@ func (h *Handler) GetRuntimeEvent(c *gin.Context) {
 		return
 	}
 
-	var event clusterclustermodel.RuntimeSecurityEvent
+	var event clustermodel.RuntimeSecurityEvent
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Where("cluster_id = ? AND id = ?", clusterID, eventID).First(&event).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			httpx.NotFound(c, "runtime event not found")
@@ -186,7 +186,7 @@ func (h *Handler) ResolveRuntimeAlert(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
-	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&clusterclustermodel.RuntimeSecurityEvent{}).
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Model(&clustermodel.RuntimeSecurityEvent{}).
 		Where("cluster_id = ? AND id = ?", clusterID, alertID).
 		Update("dispose_status", "resolved").Error; err != nil {
 		httpx.ServerErr(c, err)
@@ -212,7 +212,7 @@ func (h *Handler) ContainRuntimeAlert(c *gin.Context) {
 		return
 	}
 
-	var event clusterclustermodel.RuntimeSecurityEvent
+	var event clustermodel.RuntimeSecurityEvent
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).Where("cluster_id = ? AND id = ?", clusterID, alertID).First(&event).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			httpx.NotFound(c, "runtime alert not found")
@@ -249,10 +249,10 @@ func (h *Handler) ContainRuntimeAlert(c *gin.Context) {
 		RequestSummary: map[string]any{"event_id": alertID, "workload": event.Workload},
 	}
 
-	mode := clusterclustermodel.DisposalModeAuto
+	mode := clustermodel.DisposalModeAuto
 	decision := governance.Decision{Allowed: true, State: governance.StateCompleted, Code: governance.CodeSuccess}
 	if strings.TrimSpace(cluster.Source) == ClusterModeExternalManaged {
-		mode = clusterclustermodel.DisposalModeSuggestOnly
+		mode = clustermodel.DisposalModeSuggestOnly
 		decision.Message = "external_managed cluster uses suggest_only containment"
 	} else {
 		decision, err = h.phase3Preflight(c.Request.Context(), intent)

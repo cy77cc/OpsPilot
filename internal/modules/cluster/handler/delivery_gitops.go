@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/modules/governance/model"
+	governance "github.com/cy77cc/OpsPilot/internal/modules/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

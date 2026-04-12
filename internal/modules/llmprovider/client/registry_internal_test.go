@@ -9,8 +9,8 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	domainmodel "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	chatmodel "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
+	llmmodel "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
@@ -55,10 +55,10 @@ func TestGetDefaultChatModel_UsesDatabaseDefaultProvider(t *testing.T) {
 
 	var (
 		calls int
-		seen  []*domainmodel.AILLMProvider
+		seen  []*llmmodel.AILLMProvider
 	)
 	chatmodel.Register("test-default", &capturingFactory{
-		fn: func(_ context.Context, provider *domainmodel.AILLMProvider, _ chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
+		fn: func(_ context.Context, provider *llmmodel.AILLMProvider, _ chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
 			calls++
 			seen = append(seen, provider)
 			return nil, nil
@@ -66,7 +66,7 @@ func TestGetDefaultChatModel_UsesDatabaseDefaultProvider(t *testing.T) {
 	})
 
 	db := newChatModelTestDB(t)
-	seedChatModelProvider(t, db, &domainmodel.AILLMProvider{
+	seedChatModelProvider(t, db, &llmmodel.AILLMProvider{
 		ID:        11,
 		Name:      "Default",
 		Provider:  "test-default",
@@ -77,7 +77,7 @@ func TestGetDefaultChatModel_UsesDatabaseDefaultProvider(t *testing.T) {
 		IsEnabled: true,
 		SortOrder: 100,
 	})
-	seedChatModelProvider(t, db, &domainmodel.AILLMProvider{
+	seedChatModelProvider(t, db, &llmmodel.AILLMProvider{
 		ID:        12,
 		Name:      "Enabled",
 		Provider:  "test-enabled",
@@ -121,7 +121,7 @@ func TestGetDefaultChatModel_UsesRuntimeContextDBWhenNil(t *testing.T) {
 
 	var calls int
 	chatmodel.Register("runtime-default", &capturingFactory{
-		fn: func(_ context.Context, provider *domainmodel.AILLMProvider, _ chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
+		fn: func(_ context.Context, provider *llmmodel.AILLMProvider, _ chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
 			calls++
 			if provider == nil {
 				t.Fatal("expected provider")
@@ -134,7 +134,7 @@ func TestGetDefaultChatModel_UsesRuntimeContextDBWhenNil(t *testing.T) {
 	})
 
 	db := newChatModelTestDB(t)
-	seedChatModelProvider(t, db, &domainmodel.AILLMProvider{
+	seedChatModelProvider(t, db, &llmmodel.AILLMProvider{
 		ID:        21,
 		Name:      "Runtime Default",
 		Provider:  "runtime-default",
@@ -181,15 +181,15 @@ func TestGetDefaultChatModel_FallsBackToConfigModel(t *testing.T) {
 
 type mockFactory struct{}
 
-func (f *mockFactory) Create(context.Context, *domainmodel.AILLMProvider, chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
+func (f *mockFactory) Create(context.Context, *llmmodel.AILLMProvider, chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
 	return nil, nil
 }
 
 type capturingFactory struct {
-	fn func(context.Context, *domainmodel.AILLMProvider, chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error)
+	fn func(context.Context, *llmmodel.AILLMProvider, chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error)
 }
 
-func (f *capturingFactory) Create(ctx context.Context, provider *domainmodel.AILLMProvider, opts chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
+func (f *capturingFactory) Create(ctx context.Context, provider *llmmodel.AILLMProvider, opts chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
 	if f.fn == nil {
 		return nil, nil
 	}
@@ -204,13 +204,13 @@ func newChatModelTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&domainmodel.AILLMProvider{}); err != nil {
+	if err := db.AutoMigrate(&llmmodel.AILLMProvider{}); err != nil {
 		t.Fatalf("migrate tables: %v", err)
 	}
 	return db
 }
 
-func seedChatModelProvider(t *testing.T, db *gorm.DB, provider *domainmodel.AILLMProvider) {
+func seedChatModelProvider(t *testing.T, db *gorm.DB, provider *llmmodel.AILLMProvider) {
 	t.Helper()
 	if err := db.Create(provider).Error; err != nil {
 		t.Fatalf("seed llm provider: %v", err)

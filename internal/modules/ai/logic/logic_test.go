@@ -270,7 +270,7 @@ func TestMarshalProjectedEventIncludesToolApprovalAndRunState(t *testing.T) {
 
 func TestEmitExistingShellTerminal_WaitingApprovalEmitsRunState(t *testing.T) {
 	l := &Logic{}
-	shell := chatShell{
+	shell := ChatShell{
 		Run: &ai.AIRun{
 			ID:     "run-waiting",
 			Status: "waiting_approval",
@@ -349,7 +349,7 @@ func TestEmitExistingShellTerminalReplaysAllPendingApprovals(t *testing.T) {
 	l := &Logic{
 		RunEventDAO: aidao.NewAIRunEventDAO(db),
 	}
-	shell := chatShell{
+	shell := ChatShell{
 		Run: &ai.AIRun{
 			ID:     runID,
 			Status: "waiting_approval",
@@ -420,7 +420,7 @@ func TestEmitExistingShellTerminalReplaysLatestApprovalSnapshotPerCall(t *testin
 	l := &Logic{
 		RunEventDAO: aidao.NewAIRunEventDAO(db),
 	}
-	shell := chatShell{
+	shell := ChatShell{
 		Run: &ai.AIRun{
 			ID:     runID,
 			Status: "waiting_approval",
@@ -470,7 +470,7 @@ func TestEmitExistingShellTerminalCancelledOrExpiredEmitsRunStateSnapshot(t *tes
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			l := &Logic{}
-			shell := chatShell{
+			shell := ChatShell{
 				Run: &ai.AIRun{
 					ID:     "run-terminal",
 					Status: tc.runStatus,
@@ -528,7 +528,7 @@ func TestLegacySuspendedRun_IsIgnoredWhenCutoverEnabled(t *testing.T) {
 	l := &Logic{
 		RunEventDAO: aidao.NewAIRunEventDAO(db),
 	}
-	shell := chatShell{
+	shell := ChatShell{
 		Run: &ai.AIRun{
 			ID:     runID,
 			Status: "waiting_approval",
