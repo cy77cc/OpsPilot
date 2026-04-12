@@ -6,8 +6,8 @@ package model
 import (
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 )
 
 // encryptLLMProviderAPIKey 加密 API Key。

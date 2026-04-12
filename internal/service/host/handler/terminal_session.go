@@ -10,8 +10,8 @@ import (
 	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/httpx"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/websocket"

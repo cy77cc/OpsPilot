@@ -8,7 +8,7 @@
 package jobs
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	jobshandler "github.com/cy77cc/OpsPilot/internal/service/jobs/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

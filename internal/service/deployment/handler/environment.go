@@ -6,7 +6,7 @@ package handler
 import (
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/service/deployment/logic"
 	"github.com/gin-gonic/gin"
 )

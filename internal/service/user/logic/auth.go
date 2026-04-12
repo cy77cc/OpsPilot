@@ -11,10 +11,10 @@ import (
 	"time"
 
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
-	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"gorm.io/gorm"
 )
 

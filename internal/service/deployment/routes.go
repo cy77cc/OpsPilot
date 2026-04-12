@@ -10,7 +10,7 @@
 package deployment
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/service/deployment/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

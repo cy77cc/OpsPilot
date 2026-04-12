@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/gin-gonic/gin"
 )
 

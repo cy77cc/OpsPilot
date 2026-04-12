@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"gopkg.in/yaml.v3"

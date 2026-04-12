@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 )
 
 // previewTokenClaims 是预览令牌的声明信息。

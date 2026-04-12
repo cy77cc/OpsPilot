@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/service"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

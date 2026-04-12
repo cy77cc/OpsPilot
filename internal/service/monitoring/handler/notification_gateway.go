@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"

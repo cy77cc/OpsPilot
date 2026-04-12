@@ -9,7 +9,7 @@
 package cmdb
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	cmdbhandler "github.com/cy77cc/OpsPilot/internal/service/cmdb/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

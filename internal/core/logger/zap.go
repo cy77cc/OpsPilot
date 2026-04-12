@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/gin-gonic/gin"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"

@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/server"
 	"github.com/cy77cc/OpsPilot/storage"
 	"github.com/cy77cc/OpsPilot/storage/migration"

@@ -3,7 +3,7 @@ package model
 import (
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 )
 
 func TestLLMProviderCrypto_RoundTrip(t *testing.T) {

@@ -9,7 +9,7 @@
 package rbac
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	rbachandler "github.com/cy77cc/OpsPilot/internal/service/rbac/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

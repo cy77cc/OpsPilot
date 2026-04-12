@@ -120,6 +120,7 @@ bin/
 .github/prompts/
 .github/skills/
 .github/*.md
+.gemini/
 openspec/
 .omx/
 .tmp/

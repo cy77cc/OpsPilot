@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

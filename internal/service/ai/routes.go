@@ -8,7 +8,7 @@ package ai
 import (
 	"context"
 
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/approval"
 	"github.com/cy77cc/OpsPilot/internal/service/ai/chat"
 	modelhandler "github.com/cy77cc/OpsPilot/internal/service/ai/model"

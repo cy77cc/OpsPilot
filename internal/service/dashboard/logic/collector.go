@@ -9,7 +9,7 @@ import (
 	"time"
 
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	"github.com/cy77cc/OpsPilot/internal/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"

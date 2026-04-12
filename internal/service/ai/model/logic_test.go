@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

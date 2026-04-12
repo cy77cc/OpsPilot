@@ -15,8 +15,8 @@ import (
 	"time"
 
 	cmdbv1 "github.com/cy77cc/OpsPilot/api/cmdb/v1"
-	"github.com/cy77cc/OpsPilot/internal/httpx"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	cmdblogic "github.com/cy77cc/OpsPilot/internal/service/cmdb/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"

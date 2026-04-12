@@ -6,8 +6,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
-	"github.com/cy77cc/OpsPilot/internal/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/service/host/logic"
 	"github.com/gin-gonic/gin"
 )

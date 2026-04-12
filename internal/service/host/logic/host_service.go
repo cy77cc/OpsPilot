@@ -21,14 +21,14 @@ import (
 	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	"github.com/cy77cc/OpsPilot/internal/logger"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/service/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"gorm.io/gorm"
 )
 

@@ -9,8 +9,8 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	casbinmodel "github.com/casbin/casbin/v2/model"
-	"github.com/cy77cc/OpsPilot/internal/middleware"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )

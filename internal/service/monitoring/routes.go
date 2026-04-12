@@ -9,7 +9,7 @@
 package monitoring
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	monitoringhandler "github.com/cy77cc/OpsPilot/internal/service/monitoring/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

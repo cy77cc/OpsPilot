@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	clusterlogic "github.com/cy77cc/OpsPilot/internal/service/cluster/logic"
 	governancelogic "github.com/cy77cc/OpsPilot/internal/service/governance/logic"

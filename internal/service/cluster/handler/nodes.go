@@ -14,7 +14,7 @@ import (
 	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"

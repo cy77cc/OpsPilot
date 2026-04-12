@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	clusterintegration "github.com/cy77cc/OpsPilot/internal/service/cluster/integration"
 	"github.com/cy77cc/OpsPilot/internal/service/governance"

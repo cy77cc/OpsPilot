@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/redis/go-redis/v9"
 )
 

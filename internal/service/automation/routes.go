@@ -10,7 +10,7 @@
 package automation
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	automationhandler "github.com/cy77cc/OpsPilot/internal/service/automation/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

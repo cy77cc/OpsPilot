@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/model"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/service/host/logic"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 )
 
 // applyComposeRelease 执行 Docker Compose 发布。

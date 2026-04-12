@@ -8,11 +8,11 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cy77cc/OpsPilot/internal/ai/chatmodel"
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	domainmodel "github.com/cy77cc/OpsPilot/internal/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/cy77cc/OpsPilot/internal/utils"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

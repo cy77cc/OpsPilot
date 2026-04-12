@@ -6,7 +6,7 @@ package utils
 import (
 	"fmt"
 
-	"github.com/cy77cc/OpsPilot/internal/config"
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"golang.org/x/crypto/scrypt"
 )
 

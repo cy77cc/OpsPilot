@@ -10,7 +10,7 @@
 package cluster
 
 import (
-	"github.com/cy77cc/OpsPilot/internal/middleware"
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	clusterhandler "github.com/cy77cc/OpsPilot/internal/service/cluster/handler"
 	clusterlogic "github.com/cy77cc/OpsPilot/internal/service/cluster/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
