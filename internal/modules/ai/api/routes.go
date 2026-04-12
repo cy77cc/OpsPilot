@@ -10,9 +10,9 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
+	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
-	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/approval"
+	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"

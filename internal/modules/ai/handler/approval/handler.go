@@ -12,7 +12,6 @@ import (
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/approval"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +19,7 @@ import (
 const workerTick = 2 * time.Second
 
 type HTTPHandler struct {
-	svc *approval.Service
+	svc *Service
 
 	workerMu     sync.Mutex
 	workerStart  bool
@@ -31,7 +30,7 @@ type HTTPHandler struct {
 	expirerCancel context.CancelFunc
 }
 
-func NewHTTPHandler(svc *approval.Service) *HTTPHandler {
+func NewHTTPHandler(svc *Service) *HTTPHandler {
 	return &HTTPHandler{svc: svc}
 }
 

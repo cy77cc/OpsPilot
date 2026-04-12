@@ -1,4 +1,4 @@
-package artifact
+package logic
 
 import "strings"
 

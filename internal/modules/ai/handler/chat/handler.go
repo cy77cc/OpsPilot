@@ -12,7 +12,6 @@ import (
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
@@ -20,10 +19,10 @@ import (
 )
 
 type HTTPHandler struct {
-	svc *chat.Service
+	svc *Service
 }
 
-func NewHTTPHandler(svc *chat.Service) *HTTPHandler {
+func NewHTTPHandler(svc *Service) *HTTPHandler {
 	return &HTTPHandler{svc: svc}
 }
 

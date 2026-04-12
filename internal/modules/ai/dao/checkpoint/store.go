@@ -21,7 +21,6 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/redis/go-redis/v9"
 )
@@ -48,7 +47,7 @@ type Metadata struct {
 //
 // 实现双层存储策略：Redis 缓存 + MySQL 持久化。
 type Store struct {
-	dao    *aidao.AICheckpointDAO
+	dao    *AICheckpointDAO
 	redis  redisClient
 	prefix string
 	ttl    time.Duration
@@ -62,7 +61,7 @@ type Store struct {
 //   - prefix: Redis 键前缀（空则使用默认值）
 //
 // 返回: 存储实例
-func NewStore(dao *aidao.AICheckpointDAO, redisClient redisClient, prefix string) *Store {
+func NewStore(dao *AICheckpointDAO, redisClient redisClient, prefix string) *Store {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
 		prefix = defaultPrefix

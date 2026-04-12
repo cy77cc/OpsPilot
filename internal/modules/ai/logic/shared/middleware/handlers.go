@@ -5,7 +5,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/shared/approval"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )

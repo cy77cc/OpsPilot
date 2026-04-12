@@ -1,4 +1,4 @@
-package approval
+package approvalhandler
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
-const workerTick = 2 * time.Second
 
 // Service provides approval-related use cases.
 type Service struct {
