@@ -1,7 +1,7 @@
 // Package cmd 提供命令行入口。
 //
 // 本文件实现数据库迁移命令，支持 up/down/status 子命令。
-package cmd
+package main
 
 import (
 	"fmt"

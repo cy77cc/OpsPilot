@@ -2,7 +2,7 @@
 //
 // 本文件实现根命令，是应用程序的主入口点。
 // 支持配置文件路径和调试模式标志。
-package cmd
+package main
 
 import (
 	"context"

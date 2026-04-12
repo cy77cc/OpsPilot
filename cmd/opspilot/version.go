@@ -1,7 +1,7 @@
 // Package cmd 提供命令行入口。
 //
 // 本文件实现版本打印命令。
-package cmd
+package main
 
 import (
 	"fmt"
