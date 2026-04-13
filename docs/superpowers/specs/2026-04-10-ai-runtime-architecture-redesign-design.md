@@ -1,7 +1,7 @@
 # AI Runtime Architecture Redesign Design
 
 - Date: 2026-04-10
-- Scope: `internal/ai`, `internal/service/ai`, AI router/runtime/context/tool architecture
+- Scope: `internal/modules/ai`, AI router/runtime/context/tool architecture
 - Goal: Replace the current AI orchestration shape with a learning-first, functionality-first architecture centered on a strong runtime kernel, LLM-first routing, tool discovery, and layered context management
 - Status: Proposed parent design for the next implementation cycle
 
@@ -16,8 +16,8 @@ OpsPilot already has meaningful AI assets:
 
 But the current architecture still has the wrong center of gravity:
 
-- `internal/service/ai/logic/logic.go` mixes copilot flow, runtime orchestration, context assembly, event consumption, and persistence coordination
-- `internal/ai/agents/orchestrator/orchestrator.go` statically assembles a large multi-agent surface instead of supporting demand-driven delegation
+- `internal/modules/ai/logic/logic.go` mixes copilot flow, runtime orchestration, context assembly, event consumption, and persistence coordination
+- `internal/modules/ai/agent/tools/orchestrator/tools.go` statically assembles a large multi-agent surface instead of supporting demand-driven delegation
 - tool exposure is too broad, causing context pressure and tool-selection burden
 - context is still too close to “prompt history assembly” instead of a true layered context system
 
@@ -420,9 +420,9 @@ The following ideas and assets are worth preserving:
 
 The following implementation areas should be treated as redesign targets:
 
-- `internal/service/ai/logic/logic.go`
-- `internal/ai/agents/orchestrator/orchestrator.go`
-- `internal/ai/agents/orchestrator/tools.go`
+- `internal/modules/ai/logic/logic.go`
+- `internal/modules/ai/agent/tools/orchestrator/tools.go`
+- `internal/modules/ai/agent/tools/registry.go`
 
 These files represent the old center of gravity and should not be incrementally patched forever.
 
@@ -430,8 +430,8 @@ These files represent the old center of gravity and should not be incrementally 
 
 The following agent packages should be reviewed for merge, deletion, or conversion into tool-catalog categories:
 
-- `internal/ai/agents/change`
-- `internal/ai/agents/infrastructure`
+- `internal/modules/ai/agent/tools/host`
+- `internal/modules/ai/agent/tools/infrastructure`
 
 If they do not represent stable context-isolated domains, they should not survive as first-class specialists.
 
@@ -439,13 +439,13 @@ If they do not represent stable context-isolated domains, they should not surviv
 
 Suggested module groups for the rebuild:
 
-- `internal/service/ai/copilot`
-- `internal/service/ai/router`
-- `internal/service/ai/runtime`
-- `internal/service/ai/context`
-- `internal/service/ai/tools`
-- `internal/service/ai/artifact`
-- `internal/service/ai/policy`
+- `internal/modules/ai/handler/chat`
+- `internal/modules/ai/handler/approval`
+- `internal/modules/ai/agent/runtime`
+- `internal/modules/ai/service`
+- `internal/modules/ai/agent/tools`
+- `internal/modules/ai/service`
+- `internal/modules/ai/agent/shared/approval`
 
 Exact package names may change, but the boundary intent should remain stable.
 

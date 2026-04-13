@@ -9,7 +9,8 @@ import (
 	"time"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
+	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
+	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,13 +26,13 @@ func TestDiagnosisHandler_GetDiagnosisReport(t *testing.T) {
 		Scene:  "ai",
 		Title:  "Test Session",
 	}
-	chatDAO := aidao.NewAIChatDAO(db)
+	chatDAO := aidaochat.NewAIChatDAO(db)
 	if err := chatDAO.CreateSession(context.Background(), session); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
 
 	// 创建诊断报告
-	diagnosisReportDAO := aidao.NewAIDiagnosisReportDAO(db)
+	diagnosisReportDAO := aidaodiagnosis.NewAIDiagnosisReportDAO(db)
 	report := &ai.AIDiagnosisReport{
 		ID:                  "report-1",
 		RunID:               "run-1",

@@ -19,8 +19,10 @@ export default defineConfig({
     setupFiles: './src/test/setupTests.ts',
     globals: false,
     css: true,
-    testTimeout: 15000,
-    hookTimeout: 15000,
+    // Full-suite page tests now exercise heavier Ant Design flows and AI surfaces.
+    // Keep enough headroom so valid suites do not fail only under CI/full-run load.
+    testTimeout: 45000,
+    hookTimeout: 45000,
   },
   server: {
     proxy: {

@@ -2,7 +2,7 @@
 
 - Date: 2026-03-28
 - Scope:
-  - Backend: `internal/service/ai/logic`
+  - Backend: `internal/modules/ai/logic`
   - Frontend: `web/src/components/AI`, `web/src/api/modules/ai.ts`
 - Goal:
   - Unify duplicated backend chat/approval iterator consumption loops.

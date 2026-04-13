@@ -13,8 +13,10 @@ import (
 	toolcomp "github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
@@ -105,7 +107,7 @@ func TestChatInjectsAIMetadataIntoRuntimeContext(t *testing.T) {
 
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -589,7 +591,7 @@ func TestChatKeepsRunAliveOnRecoverableToolFailure(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -692,7 +694,7 @@ func TestChatCircuitBreaksRepeatedSameToolFailure(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 16)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -772,7 +774,7 @@ func TestChatMarksFatalRuntimeFailure(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -856,7 +858,7 @@ func TestChatMarksFatalRuntimeFailure_PropagatesPersistArtifactsError(t *testing
 
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -912,7 +914,7 @@ func TestChatStopsConsumingAfterStreamingMessageError(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1016,7 +1018,7 @@ func TestChatKeepsRunAliveOnToolInvocationNodeError(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1128,7 +1130,7 @@ func TestChatKeepsRunAliveOnStreamingToolInvocationRecvError(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 10)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1214,7 +1216,7 @@ func TestChatPausesWaitingApprovalOnStreamingInterruptRecvError(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1320,7 +1322,7 @@ func TestChatPausesWaitingApprovalOnIteratorInterruptError(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1407,7 +1409,7 @@ func TestChatPausesWaitingApprovalOnIteratorInterruptedAction(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1510,7 +1512,7 @@ func TestChatPersistsDoneSummaryInProjection(t *testing.T) {
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -1572,7 +1574,7 @@ func TestChat_PersistsProjectionSummaryWithoutAssistantMessageContent(t *testing
 	emitted := make([]airuntime.PublicStreamEvent, 0, 8)
 	l := &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
@@ -2150,8 +2152,8 @@ func TestLogic_ResumeApprovalProjectsRecoverableToolErrorAndDone(t *testing.T) {
 
 	l := &Logic{
 		svcCtx:          &svc.ServiceContext{DB: db},
-		ChatDAO:         aidao.NewAIChatDAO(db),
-		ApprovalDAO:     aidao.NewAIApprovalTaskDAO(db),
+		ChatDAO:         aidaochat.NewAIChatDAO(db),
+		ApprovalDAO:     aidaoapproval.NewAIApprovalTaskDAO(db),
 		AIRouter:        agent,
 		CheckpointStore: store,
 	}
@@ -2184,7 +2186,7 @@ func TestLogic_ResumeApprovalProjectsRecoverableToolErrorAndDone(t *testing.T) {
 		t.Fatalf("expected done summary fallback for tool error completion, got %#v", donePayload)
 	}
 
-	task, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), approvalID)
+	task, err := aidaoapproval.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), approvalID)
 	if err != nil {
 		t.Fatalf("reload approval task: %v", err)
 	}
@@ -2219,7 +2221,7 @@ func newLogicTestDB(t *testing.T) *gorm.DB {
 func newLogicTestLogic(db *gorm.DB, agent adk.ResumableAgent) *Logic {
 	return &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),

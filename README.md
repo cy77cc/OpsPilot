@@ -66,12 +66,12 @@ AI 模块当前不是独立 Demo，而是平台的一等能力，已具备：
 
 ### AI 架构
 
-AI 能力围绕 `internal/ai` 与 `internal/service/ai` 组织，核心组成包括：
+AI 能力围绕 `internal/modules/ai` 组织，核心组成包括：
 
-- `internal/ai/runtime`：对话事件、流式投影、turn/block 生命周期
-- `internal/ai/agents`：诊断、问答、变更等 agent 组织层
-- `internal/ai/tools`：Kubernetes、host、service、deployment、monitor、governance 等工具
-- `internal/service/ai`：AI HTTP 接口、SSE 输出、会话/审批/恢复处理
+- `internal/modules/ai/agent/runtime`：对话事件、流式投影、turn/block 生命周期
+- `internal/modules/ai/agent`：诊断、问答、变更等 agent 组织层与共享中间件/工具
+- `internal/modules/ai/agent/tools`：Kubernetes、host、service、deployment、monitor、governance 等工具
+- `internal/modules/ai/handler`、`internal/modules/ai/logic`、`internal/modules/ai/dao`、`internal/modules/ai/model`：AI HTTP 接口、SSE 输出、会话/审批/恢复处理与持久化
 
 这意味着项目已经从“AI 辅助说明文档”进入“AI 参与平台执行链路”的阶段，后续可以继续往 AIOps、智能交付和策略执行演进。
 

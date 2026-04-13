@@ -1,12 +1,12 @@
 # AI Run Event Unified Pipeline & Real Checkpoint Resume Design
 
 - Date: 2026-03-27
-- Scope: `internal/service/ai/logic`, `internal/ai/common/middleware/approval`, `internal/ai/common/approval/orchestrator`, approval resume flow
+- Scope: `internal/modules/ai/logic`, `internal/modules/ai/agent/shared/middleware`, `internal/modules/ai/agent/shared/approval`, approval resume flow
 - Goal: Remove duplicated event-iteration logic, delete `ReplayThenTail`, and enforce real interrupt checkpoint resume semantics.
 
 ## 1. Problem Statement
 
-Current `service/ai/logic` has multiple event traversal paths with overlapping responsibilities:
+Current `internal/modules/ai/logic` has multiple event traversal paths with overlapping responsibilities:
 
 - Replay/tail loop in `run_tailer.go` (`ReplayThenTail`)
 - Waiting-approval terminal reconstruction in `logic.go` (`emitExistingShellTerminal`)
@@ -234,7 +234,7 @@ Boundary rules:
 
 ### 9.3 Regression Targets
 
-- Existing SSE contract tests in `internal/service/ai/handler/*` and `internal/service/ai/logic/*`.
+- Existing SSE contract tests in `internal/modules/ai/handler/*` and `internal/modules/ai/logic/*`.
 - Approval worker reliability tests.
 
 ## 10. Observability

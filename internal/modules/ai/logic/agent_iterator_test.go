@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	toolcomp "github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/run/runtime"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 )
 
 func TestProcessAgentIterator_InterruptEventStopsWithInterrupted(t *testing.T) {

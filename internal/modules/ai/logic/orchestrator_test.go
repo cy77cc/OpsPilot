@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	common "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
-	common "github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
+	riskpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/risk_policy"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -29,7 +30,7 @@ func TestEvaluateRequiresApprovalByPolicy(t *testing.T) {
 	}
 
 	orchestrator := NewApprovalOrchestratorWithStores(
-		aidao.NewAIToolRiskPolicyDAO(db),
+		riskpolicy.NewAIToolRiskPolicyDAO(db),
 		aidao.NewAIApprovalTaskDAO(db),
 		aidao.NewAIApprovalOutboxDAO(db),
 	)
@@ -241,7 +242,7 @@ func TestEvaluateFallsBackToLegacyGateWhenNoPolicyMatches(t *testing.T) {
 	}
 
 	orchestrator := NewApprovalOrchestratorWithStores(
-		aidao.NewAIToolRiskPolicyDAO(db),
+		riskpolicy.NewAIToolRiskPolicyDAO(db),
 		aidao.NewAIApprovalTaskDAO(db),
 		aidao.NewAIApprovalOutboxDAO(db),
 	)
@@ -293,7 +294,7 @@ func TestEvaluateDistinguishesReadonlyAndServiceControlBatchCalls(t *testing.T) 
 	}
 
 	orchestrator := NewApprovalOrchestratorWithStores(
-		aidao.NewAIToolRiskPolicyDAO(db),
+		riskpolicy.NewAIToolRiskPolicyDAO(db),
 		aidao.NewAIApprovalTaskDAO(db),
 		aidao.NewAIApprovalOutboxDAO(db),
 	)

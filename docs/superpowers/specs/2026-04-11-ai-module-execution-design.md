@@ -270,7 +270,7 @@ Delete first:
 
 - old orchestration glue
 - scene-driven control flow
-- mixed ownership in `internal/service/ai/logic/logic.go` and related legacy control paths
+- mixed ownership in `internal/modules/ai/logic/logic.go` and related legacy control paths
 
 Keep:
 

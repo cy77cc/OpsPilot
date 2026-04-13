@@ -766,7 +766,7 @@ egress.ports                 -> spec.egress[].ports
 
 - `go test ./...`：未通过（存在既有非 Phase 2 阻塞）
   - `internal/dao/ai`：缺失 migration fixture（`storage/migrations/20260320_0003_add_ai_failed_session_persistence.sql`、`20260321_0004_fix_ai_run_contents_utf8mb4.sql`）
-  - `internal/service/ai/handler`：多条 SSE 回放相关用例失败（事件重放顺序断言不满足）
+  - `internal/modules/ai/handler`：多条 SSE 回放相关用例失败（事件重放顺序断言不满足）
   - `storage/migration`：缺失 migration fixture（`20260317_0003_create_ai_approval_tasks.sql`）
 - `cd web && npm run test`：未通过（存在既有前端测试失败与环境错误）
   - Notification、Deployment、Cluster 相关若干历史测试超时/断言不匹配

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 )
 
 type noopApprovalEvaluator struct{}

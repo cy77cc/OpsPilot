@@ -14,7 +14,7 @@
 - 结果：失败
 - 非本阶段阻塞（仓库既有）：
   - `internal/dao/ai` 缺失迁移脚本夹具（`storage/migrations/20260320_0003...`、`20260321_0004...`）
-  - `internal/service/ai/handler` 多个 SSE 回放相关用例失败
+  - `internal/modules/ai/handler` 多个 SSE 回放相关用例失败
   - `storage/migration` 缺失迁移文件夹具（`20260317_0003_create_ai_approval_tasks.sql`）
 
 2. 前端全量：`cd web && npm run test`

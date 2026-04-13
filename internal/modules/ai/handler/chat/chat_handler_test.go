@@ -15,9 +15,8 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat/app"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	chat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
@@ -81,14 +80,14 @@ func TestChatHandler_RejectsInvalidConversationRouteDecision(t *testing.T) {
 	}
 	chatLogic := logic.NewLogicWithDB(db, agent)
 	chatSvc := chat.NewServiceWithLogicAndRouter(chatLogic, &stubRouteService{
-		decision: app.RouteDecision{
-			Mode:           app.ModeConversation,
-			TaskAction:     app.TaskActionCreateTask,
-			RunAction:      app.RunActionCreateRun,
-			ExecutionShape: app.ExecutionShapeSingleAgent,
-			Domain:         app.DomainGeneral,
-			ContextPlan: app.ContextPlan{
-				ToolStrategy: app.ToolStrategyDirect,
+		decision: chat.RouteDecision{
+			Mode:           chat.ModeConversation,
+			TaskAction:     chat.TaskActionCreateTask,
+			RunAction:      chat.RunActionCreateRun,
+			ExecutionShape: chat.ExecutionShapeSingleAgent,
+			Domain:         chat.DomainGeneral,
+			ContextPlan: chat.ContextPlan{
+				ToolStrategy: chat.ToolStrategyDirect,
 			},
 		},
 	})
@@ -139,14 +138,14 @@ func TestChatHandler_ValidConversationRouteBypassesRuntimeExecution(t *testing.T
 	}
 	chatLogic := logic.NewLogicWithDB(db, agent)
 	chatSvc := chat.NewServiceWithLogicAndRouter(chatLogic, &stubRouteService{
-		decision: app.RouteDecision{
-			Mode:           app.ModeConversation,
-			TaskAction:     app.TaskActionNone,
-			RunAction:      app.RunActionNone,
-			ExecutionShape: app.ExecutionShapeSingleAgent,
-			Domain:         app.DomainGeneral,
-			ContextPlan: app.ContextPlan{
-				ToolStrategy: app.ToolStrategyDirect,
+		decision: chat.RouteDecision{
+			Mode:           chat.ModeConversation,
+			TaskAction:     chat.TaskActionNone,
+			RunAction:      chat.RunActionNone,
+			ExecutionShape: chat.ExecutionShapeSingleAgent,
+			Domain:         chat.DomainGeneral,
+			ContextPlan: chat.ContextPlan{
+				ToolStrategy: chat.ToolStrategyDirect,
 			},
 		},
 	})
@@ -177,7 +176,7 @@ func TestChatHandler_ValidConversationRouteBypassesRuntimeExecution(t *testing.T
 		if !ok {
 			t.Fatalf("expected status event data to be map, got %T", event.Data)
 		}
-		if data["mode"] != string(app.ModeConversation) {
+		if data["mode"] != string(chat.ModeConversation) {
 			t.Fatalf("expected conversation mode in status payload, got %#v", data)
 		}
 		if data["state"] != "deferred" || data["reason"] != "not_implemented" {
@@ -1105,13 +1104,13 @@ func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.
 }
 
 type stubRouteService struct {
-	decision app.RouteDecision
+	decision chat.RouteDecision
 	err      error
 }
 
-func (s *stubRouteService) Decide(_ context.Context, _ app.RouteInput) (app.RouteDecision, error) {
+func (s *stubRouteService) Decide(_ context.Context, _ chat.RouteInput) (chat.RouteDecision, error) {
 	if s.err != nil {
-		return app.RouteDecision{}, s.err
+		return chat.RouteDecision{}, s.err
 	}
 	return s.decision, nil
 }

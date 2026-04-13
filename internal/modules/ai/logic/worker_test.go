@@ -10,9 +10,11 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
+	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -62,7 +64,7 @@ func TestSubmitApprovalOnlyWritesDecisionAndOutbox(t *testing.T) {
 		t.Fatalf("expected approved result, got %#v", result)
 	}
 
-	task, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-submit")
+	task, err := aidaoapproval.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-submit")
 	if err != nil {
 		t.Fatalf("reload task: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestSubmitApproval_DuplicateDecisionIsIdempotentAndDoesNotRepeatWrites(t *t
 		t.Fatalf("expected duplicate submit to replay the same message, first=%#v second=%#v", first, second)
 	}
 
-	task, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-duplicate-submit")
+	task, err := aidaoapproval.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-duplicate-submit")
 	if err != nil {
 		t.Fatalf("reload approval task: %v", err)
 	}
@@ -561,7 +563,7 @@ func testWorkerSkipsExpiredAndRejectedTasks(t *testing.T) {
 		t.Fatalf("expected expired outbox done, got %q", expiredOutbox.Status)
 	}
 
-	expiredTask, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-expired")
+	expiredTask, err := aidaoapproval.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-expired")
 	if err != nil {
 		t.Fatalf("reload expired task: %v", err)
 	}
@@ -671,7 +673,7 @@ func TestApprovalWorkerBackfillsResumeTargetFromToolApprovalEvent(t *testing.T) 
 		t.Fatalf("expected tool call id to be ignored when target_id exists, got %#v", capturedParams.Targets)
 	}
 
-	reloaded, err := aidao.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-resume-backfill")
+	reloaded, err := aidaoapproval.NewAIApprovalTaskDAO(db).GetByApprovalID(context.Background(), "approval-resume-backfill")
 	if err != nil {
 		t.Fatalf("reload approval task: %v", err)
 	}
@@ -1746,9 +1748,9 @@ func newApprovalWorkerTestDB(t *testing.T) *gorm.DB {
 func newApprovalWorkerTestLogic(db *gorm.DB) *Logic {
 	return &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
-		ChatDAO:          aidao.NewAIChatDAO(db),
+		ChatDAO:          aidaochat.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),
-		ApprovalDAO:      aidao.NewAIApprovalTaskDAO(db),
+		ApprovalDAO:      aidaoapproval.NewAIApprovalTaskDAO(db),
 		RunEventDAO:      aidao.NewAIRunEventDAO(db),
 		RunProjectionDAO: aidao.NewAIRunProjectionDAO(db),
 		RunContentDAO:    aidao.NewAIRunContentDAO(db),

@@ -1,9 +1,11 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	aibootstrap "github.com/cy77cc/OpsPilot/internal/modules/ai/bootstrap"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
 	cicdapi "github.com/cy77cc/OpsPilot/internal/modules/cicd/api"
@@ -32,6 +34,7 @@ func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
+	aibootstrap.StartBackgroundProcessors(context.Background(), appCtx)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	aiapi.RegisterAdminAIHandlers(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

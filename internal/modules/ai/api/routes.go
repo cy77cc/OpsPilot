@@ -6,13 +6,11 @@
 package api
 
 import (
-	"context"
-
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
-	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
+	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
+	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
+	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -37,8 +35,6 @@ import (
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	chatHandler := aichathandler.NewHTTPHandler(aichat.NewService(svcCtx))
 	approvalHandler := aiapprovalhandler.NewHTTPHandler(aiapproval.NewService(svcCtx))
-	approvalHandler.StartApprovalWorker(context.Background())
-	approvalHandler.StartApprovalExpirer(context.Background())
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
