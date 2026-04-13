@@ -23,7 +23,11 @@ import (
 func Cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
-		c.Header("Access-Control-Allow-Origin", config.CFG.Cors.AllowOrigins[0]) // 可将将 * 替换为指定的域名
+		origin := "*"
+		if len(config.CFG.Cors.AllowOrigins) > 0 && config.CFG.Cors.AllowOrigins[0] != "" {
+			origin = config.CFG.Cors.AllowOrigins[0]
+		}
+		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", utils.SlicesToString(config.CFG.Cors.AllowMethods, ","))
 		c.Header("Access-Control-Allow-Headers", utils.SlicesToString(config.CFG.Cors.AllowHeaders, ","))
 		c.Header("Access-Control-Expose-Headers", utils.SlicesToString(config.CFG.Cors.ExposeHeaders, ","))

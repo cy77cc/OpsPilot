@@ -1,6 +1,9 @@
 package chathandler
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // RouteMode 路由模式。
 type RouteMode string
@@ -30,7 +33,7 @@ const (
 type ExecutionShape string
 
 const (
-	ExecutionShapeSingleAgent      ExecutionShape = "single_agent"
+	ExecutionShapeSingleAgent         ExecutionShape = "single_agent"
 	ExecutionShapeDelegatedSpecialist ExecutionShape = "delegated_specialist"
 )
 
@@ -55,16 +58,21 @@ type ContextPlan struct {
 
 // RouteDecision 路由决策结果。
 type RouteDecision struct {
-	Mode           RouteMode    `json:"mode"`
-	TaskAction     TaskAction   `json:"task_action"`
-	RunAction      RunAction    `json:"run_action"`
+	Mode           RouteMode      `json:"mode"`
+	TaskAction     TaskAction     `json:"task_action"`
+	RunAction      RunAction      `json:"run_action"`
 	ExecutionShape ExecutionShape `json:"execution_shape"`
-	Domain         Domain       `json:"domain"`
-	ContextPlan    ContextPlan  `json:"context_plan"`
+	Domain         Domain         `json:"domain"`
+	ContextPlan    ContextPlan    `json:"context_plan"`
 }
 
 // Validate 验证路由决策是否有效。
 func (d RouteDecision) Validate() error {
+	if d.Mode == ModeConversation {
+		if d.TaskAction != TaskActionNone || d.RunAction != RunActionNone {
+			return fmt.Errorf("conversation route cannot schedule task or run actions")
+		}
+	}
 	return nil
 }
 

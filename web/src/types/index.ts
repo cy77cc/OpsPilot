@@ -36,6 +36,77 @@ export interface ConfigVersion {
   comment: string;
 }
 
+export interface ConfigApp {
+  id: string;
+  name: string;
+  serviceId: string;
+  description?: string;
+  namespaces: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConfigItemVersion {
+  version: number;
+  value: string;
+  createdBy: string;
+  createdAt: string;
+  comment?: string;
+}
+
+export interface ConfigItem {
+  id: string;
+  appId: string;
+  namespace: string;
+  env: string;
+  key: string;
+  value: string;
+  format: 'text' | 'json' | 'yaml' | 'xml' | string;
+  isSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+  versions: ConfigItemVersion[];
+}
+
+export interface ConfigTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  format: 'text' | 'json' | 'yaml' | 'xml' | string;
+  content: string;
+  category: string;
+}
+
+export interface Release {
+  id: string;
+  appId: string;
+  namespace: string;
+  key: string;
+  env: string;
+  fromVersion: number;
+  toVersion: number;
+  releasedBy: string;
+  releasedAt: string;
+  status: 'success' | 'failed' | 'pending' | string;
+  comment?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  appId: string;
+  appName: string;
+  namespace: string;
+  key: string;
+  action: 'create' | 'update' | 'release' | 'delete' | string;
+  operator: string;
+  timestamp: string;
+  details: string;
+  oldValue?: string;
+  newValue?: string;
+  status: 'success' | 'failed' | 'pending' | string;
+}
+
 export interface Task {
   id: string;
   name: string;

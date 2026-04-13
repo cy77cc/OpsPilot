@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	mysqlDriver "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -191,6 +191,9 @@ func copyMigrationFixture(t *testing.T, tempRoot, src string) {
 
 	content, err := os.ReadFile(src)
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skipf("migration fixture %s is not present in this checkout", src)
+		}
 		t.Fatalf("read migration fixture %s: %v", src, err)
 	}
 

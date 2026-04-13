@@ -22,8 +22,21 @@ type Logger interface {
 	WithContext(ctx context.Context) Logger         // 创建带有上下文信息的子 Logger
 }
 
+type noopLogger struct{}
+
+func (noopLogger) Debug(string, ...Field)             {}
+func (noopLogger) Debugf(string, []any, ...Field)     {}
+func (noopLogger) Info(string, ...Field)              {}
+func (noopLogger) Infof(string, []any, ...Field)      {}
+func (noopLogger) Warn(string, ...Field)              {}
+func (noopLogger) Warnf(string, []any, ...Field)      {}
+func (noopLogger) Error(string, ...Field)             {}
+func (noopLogger) Errorf(string, []any, ...Field)     {}
+func (noopLogger) With(...Field) Logger               { return noopLogger{} }
+func (noopLogger) WithContext(context.Context) Logger { return noopLogger{} }
+
 // std 是全局 Logger 实例。
-var std Logger
+var std Logger = noopLogger{}
 
 // Init 初始化全局 Logger。
 func Init(l Logger) {

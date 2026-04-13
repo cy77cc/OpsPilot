@@ -278,14 +278,13 @@ func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestI
 			}
 		}
 
+		createdRun = run
+
 		// 更新会话的 updated_at
 		return tx.WithContext(ctx).Model(&model.AIChatSession{}).
 			Where("id = ?", sessionID).
 			Update("updated_at", time.Now()).
 			Error
-
-		createdRun = run
-		return nil
 	})
 	if err != nil {
 		return nil, err

@@ -19,12 +19,12 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"gorm.io/gorm"
 )
@@ -389,6 +389,13 @@ func (w *ApprovalWorker) resumeApprovedTask(ctx context.Context, task *ai.AIAppr
 				ErrorMessage: err.Error(),
 			})
 			return fmt.Errorf("persist waiting approval convergence after resume interrupt: %w", err)
+		}
+		if err := w.appendRunStateEvent(ctx, shell, &seqCounter, runStatePayload(shell.Run.ID, "waiting_approval", result.SummaryText)); err != nil {
+			_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
+				Status:       "resume_failed_retryable",
+				ErrorMessage: err.Error(),
+			})
+			return fmt.Errorf("append waiting approval run_state after resume interrupt: %w", err)
 		}
 		return nil
 	}

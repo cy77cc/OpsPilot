@@ -22,15 +22,15 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	aimodule "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
-	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
-	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
-	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
-	aidaocheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
-	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
+	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
+	aidaocheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
+	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -277,6 +277,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) er
 			return fmt.Errorf("persist waiting approval state: %w", err)
 		}
 		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
+		emit("run_state", map[string]any{
+			"run_id":  shell.Run.ID,
+			"status":  "waiting_approval",
+			"agent":   "executor",
+			"summary": result.SummaryText,
+		})
 		return nil
 	}
 

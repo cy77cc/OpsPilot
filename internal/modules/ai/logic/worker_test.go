@@ -10,8 +10,8 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/shared/approval"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
@@ -1743,8 +1743,8 @@ func newApprovalWorkerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func newApprovalWorkerTestLogic(db *gorm.DB) *logic.Logic {
-	return &logic.Logic{
+func newApprovalWorkerTestLogic(db *gorm.DB) *Logic {
+	return &Logic{
 		svcCtx:           &svc.ServiceContext{DB: db},
 		ChatDAO:          aidao.NewAIChatDAO(db),
 		RunDAO:           aidao.NewAIRunDAO(db),

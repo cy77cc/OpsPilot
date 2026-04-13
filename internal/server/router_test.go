@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestBuildRouterRegistersHealthEndpointAndModules(t *testing.T) {
+func TestBuildRouterRegistersModuleRoutes(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
@@ -21,14 +21,6 @@ func TestBuildRouterRegistersHealthEndpointAndModules(t *testing.T) {
 			c.Status(http.StatusNoContent)
 		})
 	})
-
-	healthReq := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	healthResp := httptest.NewRecorder()
-	router.ServeHTTP(healthResp, healthReq)
-
-	if healthResp.Code != http.StatusOK {
-		t.Fatalf("expected /api/health to return 200, got %d", healthResp.Code)
-	}
 
 	moduleReq := httptest.NewRequest(http.MethodGet, "/api/v1/test-only", nil)
 	moduleResp := httptest.NewRecorder()

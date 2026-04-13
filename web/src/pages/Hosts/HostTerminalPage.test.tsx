@@ -120,7 +120,8 @@ describe('HostTerminalPage', () => {
 
     await waitFor(() => expect(mockApi.hosts.listFiles).toHaveBeenCalled());
     const root = container.querySelector('.host-terminal-page') as HTMLDivElement;
-    expect(root.style.height).toBe('100vh');
+    expect(root.style.height).toContain('100dvh');
+    expect(root.style.height).toContain('--app-shell-offset');
   });
 
   it('shows confirm dialog when closing modal with unsaved edits', async () => {
@@ -141,7 +142,7 @@ describe('HostTerminalPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
 
     await waitFor(() => {
-      expect(screen.getAllByText('放弃未保存修改？').length).toBeGreaterThan(1);
+      expect(screen.getByText('放弃未保存修改？')).toBeInTheDocument();
     });
   });
 });

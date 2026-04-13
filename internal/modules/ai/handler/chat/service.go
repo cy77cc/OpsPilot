@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/cloudwego/eino/adk"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )
@@ -22,11 +22,18 @@ type Service struct {
 
 func NewService(svcCtx *svc.ServiceContext) *Service {
 	l := logic.NewAILogic(svcCtx)
-	return NewServiceWithLogicAndRouter(l, NewRouteService())
+	return NewServiceWithLogic(l)
 }
 
 func NewServiceWithLogic(l *logic.Logic) *Service {
-	return NewServiceWithLogicAndRouter(l, NewRouteService())
+	if l == nil {
+		return &Service{}
+	}
+	return &Service{
+		logic:       l,
+		RunDAO:      l.RunDAO,
+		RunEventDAO: l.RunEventDAO,
+	}
 }
 
 func NewServiceWithLogicAndRouter(l *logic.Logic, routeSvc RouteService) *Service {
@@ -46,7 +53,7 @@ func NewServiceWithLogicAndRouter(l *logic.Logic, routeSvc RouteService) *Servic
 
 func NewServiceWithDB(db *gorm.DB, agentRouter adk.ResumableAgent) *Service {
 	l := logic.NewLogicWithDB(db, agentRouter)
-	return NewServiceWithLogicAndRouter(l, NewRouteService())
+	return NewServiceWithLogic(l)
 }
 
 func (s *Service) Chat(ctx context.Context, input logic.ChatInput, emit logic.EventEmitter) error {

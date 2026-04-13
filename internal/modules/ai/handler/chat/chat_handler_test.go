@@ -15,10 +15,10 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/chat/app"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 )
@@ -1105,13 +1105,13 @@ func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.
 }
 
 type stubRouteService struct {
-	decision airouter.RouteDecision
+	decision app.RouteDecision
 	err      error
 }
 
-func (s *stubRouteService) Decide(_ context.Context, _ airouter.RouteInput) (airouter.RouteDecision, error) {
+func (s *stubRouteService) Decide(_ context.Context, _ app.RouteInput) (app.RouteDecision, error) {
 	if s.err != nil {
-		return airouter.RouteDecision{}, s.err
+		return app.RouteDecision{}, s.err
 	}
 	return s.decision, nil
 }
