@@ -6,15 +6,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/cy77cc/OpsPilot/internal/bootstrap"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
-	"github.com/cy77cc/OpsPilot/internal/core/storage"
-	"github.com/cy77cc/OpsPilot/internal/core/storage/migration"
 	"github.com/cy77cc/OpsPilot/internal/server"
 	"github.com/cy77cc/OpsPilot/version"
 	"github.com/spf13/cobra"
@@ -29,7 +27,7 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config.MustNewConfig()
 			logger.Init(logger.MustNewZapLogger())
-			if err := runBootstrapMigrations(); err != nil {
+			if err := bootstrap.RunBootstrapMigrations(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -37,28 +35,6 @@ var (
 		},
 	}
 )
-
-// runBootstrapMigrations 执行启动时的数据库迁移。
-//
-// 包括版本化迁移和开发模式的自动迁移（如果启用）。
-func runBootstrapMigrations() error {
-	db := storage.MustNewDB()
-	sqlDB, err := db.DB()
-	if err == nil {
-		defer sqlDB.Close()
-	}
-
-	if err := migration.RunMigrations(db); err != nil {
-		return fmt.Errorf("run migrations failed: %w", err)
-	}
-
-	if config.CFG.App.AutoMigrate {
-		if err := migration.RunDevAutoMigrate(db); err != nil {
-			return fmt.Errorf("run dev auto migrate failed: %w", err)
-		}
-	}
-	return nil
-}
 
 // Execute 是命令行入口函数。
 //

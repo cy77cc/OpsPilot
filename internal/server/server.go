@@ -11,9 +11,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
-	"github.com/cy77cc/OpsPilot/internal/service"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"github.com/gin-gonic/gin"
 )
 
 // @title           k8s Manager API
@@ -48,10 +46,7 @@ func Start(ctx context.Context) error {
 // 支持优雅关闭，超时时间为 10 秒。
 func startServer(ctx context.Context) {
 	svcCtx := svc.MustNewServiceContext()
-	// storage.MustMigrate(svcCtx.DB)
-	r := gin.Default()
-	r.Use(gin.Recovery())
-	service.Init(r, svcCtx)
+	r := NewRouter(svcCtx)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", config.CFG.Server.Host, config.CFG.Server.Port),

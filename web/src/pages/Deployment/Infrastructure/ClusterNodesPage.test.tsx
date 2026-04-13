@@ -60,7 +60,7 @@ describe('ClusterNodesPage', () => {
   });
 
   it('registers /deployment/infrastructure/clusters/:id/nodes route', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/ProtectedApp.tsx'), 'utf8');
+    const source = readFileSync(resolve(process.cwd(), 'src/app/routes/infrastructure.routes.tsx'), 'utf8');
     expect(source).toContain('/deployment/infrastructure/clusters/:id/nodes');
   });
 

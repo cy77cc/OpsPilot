@@ -30,7 +30,7 @@ vi.mock('./components/Auth/LegacyGovernanceRedirect', () => ({
   default: () => <div>legacy-governance-redirect</div>,
 }));
 
-vi.mock('./components/Layout/AppLayout', () => ({
+vi.mock('./app/layout/AppLayout', () => ({
   default: ({ children }: { children: ReactNode }) => (
     <div>
       <div data-testid="app-shell">shell</div>
