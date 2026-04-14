@@ -229,13 +229,26 @@ func (l *UserLogic) Refresh(ctx context.Context, req v1.RefreshReq) (v1.TokenRes
 	}
 
 	roles, permissions, _ := l.loadRolesAndPermissions(ctx, uint64(claims.Uid))
+	user, err := l.userDAO.FindOneById(ctx, model.UserID(claims.Uid))
+	if err != nil {
+		return v1.TokenResp{}, fmt.Errorf("failed to query user: %w", err)
+	}
 	return v1.TokenResp{
 		AccessToken:  newToken,
 		RefreshToken: newRefreshToken,
 		Expires:      time.Now().Add(config.CFG.JWT.Expire).Unix(),
 		Uid:          uint64(claims.Uid),
 		Roles:        roles,
-		Permissions:  permissions,
+		User: &v1.AuthUser{
+			Id:          uint64(user.ID),
+			Username:    user.Username,
+			Name:        user.Username,
+			Email:       user.Email,
+			Status:      "active",
+			Roles:       roles,
+			Permissions: permissions,
+		},
+		Permissions: permissions,
 	}, nil
 }
 
