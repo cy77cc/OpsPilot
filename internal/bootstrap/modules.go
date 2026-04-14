@@ -16,6 +16,7 @@ import (
 	deploymentapi "github.com/cy77cc/OpsPilot/internal/modules/deployment/api"
 	hostapi "github.com/cy77cc/OpsPilot/internal/modules/host/api"
 	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
+	llmproviderapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	monitoringapi "github.com/cy77cc/OpsPilot/internal/modules/monitoring/api"
 	notificationapi "github.com/cy77cc/OpsPilot/internal/modules/notification/api"
 	projectapi "github.com/cy77cc/OpsPilot/internal/modules/project/api"
@@ -43,7 +44,7 @@ func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 		go ailogic.NewApprovalExpirer(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
 	}
 	aiapi.RegisterAIHandlers(v1, appCtx)
-	aiapi.RegisterAdminAIHandlers(v1, appCtx)
+	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)
 	appapi.RegisterServiceHandlers(v1, appCtx)
 	cicdapi.RegisterCICDHandlers(v1, appCtx)

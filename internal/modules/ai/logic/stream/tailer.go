@@ -1,8 +1,8 @@
-package logic
+// Package stream 实现运行事件尾部轮询逻辑。
+package stream
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -15,13 +15,14 @@ const (
 	defaultTailMaxDuration  = 5 * time.Minute
 )
 
+// TailOptions 定义尾部轮询选项。
 type TailOptions struct {
 	PollInterval    time.Duration
 	IdleTimeout     time.Duration
 	MaxTailDuration time.Duration
 }
 
-func (o TailOptions) withDefaults() TailOptions {
+func (o TailOptions) WithDefaults() TailOptions {
 	if o.PollInterval <= 0 {
 		o.PollInterval = defaultTailPollInterval
 	}
@@ -34,12 +35,14 @@ func (o TailOptions) withDefaults() TailOptions {
 	return o
 }
 
+// RunTailer 实现运行事件尾部轮询。
 type RunTailer struct {
 	RunDAO      *aidao.AIRunDAO
 	RunEventDAO *aidao.AIRunEventDAO
 }
 
-func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID string, emit EventEmitter, options TailOptions) error {
+// ReplayThenTail 从重放最后事件开始，然后尾部轮询新事件。
+func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID string, emit func(event string, data any), options TailOptions) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -49,8 +52,7 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 	if t == nil || t.RunEventDAO == nil || strings.TrimSpace(runID) == "" {
 		return nil
 	}
-
-	options = options.withDefaults()
+	options = options.WithDefaults()
 	startedAt := time.Now()
 	lastActivityAt := startedAt
 	cursor := strings.TrimSpace(lastEventID)
@@ -60,7 +62,6 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		if err := ctx.Err(); err != nil {
 			return nil
 		}
-
 		events, err := t.RunEventDAO.ListAfterEventID(ctx, runID, cursor)
 		if err != nil {
 			if isTailShutdown(err) {
@@ -70,7 +71,7 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		}
 		if len(events) > 0 {
 			for _, event := range events {
-				payload, err := decodeRunEventPayload(event.PayloadJSON)
+				payload, err := DecodeRunEventPayload(event.PayloadJSON)
 				if err != nil {
 					return err
 				}
@@ -80,7 +81,6 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 			}
 			lastActivityAt = time.Now()
 		}
-
 		run, err := t.loadRun(ctx, runID)
 		if err != nil {
 			if isTailShutdown(err) {
@@ -91,20 +91,15 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		if run == nil {
 			return nil
 		}
-		if isTailTerminalStatus(run.Status) {
+		if IsTailTerminalStatus(run.Status) {
 			if !emitted {
-				emit("run_state", map[string]any{
-					"run_id": runID,
-					"status": strings.TrimSpace(run.Status),
-					"agent":  "executor",
-				})
+				emit("run_state", map[string]any{"run_id": runID, "status": strings.TrimSpace(run.Status), "agent": "executor"})
 			}
 			return nil
 		}
-		if !isTailOpenStatus(run.Status) {
+		if !IsTailOpenStatus(run.Status) {
 			return nil
 		}
-
 		now := time.Now()
 		if options.MaxTailDuration > 0 && now.Sub(startedAt) >= options.MaxTailDuration {
 			return nil
@@ -112,7 +107,6 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		if options.IdleTimeout > 0 && now.Sub(lastActivityAt) >= options.IdleTimeout {
 			return nil
 		}
-
 		waitFor := options.PollInterval
 		if remaining := time.Until(startedAt.Add(options.MaxTailDuration)); options.MaxTailDuration > 0 && remaining < waitFor {
 			waitFor = remaining
@@ -123,7 +117,6 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		if waitFor <= 0 {
 			waitFor = options.PollInterval
 		}
-
 		timer := time.NewTimer(waitFor)
 		select {
 		case <-ctx.Done():
@@ -148,11 +141,10 @@ func (t *RunTailer) loadRun(ctx context.Context, runID string) (*aidaoRunLike, e
 	return &aidaoRunLike{Status: run.Status}, nil
 }
 
-type aidaoRunLike struct {
-	Status string
-}
+type aidaoRunLike struct{ Status string }
 
-func isTailOpenStatus(status string) bool {
+// IsTailOpenStatus 判断运行状态是否处于开放状态。
+func IsTailOpenStatus(status string) bool {
 	switch strings.TrimSpace(status) {
 	case "waiting_approval", "resuming", "running", "resume_failed_retryable":
 		return true
@@ -161,7 +153,8 @@ func isTailOpenStatus(status string) bool {
 	}
 }
 
-func isTailTerminalStatus(status string) bool {
+// IsTailTerminalStatus 判断运行状态是否为终态。
+func IsTailTerminalStatus(status string) bool {
 	switch strings.TrimSpace(status) {
 	case "completed", "completed_with_tool_errors", "failed", "failed_runtime", "cancelled", "expired":
 		return true
@@ -171,5 +164,21 @@ func isTailTerminalStatus(status string) bool {
 }
 
 func isTailShutdown(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	return err == context.Canceled || err == context.DeadlineExceeded
+}
+
+func withEventID(payload any, eventID string) any {
+	if strings.TrimSpace(eventID) == "" {
+		return payload
+	}
+	data, ok := payload.(map[string]any)
+	if !ok {
+		return payload
+	}
+	copyPayload := make(map[string]any, len(data)+1)
+	for key, value := range data {
+		copyPayload[key] = value
+	}
+	copyPayload["event_id"] = eventID
+	return copyPayload
 }

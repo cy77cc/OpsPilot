@@ -176,6 +176,88 @@ func TestLLMProviderHandler_PreviewImportValidationFailureReturnsLLMImportValida
 	}
 }
 
+func TestLLMProviderHandler_PreviewImportSuccessMatchesFrontendContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/ai/models/import/preview", bytes.NewBufferString(`{"replace_all":true,"providers":[{"name":"Qwen Prod","provider":"qwen","model":"qwen-max","base_url":"https://example.com","api_key":"sk-test"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.PreviewImport(c)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			ReplaceAll bool             `json:"replace_all"`
+			Total      int              `json:"total"`
+			Providers  []map[string]any `json:"providers"`
+			Count      int              `json:"count"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != int(xcode.Success) {
+		t.Fatalf("expected success code %d, got %d", xcode.Success, resp.Code)
+	}
+	if !resp.Data.ReplaceAll {
+		t.Fatal("expected replace_all=true")
+	}
+	if resp.Data.Total != 1 || resp.Data.Count != 1 || len(resp.Data.Providers) != 1 {
+		t.Fatalf("unexpected preview payload: %#v", resp.Data)
+	}
+	if resp.Data.Providers[0]["name"] != "Qwen Prod" {
+		t.Fatalf("expected provider name Qwen Prod, got %#v", resp.Data.Providers[0]["name"])
+	}
+}
+
+func TestLLMProviderHandler_ImportSuccessMatchesFrontendContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/ai/models/import", bytes.NewBufferString(`{"replace_all":false,"providers":[{"name":"Qwen Prod","provider":"qwen","model":"qwen-max","base_url":"https://example.com","api_key":"sk-test"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.ImportModels(c)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			ReplaceAll bool             `json:"replace_all"`
+			Created    int              `json:"created"`
+			Updated    int              `json:"updated"`
+			Providers  []map[string]any `json:"providers"`
+			Count      int              `json:"count"`
+			List       []map[string]any `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != int(xcode.Success) {
+		t.Fatalf("expected success code %d, got %d", xcode.Success, resp.Code)
+	}
+	if resp.Data.ReplaceAll {
+		t.Fatal("expected replace_all=false")
+	}
+	if resp.Data.Created != 1 || resp.Data.Updated != 0 || resp.Data.Count != 1 {
+		t.Fatalf("unexpected import counters: %#v", resp.Data)
+	}
+	if len(resp.Data.Providers) != 1 || len(resp.Data.List) != 1 {
+		t.Fatalf("unexpected import rows: %#v", resp.Data)
+	}
+}
+
 func newLLMProviderHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

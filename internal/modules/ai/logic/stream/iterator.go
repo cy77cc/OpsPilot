@@ -1,4 +1,5 @@
-package logic
+// Package stream 实现 AI Agent 迭代器处理和事件流投影。
+package stream
 
 import (
 	"context"
@@ -11,17 +12,25 @@ import (
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 )
 
-type iteratorConsumeKind string
+// IteratorConsumeKind 定义迭代器事件类型。
+type IteratorConsumeKind string
 
 const (
-	iteratorConsumeInterrupt       iteratorConsumeKind = "interrupt"
-	iteratorConsumeRecoverableTool iteratorConsumeKind = "recoverable_tool_error"
-	iteratorConsumeStreamTool      iteratorConsumeKind = "stream_tool_error"
-	iteratorConsumeStreamChunk     iteratorConsumeKind = "stream_chunk"
-	iteratorConsumeEvent           iteratorConsumeKind = "event"
-	iteratorConsumeFlush           iteratorConsumeKind = "flush"
+	IteratorConsumeInterrupt       IteratorConsumeKind = "interrupt"
+	IteratorConsumeRecoverableTool IteratorConsumeKind = "recoverable_tool_error"
+	IteratorConsumeStreamTool      IteratorConsumeKind = "stream_tool_error"
+	IteratorConsumeStreamChunk     IteratorConsumeKind = "stream_chunk"
+	IteratorConsumeEvent           IteratorConsumeKind = "event"
+	IteratorConsumeFlush           IteratorConsumeKind = "flush"
 )
 
+// RunUpdate 定义运行状态更新。
+type RunUpdate struct {
+	AssistantType string
+	IntentType    string
+}
+
+// IteratorProcessResult 定义迭代器处理结果。
 type IteratorProcessResult struct {
 	Interrupted       bool
 	HasToolErrors     bool
@@ -31,15 +40,17 @@ type IteratorProcessResult struct {
 	FatalErr          error
 }
 
-type iteratorProcessInput struct {
+// IteratorProcessInput 定义迭代器处理输入。
+type IteratorProcessInput struct {
 	Iterator         *adk.AsyncIterator[*adk.AgentEvent]
 	Projector        *airuntime.StreamProjector
-	Emit             EventEmitter
-	ConsumeProjected func(kind iteratorConsumeKind, events []airuntime.PublicStreamEvent) error
-	HandleRunUpdate  func(update projectedRunUpdate)
+	Emit             func(event string, data any)
+	ConsumeProjected func(kind IteratorConsumeKind, events []airuntime.PublicStreamEvent) error
+	HandleRunUpdate  func(update RunUpdate)
 }
 
-func processAgentIterator(_ context.Context, input iteratorProcessInput) (IteratorProcessResult, error) {
+// ProcessAgentIterator 处理 Agent 异步迭代器事件流。
+func ProcessAgentIterator(_ context.Context, input IteratorProcessInput) (IteratorProcessResult, error) {
 	result := IteratorProcessResult{}
 	if input.Iterator == nil {
 		return result, nil
@@ -51,7 +62,7 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 		input.Emit = func(string, any) {}
 	}
 	if input.HandleRunUpdate == nil {
-		input.HandleRunUpdate = func(projectedRunUpdate) {}
+		input.HandleRunUpdate = func(RunUpdate) {}
 	}
 
 	var (
@@ -60,12 +71,11 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 		toolFailures      = newToolFailureTracker()
 	)
 
-	processProjected := func(kind iteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
+	processProjected := func(kind IteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
 		if len(events) == 0 {
 			return nil
 		}
-
-		update := accumulateProjectedEvents(events, &summaryContent)
+		update := AccumulateProjectedEvents(events, &summaryContent)
 		if input.ConsumeProjected != nil {
 			if err := input.ConsumeProjected(kind, events); err != nil {
 				return wrapIteratorConsumeError(kind, err)
@@ -75,7 +85,6 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 				input.Emit(event.Event, event.Data)
 			}
 		}
-
 		if update.AssistantType != "" || update.IntentType != "" {
 			input.HandleRunUpdate(update)
 		}
@@ -85,7 +94,7 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 	flushProjected := func() error {
 		events := input.Projector.FlushBuffer()
 		toolFailures.recordProjectedEvents(events)
-		if err := processProjected(iteratorConsumeFlush, events); err != nil {
+		if err := processProjected(IteratorConsumeFlush, events); err != nil {
 			return err
 		}
 		result.SummaryText = summaryContent.String()
@@ -98,30 +107,27 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 			result.Interrupted = true
 			break
 		}
-
 		event, ok := input.Iterator.Next()
 		if !ok {
 			break
 		}
-
-		if interruptEvent, ok := recoverableInterruptEventFromEvent(event); ok {
+		if interruptEvent, ok := RecoverableInterruptEventFromEvent(event); ok {
 			projected := input.Projector.Consume(interruptEvent)
 			toolFailures.recordProjectedEvents(projected)
-			if err := processProjected(iteratorConsumeInterrupt, projected); err != nil {
+			if err := processProjected(IteratorConsumeInterrupt, projected); err != nil {
 				return result, err
 			}
 			continue
 		}
-
 		if event.Err != nil {
-			if recoverable, ok := recoverableToolErrorFromEvent(event); ok {
+			if recoverable, ok := RecoverableToolErrorFromEvent(event); ok {
 				result.HasToolErrors = true
 				if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
 					result.CircuitBroken = true
 				}
 				projected := input.Projector.Consume(recoverable.Event)
 				toolFailures.recordProjectedEvents(projected)
-				if err := processProjected(iteratorConsumeRecoverableTool, projected); err != nil {
+				if err := processProjected(IteratorConsumeRecoverableTool, projected); err != nil {
 					return result, err
 				}
 				if result.CircuitBroken {
@@ -129,8 +135,7 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 				}
 				continue
 			}
-
-			if !isBusinessToolResultEvent(event) {
+			if !IsBusinessToolResultEvent(event) {
 				if err := flushProjected(); err != nil {
 					return result, err
 				}
@@ -139,7 +144,6 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 			}
 			result.HasToolErrors = true
 		}
-
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
 			for {
 				msg, err := event.Output.MessageOutput.MessageStream.Recv()
@@ -147,23 +151,22 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 					break
 				}
 				if err != nil {
-					if interruptEvent, ok := recoverableInterruptEventFromErr(err, event.AgentName); ok {
+					if interruptEvent, ok := RecoverableInterruptEventFromErr(err, event.AgentName); ok {
 						projected := input.Projector.Consume(interruptEvent)
 						toolFailures.recordProjectedEvents(projected)
-						if consumeErr := processProjected(iteratorConsumeInterrupt, projected); consumeErr != nil {
+						if consumeErr := processProjected(IteratorConsumeInterrupt, projected); consumeErr != nil {
 							return result, consumeErr
 						}
 						break
 					}
-
-					if recoverable, ok := recoverableToolErrorFromErr(err, event.AgentName); ok {
+					if recoverable, ok := RecoverableToolErrorFromErr(err, event.AgentName); ok {
 						result.HasToolErrors = true
 						if _, count, tripped := toolFailures.recordFailure(recoverable.Info); tripped && count > 0 {
 							result.CircuitBroken = true
 						}
 						projected := input.Projector.Consume(recoverable.Event)
 						toolFailures.recordProjectedEvents(projected)
-						if consumeErr := processProjected(iteratorConsumeStreamTool, projected); consumeErr != nil {
+						if consumeErr := processProjected(IteratorConsumeStreamTool, projected); consumeErr != nil {
 							return result, consumeErr
 						}
 						if result.CircuitBroken {
@@ -171,7 +174,6 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 						}
 						continue
 					}
-
 					if err := flushProjected(); err != nil {
 						return result, err
 					}
@@ -181,12 +183,11 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 				if msg == nil {
 					continue
 				}
-
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
 				projected := input.Projector.Consume(chunkEvent)
 				toolFailures.recordProjectedEvents(projected)
-				if err := processProjected(iteratorConsumeStreamChunk, projected); err != nil {
+				if err := processProjected(IteratorConsumeStreamChunk, projected); err != nil {
 					return result, err
 				}
 				if msg.Role == schema.Assistant {
@@ -198,14 +199,12 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 			}
 			continue
 		}
-
 		projected := input.Projector.Consume(event)
 		toolFailures.recordProjectedEvents(projected)
-		if err := processProjected(iteratorConsumeEvent, projected); err != nil {
+		if err := processProjected(IteratorConsumeEvent, projected); err != nil {
 			return result, err
 		}
 	}
-
 	if err := flushProjected(); err != nil {
 		return result, err
 	}
@@ -215,19 +214,19 @@ func processAgentIterator(_ context.Context, input iteratorProcessInput) (Iterat
 	return result, nil
 }
 
-func wrapIteratorConsumeError(kind iteratorConsumeKind, err error) error {
+func wrapIteratorConsumeError(kind IteratorConsumeKind, err error) error {
 	switch kind {
-	case iteratorConsumeInterrupt:
+	case IteratorConsumeInterrupt:
 		return fmt.Errorf("persist projected interrupt event: %w", err)
-	case iteratorConsumeRecoverableTool:
+	case IteratorConsumeRecoverableTool:
 		return fmt.Errorf("persist recoverable tool error: %w", err)
-	case iteratorConsumeStreamTool:
+	case IteratorConsumeStreamTool:
 		return fmt.Errorf("persist projected tool error event: %w", err)
-	case iteratorConsumeStreamChunk:
+	case IteratorConsumeStreamChunk:
 		return fmt.Errorf("persist projected stream chunk: %w", err)
-	case iteratorConsumeEvent:
+	case IteratorConsumeEvent:
 		return fmt.Errorf("persist projected event: %w", err)
-	case iteratorConsumeFlush:
+	case IteratorConsumeFlush:
 		return fmt.Errorf("flush projected events: %w", err)
 	default:
 		return err

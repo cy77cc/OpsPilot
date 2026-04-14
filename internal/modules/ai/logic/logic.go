@@ -1,115 +1,64 @@
-// Package logic 实现 AI 模块的业务逻辑层。
+// Package logic 实现 AI 模块的业务逻辑层入口。
 //
-// 核心职责:
-//   - 接收 HTTP Handler 的请求
-//   - 调用 AIRouter (adk.ResumableAgent) 执行对话
-//   - 消费 AsyncIterator 事件并转换为 SSE 推送
-//   - 管理 Session/Message/Run 的持久化
+// Logic 是门面结构体，所有实现委托给 chat/approval/stream/policy 子包。
 package logic
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
-	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
-	aidaocheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/approval"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
-	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
-// EventEmitter 定义 SSE 事件发送接口。
-type EventEmitter func(event string, data any)
+// ── 类型别名（向后兼容） ──────────────────────────────────────
 
-// ChatInput 是 Chat 方法的输入参数。
-type ChatInput struct {
-	SessionID       string
-	ClientRequestID string
-	LastEventID     string
-	Message         string
-	Scene           string
-	Context         map[string]any
-	UserID          uint64
-}
+type (
+	ChatInput               = chat.ChatInput
+	ChatShell               = chat.ChatShell
+	SessionSummary          = chat.SessionSummary
+	ResumableCredentials    = chat.ResumableCredentials
+	RunProjectionQuery      = chat.RunProjectionQuery
+	SubmitApprovalInput     = approval.SubmitApprovalInput
+	SubmitApprovalOutput    = approval.SubmitApprovalOutput
+	RetryResumeApprovalInput  = approval.RetryResumeApprovalInput
+	RetryResumeApprovalOutput = approval.RetryResumeApprovalOutput
+	ApprovalWorker          = approval.Worker
+	ApprovalWorkerOption    = approval.WorkerOption
+	ApprovalExpirer         = approval.Expirer
+	EventEmitter            = chat.EventEmitter
+)
 
-type projectedRunUpdate struct {
-	AssistantType string
-	IntentType    string
-}
+var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 
-type ChatShell struct {
-	SessionID        string
-	Scene            string
-	Run              *ai.AIRun
-	UserMessage      *ai.AIChatMessage
-	AssistantMessage *ai.AIChatMessage
-	Reused           bool
-}
-
-type RunProjectionQuery struct {
-	Cursor   string
-	Limit    int
-	Paginate bool
-}
-
-type projectionBlockPage struct {
-	airuntime.RunProjection
-	HasMore    bool   `json:"has_more"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
-
-type projectionBlockMeta struct {
-	Block     airuntime.ProjectionBlock
-	CreatedAt time.Time
-}
-
-var ErrInvalidProjectionCursor = errors.New("invalid projection cursor")
+// ── 工厂函数 ─────────────────────────────────────────────────
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
 	return nil, fmt.Errorf("AI router bootstrap is not configured")
 }
 
-// Logic 封装 AI 模块的核心业务逻辑。
-type Logic struct {
-	svcCtx             *svc.ServiceContext
-	ChatDAO            *aidaochat.AIChatDAO
-	RunDAO             *aidao.AIRunDAO
-	DiagnosisReportDAO *aidaodiagnosis.AIDiagnosisReportDAO
-	ApprovalDAO        *aidaoapproval.AIApprovalTaskDAO
-	RunEventDAO        *aidao.AIRunEventDAO
-	RunProjectionDAO   *aidao.AIRunProjectionDAO
-	RunContentDAO      *aidao.AIRunContentDAO
-	CheckpointStore    adk.CheckPointStore
-	AIRouter           adk.ResumableAgent
-	MigrationFlags     event.ApprovalEventMigrationFlags
-	projectionGroup    singleflight.Group
-}
-
-// NewAILogic 创建 Logic 实例。
+// NewAILogic 从 ServiceContext 创建 Logic 实例。
 func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 	if svcCtx == nil || svcCtx.DB == nil {
 		return &Logic{}
 	}
-
 	var aiRouter adk.ResumableAgent
-	router, err := newOpsPilotAgent(runtimectx.WithServices(context.Background(), svcCtx))
-	if err == nil {
-		aiRouter = router
+	if r, err := newOpsPilotAgent(runtimectx.WithServices(context.Background(), svcCtx)); err == nil {
+		aiRouter = r
 	}
-
 	return New(Deps{
 		ServiceContext:     svcCtx,
 		ChatDAO:            aidaochat.NewAIChatDAO(svcCtx.DB),
@@ -119,12 +68,13 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		RunEventDAO:        aidao.NewAIRunEventDAO(svcCtx.DB),
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(svcCtx.DB),
 		RunContentDAO:      aidao.NewAIRunContentDAO(svcCtx.DB),
-		CheckpointStore:    aicheckpoint.NewStore(aidaocheckpoint.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
+		CheckpointStore:    aicheckpoint.NewStore(aicheckpoint.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 		MigrationFlags:     event.NewApprovalEventMigrationFlagsFromEnv(),
 	})
 }
 
+// NewLogicWithDB 从 DB 和 Router 创建 Logic 实例（测试用）。
 func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 	if db == nil {
 		return &Logic{}
@@ -142,165 +92,189 @@ func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 	})
 }
 
-// CanResumeSameRunStatus reports whether an approval resume transition should
-// remain within the same run attempt for the provided run status.
-func (l *Logic) CanResumeSameRunStatus(status string) bool {
+// ── Logic 门面 ──────────────────────────────────────────────
+
+// Logic 是 AI 模块的业务逻辑门面，所有方法委托给子包。
+type Logic struct {
+	svcCtx             *svc.ServiceContext
+	ChatDAO            *aidaochat.AIChatDAO
+	RunDAO             *aidao.AIRunDAO
+	DiagnosisReportDAO *aidaodiagnosis.AIDiagnosisReportDAO
+	ApprovalDAO        *aidaoapproval.AIApprovalTaskDAO
+	RunEventDAO        *aidao.AIRunEventDAO
+	RunProjectionDAO   *aidao.AIRunProjectionDAO
+	RunContentDAO      *aidao.AIRunContentDAO
+	CheckpointStore    adk.CheckPointStore
+	AIRouter           adk.ResumableAgent
+	MigrationFlags     event.ApprovalEventMigrationFlags
+	chatLogic          *chat.Logic
+}
+
+// Chat 执行一次 AI 对话（委托给 chat 子包）。
+func (l *Logic) Chat(ctx context.Context, input ChatInput, emit chat.EventEmitter) error {
+	l.ensureChatLogic()
+	return chat.Chat(ctx, l.chatLogic, input, emit)
+}
+
+func (l *Logic) ensureChatLogic() {
+	if l.chatLogic == nil && l.svcCtx != nil && l.svcCtx.DB != nil {
+		cl := chat.New(l.svcCtx)
+		cl.AIRouter = l.AIRouter
+		cl.CheckpointStore = l.CheckpointStore
+		l.chatLogic = cl
+	}
+}
+
+func (l *Logic) BuildAugmentedMessage(ctx context.Context, scene string, sceneContext map[string]any, message string) string {
+	l.ensureChatLogic()
+	return chat.BuildAugmentedMessage(ctx, l.chatLogic, scene, sceneContext, message)
+}
+
+// ── Chat/Session 委托 ────────────────────────────────────────
+
+func (l *Logic) CreateSession(ctx context.Context, userID uint64, title, scene string) (*ai.AIChatSession, error) {
+	return l.chatLogic.CreateSession(ctx, userID, title, scene)
+}
+
+func (l *Logic) ListSessions(ctx context.Context, userID uint64, scene string) ([]SessionSummary, error) {
+	return l.chatLogic.ListSessions(ctx, userID, scene)
+}
+
+func (l *Logic) GetSession(ctx context.Context, userID uint64, scene, sessionID string) (*ai.AIChatSession, []ai.AIChatMessage, error) {
+	return l.chatLogic.GetSession(ctx, userID, scene, sessionID)
+}
+
+func (l *Logic) DeleteSession(ctx context.Context, userID uint64, sessionID string) (bool, error) {
+	return l.chatLogic.DeleteSession(ctx, userID, sessionID)
+}
+
+func (l *Logic) GetMessageWithOwnership(ctx context.Context, userID uint64, messageID string) (*ai.AIChatMessage, error) {
+	return l.chatLogic.GetMessageWithOwnership(ctx, userID, messageID)
+}
+
+func (l *Logic) GetRun(ctx context.Context, userID uint64, runID string) (*ai.AIRun, *ai.AIDiagnosisReport, error) {
+	run, err := l.chatLogic.GetRun(ctx, userID, runID)
+	if err != nil || run == nil {
+		return run, nil, err
+	}
+	var report *ai.AIDiagnosisReport
+	if l.DiagnosisReportDAO != nil {
+		report, err = l.DiagnosisReportDAO.GetReportByRunID(ctx, run.ID)
+	}
+	return run, report, err
+}
+
+func (l *Logic) BuildResumableCredentials(ctx context.Context, run *ai.AIRun) (*ResumableCredentials, error) {
+	return l.chatLogic.BuildResumableCredentials(ctx, run)
+}
+
+func (l *Logic) GetRunProjection(ctx context.Context, userID uint64, runID string) (*ai.AIRunProjection, error) {
+	return chat.GetRunProjection(ctx, l.chatLogic, userID, runID)
+}
+
+func (l *Logic) GetRunProjectionPayload(ctx context.Context, userID uint64, runID string, q RunProjectionQuery) (any, error) {
+	return chat.GetRunProjectionPayload(ctx, l.chatLogic, userID, runID, q)
+}
+
+func (l *Logic) GetRunContent(ctx context.Context, userID uint64, contentID string) (*ai.AIRunContent, error) {
+	return chat.GetRunContent(ctx, l.chatLogic, userID, contentID)
+}
+
+func (l *Logic) GetDiagnosisReport(ctx context.Context, userID uint64, reportID string) (*ai.AIDiagnosisReport, error) {
+	if l.DiagnosisReportDAO == nil {
+		return nil, nil
+	}
+	report, err := l.DiagnosisReportDAO.GetReport(ctx, reportID)
+	if err != nil || report == nil {
+		return report, err
+	}
+	if l.ChatDAO != nil {
+		if session, err := l.ChatDAO.GetSession(ctx, report.SessionID, userID, ""); err != nil || session == nil {
+			return nil, err
+		}
+	}
+	return report, nil
+}
+
+// ── Approval 委托 ────────────────────────────────────────────
+
+func (l *Logic) SubmitApproval(ctx context.Context, input SubmitApprovalInput) (*SubmitApprovalOutput, error) {
+	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
+		return nil, fmt.Errorf("approval service not initialized")
+	}
+	return approval.NewWriteModel(l.svcCtx.DB).SubmitApproval(ctx, input)
+}
+
+func (l *Logic) RetryResumeApproval(ctx context.Context, input RetryResumeApprovalInput) (*RetryResumeApprovalOutput, error) {
+	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil {
+		return nil, fmt.Errorf("approval service not initialized")
+	}
+	return approval.NewWriteModel(l.svcCtx.DB).RetryResumeApproval(ctx, input)
+}
+
+func (l *Logic) GetApproval(ctx context.Context, approvalID string, userID uint64) (*ai.AIApprovalTask, error) {
+	if l.ApprovalDAO == nil {
+		return nil, nil
+	}
+	task, err := l.ApprovalDAO.GetByApprovalID(ctx, approvalID)
+	if err != nil || task == nil {
+		return task, err
+	}
+	if l.ChatDAO != nil && task.SessionID != "" {
+		if session, err := l.ChatDAO.GetSession(ctx, task.SessionID, userID, ""); err != nil || session == nil {
+			return nil, err
+		}
+	}
+	return task, nil
+}
+
+func (l *Logic) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai.AIApprovalTask, error) {
+	if l.ApprovalDAO == nil {
+		return []ai.AIApprovalTask{}, nil
+	}
+	return l.ApprovalDAO.ListPendingByUserID(ctx, userID, 50)
+}
+
+// ── Worker / Expirer 工厂 ────────────────────────────────────
+
+func ApprovalDecidedEventTypes() []string { return approval.ApprovalDecidedEventTypes() }
+func CanResumeSameRunStatus(status string) bool {
 	return strings.EqualFold(strings.TrimSpace(status), "waiting_approval")
 }
 
-// Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
-//
-// 流程:
-//  1. 创建或复用 Session
-//  2. 创建 User Message 和 Run 记录
-//  3. 发送 A2UI meta 事件
-//  4. 调用 AIRouter.Run() 获取 AsyncIterator
-//  5. 消费事件，投影为 A2UI 事件后推送
-//  6. 持久化结果
-func (l *Logic) Chat(ctx context.Context, input ChatInput, emit EventEmitter) error {
-	if l.ChatDAO == nil || l.RunDAO == nil || l.AIRouter == nil {
-		projected := airuntime.NewErrorEvent("", fmt.Errorf("AI service not initialized"))
-		emit(projected.Event, projected.Data)
-		return nil
-	}
+func NewApprovalWorker(l *Logic, opts ...ApprovalWorkerOption) *ApprovalWorker {
+	return approval.NewWorker(&approval.Logic{
+		SvcCtx: l.svcCtx, ChatDAO: l.ChatDAO, RunDAO: l.RunDAO,
+		RunEventDAO: l.RunEventDAO, ApprovalDAO: l.ApprovalDAO,
+		AIRouter: l.AIRouter, CheckpointStore: l.CheckpointStore,
+	}, opts...)
+}
 
-	shell, err := l.ensureChatShell(ctx, input)
-	if err != nil {
-		emit("error", map[string]any{"message": sanitizeUserFacingError(err)})
-		return nil
-	}
-
-	ctx = l.runtimeContext(ctx)
-	ctx, runtime := runtimectx.Ensure(ctx)
-	if requestID := strings.TrimSpace(input.ClientRequestID); requestID != "" {
-		runtime.RequestID = requestID
-	}
-	ctx = runtimectx.WithAIMetadata(ctx, runtimectx.AIMetadata{
-		SessionID:    shell.SessionID,
-		RunID:        shell.Run.ID,
-		CheckpointID: shell.Run.ID,
-		UserID:       input.UserID,
-		Scene:        shell.Scene,
+func NewApprovalExpirer(l *Logic) *ApprovalExpirer {
+	return approval.NewExpirer(&approval.Logic{
+		SvcCtx: l.svcCtx, ChatDAO: l.ChatDAO, RunDAO: l.RunDAO,
+		RunEventDAO: l.RunEventDAO, ApprovalDAO: l.ApprovalDAO,
+		AIRouter: l.AIRouter, CheckpointStore: l.CheckpointStore,
 	})
-	ctx = aicheckpoint.ContextWithMetadata(ctx, aicheckpoint.Metadata{
-		SessionID:    shell.SessionID,
-		RunID:        shell.Run.ID,
-		CheckpointID: shell.Run.ID,
-		UserID:       input.UserID,
-		Scene:        shell.Scene,
-	})
+}
 
-	// Step 4: 发送 A2UI meta 事件
-	if shell.Reused && strings.TrimSpace(input.LastEventID) != "" {
-		tailer := &RunTailer{
-			RunDAO:      l.RunDAO,
-			RunEventDAO: l.RunEventDAO,
-		}
-		return tailer.ReplayThenTail(ctx, shell.Run.ID, input.LastEventID, emit, TailOptions{})
-	}
-	meta := airuntime.NewMetaEvent(shell.SessionID, shell.Run.ID, 1)
-	seqCounter := 0
-	if !shell.Reused {
-		eventID, err := l.appendRunEventWithID(ctx, shell.Run.ID, shell.SessionID, &seqCounter, meta.Event, meta.Data)
-		if err != nil {
-			return fmt.Errorf("append meta event: %w", err)
-		}
-		meta.Data = withEventID(meta.Data, eventID)
-	}
-	emit(meta.Event, meta.Data)
-	if shell.Reused {
-		l.emitExistingShellTerminal(ctx, shell, emit)
-		return nil
-	}
+func WithApprovalWorkerResume(fn approval.ResumeFunc) ApprovalWorkerOption {
+	return approval.WithWorkerResume(fn)
+}
+func WithApprovalWorkerClock(now func() time.Time) ApprovalWorkerOption {
+	return approval.WithWorkerClock(now)
+}
+func WithApprovalWorkerLeaseWindow(d time.Duration) ApprovalWorkerOption {
+	return approval.WithWorkerLeaseWindow(d)
+}
+func WithApprovalWorkerRetryDelay(d time.Duration) ApprovalWorkerOption {
+	return approval.WithWorkerRetryDelay(d)
+}
 
-	// Step 5: 调用 AIRouter
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{
-		Agent:           l.AIRouter,
-		EnableStreaming: true,
-		CheckPointStore: l.CheckpointStore,
-	})
+// ── 测试兼容 ─────────────────────────────────────────────────
 
-	agentInput := []*schema.Message{
-		schema.UserMessage(l.buildAugmentedMessage(ctx, shell.Scene, input.Context, input.Message)),
-	}
-
-	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
-
-	// Step 6: 消费事件
-	var (
-		projector = airuntime.NewStreamProjector()
-	)
-
-	result, err := processAgentIterator(ctx, iteratorProcessInput{
-		Iterator:  iterator,
-		Projector: projector,
-		Emit:      emit,
-		ConsumeProjected: func(_ iteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
-			_, consumeErr := l.consumeProjectedEvents(ctx, shell.Run.ID, shell.SessionID, &seqCounter, events, emit, nil)
-			return consumeErr
-		},
-		HandleRunUpdate: func(update projectedRunUpdate) {
-			if update.AssistantType != "" || update.IntentType != "" {
-				_ = l.RunDAO.UpdateRunStatus(ctx, shell.Run.ID, aidao.AIRunStatusUpdate{
-					IntentType:    update.IntentType,
-					AssistantType: update.AssistantType,
-				})
-			}
-		},
-	})
-	if err != nil {
-		return err
-	}
-	if result.FatalErr != nil {
-		snapshot := result.AssistantSnapshot
-		if !shouldRetainPartialStreamSnapshot(result.FatalErr) {
-			snapshot = ""
-		}
-		if err := l.emitTerminalFailure(ctx, shell, &seqCounter, result.FatalErr, result.SummaryText, snapshot, emit); err != nil {
-			return fmt.Errorf("finalize iterator error: %w", err)
-		}
-		return nil
-	}
-	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
-		runStatus := aidao.AIRunStatusUpdate{
-			Status:             "waiting_approval",
-			AssistantMessageID: shell.AssistantMessage.ID,
-		}
-		if err := l.finalizeRunCritical(ctx, shell, runStatus, result.SummaryText); err != nil {
-			return fmt.Errorf("persist waiting approval state: %w", err)
-		}
-		_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
-		emit("run_state", map[string]any{
-			"run_id":  shell.Run.ID,
-			"status":  "waiting_approval",
-			"agent":   "executor",
-			"summary": result.SummaryText,
-		})
-		return nil
-	}
-
-	done := projector.Finish(shell.Run.ID)
-	if payload, ok := done.Data.(map[string]any); ok {
-		ensureDoneSummary(payload, result.SummaryText, result.HasToolErrors)
-		done.Data = payload
-	}
-	eventID, err := l.appendRunEventWithID(ctx, shell.Run.ID, shell.SessionID, &seqCounter, done.Event, done.Data)
-	if err != nil {
-		return fmt.Errorf("append meta event: %w", err)
-	}
-	runStatus := aidao.AIRunStatusUpdate{
-		Status:             "completed",
-		AssistantMessageID: shell.AssistantMessage.ID,
-	}
-	if result.HasToolErrors {
-		runStatus.Status = "completed_with_tool_errors"
-	}
-	if err := l.finalizeRunCritical(ctx, shell, runStatus, ""); err != nil {
-		return fmt.Errorf("finalize run critical: %w", err)
-	}
-	_ = l.persistRunEnhancementsBestEffort(ctx, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
-
-	emit(done.Event, withEventID(done.Data, eventID))
-
-	return nil
+func (l *Logic) AppendRunEvent(ctx context.Context, runID, sessionID string, seq *int, eventName string, payload any) error {
+	l.ensureChatLogic()
+	_, err := chat.AppendRunEventWithID(ctx, l.chatLogic, runID, sessionID, seq, eventName, payload)
+	return err
 }

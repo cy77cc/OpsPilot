@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -21,23 +22,27 @@ func NewHTTPHandlerWithDB(db *gorm.DB) *HTTPHandler {
 	return handler.NewHTTPHandlerWithDB(db)
 }
 
-// RegisterRoutes 注册 LLM Provider 相关的 HTTP 路由。
-func RegisterRoutes(r *gin.RouterGroup, svcCtx *svc.ServiceContext) {
+// RegisterAdminAIModelRoutes registers admin model management routes under /admin/ai/models.
+func RegisterAdminAIModelRoutes(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	h := NewHTTPHandler(svcCtx)
 
-	// 管理员路由
-	admin := r.Group("/admin")
+	readOnly := middleware.CasbinAuth(nil, "ai:model:read")
+	writeOnly := middleware.CasbinAuth(nil, "ai:model:write")
+	if svcCtx != nil {
+		readOnly = middleware.CasbinAuth(svcCtx.CasbinEnforcer, "ai:model:read")
+		writeOnly = middleware.CasbinAuth(svcCtx.CasbinEnforcer, "ai:model:write")
+	}
+
+	g := v1.Group("/admin/ai", middleware.JWTAuth())
+	models := g.Group("/models")
 	{
-		llmProviders := admin.Group("/llm-providers")
-		{
-			llmProviders.GET("", h.ListModels)
-			llmProviders.POST("", h.CreateModel)
-			llmProviders.POST("/preview-import", h.PreviewImport)
-			llmProviders.POST("/import", h.ImportModels)
-			llmProviders.GET("/:id", h.GetModel)
-			llmProviders.PUT("/:id", h.UpdateModel)
-			llmProviders.DELETE("/:id", h.DeleteModel)
-			llmProviders.PUT("/:id/default", h.SetDefaultModel)
-		}
+		models.GET("", readOnly, h.ListModels)
+		models.GET("/:id", readOnly, h.GetModel)
+		models.POST("", writeOnly, h.CreateModel)
+		models.PUT("/:id", writeOnly, h.UpdateModel)
+		models.PUT("/:id/default", writeOnly, h.SetDefaultModel)
+		models.DELETE("/:id", writeOnly, h.DeleteModel)
+		models.POST("/import/preview", readOnly, h.PreviewImport)
+		models.POST("/import", writeOnly, h.ImportModels)
 	}
 }

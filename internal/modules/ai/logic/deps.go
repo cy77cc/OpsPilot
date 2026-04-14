@@ -6,6 +6,7 @@ import (
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -27,7 +28,7 @@ type Deps struct {
 
 // New creates a Logic instance from explicit dependencies.
 func New(deps Deps) *Logic {
-	return &Logic{
+	l := &Logic{
 		svcCtx:             deps.ServiceContext,
 		ChatDAO:            deps.ChatDAO,
 		RunDAO:             deps.RunDAO,
@@ -40,4 +41,8 @@ func New(deps Deps) *Logic {
 		AIRouter:           deps.AIRouter,
 		MigrationFlags:     deps.MigrationFlags,
 	}
+	if deps.ServiceContext != nil && deps.ServiceContext.DB != nil {
+		l.chatLogic = chat.New(deps.ServiceContext)
+	}
+	return l
 }

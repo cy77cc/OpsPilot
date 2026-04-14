@@ -49,7 +49,8 @@ type providerPayload struct {
 }
 
 type importPayload struct {
-	Providers []providerPayload `json:"providers"`
+	ReplaceAll bool              `json:"replace_all"`
+	Providers  []providerPayload `json:"providers"`
 }
 
 func (h *HTTPHandler) ListModels(c *gin.Context) {
@@ -184,7 +185,23 @@ func (h *HTTPHandler) PreviewImport(c *gin.Context) {
 	if !ok {
 		return
 	}
-	httpx.OK(c, gin.H{"count": len(payload.Providers)})
+	providers := make([]map[string]any, 0, len(payload.Providers))
+	for _, item := range payload.Providers {
+		record, err := buildProviderRecord(item, nil)
+		if err != nil {
+			httpx.Fail(c, xcode.LLMImportValidationFail, err.Error())
+			return
+		}
+		providers = append(providers, serializeProvider(*record))
+	}
+	httpx.OK(c, gin.H{
+		"replace_all": payload.ReplaceAll,
+		"total":       len(providers),
+		"providers":   providers,
+		// Backward compatibility for callers still reading old keys.
+		"count": len(providers),
+		"list":  providers,
+	})
 }
 
 func (h *HTTPHandler) ImportModels(c *gin.Context) {
@@ -216,7 +233,15 @@ func (h *HTTPHandler) ImportModels(c *gin.Context) {
 		}
 		created = append(created, serializeProvider(*record))
 	}
-	httpx.OK(c, gin.H{"count": len(created), "list": created})
+	httpx.OK(c, gin.H{
+		"replace_all": payload.ReplaceAll,
+		"created":     len(created),
+		"updated":     0,
+		"providers":   created,
+		// Backward compatibility for callers still reading old keys.
+		"count": len(created),
+		"list":  created,
+	})
 }
 
 func (h *HTTPHandler) dao() *dao.LLMProviderDAO {
