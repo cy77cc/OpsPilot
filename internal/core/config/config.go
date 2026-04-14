@@ -143,9 +143,10 @@ type Metrics struct {
 
 // Security 包含安全相关配置。
 type Security struct {
-	TrustedProxies []string `mapstructure:"trusted_proxies"` // 信任的代理 IP
-	HideBanner     bool     `mapstructure:"hide_banner"`     // 是否隐藏启动横幅
-	EncryptionKey  string   `mapstructure:"encryption_key"`  // 数据加密密钥
+	TrustedProxies        []string `mapstructure:"trusted_proxies"`         // 信任的代理 IP
+	HideBanner            bool     `mapstructure:"hide_banner"`             // 是否隐藏启动横幅
+	EncryptionKey         string   `mapstructure:"encryption_key"`          // 数据加密密钥
+	WebSocketAllowOrigins []string `mapstructure:"websocket_allow_origins"` // WebSocket 允许的来源
 }
 
 // LLM 包含大语言模型配置。
