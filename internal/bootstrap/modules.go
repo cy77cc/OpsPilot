@@ -3,9 +3,10 @@ package bootstrap
 import (
 	"context"
 	"net/http"
+	"time"
 
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
-	aibootstrap "github.com/cy77cc/OpsPilot/internal/modules/ai/bootstrap"
+	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
 	cicdapi "github.com/cy77cc/OpsPilot/internal/modules/cicd/api"
@@ -26,6 +27,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const aiBackgroundWorkerTick = 2 * time.Second
+
 // RegisterModules wires all HTTP modules into the shared router.
 func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 	engine.GET("/api/health", func(c *gin.Context) {
@@ -34,7 +37,11 @@ func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
-	aibootstrap.StartBackgroundProcessors(context.Background(), appCtx)
+	if appCtx != nil && appCtx.DB != nil {
+		ai := ailogic.NewAILogic(appCtx)
+		go ailogic.NewApprovalWorker(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
+		go ailogic.NewApprovalExpirer(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
+	}
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	aiapi.RegisterAdminAIHandlers(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/gin-gonic/gin"
 )
 

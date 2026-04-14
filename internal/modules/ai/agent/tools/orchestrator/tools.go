@@ -8,8 +8,6 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	aitools "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
-	aiartifact "github.com/cy77cc/OpsPilot/internal/modules/ai/service"
-	aicontext "github.com/cy77cc/OpsPilot/internal/modules/ai/service"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
@@ -108,8 +106,8 @@ func LoadTaskContext(ctx context.Context) tool.InvokableTool {
 			if input == nil {
 				input = &LoadTaskContextInput{}
 			}
-			assembler := aicontext.NewAssembler()
-			layers := assembler.Assemble(aicontext.Input{
+			assembler := newContextAssembler()
+			layers := assembler.Assemble(contextAssembleInput{
 				Instruction:      input.Instruction,
 				SessionMemory:    input.SessionMemory,
 				TaskMemory:       input.TaskMemory,
@@ -142,7 +140,7 @@ func LoadArtifactContext(ctx context.Context) tool.InvokableTool {
 			if content == "" {
 				return nil, fmt.Errorf("content is required")
 			}
-			result := aiartifact.NewService(input.MaxInlineChars).BuildReference(content, input.ArtifactID)
+			result := newArtifactService(input.MaxInlineChars).BuildReference(content, input.ArtifactID)
 			payload := map[string]any{
 				"mode":    result.Mode,
 				"summary": result.Summary,
@@ -180,10 +178,10 @@ func ToolSearch(ctx context.Context) tool.InvokableTool {
 			}
 			domain := strings.ToLower(strings.TrimSpace(input.Domain))
 
-			// FIXME: Tools catalog removed
-			var results []interface{}
+			query := strings.TrimSpace(input.Query)
+			results := defaultToolCatalog().Search(query, limit, domain)
 			return map[string]any{
-				"query":   strings.TrimSpace(input.Query),
+				"query":   query,
 				"domain":  domain,
 				"count":   len(results),
 				"results": results,
@@ -272,16 +270,16 @@ func buildHistoryPayload(sessionID, mode string, messages []chatMessageRecord, m
 		}
 	}
 	workingLayer := "### WORKING MEMORY (Recent Turns)\n" + formatMessages(recent, maxRecentMessageChars)
-	assembler := aicontext.NewAssembler()
-	layers := assembler.Assemble(aicontext.Input{
+	assembler := newContextAssembler()
+	layers := assembler.Assemble(contextAssembleInput{
 		Instruction:   instructionLayer,
 		SessionMemory: episodicLayer,
 		TaskMemory:    workingLayer,
 	})
 	assembled := strings.Join(layers, "\n\n")
-	artifactRef := aiartifact.NewService(maxChars).BuildReference(assembled, "")
+	artifactRef := newArtifactService(maxChars).BuildReference(assembled, "")
 	result := assembled
-	if artifactRef.Mode == aiartifact.ModeArtifact {
+	if artifactRef.Mode == artifactModeArtifact {
 		result = artifactRef.Summary
 	}
 

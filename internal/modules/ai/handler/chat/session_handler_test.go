@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

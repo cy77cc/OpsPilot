@@ -14,10 +14,10 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	chat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
 )

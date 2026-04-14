@@ -3,7 +3,6 @@ package chathandler
 
 import (
 	"errors"
-	"strconv"
 	"strings"
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
@@ -11,7 +10,6 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -45,34 +43,16 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 	writer := ssehandler.NewSSEWriter(c.Writer)
 
 	if strings.TrimSpace(req.LastEventID) != "" {
-		if h.svc == nil || h.svc.RunDAO == nil || h.svc.RunEventDAO == nil {
+		if err := h.svc.ValidateReplayCursor(c.Request.Context(), req.SessionID, req.ClientRequestID, req.LastEventID); err != nil {
+			if errors.Is(err, aidao.ErrRunEventCursorExpired) {
+				writeChatEvent(writer, c, "error", gin.H{
+					"code":    "AI_STREAM_CURSOR_EXPIRED",
+					"message": "last_event_id is too old; refresh the stream snapshot",
+				})
+				return
+			}
 			writeChatEvent(writer, c, "error", gin.H{
-				"code":    "AI_STREAM_CURSOR_EXPIRED",
-				"message": "last_event_id is too old; refresh the stream snapshot",
-			})
-			return
-		}
-		run, err := h.svc.RunDAO.FindByClientRequestID(c.Request.Context(), req.SessionID, req.ClientRequestID)
-		if err != nil {
-			writeChatEvent(writer, c, "error", gin.H{"message": err.Error()})
-			return
-		}
-		if run == nil {
-			writeChatEvent(writer, c, "error", gin.H{
-				"code":    "AI_STREAM_CURSOR_EXPIRED",
-				"message": "last_event_id is too old; refresh the stream snapshot",
-			})
-			return
-		}
-		cursor, err := h.svc.RunEventDAO.FindByEventID(c.Request.Context(), run.ID, req.LastEventID)
-		if err != nil {
-			writeChatEvent(writer, c, "error", gin.H{"message": err.Error()})
-			return
-		}
-		if cursor == nil {
-			writeChatEvent(writer, c, "error", gin.H{
-				"code":    "AI_STREAM_CURSOR_EXPIRED",
-				"message": "last_event_id is too old; refresh the stream snapshot",
+				"message": err.Error(),
 			})
 			return
 		}
@@ -99,211 +79,4 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 		writeChatEvent(writer, c, "error", gin.H{"message": err.Error()})
 		return
 	}
-}
-
-func (h *HTTPHandler) CreateSession(c *gin.Context) {
-	var req aiv1.CreateSessionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpx.BindErr(c, err)
-		return
-	}
-	session, err := h.svc.CreateSession(c.Request.Context(), httpx.UIDFromCtx(c), req.Title, req.Scene)
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if session == nil {
-		httpx.OK(c, gin.H{})
-		return
-	}
-	httpx.OK(c, sessionSummaryFromModel(*session))
-}
-
-func (h *HTTPHandler) ListSessions(c *gin.Context) {
-	summaries, err := h.svc.ListSessions(c.Request.Context(), httpx.UIDFromCtx(c), strings.TrimSpace(c.Query("scene")))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	sessions := make([]ai.AIChatSession, 0, len(summaries))
-	for _, summary := range summaries {
-		sessions = append(sessions, summary.Session)
-	}
-	runBySessionAndAssistantMessageID := h.runBySessionAndAssistantMessageID(c.Request.Context(), sessions)
-	items := make([]gin.H, 0, len(summaries))
-	for _, summary := range summaries {
-		item := sessionSummaryFromModel(summary.Session)
-		if summary.LastMessage != nil {
-			run := runBySessionAndAssistantMessageID[summary.Session.ID][summary.LastMessage.ID]
-			lastMessage := sessionMessageItem(*summary.LastMessage, run)
-			mergeResumableCredentials(lastMessage, h.buildResumableCredentials(c.Request.Context(), run))
-			item["last_message"] = lastMessage
-		}
-		items = append(items, item)
-	}
-	httpx.OK(c, items)
-}
-
-func (h *HTTPHandler) GetSession(c *gin.Context) {
-	session, messages, err := h.svc.GetSession(c.Request.Context(), httpx.UIDFromCtx(c), strings.TrimSpace(c.Query("scene")), c.Param("id"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if session == nil {
-		httpx.NotFound(c, "session not found")
-		return
-	}
-	runByAssistantMessageID := h.runByAssistantMessageID(c.Request.Context(), session.ID)
-	messageItems := make([]gin.H, 0, len(messages))
-	for _, message := range messages {
-		run := runByAssistantMessageID[message.ID]
-		item := sessionMessageItem(message, run)
-		mergeResumableCredentials(item, h.buildResumableCredentials(c.Request.Context(), run))
-		messageItems = append(messageItems, item)
-	}
-	httpx.OK(c, gin.H{
-		"id":         session.ID,
-		"title":      session.Title,
-		"scene":      session.Scene,
-		"messages":   messageItems,
-		"created_at": formatTime(session.CreatedAt),
-		"updated_at": formatTime(session.UpdatedAt),
-	})
-}
-
-func (h *HTTPHandler) DeleteSession(c *gin.Context) {
-	ok, err := h.svc.DeleteSession(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if !ok {
-		httpx.NotFound(c, "session not found")
-		return
-	}
-	httpx.OK(c, nil)
-}
-
-func (h *HTTPHandler) GetRun(c *gin.Context) {
-	run, report, err := h.svc.GetRun(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("runId"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if run == nil {
-		httpx.NotFound(c, "run not found")
-		return
-	}
-	progressSummary := run.ProgressSummary
-	payload := gin.H{
-		"id":                   run.ID,
-		"run_id":               run.ID,
-		"session_id":           run.SessionID,
-		"user_message_id":      run.UserMessageID,
-		"assistant_message_id": run.AssistantMessageID,
-		"status":               run.Status,
-		"assistant_type":       run.AssistantType,
-		"intent_type":          run.IntentType,
-		"progress_summary":     progressSummary,
-		"risk_level":           run.RiskLevel,
-		"trace_id":             run.TraceID,
-		"trace_json":           run.TraceJSON,
-		"error_message":        run.ErrorMessage,
-		"started_at":           formatTime(run.StartedAt),
-		"created_at":           formatTime(run.CreatedAt),
-		"updated_at":           formatTime(run.UpdatedAt),
-	}
-	if run.FinishedAt != nil {
-		payload["finished_at"] = formatTime(*run.FinishedAt)
-	}
-	mergeResumableCredentials(payload, h.buildResumableCredentials(c.Request.Context(), run))
-	if report != nil {
-		if report.Summary != "" {
-			payload["progress_summary"] = report.Summary
-		}
-		payload["report"] = gin.H{
-			"id":        report.ID,
-			"report_id": report.ID,
-			"summary":   report.Summary,
-		}
-	}
-	httpx.OK(c, payload)
-}
-
-func (h *HTTPHandler) GetRunProjection(c *gin.Context) {
-	query := logic.RunProjectionQuery{}
-	if rawCursor, ok := c.GetQuery("cursor"); ok {
-		query.Paginate = true
-		query.Cursor = rawCursor
-		if rawLimit := c.Query("limit"); rawLimit != "" {
-			limit, err := strconv.Atoi(rawLimit)
-			if err != nil {
-				httpx.BadRequest(c, "invalid projection limit")
-				return
-			}
-			query.Limit = limit
-		}
-	}
-
-	projection, err := h.svc.GetRunProjectionPayload(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("runId"), query)
-	if err != nil {
-		if errors.Is(err, logic.ErrInvalidProjectionCursor) {
-			httpx.BadRequest(c, err.Error())
-			return
-		}
-		httpx.ServerErr(c, err)
-		return
-	}
-	if projection == nil {
-		httpx.NotFound(c, "projection not found")
-		return
-	}
-	httpx.OK(c, projection)
-}
-
-func (h *HTTPHandler) GetRunContent(c *gin.Context) {
-	content, err := h.svc.GetRunContent(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if content == nil {
-		httpx.NotFound(c, "content not found")
-		return
-	}
-	httpx.OK(c, gin.H{
-		"id":           content.ID,
-		"run_id":       content.RunID,
-		"session_id":   content.SessionID,
-		"content_kind": content.ContentKind,
-		"encoding":     content.Encoding,
-		"summary_text": content.SummaryText,
-		"body_text":    content.BodyText,
-		"body_json":    content.BodyJSON,
-		"size_bytes":   content.SizeBytes,
-		"created_at":   formatTime(content.CreatedAt),
-	})
-}
-
-func (h *HTTPHandler) GetDiagnosisReport(c *gin.Context) {
-	report, err := h.svc.GetDiagnosisReport(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("reportId"))
-	if err != nil {
-		httpx.ServerErr(c, err)
-		return
-	}
-	if report == nil {
-		httpx.NotFound(c, "diagnosis report not found")
-		return
-	}
-	httpx.OK(c, gin.H{
-		"report_id":       report.ID,
-		"run_id":          report.RunID,
-		"session_id":      report.SessionID,
-		"summary":         report.Summary,
-		"evidence":        decodeStringArray(report.EvidenceJSON),
-		"root_causes":     decodeStringArray(report.RootCausesJSON),
-		"recommendations": decodeStringArray(report.RecommendationsJSON),
-		"generated_at":    formatTime(report.GeneratedAt),
-	})
 }

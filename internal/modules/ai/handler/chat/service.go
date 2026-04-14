@@ -3,6 +3,7 @@ package chathandler
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
@@ -14,10 +15,8 @@ import (
 
 // Service provides chat/session/run/diagnosis use cases.
 type Service struct {
-	logic       *logic.Logic
-	RunDAO      *aidao.AIRunDAO
-	RunEventDAO *aidao.AIRunEventDAO
-	router      RouteService
+	logic  *logic.Logic
+	router RouteService
 }
 
 func NewService(svcCtx *svc.ServiceContext) *Service {
@@ -30,9 +29,7 @@ func NewServiceWithLogic(l *logic.Logic) *Service {
 		return &Service{}
 	}
 	return &Service{
-		logic:       l,
-		RunDAO:      l.RunDAO,
-		RunEventDAO: l.RunEventDAO,
+		logic: l,
 	}
 }
 
@@ -44,10 +41,8 @@ func NewServiceWithLogicAndRouter(l *logic.Logic, routeSvc RouteService) *Servic
 		return &Service{router: routeSvc}
 	}
 	return &Service{
-		logic:       l,
-		RunDAO:      l.RunDAO,
-		RunEventDAO: l.RunEventDAO,
-		router:      routeSvc,
+		logic:  l,
+		router: routeSvc,
 	}
 }
 
@@ -131,4 +126,73 @@ func (s *Service) GetRunContent(ctx context.Context, userID uint64, contentID st
 
 func (s *Service) GetDiagnosisReport(ctx context.Context, userID uint64, reportID string) (*ai.AIDiagnosisReport, error) {
 	return s.logic.GetDiagnosisReport(ctx, userID, reportID)
+}
+
+func (s *Service) ValidateReplayCursor(ctx context.Context, sessionID, clientRequestID, lastEventID string) error {
+	if strings.TrimSpace(lastEventID) == "" {
+		return nil
+	}
+	if s == nil || s.logic == nil || s.logic.RunDAO == nil || s.logic.RunEventDAO == nil {
+		return aidao.ErrRunEventCursorExpired
+	}
+	run, err := s.logic.RunDAO.FindByClientRequestID(ctx, sessionID, clientRequestID)
+	if err != nil {
+		return err
+	}
+	if run == nil {
+		return aidao.ErrRunEventCursorExpired
+	}
+	cursor, err := s.logic.RunEventDAO.FindByEventID(ctx, run.ID, lastEventID)
+	if err != nil {
+		return err
+	}
+	if cursor == nil {
+		return aidao.ErrRunEventCursorExpired
+	}
+	return nil
+}
+
+func (s *Service) RunByAssistantMessageID(ctx context.Context, sessionID string) map[string]*ai.AIRun {
+	result := map[string]*ai.AIRun{}
+	if s == nil || s.logic == nil || s.logic.RunDAO == nil {
+		return result
+	}
+	runs, err := s.logic.RunDAO.ListBySession(ctx, sessionID)
+	if err != nil {
+		return result
+	}
+	for _, run := range runs {
+		if strings.TrimSpace(run.AssistantMessageID) != "" {
+			runCopy := run
+			result[run.AssistantMessageID] = &runCopy
+		}
+	}
+	return result
+}
+
+func (s *Service) RunBySessionAndAssistantMessageID(ctx context.Context, sessions []ai.AIChatSession) map[string]map[string]*ai.AIRun {
+	result := map[string]map[string]*ai.AIRun{}
+	if s == nil || s.logic == nil || s.logic.RunDAO == nil || len(sessions) == 0 {
+		return result
+	}
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		sessionIDs = append(sessionIDs, session.ID)
+		result[session.ID] = map[string]*ai.AIRun{}
+	}
+	runs, err := s.logic.RunDAO.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return result
+	}
+	for _, run := range runs {
+		if strings.TrimSpace(run.AssistantMessageID) == "" {
+			continue
+		}
+		if _, ok := result[run.SessionID]; !ok {
+			result[run.SessionID] = map[string]*ai.AIRun{}
+		}
+		runCopy := run
+		result[run.SessionID][run.AssistantMessageID] = &runCopy
+	}
+	return result
 }

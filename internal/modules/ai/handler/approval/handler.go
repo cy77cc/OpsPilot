@@ -2,12 +2,9 @@
 package approvalhandler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
@@ -16,18 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const workerTick = 2 * time.Second
-
 type HTTPHandler struct {
 	svc *Service
-
-	workerMu     sync.Mutex
-	workerStart  bool
-	workerCancel context.CancelFunc
-
-	expirerMu     sync.Mutex
-	expirerStart  bool
-	expirerCancel context.CancelFunc
 }
 
 func NewHTTPHandler(svc *Service) *HTTPHandler {
@@ -120,40 +107,6 @@ func (h *HTTPHandler) RetryResumeApproval(c *gin.Context) {
 	}
 
 	httpx.OK(c, result)
-}
-
-func (h *HTTPHandler) StartApprovalWorker(ctx context.Context) {
-	if h == nil || h.svc == nil {
-		return
-	}
-
-	h.workerMu.Lock()
-	defer h.workerMu.Unlock()
-	if h.workerStart {
-		return
-	}
-
-	workerCtx, cancel := context.WithCancel(ctx)
-	h.workerCancel = cancel
-	h.workerStart = true
-	h.svc.StartWorker(workerCtx)
-}
-
-func (h *HTTPHandler) StartApprovalExpirer(ctx context.Context) {
-	if h == nil || h.svc == nil {
-		return
-	}
-
-	h.expirerMu.Lock()
-	defer h.expirerMu.Unlock()
-	if h.expirerStart {
-		return
-	}
-
-	expirerCtx, cancel := context.WithCancel(ctx)
-	h.expirerCancel = cancel
-	h.expirerStart = true
-	h.svc.StartExpirer(expirerCtx)
 }
 
 func (h *HTTPHandler) GetApproval(c *gin.Context) {

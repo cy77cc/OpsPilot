@@ -16,7 +16,6 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	aimodule "github.com/cy77cc/OpsPilot/internal/modules/ai"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
@@ -80,7 +79,7 @@ type projectionBlockMeta struct {
 var ErrInvalidProjectionCursor = errors.New("invalid projection cursor")
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	return aimodule.InitDeepAgent(ctx)
+	return nil, fmt.Errorf("AI router bootstrap is not configured")
 }
 
 // Logic 封装 AI 模块的核心业务逻辑。
@@ -111,8 +110,8 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		aiRouter = router
 	}
 
-	return &Logic{
-		svcCtx:             svcCtx,
+	return New(Deps{
+		ServiceContext:     svcCtx,
 		ChatDAO:            aidaochat.NewAIChatDAO(svcCtx.DB),
 		RunDAO:             aidao.NewAIRunDAO(svcCtx.DB),
 		DiagnosisReportDAO: aidaodiagnosis.NewAIDiagnosisReportDAO(svcCtx.DB),
@@ -123,15 +122,15 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 		CheckpointStore:    aicheckpoint.NewStore(aidaocheckpoint.NewAICheckpointDAO(svcCtx.DB), svcCtx.Rdb, ""),
 		AIRouter:           aiRouter,
 		MigrationFlags:     event.NewApprovalEventMigrationFlagsFromEnv(),
-	}
+	})
 }
 
 func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 	if db == nil {
 		return &Logic{}
 	}
-	return &Logic{
-		svcCtx:             &svc.ServiceContext{DB: db},
+	return New(Deps{
+		ServiceContext:     &svc.ServiceContext{DB: db},
 		ChatDAO:            aidaochat.NewAIChatDAO(db),
 		RunDAO:             aidao.NewAIRunDAO(db),
 		DiagnosisReportDAO: aidaodiagnosis.NewAIDiagnosisReportDAO(db),
@@ -140,7 +139,7 @@ func NewLogicWithDB(db *gorm.DB, router adk.ResumableAgent) *Logic {
 		RunProjectionDAO:   aidao.NewAIRunProjectionDAO(db),
 		RunContentDAO:      aidao.NewAIRunContentDAO(db),
 		AIRouter:           router,
-	}
+	})
 }
 
 // CanResumeSameRunStatus reports whether an approval resume transition should

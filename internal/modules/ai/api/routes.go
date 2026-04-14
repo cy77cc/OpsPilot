@@ -11,7 +11,6 @@ import (
 	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	modelhandler "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -54,30 +53,5 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/approvals/:id", approvalHandler.GetApproval)
 		g.POST("/approvals/:id/submit", approvalHandler.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", approvalHandler.RetryResumeApproval)
-	}
-}
-
-// RegisterAdminAIHandlers registers admin model management routes.
-func RegisterAdminAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := modelhandler.NewHTTPHandler(svcCtx)
-
-	readOnly := middleware.CasbinAuth(nil, "ai:model:read")
-	writeOnly := middleware.CasbinAuth(nil, "ai:model:write")
-	if svcCtx != nil {
-		readOnly = middleware.CasbinAuth(svcCtx.CasbinEnforcer, "ai:model:read")
-		writeOnly = middleware.CasbinAuth(svcCtx.CasbinEnforcer, "ai:model:write")
-	}
-
-	g := v1.Group("/admin/ai", middleware.JWTAuth())
-	models := g.Group("/models")
-	{
-		models.GET("", readOnly, h.ListModels)
-		models.GET("/:id", readOnly, h.GetModel)
-		models.POST("", writeOnly, h.CreateModel)
-		models.PUT("/:id", writeOnly, h.UpdateModel)
-		models.PUT("/:id/default", writeOnly, h.SetDefaultModel)
-		models.DELETE("/:id", writeOnly, h.DeleteModel)
-		models.POST("/import/preview", readOnly, h.PreviewImport)
-		models.POST("/import", writeOnly, h.ImportModels)
 	}
 }

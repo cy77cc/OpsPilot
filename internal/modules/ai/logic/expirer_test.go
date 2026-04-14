@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"gorm.io/gorm"
 )
 

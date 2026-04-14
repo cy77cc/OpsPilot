@@ -1,22 +1,39 @@
 package approvalhandler_test
 
 import (
+	approvalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/testsupport"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 type aiHandlerTestHarness struct {
-	*testsupport.HandlerHarness
-	logic *logic.Logic
+	approval *approvalhandler.HTTPHandler
+	logic    *logic.Logic
 }
 
 func newAIHandlerTestHarness(db *gorm.DB) *aiHandlerTestHarness {
-	h := testsupport.NewAIHandlerTestHarness(db)
-	return &aiHandlerTestHarness{HandlerHarness: h, logic: h.Logic}
+	l := logic.NewLogicWithDB(db, nil)
+	approvalSvc := approvalhandler.NewServiceWithLogic(l)
+	return &aiHandlerTestHarness{
+		approval: approvalhandler.NewHTTPHandler(approvalSvc),
+		logic:    l,
+	}
+}
+
+func (h *aiHandlerTestHarness) SubmitApproval(c *gin.Context) {
+	h.approval.SubmitApproval(c)
+}
+
+func (h *aiHandlerTestHarness) RetryResumeApproval(c *gin.Context) {
+	h.approval.RetryResumeApproval(c)
 }
 
 func registerAIHandlersForTest(v1 *gin.RouterGroup) {
-	testsupport.RegisterAIHandlersForTest(v1)
+	h := newAIHandlerTestHarness(nil)
+	g := v1.Group("/ai")
+	{
+		g.POST("/approvals/:id/submit", h.SubmitApproval)
+		g.POST("/approvals/:id/retry-resume", h.RetryResumeApproval)
+	}
 }

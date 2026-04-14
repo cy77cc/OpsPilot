@@ -3,11 +3,10 @@ package approvalhandler
 import (
 	"context"
 
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
-
 
 // Service provides approval-related use cases.
 type Service struct {
@@ -36,18 +35,4 @@ func (s *Service) GetApproval(ctx context.Context, approvalID string, userID uin
 
 func (s *Service) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai.AIApprovalTask, error) {
 	return s.logic.ListPendingApprovals(ctx, userID)
-}
-
-func (s *Service) StartWorker(ctx context.Context) {
-	if s == nil || s.logic == nil {
-		return
-	}
-	go logic.NewApprovalWorker(s.logic).RunLoop(ctx, workerTick)
-}
-
-func (s *Service) StartExpirer(ctx context.Context) {
-	if s == nil || s.logic == nil {
-		return
-	}
-	go logic.NewApprovalExpirer(s.logic).RunLoop(ctx, workerTick)
 }

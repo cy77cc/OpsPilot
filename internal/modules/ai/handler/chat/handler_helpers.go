@@ -104,48 +104,17 @@ func formatTime(value time.Time) string {
 }
 
 func (h *HTTPHandler) runByAssistantMessageID(ctx context.Context, sessionID string) map[string]*ai.AIRun {
-	result := map[string]*ai.AIRun{}
-	if h == nil || h.svc == nil || h.svc.RunDAO == nil {
-		return result
+	if h == nil || h.svc == nil {
+		return map[string]*ai.AIRun{}
 	}
-	runs, err := h.svc.RunDAO.ListBySession(ctx, sessionID)
-	if err != nil {
-		return result
-	}
-	for _, run := range runs {
-		if strings.TrimSpace(run.AssistantMessageID) != "" {
-			runCopy := run
-			result[run.AssistantMessageID] = &runCopy
-		}
-	}
-	return result
+	return h.svc.RunByAssistantMessageID(ctx, sessionID)
 }
 
 func (h *HTTPHandler) runBySessionAndAssistantMessageID(ctx context.Context, sessions []ai.AIChatSession) map[string]map[string]*ai.AIRun {
-	result := map[string]map[string]*ai.AIRun{}
-	if h == nil || h.svc == nil || h.svc.RunDAO == nil || len(sessions) == 0 {
-		return result
+	if h == nil || h.svc == nil {
+		return map[string]map[string]*ai.AIRun{}
 	}
-	sessionIDs := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		sessionIDs = append(sessionIDs, session.ID)
-		result[session.ID] = map[string]*ai.AIRun{}
-	}
-	runs, err := h.svc.RunDAO.ListBySessionIDs(ctx, sessionIDs)
-	if err != nil {
-		return result
-	}
-	for _, run := range runs {
-		if strings.TrimSpace(run.AssistantMessageID) == "" {
-			continue
-		}
-		if _, ok := result[run.SessionID]; !ok {
-			result[run.SessionID] = map[string]*ai.AIRun{}
-		}
-		runCopy := run
-		result[run.SessionID][run.AssistantMessageID] = &runCopy
-	}
-	return result
+	return h.svc.RunBySessionAndAssistantMessageID(ctx, sessions)
 }
 
 func writeChatEvent(writer *ssehandler.SSEWriter, c *gin.Context, event string, data any) {
