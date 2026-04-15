@@ -14,6 +14,7 @@ import (
 	golangssh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 )
@@ -37,14 +38,6 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 		return nil, err
 	}
 
-	var node model.Node
-	if err := s.svcCtx.DB.WithContext(ctx).First(&node, hostID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("host not found")
-		}
-		return nil, err
-	}
-
 	path, err := trustKnownHostsPath()
 	if err != nil {
 		return nil, err
@@ -63,10 +56,24 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 		ConfirmedAt:       now,
 		LastSeenAt:        now,
 	}
+	rotatedIDs := make([]uint64, 0)
+	createdID := uint64(0)
 
 	err = s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var node model.Node
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&node, hostID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("host not found")
+			}
+			return err
+		}
+		if node.IP != normalized.Host || node.Port != normalized.Port {
+			return errors.New("host and port must match target node")
+		}
+
 		var existing []model.TrustedHostKey
 		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("host_id = ? AND host = ? AND port = ? AND status = ?", hostID, normalized.Host, normalized.Port, model.TrustedHostKeyStatusTrusted).
 			Order("id DESC").
 			Find(&existing).Error; err != nil {
@@ -78,8 +85,12 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 		}
 
 		if len(existing) > 0 {
+			rotatedIDs = rotatedIDs[:0]
+			for _, entry := range existing {
+				rotatedIDs = append(rotatedIDs, entry.ID)
+			}
 			if err := tx.Model(&model.TrustedHostKey{}).
-				Where("host_id = ? AND host = ? AND port = ? AND status = ?", hostID, normalized.Host, normalized.Port, model.TrustedHostKeyStatusTrusted).
+				Where("id IN ?", rotatedIDs).
 				Updates(map[string]any{
 					"status":       model.TrustedHostKeyStatusRotated,
 					"last_seen_at": now,
@@ -89,15 +100,38 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 			}
 		}
 
-		if err := syncKnownHostsEntry(path, normalized.Host, normalized.Port, normalized.PublicKey); err != nil {
+		if err := tx.Create(item).Error; err != nil {
 			return err
 		}
-
-		return tx.Create(item).Error
+		createdID = item.ID
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	if err := syncKnownHostsEntry(path, normalized.Host, normalized.Port, normalized.PublicKey); err != nil {
+		_ = s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if createdID != 0 {
+				if removeErr := tx.Where("id = ?", createdID).Delete(&model.TrustedHostKey{}).Error; removeErr != nil {
+					return removeErr
+				}
+			}
+			if len(rotatedIDs) > 0 {
+				if restoreErr := tx.Model(&model.TrustedHostKey{}).
+					Where("id IN ?", rotatedIDs).
+					Updates(map[string]any{
+						"status":     model.TrustedHostKeyStatusTrusted,
+						"updated_at": now,
+					}).Error; restoreErr != nil {
+					return restoreErr
+				}
+			}
+			return nil
+		})
+		return nil, err
+	}
+
 	return item, nil
 }
 
