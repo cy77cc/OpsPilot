@@ -18,7 +18,7 @@ func TestBuildAgentHandlers_WiresApprovalOrchestratorFromServiceContext(t *testi
 	}
 
 	ctx := runtimectx.WithServices(context.Background(), &svc.ServiceContext{DB: db})
-	handlers, err := BuildAgentHandlers(ctx, []tool.BaseTool{})
+	handlers, err := BuildAgentHandlers(ctx, "kubernetes", []tool.BaseTool{})
 	if err != nil {
 		t.Fatalf("build handlers: %v", err)
 	}
@@ -26,9 +26,16 @@ func TestBuildAgentHandlers_WiresApprovalOrchestratorFromServiceContext(t *testi
 		t.Fatal("expected non-empty handlers")
 	}
 
-	approvalMw, ok := handlers[0].(*approvalMiddleware)
+	// 验证第一个中间件是场景路由器
+	_, ok := handlers[0].(*SceneRouterMiddleware)
 	if !ok {
-		t.Fatalf("expected first handler to be approval middleware, got %T", handlers[0])
+		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+	}
+
+	// 验证第二个中间件是审批中间件
+	approvalMw, ok := handlers[1].(*approvalMiddleware)
+	if !ok {
+		t.Fatalf("expected second handler to be approval middleware, got %T", handlers[1])
 	}
 	if approvalMw.config == nil || approvalMw.config.Orchestrator == nil {
 		t.Fatal("expected approval middleware to wire db-backed orchestrator")
@@ -36,7 +43,7 @@ func TestBuildAgentHandlers_WiresApprovalOrchestratorFromServiceContext(t *testi
 }
 
 func TestBuildAgentHandlers_WithoutServiceContextKeepsFallbackApprovalMiddleware(t *testing.T) {
-	handlers, err := BuildAgentHandlers(context.Background(), []tool.BaseTool{})
+	handlers, err := BuildAgentHandlers(context.Background(), "ai", []tool.BaseTool{})
 	if err != nil {
 		t.Fatalf("build handlers: %v", err)
 	}
@@ -44,9 +51,16 @@ func TestBuildAgentHandlers_WithoutServiceContextKeepsFallbackApprovalMiddleware
 		t.Fatal("expected non-empty handlers")
 	}
 
-	approvalMw, ok := handlers[0].(*approvalMiddleware)
+	// 验证场景路由器存在
+	_, ok := handlers[0].(*SceneRouterMiddleware)
 	if !ok {
-		t.Fatalf("expected first handler to be approval middleware, got %T", handlers[0])
+		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+	}
+
+	// 验证审批中间件存在
+	approvalMw, ok := handlers[1].(*approvalMiddleware)
+	if !ok {
+		t.Fatalf("expected second handler to be approval middleware, got %T", handlers[1])
 	}
 	if approvalMw.config == nil {
 		t.Fatal("expected approval middleware config to be initialized")

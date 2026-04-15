@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/compose"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
@@ -19,6 +20,9 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
+	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
@@ -47,7 +51,56 @@ var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 // ── 工厂函数 ─────────────────────────────────────────────────
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	return nil, fmt.Errorf("AI router bootstrap is not configured")
+	// 从上下文获取场景元数据
+	sceneMeta := runtimectx.AIMetadataFrom(ctx)
+	scene := strings.TrimSpace(sceneMeta.Scene)
+	if scene == "" {
+		scene = "ai" // 默认场景
+	}
+
+	return createAgentForScene(ctx, scene)
+}
+
+// createAgentForScene 为指定场景创建 Agent。
+func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent, error) {
+	svcCtx, ok := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
+	if !ok || svcCtx == nil {
+		return nil, fmt.Errorf("service context not found")
+	}
+
+	// 1. 创建 LLM 模型（复用现有 client）
+	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("create chat model: %w", err)
+	}
+
+	// 2. 获取场景化工具集
+	sceneTools := tools.BuildToolsForScene(ctx, scene)
+	if len(sceneTools) == 0 {
+		return nil, fmt.Errorf("no tools available for scene: %s", scene)
+	}
+
+	// 3. 构建中间件链
+	middlewares, err := middleware.BuildAgentHandlers(ctx, scene, sceneTools)
+	if err != nil {
+		return nil, fmt.Errorf("build agent handlers: %w", err)
+	}
+
+	// 4. 创建 ChatModelAgent（使用 Handlers 字段应用中间件）
+	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+		Model: chatModel,
+		ToolsConfig: adk.ToolsConfig{
+			ToolsNodeConfig: compose.ToolsNodeConfig{
+				Tools: sceneTools,
+			},
+		},
+		Handlers: middlewares, // 注入中间件链
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create chat model agent: %w", err)
+	}
+
+	return agent, nil
 }
 
 // NewAILogic 从 ServiceContext 创建 Logic 实例。
