@@ -288,7 +288,7 @@
 ### 全量验证结果（Task 15 指定命令）
 
 1. `go test ./...`：**失败**
-   - 失败点：`internal/modules/ai/handler/approval`、`internal/modules/ai/handler/chat`、`internal/modules/host/logic`。
+   - 失败点：`internal/modules/ai/handler/approval`、`internal/modules/ai/handler/chat`。
    - 说明：失败集中在 AI handler 语义与 `host` 既有测试用例；与本次文档更新及 Task 15 收尾动作本身无新增代码改动耦合。
 2. `cd web && npm test`：**失败**
    - 失败点：`src/pages/Deployment/Infrastructure/ClusterDetailPage.test.tsx`（6 个失败）及 3 个 `window is not defined` 未处理异常。
@@ -296,4 +296,3 @@
 3. `make build && make web-build`：**失败（第一段）**
    - `make build` 失败：`go build -o bin/k8s-manage main.go`，报错 `no required module provides package main.go`。
    - `make web-build` 单独执行：**通过**（`tsc -b && vite build` 成功）。
-

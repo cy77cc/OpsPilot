@@ -6,6 +6,9 @@ import (
 	"crypto/rsa"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	golangssh "golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -53,7 +57,7 @@ func assertCipherRoundTrip(t *testing.T, cipher, plain string) {
 	}
 }
 
-func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, func()) {
+func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, golangssh.PublicKey, func()) {
 	t.Helper()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -101,7 +105,7 @@ func startTestPasswordSSHServer(t *testing.T, username, password string) (string
 		_ = ln.Close()
 		<-done
 	}
-	return "127.0.0.1", tcpAddr.Port, shutdown
+		return "127.0.0.1", tcpAddr.Port, signer.PublicKey(), shutdown
 }
 
 func handleTestSSHConn(conn net.Conn, serverConfig *golangssh.ServerConfig) {
@@ -263,8 +267,15 @@ func TestUpdateCredentials_EncryptsSSHPassword(t *testing.T) {
 		sshUser      = "ops"
 		plainNewPass = "Updated-Credential-Password"
 	)
-	host, port, shutdown := startTestPasswordSSHServer(t, sshUser, plainNewPass)
+	host, port, hostKey, shutdown := startTestPasswordSSHServer(t, sshUser, plainNewPass)
 	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	knownHostsLine := knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, hostKey)
+	if err := os.WriteFile(knownHostsPath, []byte(knownHostsLine+"\n"), 0o600); err != nil {
+		t.Fatalf("write known_hosts file: %v", err)
+	}
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
 
 	node := &model.Node{
 		Name:        "update-credentials-node",
