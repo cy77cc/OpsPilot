@@ -25,10 +25,10 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
-	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )
@@ -169,6 +169,20 @@ func (s *HostService) Get(ctx context.Context, id uint64) (*model.Node, error) {
 //
 // 返回: 更新后的主机对象
 func (s *HostService) Update(ctx context.Context, id uint64, patch map[string]any) (*model.Node, error) {
+	if raw, ok := patch["ssh_password"]; ok {
+		switch v := raw.(type) {
+		case nil:
+			patch["ssh_password"] = ""
+		case string:
+			cipher, err := s.ensureSSHPasswordCipher(v)
+			if err != nil {
+				return nil, err
+			}
+			patch["ssh_password"] = cipher
+		default:
+			return nil, errors.New("ssh_password must be string")
+		}
+	}
 	if err := s.svcCtx.DB.WithContext(ctx).Model(&model.Node{}).Where("id = ?", id).Updates(patch).Error; err != nil {
 		return nil, err
 	}
@@ -319,7 +333,7 @@ func (s *HostService) RunHealthCheck(ctx context.Context, hostID uint64, operato
 		_ = s.persistHealthSnapshot(ctx, snapshot, node)
 		return snapshot, nil
 	}
-	password := strings.TrimSpace(node.SSHPassword)
+	password := strings.TrimSpace(s.ResolveNodeSSHPassword(node))
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -575,6 +589,58 @@ func (s *HostService) loadNodePrivateKey(ctx context.Context, node *model.Node) 
 		return "", "", fmt.Errorf("decrypt private key: %w", err)
 	}
 	return privateKey, passphrase, nil
+}
+
+// ensureSSHPasswordCipher 确保 SSH 密码以密文形式存储。
+//
+// 传入空密码时返回空字符串；若检测到已是有效密文则直接返回；
+// 否则使用安全配置中的加密密钥加密后返回。
+func (s *HostService) ensureSSHPasswordCipher(password string) (string, error) {
+	if strings.TrimSpace(password) == "" {
+		return "", nil
+	}
+	key := strings.TrimSpace(config.CFG.Security.EncryptionKey)
+	if key == "" {
+		return "", errors.New("security.encryption_key is required")
+	}
+	if _, err := utils.DecryptText(password, key); err == nil {
+		return password, nil
+	}
+	cipher, err := utils.EncryptText(password, key)
+	if err != nil {
+		return "", fmt.Errorf("encrypt ssh password: %w", err)
+	}
+	return cipher, nil
+}
+
+// ResolveNodeSSHPassword 在 SSH 使用边界解析主机密码。
+//
+// 返回可用于 SSH 连接的明文密码；对历史明文或解密失败场景返回原值，
+// 以兼容旧数据和错误配置场景。
+func (s *HostService) ResolveNodeSSHPassword(node *model.Node) string {
+	if node == nil {
+		return ""
+	}
+	password := strings.TrimSpace(node.SSHPassword)
+	return s.decryptNodeSSHPassword(password)
+}
+
+// decryptNodeSSHPassword 尝试将存储态密码解析为 SSH 可用明文。
+//
+// 对历史明文或解密失败场景返回原值，确保兼容旧数据。
+func (s *HostService) decryptNodeSSHPassword(password string) string {
+	if strings.TrimSpace(password) == "" {
+		return ""
+	}
+	key := strings.TrimSpace(config.CFG.Security.EncryptionKey)
+	if key == "" {
+		return password
+	}
+	plain, err := utils.DecryptText(password, key)
+	if err != nil {
+		return password
+	}
+	return plain
 }
 
 // emitMaintenanceLifecycle 发送维护生命周期事件。

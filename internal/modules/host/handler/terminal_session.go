@@ -140,7 +140,7 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
-	password := strings.TrimSpace(node.SSHPassword)
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}

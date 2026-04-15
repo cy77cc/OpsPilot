@@ -41,6 +41,10 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 
 	facts := ProbeFacts{}
 	_ = json.Unmarshal([]byte(probe.FactsJSON), &facts)
+	passwordCipher, err := s.ensureSSHPasswordCipher(probe.PasswordCipher)
+	if err != nil {
+		return nil, err
+	}
 	node := &model.Node{
 		Name:        firstNonEmpty(req.Name, probe.Name),
 		Hostname:    facts.Hostname,
@@ -48,7 +52,7 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 		IP:          probe.IP,
 		Port:        probe.Port,
 		SSHUser:     probe.Username,
-		SSHPassword: probe.PasswordCipher,
+		SSHPassword: passwordCipher,
 		Labels:      EncodeLabels(req.Labels),
 		Status:      buildStatus(probe.Reachable),
 		OS:          facts.OS,
@@ -119,9 +123,13 @@ func (s *HostService) UpdateCredentials(ctx context.Context, id uint64, req Upda
 		return &backup, resp, errors.New("credential probe failed")
 	}
 
+	passwordCipher, err := s.ensureSSHPasswordCipher(req.Password)
+	if err != nil {
+		return nil, nil, err
+	}
 	node.Port = req.Port
 	node.SSHUser = req.Username
-	node.SSHPassword = req.Password
+	node.SSHPassword = passwordCipher
 	node.LastCheckAt = time.Now()
 	if req.SSHKeyID != nil {
 		node.SSHKeyID = nodeIDPtr(*req.SSHKeyID)
@@ -152,12 +160,16 @@ func (s *HostService) createFromLegacyReq(ctx context.Context, req CreateReq) (*
 	if status == "" {
 		status = "offline"
 	}
+	passwordCipher, err := s.ensureSSHPasswordCipher(req.Password)
+	if err != nil {
+		return nil, err
+	}
 	node := &model.Node{
 		Name:        req.Name,
 		IP:          req.IP,
 		Port:        req.Port,
 		SSHUser:     firstNonEmpty(req.Username, "root"),
-		SSHPassword: req.Password,
+		SSHPassword: passwordCipher,
 		Description: req.Description,
 		Labels:      EncodeLabels(req.Labels),
 		Status:      status,
