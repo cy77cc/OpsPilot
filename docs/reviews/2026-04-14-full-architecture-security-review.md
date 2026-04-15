@@ -293,6 +293,6 @@
 2. `cd web && npm test`：**失败**
    - 失败点：`src/pages/Deployment/Infrastructure/ClusterDetailPage.test.tsx`（6 个失败）及 3 个 `window is not defined` 未处理异常。
    - 说明：为前端既有大套件不稳定/失败，不由本次 closeout 文档修改引入。
-3. `make build && make web-build`：**失败（第一段）**
-   - `make build` 失败：`go build -o bin/k8s-manage main.go`，报错 `no required module provides package main.go`。
-   - `make web-build` 单独执行：**通过**（`tsc -b && vite build` 成功）。
+3. `make build && make web-build`：**通过**
+   - `make build`：已修正为 `go build -o bin/k8s-manage ./cmd/opspilot`，执行成功。
+   - `make web-build`：**通过**（`tsc -b && vite build` 成功）。
