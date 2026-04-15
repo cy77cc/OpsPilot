@@ -12,7 +12,6 @@ interface UseNotificationWebSocketOptions {
 
 export const useNotificationWebSocket = (options: UseNotificationWebSocketOptions = {}) => {
   const {
-    userId,
     onMessage,
     onConnect,
     onDisconnect,
@@ -27,12 +26,6 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
   const statusRef = useRef<WSConnectionStatus>('disconnected');
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const intentionalDisconnectRef = useRef(false);
-
-  const userIdRef = useRef(userId);
-
-  useEffect(() => {
-    userIdRef.current = userId;
-  }, [userId]);
 
   // 使用 ref 存储回调，避免依赖变化
   const onMessageRef = useRef(onMessage);
@@ -67,16 +60,9 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
     }
   }, []);
 
-  const getAuthToken = useCallback(() => {
-    const token = localStorage.getItem('token');
-    return token ? token.trim() : '';
-  }, []);
-
   // 连接 WebSocket
   const connect = useCallback(() => {
-    const currentUserId = userIdRef.current;
-    const token = getAuthToken();
-    if (!currentUserId || !token || statusRef.current === 'connecting') {
+    if (statusRef.current === 'connecting') {
       return;
     }
 
@@ -89,17 +75,15 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
 
     if (import.meta.env.VITE_WS_URL) {
       // 使用配置的 WebSocket URL
-      wsUrl = `${import.meta.env.VITE_WS_URL}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
+      wsUrl = `${import.meta.env.VITE_WS_URL}/ws/notifications`;
     } else if (import.meta.env.DEV) {
       // 开发环境：通过 vite proxy 代理，使用当前 host
       // vite.config.ts 中配置了 /ws 代理到后端
-      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
+      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications`;
     } else {
       // 生产环境：使用当前 host
-      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications?user_id=${currentUserId}&token=${encodeURIComponent(token)}`;
+      wsUrl = `${wsProtocol}//${window.location.host}/ws/notifications`;
     }
-
-    console.log('WebSocket: 正在连接', wsUrl);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -159,11 +143,11 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       statusRef.current = 'disconnected';
       scheduleReconnect();
     }
-  }, [reconnectInterval, broadcast, getAuthToken]);
+  }, [reconnectInterval, broadcast]);
 
   // 安排重连
   const scheduleReconnect = useCallback(() => {
-    if (!userIdRef.current || !getAuthToken() || intentionalDisconnectRef.current) {
+    if (intentionalDisconnectRef.current) {
       return;
     }
 
@@ -181,7 +165,7 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       console.log(`WebSocket: 尝试重连 (延迟 ${delay}ms)`);
       connect();
     }, delay);
-  }, [connect, getAuthToken, maxReconnectInterval]);
+  }, [connect, maxReconnectInterval]);
 
   // 断开连接
   const disconnect = useCallback(() => {
@@ -211,20 +195,18 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
     }
   }, []);
 
-  // 初始化 - 只在 userId 变化时执行
+  // 初始化连接
   useEffect(() => {
     initBroadcastChannel();
 
-    if (userId) {
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-      }
-      // 延迟到下一个事件循环，避免 React StrictMode 开发双调用导致“连接前关闭”的噪音
-      connectTimeoutRef.current = setTimeout(() => {
-        connectTimeoutRef.current = null;
-        connect();
-      }, 0);
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
     }
+    // 延迟到下一个事件循环，避免 React StrictMode 开发双调用导致“连接前关闭”的噪音
+    connectTimeoutRef.current = setTimeout(() => {
+      connectTimeoutRef.current = null;
+      connect();
+    }, 0);
 
     return () => {
       disconnect();
@@ -233,7 +215,7 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
         broadcastChannelRef.current = null;
       }
     };
-  }, [userId, connect, disconnect, initBroadcastChannel]);
+  }, [connect, disconnect, initBroadcastChannel]);
 
   return {
     connect,
