@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	golangssh "golang.org/x/crypto/ssh"
@@ -35,6 +36,28 @@ func TestNewSSHClient_RejectsUnknownHostKey(t *testing.T) {
 	}
 	if len(keyErr.Want) != 0 {
 		t.Fatalf("expected unknown-host rejection (no trusted keys), got mismatched trusted keys: %v", keyErr.Want)
+	}
+}
+
+func TestNewSSHClient_UnknownHostKeyErrorIncludesActionableDetails(t *testing.T) {
+	host, port, shutdown := startTestPasswordSSHServer(t, "tester", "secret")
+	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty known_hosts file: %v", err)
+	}
+	t.Setenv(knownHostsPathEnvKey, knownHostsPath)
+
+	_, err := NewSSHClient("tester", "secret", host, port, "", "")
+	if err == nil {
+		t.Fatal("expected unknown host key rejection")
+	}
+	if !strings.Contains(err.Error(), "fingerprint ") {
+		t.Fatalf("expected fingerprint detail, got %v", err)
+	}
+	if !strings.Contains(err.Error(), knownHostsPath) {
+		t.Fatalf("expected known_hosts path detail, got %v", err)
 	}
 }
 
