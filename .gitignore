@@ -126,3 +126,4 @@ openspec/
 .tmp/
 .worktrees/
 interview/
+.cache/
