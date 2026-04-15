@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -120,6 +121,9 @@ func (s *HostService) UpdateCredentials(ctx context.Context, id uint64, req Upda
 		return nil, nil, err
 	}
 	if !resp.Reachable {
+		if strings.TrimSpace(resp.Message) != "" {
+			return &backup, resp, fmt.Errorf("credential probe failed: %s", resp.Message)
+		}
 		return &backup, resp, errors.New("credential probe failed")
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,7 +133,7 @@ func startTestPasswordSSHServer(t *testing.T, username, password string) (string
 		_ = ln.Close()
 		<-done
 	}
-		return "127.0.0.1", tcpAddr.Port, signer.PublicKey(), shutdown
+	return "127.0.0.1", tcpAddr.Port, signer.PublicKey(), shutdown
 }
 
 func handleTestSSHConn(conn net.Conn, serverConfig *golangssh.ServerConfig) {
@@ -338,4 +339,178 @@ func TestUpdateCredentials_EncryptsSSHPassword(t *testing.T) {
 		t.Fatalf("reload updated node: %v", err)
 	}
 	assertCipherRoundTrip(t, persisted.SSHPassword, plainNewPass)
+}
+
+func TestUpdateCredentials_ReturnsProbeFailureDetail(t *testing.T) {
+	hostSvc, db := newHostLogicTestService(t)
+
+	const (
+		sshUser         = "ops"
+		actualPassword  = "Correct-Password"
+		invalidPassword = "Wrong-Password"
+	)
+	host, port, hostKey, shutdown := startTestPasswordSSHServer(t, sshUser, actualPassword)
+	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	knownHostsLine := knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, hostKey)
+	if err := os.WriteFile(knownHostsPath, []byte(knownHostsLine+"\n"), 0o600); err != nil {
+		t.Fatalf("write known_hosts file: %v", err)
+	}
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
+
+	node := &model.Node{
+		Name:        "probe-failure-detail-node",
+		IP:          host,
+		Port:        port,
+		SSHUser:     sshUser,
+		SSHPassword: "old-password",
+		Status:      "online",
+		Source:      "manual_ssh",
+	}
+	if err := db.WithContext(context.Background()).Create(node).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+
+	updated, resp, err := hostSvc.UpdateCredentials(context.Background(), uint64(node.ID), UpdateCredentialsReq{
+		AuthType: "password",
+		Username: sshUser,
+		Password: invalidPassword,
+		Port:     port,
+	})
+	if err == nil {
+		t.Fatal("expected update credentials error")
+	}
+	if !strings.Contains(err.Error(), "credential probe failed:") {
+		t.Fatalf("expected credential probe failure prefix, got %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected probe response")
+	}
+	if resp.Reachable {
+		t.Fatalf("expected failed probe response, got %#v", resp)
+	}
+	if resp.ErrorCode != "auth_error" {
+		t.Fatalf("expected auth_error, got %q", resp.ErrorCode)
+	}
+	if strings.TrimSpace(resp.Message) == "" {
+		t.Fatal("expected non-empty probe failure message")
+	}
+	if !strings.Contains(err.Error(), resp.Message) {
+		t.Fatalf("expected returned error to include probe detail %q, got %v", resp.Message, err)
+	}
+	if updated == nil {
+		t.Fatal("expected backup node to be returned")
+	}
+	if updated.SSHPassword != "old-password" {
+		t.Fatalf("expected backup node credentials unchanged, got %q", updated.SSHPassword)
+	}
+
+	var persisted model.Node
+	if err := db.WithContext(context.Background()).First(&persisted, node.ID).Error; err != nil {
+		t.Fatalf("reload node: %v", err)
+	}
+	if persisted.SSHPassword != "old-password" {
+		t.Fatalf("expected persisted credentials unchanged, got %q", persisted.SSHPassword)
+	}
+}
+
+func TestUpdateCredentials_ReturnsStructuredHostKeyFailure(t *testing.T) {
+	hostSvc, db := newHostLogicTestService(t)
+
+	const (
+		sshUser     = "ops"
+		sshPassword = "Updated-Credential-Password"
+	)
+	host, port, hostKey, shutdown := startTestPasswordSSHServer(t, sshUser, sshPassword)
+	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty known_hosts file: %v", err)
+	}
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
+
+	node := &model.Node{
+		Name:        "host-key-failure-node",
+		IP:          host,
+		Port:        port,
+		SSHUser:     sshUser,
+		SSHPassword: "old-password",
+		Status:      "online",
+		Source:      "manual_ssh",
+	}
+	if err := db.WithContext(context.Background()).Create(node).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+
+	updated, resp, err := hostSvc.UpdateCredentials(context.Background(), uint64(node.ID), UpdateCredentialsReq{
+		AuthType: "password",
+		Username: sshUser,
+		Password: sshPassword,
+		Port:     port,
+	})
+	if err == nil {
+		t.Fatal("expected update credentials error")
+	}
+	if !strings.Contains(err.Error(), "credential probe failed:") {
+		t.Fatalf("expected credential probe failure prefix, got %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected probe response")
+	}
+	if resp.Reachable {
+		t.Fatalf("expected failed probe response, got %#v", resp)
+	}
+	if resp.ErrorCode != "ssh_host_key_unknown" {
+		t.Fatalf("expected ssh_host_key_unknown, got %q", resp.ErrorCode)
+	}
+	if resp.HostKey == nil {
+		t.Fatal("expected structured host key hint")
+	}
+	expectedFingerprint := golangssh.FingerprintSHA256(hostKey)
+	expectedPublicKey := strings.TrimSpace(string(golangssh.MarshalAuthorizedKey(hostKey)))
+
+	if resp.HostKey.Host != host {
+		t.Fatalf("host key hint host mismatch, got %q want %q", resp.HostKey.Host, host)
+	}
+	if resp.HostKey.Port != port {
+		t.Fatalf("host key hint port mismatch, got %d want %d", resp.HostKey.Port, port)
+	}
+	if resp.HostKey.Algorithm != hostKey.Type() {
+		t.Fatalf("host key hint algorithm mismatch, got %q want %q", resp.HostKey.Algorithm, hostKey.Type())
+	}
+	if resp.HostKey.FingerprintSHA256 != expectedFingerprint {
+		t.Fatalf("host key hint fingerprint mismatch, got %q want %q", resp.HostKey.FingerprintSHA256, expectedFingerprint)
+	}
+	if resp.HostKey.PublicKey != expectedPublicKey {
+		t.Fatalf("host key hint public key mismatch, got %q want %q", resp.HostKey.PublicKey, expectedPublicKey)
+	}
+	if resp.HostKey.KnownHostsPath != knownHostsPath {
+		t.Fatalf("host key hint known_hosts mismatch, got %q want %q", resp.HostKey.KnownHostsPath, knownHostsPath)
+	}
+	if len(resp.HostKey.TrustedFingerprints) != 0 {
+		t.Fatalf("expected no trusted fingerprints for unknown host key, got %v", resp.HostKey.TrustedFingerprints)
+	}
+	if strings.TrimSpace(resp.Message) == "" {
+		t.Fatal("expected non-empty probe message")
+	}
+	if !strings.Contains(err.Error(), expectedFingerprint) {
+		t.Fatalf("expected returned error to include fingerprint %q, got %v", expectedFingerprint, err)
+	}
+
+	if updated == nil {
+		t.Fatal("expected backup node to be returned")
+	}
+	if updated.SSHPassword != "old-password" {
+		t.Fatalf("expected backup node credentials unchanged, got %q", updated.SSHPassword)
+	}
+
+	var persisted model.Node
+	if err := db.WithContext(context.Background()).First(&persisted, node.ID).Error; err != nil {
+		t.Fatalf("reload node: %v", err)
+	}
+	if persisted.SSHPassword != "old-password" {
+		t.Fatalf("expected persisted credentials unchanged, got %q", persisted.SSHPassword)
+	}
 }
