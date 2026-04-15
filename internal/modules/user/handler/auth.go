@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
@@ -41,16 +42,31 @@ func authCookieMaxAge(ttl time.Duration) int {
 	return int(ttl.Seconds())
 }
 
+func requestUsesSecureCookies(c *gin.Context) bool {
+	if c.Request != nil && c.Request.TLS != nil {
+		return true
+	}
+	if proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); strings.EqualFold(proto, "https") {
+		return true
+	}
+	if scheme := strings.TrimSpace(c.GetHeader("X-Forwarded-Scheme")); strings.EqualFold(scheme, "https") {
+		return true
+	}
+	return false
+}
+
 func setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
+	secure := requestUsesSecureCookies(c)
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(authAccessCookieName, accessToken, authCookieMaxAge(config.CFG.JWT.Expire), "/", "", true, true)
-	c.SetCookie(authRefreshCookieName, refreshToken, authCookieMaxAge(config.CFG.JWT.RefreshExpire), "/", "", true, true)
+	c.SetCookie(authAccessCookieName, accessToken, authCookieMaxAge(config.CFG.JWT.Expire), "/", "", secure, true)
+	c.SetCookie(authRefreshCookieName, refreshToken, authCookieMaxAge(config.CFG.JWT.RefreshExpire), "/", "", secure, true)
 }
 
 func clearAuthCookies(c *gin.Context) {
+	secure := requestUsesSecureCookies(c)
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(authAccessCookieName, "", -1, "/", "", true, true)
-	c.SetCookie(authRefreshCookieName, "", -1, "/", "", true, true)
+	c.SetCookie(authAccessCookieName, "", -1, "/", "", secure, true)
+	c.SetCookie(authRefreshCookieName, "", -1, "/", "", secure, true)
 }
 
 // AuthPublicResp 是认证接口对外返回的数据（不包含 token 字段）。

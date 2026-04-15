@@ -80,10 +80,13 @@ func findSetCookieHeader(t *testing.T, recorder *httptest.ResponseRecorder, name
 	return ""
 }
 
-func assertCookieSecurityAttrs(t *testing.T, raw string) {
+func assertCookieSecurityAttrs(t *testing.T, raw string, expectSecure bool) {
 	t.Helper()
-	if !strings.Contains(raw, "Secure") {
+	if expectSecure && !strings.Contains(raw, "Secure") {
 		t.Fatalf("expected Secure cookie attribute, got %q", raw)
+	}
+	if !expectSecure && strings.Contains(raw, "Secure") {
+		t.Fatalf("did not expect Secure cookie attribute, got %q", raw)
 	}
 	if !strings.Contains(raw, "HttpOnly") {
 		t.Fatalf("expected HttpOnly cookie attribute, got %q", raw)
@@ -146,8 +149,8 @@ func TestLogin_SetsAuthCookiesAndRedactsTokenFields(t *testing.T) {
 
 	atCookie := findSetCookieHeader(t, recorder, "opspilot_at")
 	rtCookie := findSetCookieHeader(t, recorder, "opspilot_rt")
-	assertCookieSecurityAttrs(t, atCookie)
-	assertCookieSecurityAttrs(t, rtCookie)
+	assertCookieSecurityAttrs(t, atCookie, false)
+	assertCookieSecurityAttrs(t, rtCookie, false)
 	if !strings.HasPrefix(atCookie, "opspilot_at=access-token;") {
 		t.Fatalf("expected access token cookie value in %q", atCookie)
 	}
@@ -191,8 +194,8 @@ func TestRefresh_UsesRefreshCookieOnly_SetsCookiesAndRedactsTokenFields(t *testi
 
 	atCookie := findSetCookieHeader(t, recorder, "opspilot_at")
 	rtCookie := findSetCookieHeader(t, recorder, "opspilot_rt")
-	assertCookieSecurityAttrs(t, atCookie)
-	assertCookieSecurityAttrs(t, rtCookie)
+	assertCookieSecurityAttrs(t, atCookie, false)
+	assertCookieSecurityAttrs(t, rtCookie, false)
 
 	data := decodeResponseData(t, recorder)
 	assertNoTokenFields(t, data)
@@ -226,8 +229,8 @@ func TestLogout_ClearsCookiesOnSuccessAndFailure(t *testing.T) {
 
 			atCookie := findSetCookieHeader(t, recorder, "opspilot_at")
 			rtCookie := findSetCookieHeader(t, recorder, "opspilot_rt")
-			assertCookieSecurityAttrs(t, atCookie)
-			assertCookieSecurityAttrs(t, rtCookie)
+			assertCookieSecurityAttrs(t, atCookie, false)
+			assertCookieSecurityAttrs(t, rtCookie, false)
 			if !strings.HasPrefix(atCookie, "opspilot_at=;") || !strings.Contains(atCookie, "Max-Age=0") {
 				t.Fatalf("expected cleared access cookie, got %q", atCookie)
 			}
@@ -236,4 +239,28 @@ func TestLogout_ClearsCookiesOnSuccessAndFailure(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRefresh_SetsSecureCookiesWhenForwardedHTTPS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		refreshResp: v1.TokenResp{
+			AccessToken:  "new-access-token",
+			RefreshToken: "new-refresh-token",
+		},
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodPost, "/auth/refresh", nil)
+	ctx.Request.Header.Set("X-Forwarded-Proto", "https")
+	setCookieHeader(ctx, &http.Cookie{Name: authRefreshCookieName, Value: "cookie-token"})
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Refresh(ctx)
+
+	atCookie := findSetCookieHeader(t, recorder, "opspilot_at")
+	rtCookie := findSetCookieHeader(t, recorder, "opspilot_rt")
+	assertCookieSecurityAttrs(t, atCookie, true)
+	assertCookieSecurityAttrs(t, rtCookie, true)
 }
