@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,4 +312,40 @@ func TestUpdateCredentials_EncryptsSSHPassword(t *testing.T) {
 		t.Fatalf("reload updated node: %v", err)
 	}
 	assertCipherRoundTrip(t, persisted.SSHPassword, plainNewPass)
+}
+
+func TestUpdateCredentials_ReturnsProbeFailureDetail(t *testing.T) {
+	hostSvc, db := newHostLogicTestService(t)
+
+	node := &model.Node{
+		Name:        "update-credentials-error-node",
+		IP:          "127.0.0.1",
+		Port:        1,
+		SSHUser:     "root",
+		SSHPassword: "old-password",
+		Status:      "offline",
+		Source:      "manual_ssh",
+	}
+	if err := db.WithContext(context.Background()).Create(node).Error; err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+
+	_, resp, err := hostSvc.UpdateCredentials(context.Background(), uint64(node.ID), UpdateCredentialsReq{
+		AuthType: "password",
+		Username: "root",
+		Password: "new-password",
+		Port:     1,
+	})
+	if err == nil {
+		t.Fatal("expected update credentials error")
+	}
+	if resp == nil || resp.Reachable {
+		t.Fatalf("expected failed probe response, got %#v", resp)
+	}
+	if strings.TrimSpace(resp.Message) == "" {
+		t.Fatalf("expected probe failure detail, got %#v", resp)
+	}
+	if !strings.Contains(err.Error(), resp.Message) {
+		t.Fatalf("expected wrapped error to include probe detail %q, got %q", resp.Message, err.Error())
+	}
 }
