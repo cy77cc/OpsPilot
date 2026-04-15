@@ -727,10 +727,14 @@ func (s *HostService) consumeProbe(ctx context.Context, userID uint64, token str
 	}
 
 	now := time.Now()
-	if err := s.svcCtx.DB.WithContext(ctx).Model(&model.HostProbeSession{}).
+	result := s.svcCtx.DB.WithContext(ctx).Model(&model.HostProbeSession{}).
 		Where("id = ? AND consumed_at IS NULL", probe.ID).
-		Update("consumed_at", &now).Error; err != nil {
-		return nil, err
+		Update("consumed_at", &now)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, errors.New("probe_not_found")
 	}
 	probe.ConsumedAt = &now
 	return &probe, nil
