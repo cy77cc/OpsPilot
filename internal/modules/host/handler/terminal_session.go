@@ -126,6 +126,9 @@ func (m *terminalSessionManager) remove(id string) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/terminal/sessions [post]
 func (h *Handler) CreateTerminalSession(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:terminal:write", "host:terminal:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -238,6 +241,9 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 // @Failure 404 {object} httpx.Response
 // @Router /hosts/{id}/terminal/sessions/{session_id} [get]
 func (h *Handler) GetTerminalSession(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:terminal:write", "host:terminal:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -278,6 +284,9 @@ func (h *Handler) GetTerminalSession(c *gin.Context) {
 // @Failure 404 {object} httpx.Response
 // @Router /hosts/{id}/terminal/sessions/{session_id} [delete]
 func (h *Handler) DeleteTerminalSession(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:terminal:write", "host:terminal:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -303,6 +312,9 @@ func (h *Handler) DeleteTerminalSession(c *gin.Context) {
 // @Param session_id path string true "会话 ID"
 // @Router /hosts/{id}/terminal/sessions/{session_id}/ws [get]
 func (h *Handler) TerminalWebsocket(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:terminal:write", "host:terminal:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return

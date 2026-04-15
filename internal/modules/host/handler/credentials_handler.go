@@ -23,6 +23,9 @@ import (
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/ssh_keys [get]
 func (h *Handler) ListSSHKeys(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
 	list, err := h.hostService.ListSSHKeys(c.Request.Context())
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
@@ -46,6 +49,9 @@ func (h *Handler) ListSSHKeys(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/ssh_keys [post]
 func (h *Handler) CreateSSHKey(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:write", "host:credential:*", "host:*") {
+		return
+	}
 	var req hostlogic.SSHKeyCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -74,6 +80,9 @@ func (h *Handler) CreateSSHKey(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/ssh_keys/{id} [delete]
 func (h *Handler) DeleteSSHKey(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:write", "host:credential:*", "host:*") {
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
@@ -102,6 +111,9 @@ func (h *Handler) DeleteSSHKey(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/ssh_keys/{id}/verify [post]
 func (h *Handler) VerifySSHKey(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:write", "host:credential:*", "host:*") {
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
@@ -133,6 +145,9 @@ func (h *Handler) VerifySSHKey(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/templates [get]
 func (h *Handler) ListCredentialTemplates(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
 	list, err := h.hostService.ListCredentialTemplates(c.Request.Context())
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
@@ -156,6 +171,9 @@ func (h *Handler) ListCredentialTemplates(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/templates [post]
 func (h *Handler) CreateCredentialTemplate(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:write", "host:credential:*", "host:*") {
+		return
+	}
 	var req hostlogic.CredentialTemplateCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -185,6 +203,9 @@ func (h *Handler) CreateCredentialTemplate(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /credentials/templates/{id} [delete]
 func (h *Handler) DeleteCredentialTemplate(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:write", "host:credential:*", "host:*") {
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")

@@ -91,6 +91,9 @@ func (h *Handler) withSFTP(c *gin.Context, hostID uint64, fn func(*sftp.Client) 
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files [get]
 func (h *Handler) ListFiles(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:read", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -136,6 +139,9 @@ func (h *Handler) ListFiles(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/content [get]
 func (h *Handler) ReadFileContent(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:read", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -184,6 +190,9 @@ func (h *Handler) ReadFileContent(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/content [put]
 func (h *Handler) WriteFileContent(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:write", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -231,6 +240,9 @@ func (h *Handler) WriteFileContent(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/upload [post]
 func (h *Handler) UploadFile(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:write", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -281,6 +293,9 @@ func (h *Handler) UploadFile(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/download [get]
 func (h *Handler) DownloadFile(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:read", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -319,6 +334,9 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/mkdir [post]
 func (h *Handler) MakeDir(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:write", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -359,6 +377,9 @@ func (h *Handler) MakeDir(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files/rename [post]
 func (h *Handler) RenamePath(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:write", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
@@ -401,6 +422,9 @@ func (h *Handler) RenamePath(c *gin.Context) {
 // @Failure 500 {object} httpx.Response
 // @Router /hosts/{id}/files [delete]
 func (h *Handler) DeletePath(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:file:write", "host:file:*", "host:*") {
+		return
+	}
 	hostID, ok := parseID(c)
 	if !ok {
 		return
