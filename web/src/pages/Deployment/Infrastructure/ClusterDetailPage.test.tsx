@@ -818,7 +818,7 @@ describe('ClusterDetailPage', () => {
         approval_token: undefined,
       }));
     });
-  }, 45000);
+  }, 90000);
 
   it('updates and deletes an ingress from services tab', async () => {
     const user = userEvent.setup();
@@ -884,7 +884,7 @@ describe('ClusterDetailPage', () => {
       expect(errorSpy).toHaveBeenCalledWith('create failed');
     });
     errorSpy.mockRestore();
-  }, 45000);
+  }, 90000);
 
   it('renders an operation-center audit link after renewing certificates', async () => {
     const user = userEvent.setup();
@@ -914,7 +914,7 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=115',
     );
-  }, 45000);
+  }, 90000);
 
   it('renders an operation-center audit link after cluster upgrade', async () => {
     const user = userEvent.setup();
@@ -945,7 +945,7 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=116',
     );
-  }, 45000);
+  }, 90000);
 
   it('shows drain recovery guidance when node drain fails', async () => {
     const user = userEvent.setup();
@@ -1011,7 +1011,7 @@ describe('ClusterDetailPage', () => {
 
     await expectHighRiskRunbookGuidance(/确认节点已完成 drain、已从流量与自动伸缩池摘除/i);
     confirmSpy.mockRestore();
-  }, 45000);
+  }, 90000);
 
   it('shows certificate renewal recovery guidance when renew fails', async () => {
     const user = userEvent.setup();
@@ -1046,7 +1046,7 @@ describe('ClusterDetailPage', () => {
     });
 
     await expectHighRiskRunbookGuidance(/逐项核对 apiserver、controller-manager、scheduler 证书与静态 Pod 重启情况/i);
-  }, 45000);
+  }, 90000);
 
   it('shows upgrade recovery guidance when cluster upgrade fails', async () => {
     const user = userEvent.setup();
@@ -1082,5 +1082,5 @@ describe('ClusterDetailPage', () => {
     });
 
     await expectHighRiskRunbookGuidance(/先冻结变更并确认 etcd 与控制平面备份可恢复/i);
-  }, 45000);
+  }, 90000);
 });

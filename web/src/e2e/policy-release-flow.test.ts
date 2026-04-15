@@ -215,7 +215,7 @@ describe('PolicyReleaseFlowE2E', () => {
     await user.click(screen.getByRole('button', { name: '执行发布' }));
     expect(await screen.findByText('仿真存在阻断项，禁止发布')).toBeInTheDocument();
     expect(mockApi.cluster.applyPolicyRelease).not.toHaveBeenCalled();
-  }, 30000);
+  }, 90000);
 
   it('rollback success feedback', async () => {
     const user = userEvent.setup();

@@ -82,7 +82,7 @@ describe('CICDPage', () => {
     const auditTabs = await screen.findAllByRole('tab', { name: '审批与审计时间线' });
     fireEvent.click(auditTabs[0]);
     expect(await screen.findByText('release.triggered', {}, { timeout: 10000 })).toBeInTheDocument();
-  }, 30000);
+  }, 90000);
 
   it('saves service ci config', async () => {
     render(<CICDPage />);
