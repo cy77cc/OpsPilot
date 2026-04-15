@@ -1,24 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import React from 'react';
 
-// Mock the auth API module
 const mockGetMe = vi.fn();
+const mockLogin = vi.fn();
+const mockRegister = vi.fn();
+const mockLogout = vi.fn();
 
 vi.mock('../../api/modules/auth', () => ({
   authApi: {
-    login: vi.fn(),
-    register: vi.fn(),
-    logout: vi.fn(),
+    login: (payload: unknown) => mockLogin(payload),
+    register: (payload: unknown) => mockRegister(payload),
+    logout: (payload?: unknown) => mockLogout(payload),
     getMe: () => mockGetMe(),
   },
 }));
 
-// Mock the api service
 vi.mock('../../api/api', () => ({
-  default: {
-    refreshAccessToken: vi.fn(),
-  },
   TOKEN_EVENTS: {
     REFRESHED: 'tokenRefreshed',
     EXPIRED: 'tokenExpired',
@@ -26,43 +24,38 @@ vi.mock('../../api/api', () => ({
   },
 }));
 
-// Mock tokenManager functions
-const mockStartTokenExpiryCheck = vi.fn();
-const mockStopTokenExpiryCheck = vi.fn();
-
-vi.mock('../../utils/tokenManager', () => ({
-  startTokenExpiryCheck: () => mockStartTokenExpiryCheck(),
-  stopTokenExpiryCheck: () => mockStopTokenExpiryCheck(),
-  dispatchTokenRefreshed: vi.fn(),
-  dispatchTokenExpired: vi.fn(),
-  TOKEN_EVENTS: {
-    REFRESHED: 'tokenRefreshed',
-    EXPIRED: 'tokenExpired',
-    NEEDS_REFRESH: 'tokenNeedsRefresh',
-  },
-}));
-
-// Import after mocks are set up
 import { AuthProvider, useAuth } from './AuthContext';
-
-// Simple test component
-const TokenDisplay = () => {
-  const { token } = useAuth();
-  return <div data-testid="token-display">{token || 'no-token'}</div>;
-};
 
 const AuthStatusDisplay = () => {
   const { isAuthenticated } = useAuth();
   return <div data-testid="auth-status">{isAuthenticated ? 'authenticated' : 'not-authenticated'}</div>;
 };
 
-describe('AuthContext Token Refresh Integration', () => {
+const TOKEN_STORAGE_KEYS = new Set(['token', 'refreshToken']);
+
+const createTokenStorageSpies = () => {
+  const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+  const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+  const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
+
+  const assertNoTokenStorageDependency = () => {
+    const tokenKeyCalls = [...getItemSpy.mock.calls, ...setItemSpy.mock.calls, ...removeItemSpy.mock.calls]
+      .filter(([key]) => TOKEN_STORAGE_KEYS.has(String(key)));
+
+    expect(tokenKeyCalls).toEqual([]);
+  };
+
+  return {
+    assertNoTokenStorageDependency,
+  };
+};
+
+describe('AuthContext Cookie Session Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
 
-    // Default mock implementations
     mockGetMe.mockResolvedValue({
       data: {
         id: 1,
@@ -77,114 +70,96 @@ describe('AuthContext Token Refresh Integration', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  describe('Token Check Lifecycle', () => {
-    it('starts token check on mount when token exists', async () => {
-      localStorage.setItem('token', 'existing-token');
+  it('bootstraps authenticated state from cookie session without localStorage token keys', async () => {
+    const { assertNoTokenStorageDependency } = createTokenStorageSpies();
 
-      await act(async () => {
-        render(
-          <AuthProvider>
-            <TokenDisplay />
-          </AuthProvider>
-        );
-      });
-
-      // Should start token check on mount with existing token
-      expect(mockStartTokenExpiryCheck).toHaveBeenCalled();
-    });
-
-    it('does not start token check when no token exists', async () => {
-      await act(async () => {
-        render(
-          <AuthProvider>
-            <TokenDisplay />
-          </AuthProvider>
-        );
-      });
-
-      // Should not start token check without token
-      expect(mockStartTokenExpiryCheck).not.toHaveBeenCalled();
-    });
-
-    it('stops token check on unmount', async () => {
-      localStorage.setItem('token', 'existing-token');
-
-      const { unmount } = render(
+    await act(async () => {
+      render(
         <AuthProvider>
-          <TokenDisplay />
+          <AuthStatusDisplay />
         </AuthProvider>
       );
-
-      await act(async () => {
-        // Wait for initial render
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      });
-
-      await act(async () => {
-        unmount();
-      });
-
-      expect(mockStopTokenExpiryCheck).toHaveBeenCalled();
     });
+
+    await waitFor(() => {
+      expect(mockGetMe).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('authenticated');
+    });
+
+    assertNoTokenStorageDependency();
   });
 
-  describe('Initial State', () => {
-    it('shows not authenticated when no token', async () => {
-      await act(async () => {
-        render(
-          <AuthProvider>
-            <AuthStatusDisplay />
-          </AuthProvider>
-        );
-      });
+  it('shows not authenticated when cookie session bootstrap fails', async () => {
+    const { assertNoTokenStorageDependency } = createTokenStorageSpies();
+    mockGetMe.mockRejectedValueOnce(new Error('unauthorized'));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('auth-status').textContent).toBe('not-authenticated');
-      });
-    });
-  });
-
-  describe('Event System', () => {
-    it('can dispatch and listen to tokenRefreshed event', async () => {
-      const handler = vi.fn();
-      window.addEventListener('tokenRefreshed', handler);
-
-      window.dispatchEvent(
-        new CustomEvent('tokenRefreshed', {
-          detail: { token: 'new-token' },
-        })
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <AuthStatusDisplay />
+        </AuthProvider>
       );
-
-      expect(handler).toHaveBeenCalled();
-
-      window.removeEventListener('tokenRefreshed', handler);
     });
 
-    it('can dispatch and listen to tokenExpired event', async () => {
-      const handler = vi.fn();
-      window.addEventListener('tokenExpired', handler);
-
-      window.dispatchEvent(new CustomEvent('tokenExpired'));
-
-      expect(handler).toHaveBeenCalled();
-
-      window.removeEventListener('tokenExpired', handler);
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('not-authenticated');
     });
 
-    it('can dispatch and listen to tokenNeedsRefresh event', async () => {
-      const handler = vi.fn();
-      window.addEventListener('tokenNeedsRefresh', handler);
+    assertNoTokenStorageDependency();
+  });
 
-      window.dispatchEvent(new CustomEvent('tokenNeedsRefresh'));
+  it('refreshes user on tokenRefreshed event without token storage access', async () => {
+    const { assertNoTokenStorageDependency } = createTokenStorageSpies();
 
-      expect(handler).toHaveBeenCalled();
-
-      window.removeEventListener('tokenNeedsRefresh', handler);
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <AuthStatusDisplay />
+        </AuthProvider>
+      );
     });
+
+    await waitFor(() => {
+      expect(mockGetMe).toHaveBeenCalledTimes(1);
+    });
+
+    window.dispatchEvent(new CustomEvent('tokenRefreshed', { detail: { token: 'rotated-token' } }));
+
+    await waitFor(() => {
+      expect(mockGetMe).toHaveBeenCalledTimes(2);
+    });
+
+    assertNoTokenStorageDependency();
+  });
+
+  it('handles tokenExpired by clearing auth state and setting redirect path', async () => {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <AuthStatusDisplay />
+        </AuthProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('authenticated');
+    });
+
+    window.dispatchEvent(new CustomEvent('tokenExpired'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-status').textContent).toBe('not-authenticated');
+    });
+
+    expect(sessionStorage.getItem('redirectAfterLogin')).toBe(window.location.pathname + window.location.search);
   });
 });
