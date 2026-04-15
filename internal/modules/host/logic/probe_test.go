@@ -57,6 +57,33 @@ func assertCipherRoundTrip(t *testing.T, cipher, plain string) {
 	}
 }
 
+func TestTrustedHostKeyModel_AutoMigrates(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(&model.TrustedHostKey{}); err != nil {
+		t.Fatalf("auto migrate trusted host key: %v", err)
+	}
+
+	item := &model.TrustedHostKey{
+		HostID:            10,
+		Host:              "118.193.38.89",
+		Port:              13012,
+		Algorithm:         "ssh-ed25519",
+		FingerprintSHA256: "SHA256:test-fingerprint",
+		PublicKey:         "ssh-ed25519 AAAATEST",
+		Status:            model.TrustedHostKeyStatusTrusted,
+		CreatedBy:         1,
+		ConfirmedAt:       time.Now(),
+		LastSeenAt:        time.Now(),
+	}
+	if err := db.Create(item).Error; err != nil {
+		t.Fatalf("create trusted host key: %v", err)
+	}
+}
+
 func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, golangssh.PublicKey, func()) {
 	t.Helper()
 

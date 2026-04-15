@@ -34,6 +34,7 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&hostmodel.HostImportTask{},
 		&hostmodel.HostVirtualizationTask{},
 		&hostmodel.HostProbeSession{},
+		&hostmodel.TrustedHostKey{},
 		&hostmodel.HostHealthSnapshot{},
 		&projectmodel.Project{},
 		&projectmodel.Service{},
