@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -177,6 +178,71 @@ func TestTrustHostKey_RotatesExistingEntry(t *testing.T) {
 	}
 }
 
+func TestHealthCheck_ReturnsHostKeyTrustPayload(t *testing.T) {
+	db, hostSvc := newTrustedHostKeyHandlerTestDeps(t)
+	const (
+		hostID = uint64(21)
+		uid    = uint64(1)
+		user   = "ops"
+		pass   = "secret"
+	)
+	host, port, _, shutdown := startTestPasswordSSHServer(t, user, pass)
+	defer shutdown()
+
+	seedHost(t, db, hostID, host, port)
+	if err := db.WithContext(context.Background()).
+		Model(&hostmodel.Node{}).
+		Where("id = ?", hostmodel.NodeID(hostID)).
+		Updates(map[string]any{
+			"ssh_user":     user,
+			"ssh_password": pass,
+		}).Error; err != nil {
+		t.Fatalf("seed host credentials: %v", err)
+	}
+	grantHostPermission(t, db, uid, "host:read")
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty known_hosts file: %v", err)
+	}
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
+
+	ctx, recorder := newHostMutationTestContext(http.MethodPost, "/api/v1/hosts/21/ssh/check", nil, gin.Params{{Key: "id", Value: "21"}}, uid)
+	h := &Handler{svcCtx: &svc.ServiceContext{DB: db}, hostService: hostSvc}
+	h.SSHCheck(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	assertHandlerSuccess(t, recorder)
+
+	var resp struct {
+		Data struct {
+			Reachable bool `json:"reachable"`
+			HostKey   struct {
+				Host              string `json:"host"`
+				Port              int    `json:"port"`
+				Algorithm         string `json:"algorithm"`
+				FingerprintSHA256 string `json:"fingerprint_sha256"`
+				PublicKey         string `json:"public_key"`
+				KnownHostsPath    string `json:"known_hosts_path"`
+			} `json:"host_key"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, recorder.Body.String())
+	}
+	if resp.Data.Reachable {
+		t.Fatalf("expected unreachable payload, got %+v", resp.Data)
+	}
+	if strings.TrimSpace(resp.Data.HostKey.FingerprintSHA256) == "" {
+		t.Fatalf("expected host_key fingerprint, got %+v", resp.Data.HostKey)
+	}
+	if strings.TrimSpace(resp.Data.HostKey.PublicKey) == "" {
+		t.Fatalf("expected host_key public_key, got %+v", resp.Data.HostKey)
+	}
+}
+
 func newTrustedHostKeyHandlerTestDeps(t *testing.T) (*gorm.DB, *hostlogic.HostService) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -297,4 +363,84 @@ func knownHostsLine(host string, port int, authorizedKey string) (string, error)
 		return "", err
 	}
 	return knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, key), nil
+}
+
+func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, golangssh.PublicKey, func()) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate ssh host key: %v", err)
+	}
+	signer, err := golangssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("build ssh signer: %v", err)
+	}
+
+	serverConfig := &golangssh.ServerConfig{
+		PasswordCallback: func(conn golangssh.ConnMetadata, pass []byte) (*golangssh.Permissions, error) {
+			if conn.User() == username && string(pass) == password {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConfig.AddHostKey(signer)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen test ssh server: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go handleTestSSHConn(conn, serverConfig)
+		}
+	}()
+
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = ln.Close()
+		t.Fatal("unexpected listener addr type")
+	}
+	shutdown := func() {
+		_ = ln.Close()
+		<-done
+	}
+	return "127.0.0.1", tcpAddr.Port, signer.PublicKey(), shutdown
+}
+
+func handleTestSSHConn(conn net.Conn, serverConfig *golangssh.ServerConfig) {
+	defer conn.Close()
+
+	_, chans, reqs, err := golangssh.NewServerConn(conn, serverConfig)
+	if err != nil {
+		return
+	}
+	go golangssh.DiscardRequests(reqs)
+
+	for newChannel := range chans {
+		if newChannel.ChannelType() != "session" {
+			_ = newChannel.Reject(golangssh.UnknownChannelType, "unsupported channel type")
+			continue
+		}
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			continue
+		}
+		go func(ch golangssh.Channel, in <-chan *golangssh.Request) {
+			defer ch.Close()
+			for req := range in {
+				if req.WantReply {
+					_ = req.Reply(false, nil)
+				}
+			}
+		}(channel, requests)
+	}
 }

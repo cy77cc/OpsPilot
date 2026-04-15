@@ -342,6 +342,10 @@ func (h *Handler) UpdateCredentials(c *gin.Context) {
 	}
 	node, probeResp, err := h.hostService.UpdateCredentials(c.Request.Context(), id, req)
 	if err != nil {
+		if probeResp != nil && probeResp.HostKey != nil {
+			httpx.OK(c, hostKeyErrorPayload(probeResp.Message, probeResp.HostKey))
+			return
+		}
 		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}

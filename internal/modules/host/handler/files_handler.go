@@ -64,6 +64,9 @@ func (h *Handler) withSFTP(c *gin.Context, hostID uint64, fn func(*sftp.Client) 
 	}
 	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return nil
+		}
 		return err
 	}
 	defer cli.Close()
