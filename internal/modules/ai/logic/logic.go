@@ -11,10 +11,10 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidaodiagnosis "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/diagnosis"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/approval"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
@@ -27,19 +27,19 @@ import (
 // ── 类型别名（向后兼容） ──────────────────────────────────────
 
 type (
-	ChatInput               = chat.ChatInput
-	ChatShell               = chat.ChatShell
-	SessionSummary          = chat.SessionSummary
-	ResumableCredentials    = chat.ResumableCredentials
-	RunProjectionQuery      = chat.RunProjectionQuery
-	SubmitApprovalInput     = approval.SubmitApprovalInput
-	SubmitApprovalOutput    = approval.SubmitApprovalOutput
+	ChatInput                 = chat.ChatInput
+	ChatShell                 = chat.ChatShell
+	SessionSummary            = chat.SessionSummary
+	ResumableCredentials      = chat.ResumableCredentials
+	RunProjectionQuery        = chat.RunProjectionQuery
+	SubmitApprovalInput       = approval.SubmitApprovalInput
+	SubmitApprovalOutput      = approval.SubmitApprovalOutput
 	RetryResumeApprovalInput  = approval.RetryResumeApprovalInput
 	RetryResumeApprovalOutput = approval.RetryResumeApprovalOutput
-	ApprovalWorker          = approval.Worker
-	ApprovalWorkerOption    = approval.WorkerOption
-	ApprovalExpirer         = approval.Expirer
-	EventEmitter            = chat.EventEmitter
+	ApprovalWorker            = approval.Worker
+	ApprovalWorkerOption      = approval.WorkerOption
+	ApprovalExpirer           = approval.Expirer
+	EventEmitter              = chat.EventEmitter
 )
 
 var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
@@ -119,9 +119,12 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit chat.EventEmitte
 func (l *Logic) ensureChatLogic() {
 	if l.chatLogic == nil && l.svcCtx != nil && l.svcCtx.DB != nil {
 		cl := chat.New(l.svcCtx)
-		cl.AIRouter = l.AIRouter
-		cl.CheckpointStore = l.CheckpointStore
 		l.chatLogic = cl
+	}
+	if l.chatLogic != nil {
+		// Keep chat sub-logic dependencies in sync when tests assign AIRouter after construction.
+		l.chatLogic.AIRouter = l.AIRouter
+		l.chatLogic.CheckpointStore = l.CheckpointStore
 	}
 }
 

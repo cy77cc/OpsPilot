@@ -9,6 +9,10 @@ vi.mock('../../utils/safeNavigate', () => ({
   safeNavigate: safeNavigateMock,
 }));
 
+vi.mock('../../hooks/useNotificationWebSocket', () => ({
+  useNotificationWebSocket: () => ({ status: 'connected' }),
+}));
+
 // Mock notification API
 vi.mock('../../api/modules/notification', () => ({
   notificationApi: {

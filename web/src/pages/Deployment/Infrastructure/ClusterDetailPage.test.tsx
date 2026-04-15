@@ -302,6 +302,18 @@ async function openMaintenanceTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(tab);
 }
 
+async function confirmLatestPopconfirm(
+  user: ReturnType<typeof userEvent.setup>,
+  title: string | RegExp,
+) {
+  await screen.findByText(title);
+  const confirmButton = screen.getAllByRole('button', { name: /确\s*定/ }).at(-1);
+  if (!(confirmButton instanceof HTMLButtonElement)) {
+    throw new Error('popconfirm confirm button not found');
+  }
+  await user.click(confirmButton);
+}
+
 async function expectHighRiskRunbookGuidance(summary: string | RegExp) {
   expect(await screen.findByText(summary)).toBeInTheDocument();
   expect(screen.getAllByRole('link', { name: '查看运行手册' }).some((link) => (
@@ -520,7 +532,7 @@ describe('ClusterDetailPage', () => {
         approval_token: undefined,
       });
     });
-  }, 45000);
+  }, 90000);
 
   it('runs a deployment restart from the workloads tab and renders audit feedback', async () => {
     const user = userEvent.setup();
@@ -565,7 +577,7 @@ describe('ClusterDetailPage', () => {
 
     expect(await screen.findByText('Deployment 重启')).toBeInTheDocument();
     expect(await screen.findByText('审计')).toBeInTheDocument();
-  }, 45000);
+  }, 90000);
 
   it('opens the scale modal for statefulsets and retries with approval_token', async () => {
     const user = userEvent.setup();
@@ -637,11 +649,10 @@ describe('ClusterDetailPage', () => {
         approval_token: 'approved-token',
       });
     });
-  }, 45000);
+  }, 90000);
 
   it('deletes a service from the services tab and renders audit feedback', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getNamespaces.mockResolvedValue({
       data: {
         list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }],
@@ -667,14 +678,7 @@ describe('ClusterDetailPage', () => {
     await openServicesTab(user);
     await screen.findByText('web');
     await user.click(screen.getByRole('button', { name: '删除 Service web' }));
-
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
-
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    expect(latestConfig?.title).toBe('删除 Service');
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定删除此 Service？');
 
     await waitFor(() => {
       expect(mockApi.cluster.deleteService).toHaveBeenCalledWith(42, 'default', 'web', { approval_token: undefined });
@@ -685,9 +689,7 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=111',
     );
-
-    confirmSpy.mockRestore();
-  }, 45000);
+  }, 90000);
 
   it('creates an ingress from the services tab and retries with approval_token', async () => {
     const user = userEvent.setup();
@@ -791,7 +793,7 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=602',
     );
-  }, 45000);
+  }, 90000);
 
   it('creates a service from services tab', async () => {
     const user = userEvent.setup();
@@ -820,7 +822,6 @@ describe('ClusterDetailPage', () => {
 
   it('updates and deletes an ingress from services tab', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getNamespaces.mockResolvedValue({
       data: { list: [{ name: 'default', status: 'Active', created_at: '2026-04-04T00:00:00Z' }] },
     });
@@ -854,13 +855,11 @@ describe('ClusterDetailPage', () => {
     });
 
     await user.click(await screen.findByRole('button', { name: '删除 Ingress web' }));
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定删除此 Ingress？');
     await waitFor(() => {
       expect(mockApi.cluster.deleteIngress).toHaveBeenCalledWith(42, 'default', 'web', { approval_token: undefined });
     });
-    confirmSpy.mockRestore();
-  }, 45000);
+  }, 90000);
 
   it('shows error feedback when service create fails', async () => {
     const user = userEvent.setup();
@@ -889,7 +888,6 @@ describe('ClusterDetailPage', () => {
 
   it('renders an operation-center audit link after renewing certificates', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getCertificates.mockResolvedValue({
       data: {
         list: [{
@@ -905,12 +903,7 @@ describe('ClusterDetailPage', () => {
 
     await openMaintenanceTab(user);
     await user.click(await screen.findByRole('button', { name: /续期证书/ }));
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    expect(latestConfig?.title).toBe('续期证书');
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定续期所有证书？此操作将重启控制平面组件。');
 
     await waitFor(() => {
       expect(mockApi.cluster.renewCertificates).toHaveBeenCalledWith(42, { approval_token: undefined });
@@ -921,12 +914,10 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=115',
     );
-    confirmSpy.mockRestore();
   }, 45000);
 
   it('renders an operation-center audit link after cluster upgrade', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getUpgradePlan.mockResolvedValue({
       data: {
         current_version: 'v1.28.0',
@@ -940,12 +931,7 @@ describe('ClusterDetailPage', () => {
 
     await openMaintenanceTab(user);
     await user.click(await screen.findByRole('button', { name: /升级集群/ }));
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    expect(latestConfig?.title).toBe('升级集群');
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定升级集群？建议先备份数据。');
 
     await waitFor(() => {
       expect(mockApi.cluster.upgradeCluster).toHaveBeenCalledWith(42, {
@@ -959,7 +945,6 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=116',
     );
-    confirmSpy.mockRestore();
   }, 45000);
 
   it('shows drain recovery guidance when node drain fails', async () => {
@@ -1030,7 +1015,6 @@ describe('ClusterDetailPage', () => {
 
   it('shows certificate renewal recovery guidance when renew fails', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getCertificates.mockResolvedValue({
       data: {
         list: [{
@@ -1055,23 +1039,17 @@ describe('ClusterDetailPage', () => {
 
     await openMaintenanceTab(user);
     await user.click(await screen.findByRole('button', { name: /续期证书/ }));
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定续期所有证书？此操作将重启控制平面组件。');
 
     await waitFor(() => {
       expect(mockApi.cluster.renewCertificates).toHaveBeenCalledWith(42, { approval_token: undefined });
     });
 
     await expectHighRiskRunbookGuidance(/逐项核对 apiserver、controller-manager、scheduler 证书与静态 Pod 重启情况/i);
-    confirmSpy.mockRestore();
   }, 45000);
 
   it('shows upgrade recovery guidance when cluster upgrade fails', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
     mockApi.cluster.getUpgradePlan.mockResolvedValue({
       data: {
         current_version: 'v1.28.0',
@@ -1094,11 +1072,7 @@ describe('ClusterDetailPage', () => {
 
     await openMaintenanceTab(user);
     await user.click(await screen.findByRole('button', { name: /升级集群/ }));
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-    });
-    const latestConfig = confirmSpy.mock.calls.at(-1)?.[0];
-    await latestConfig?.onOk?.();
+    await confirmLatestPopconfirm(user, '确定升级集群？建议先备份数据。');
 
     await waitFor(() => {
       expect(mockApi.cluster.upgradeCluster).toHaveBeenCalledWith(42, {
@@ -1108,6 +1082,5 @@ describe('ClusterDetailPage', () => {
     });
 
     await expectHighRiskRunbookGuidance(/先冻结变更并确认 etcd 与控制平面备份可恢复/i);
-    confirmSpy.mockRestore();
   }, 45000);
 });

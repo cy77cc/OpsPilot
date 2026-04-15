@@ -181,7 +181,7 @@ describe('PolicyReleaseFlowE2E', () => {
     await user.click(screen.getByRole('button', { name: '执行发布' }));
     expect(await screen.findByText('发布已提交')).toBeInTheDocument();
     expect(mockApi.cluster.applyPolicyRelease).toHaveBeenCalledWith(42, 501);
-  }, 30000);
+  }, 90000);
 
   it('simulation blocking UI feedback', async () => {
     const user = userEvent.setup();

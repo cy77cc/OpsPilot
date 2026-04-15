@@ -70,7 +70,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   userId,
   pollInterval = 30000,
 }) => {
-  const hasAuth = Boolean(userId && localStorage.getItem('token'));
+  const hasAuth = Boolean(userId);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState<UnreadCountResponse>({
     total: 0,
@@ -81,22 +81,39 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
   const [approvalActionStates, setApprovalActionStates] = useState<Record<string, ApprovalActionState>>({});
 
+  const mountedRef = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const approvalActionInflightRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
 
   // 使用 ref 存储加载函数，避免依赖变化
   const loadNotificationsRef = useRef<(() => Promise<void>) | null>(null);
 
   loadNotificationsRef.current = async () => {
-    if (!hasAuth) {
+    if (!hasAuth || !mountedRef.current) {
       return;
     }
     try {
-      setLoading(true);
+      if (mountedRef.current) {
+        setLoading(true);
+      }
       const [listRes, countRes] = await Promise.all([
         notificationApi.getNotifications({ pageSize: 20 }),
         notificationApi.getUnreadCount(),
       ]);
+      if (!mountedRef.current) {
+        return;
+      }
       setNotifications(listRes.data.list);
       setUnreadCount(countRes.data);
     } catch (error) {
@@ -112,7 +129,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       }
       console.error('加载通知失败:', error);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -122,6 +141,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, []);
 
   const clearApprovalActionState = useCallback((key: string) => {
+    if (!mountedRef.current) {
+      return;
+    }
     setApprovalActionStates((prev) => {
       if (!prev[key]) {
         return prev;
@@ -133,6 +155,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, []);
 
   const setApprovalActionSubmitting = useCallback((key: string) => {
+    if (!mountedRef.current) {
+      return;
+    }
     setApprovalActionStates((prev) => ({
       ...prev,
       [key]: {
@@ -143,6 +168,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, []);
 
   const setApprovalActionFailure = useCallback((key: string, error: unknown) => {
+    if (!mountedRef.current) {
+      return;
+    }
     setApprovalActionStates((prev) => ({
       ...prev,
       [key]: {
@@ -154,6 +182,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // 处理 WebSocket 消息
   const handleWSMessage = useCallback((message: WSMessage) => {
+    if (!mountedRef.current) {
+      return;
+    }
     if (message.type === 'new' && message.notification) {
       // 新通知
       const notif = message.notification;
@@ -169,7 +200,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       playNotificationSound(soundType as 'default' | 'warning' | 'error');
 
       // 发送浏览器通知（仅在页面不可见时）
-      if (document.hidden || document.visibilityState === 'hidden') {
+      if (typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden')) {
         sendBrowserNotification(
           notif.notification?.title || '新通知',
           notif.notification?.content,
@@ -206,10 +237,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     userId,
     onMessage: handleWSMessage,
     onConnect: () => {
-      setWsStatus('connected');
+      if (mountedRef.current) {
+        setWsStatus('connected');
+      }
     },
     onDisconnect: () => {
-      setWsStatus('disconnected');
+      if (mountedRef.current) {
+        setWsStatus('disconnected');
+      }
     },
     reconnectInterval: 1000,
     maxReconnectInterval: 30000,
@@ -223,6 +258,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // 标记已读
   const markAsRead = useCallback(async (id: string) => {
     await notificationApi.markAsRead(id);
+    if (!mountedRef.current) {
+      return;
+    }
     setNotifications((prev) =>
       prev.map((n) =>
         n.id === id ? { ...n, read_at: new Date().toISOString() } : n
@@ -237,6 +275,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // 忽略通知
   const dismiss = useCallback(async (id: string) => {
     await notificationApi.dismiss(id);
+    if (!mountedRef.current) {
+      return;
+    }
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     const notification = notifications.find((n) => n.id === id);
     if (notification && !notification.read_at) {
@@ -249,6 +290,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // 确认告警
   const confirm = useCallback(async (id: string) => {
+    if (!mountedRef.current) {
+      return;
+    }
     const target = notifications.find((n) => n.id === id);
     if (!target) return;
     if (target.notification.type === 'approval' && target.notification.source_id) {
@@ -283,6 +327,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     } else {
       await notificationApi.confirm(id);
     }
+    if (!mountedRef.current) {
+      return;
+    }
     setNotifications((prev) =>
       prev.map((n) =>
         n.id === id
@@ -297,10 +344,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       ...prev,
       total: Math.max(0, prev.total - 1),
     }));
-    window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'approved' } }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'approved' } }));
+    }
   }, [clearApprovalActionState, notifications, setApprovalActionFailure, setApprovalActionSubmitting]);
 
   const reject = useCallback(async (id: string) => {
+    if (!mountedRef.current) {
+      return;
+    }
     const target = notifications.find((n) => n.id === id);
     if (!target) return;
     if (target.notification.type === 'approval' && target.notification.source_id) {
@@ -332,10 +384,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       } finally {
         delete approvalActionInflightRef.current[approvalKey];
       }
+      if (!mountedRef.current) {
+        return;
+      }
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       clearApprovalActionState(approvalKey);
       setUnreadCount((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }));
-      window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'rejected' } }));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'rejected' } }));
+      }
       return;
     }
     await dismiss(id);
@@ -344,6 +401,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // 全部已读
   const markAllAsRead = useCallback(async () => {
     await notificationApi.markAllAsRead();
+    if (!mountedRef.current) {
+      return;
+    }
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
     );
@@ -394,10 +454,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // 更新 wsStatus 状态
   useEffect(() => {
-    setWsStatus(wsConnectionStatus);
+    if (mountedRef.current) {
+      setWsStatus(wsConnectionStatus);
+    }
   }, [wsConnectionStatus]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
     const handler = () => {
       void loadNotifications();
     };

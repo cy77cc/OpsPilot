@@ -3,6 +3,8 @@ package approval
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -56,6 +58,14 @@ func (m *WriteModel) SubmitApproval(ctx context.Context, input SubmitApprovalInp
 		}
 		now := time.Now().UTC()
 		if task.Status != "pending" {
+			replay, err := findSubmitIdempotencyResult(ctx, tx, input.ApprovalID, idempotencyKey, payloadHash)
+			if err != nil {
+				return err
+			}
+			if replay != nil {
+				result = replay
+				return nil
+			}
 			return AlreadyHandledError(task)
 		}
 		if task.LockExpiresAt != nil && task.LockExpiresAt.After(now) {
@@ -124,7 +134,6 @@ func (m *WriteModel) RetryResumeApproval(ctx context.Context, input RetryResumeA
 	if err != nil {
 		return nil, fmt.Errorf("hash retry resume payload: %w", err)
 	}
-	_ = payloadHash
 	var result *RetryResumeApprovalOutput
 	err = m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		approvalDAO := aidaoapproval.NewAIApprovalTaskDAO(tx)
@@ -143,6 +152,14 @@ func (m *WriteModel) RetryResumeApproval(ctx context.Context, input RetryResumeA
 		if err != nil || run == nil {
 			return fmt.Errorf("run not found")
 		}
+		decidedEvent, err := findApprovalDecidedOutbox(ctx, tx, input.ApprovalID)
+		if err != nil {
+			return fmt.Errorf("load approval decided outbox: %w", err)
+		}
+		if replay := findRetryResumeIdempotencyResult(decidedEvent, input.TriggerID, payloadHash); replay != nil {
+			result = replay
+			return nil
+		}
 		if task.Status != "approved" {
 			return &ApprovalConflictError{ApprovalID: input.ApprovalID, Message: fmt.Sprintf("approval not retryable from status %q", task.Status)}
 		}
@@ -154,7 +171,31 @@ func (m *WriteModel) RetryResumeApproval(ctx context.Context, input RetryResumeA
 			return &ApprovalConflictError{ApprovalID: input.ApprovalID, Message: fmt.Sprintf("run not retryable from status %q", run.Status)}
 		}
 		result = &RetryResumeApprovalOutput{ApprovalID: input.ApprovalID, Status: "queued", Message: "resume retry queued"}
-		return nil
+		payloadBase := TaskDecisionPayload(task)
+		if decidedEvent != nil && strings.TrimSpace(decidedEvent.PayloadJSON) != "" {
+			existingPayload, err := DecodeApprovalEventPayload(decidedEvent.PayloadJSON)
+			if err != nil {
+				return fmt.Errorf("decode existing approval decided payload: %w", err)
+			}
+			payloadBase = existingPayload
+		}
+		payload := AttachApprovalRetryResume(payloadBase, input.TriggerID, payloadHash, result)
+		if decidedEvent == nil {
+			outboxDAO := aidaoapproval.NewAIApprovalOutboxDAO(tx)
+			return m.writeEvent(ctx, tx, outboxDAO, task, event.ApprovalEventTypeDecided, payload)
+		}
+		raw, err := marshalEventPayload(decidedEvent.EventType, time.Now().UTC(), decidedEvent.Sequence, task, payload)
+		if err != nil {
+			return fmt.Errorf("marshal retry resume payload: %w", err)
+		}
+		return tx.WithContext(ctx).Model(&ai.AIApprovalOutboxEvent{}).
+			Where("id = ?", decidedEvent.ID).
+			Updates(map[string]any{
+				"status":        "pending",
+				"next_retry_at": nil,
+				"payload_json":  raw,
+				"updated_at":    time.Now().UTC(),
+			}).Error
 	})
 	if err != nil {
 		return nil, err
@@ -240,7 +281,10 @@ func (m *WriteModel) writeEvent(ctx context.Context, tx *gorm.DB, outboxDAO *aid
 		RunID: task.RunID, SessionID: task.SessionID, Status: "pending",
 	}
 	if p, ok := payload.(map[string]any); ok {
-		raw, _ := marshalEventPayload(eventType, now, sequence, task, p)
+		raw, err := marshalEventPayload(eventType, now, sequence, task, p)
+		if err != nil {
+			return fmt.Errorf("marshal approval outbox payload: %w", err)
+		}
 		eventRow.PayloadJSON = raw
 	}
 	eventRow.Sequence = sequence
@@ -249,13 +293,105 @@ func (m *WriteModel) writeEvent(ctx context.Context, tx *gorm.DB, outboxDAO *aid
 }
 
 func marshalEventPayload(eventType string, occurredAt time.Time, sequence int64, task *ai.AIApprovalTask, payload map[string]any) (string, error) {
+	_ = eventType
+	_ = occurredAt
+	_ = sequence
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if task == nil {
+		return "", fmt.Errorf("approval task is required")
+	}
 	payload["approval_id"] = task.ApprovalID
 	payload["run_id"] = task.RunID
 	payload["session_id"] = task.SessionID
-	raw, err := DecodeApprovalEventPayload("")
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
-	_ = raw
-	return "", nil
+	return string(raw), nil
+}
+
+func findSubmitIdempotencyResult(ctx context.Context, tx *gorm.DB, approvalID, idempotencyKey, payloadHash string) (*SubmitApprovalOutput, error) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return nil, nil
+	}
+	decidedEvent, err := findApprovalDecidedOutbox(ctx, tx, approvalID)
+	if err != nil || decidedEvent == nil {
+		return nil, err
+	}
+	payload, err := DecodeApprovalEventPayload(decidedEvent.PayloadJSON)
+	if err != nil {
+		return nil, nil
+	}
+	var record approvalSubmitIdempotencyRecord
+	if !decodeApprovalRecord(payload["idempotency"], &record) {
+		return nil, nil
+	}
+	if strings.TrimSpace(record.Key) != idempotencyKey {
+		return nil, nil
+	}
+	if existing := strings.TrimSpace(record.PayloadHash); existing != "" && existing != strings.TrimSpace(payloadHash) {
+		return nil, nil
+	}
+	if record.ResultSnapshot == nil {
+		return nil, nil
+	}
+	snapshot := *record.ResultSnapshot
+	return &snapshot, nil
+}
+
+func findRetryResumeIdempotencyResult(decidedEvent *ai.AIApprovalOutboxEvent, triggerID, payloadHash string) *RetryResumeApprovalOutput {
+	if decidedEvent == nil || strings.TrimSpace(triggerID) == "" {
+		return nil
+	}
+	payload, err := DecodeApprovalEventPayload(decidedEvent.PayloadJSON)
+	if err != nil {
+		return nil
+	}
+	var record approvalRetryResumeRecord
+	if !decodeApprovalRecord(payload["retry_resume"], &record) {
+		return nil
+	}
+	if strings.TrimSpace(record.TriggerID) != strings.TrimSpace(triggerID) {
+		return nil
+	}
+	if existing := strings.TrimSpace(record.PayloadHash); existing != "" && existing != strings.TrimSpace(payloadHash) {
+		return nil
+	}
+	if record.ResultSnapshot == nil {
+		return nil
+	}
+	snapshot := *record.ResultSnapshot
+	return &snapshot
+}
+
+func findApprovalDecidedOutbox(ctx context.Context, tx *gorm.DB, approvalID string) (*ai.AIApprovalOutboxEvent, error) {
+	if tx == nil || strings.TrimSpace(approvalID) == "" {
+		return nil, nil
+	}
+	var outbox ai.AIApprovalOutboxEvent
+	err := tx.WithContext(ctx).
+		Where("approval_id = ? AND event_type IN ?", approvalID, ApprovalDecidedEventTypes()).
+		Order("id DESC").
+		First(&outbox).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &outbox, nil
+}
+
+func decodeApprovalRecord(raw any, target any) bool {
+	if raw == nil || target == nil {
+		return false
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(b, target) == nil
 }

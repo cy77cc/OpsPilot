@@ -66,6 +66,11 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       return;
     }
 
+    if (typeof window === 'undefined') {
+      statusRef.current = 'disconnected';
+      return;
+    }
+
     intentionalDisconnectRef.current = false;
     statusRef.current = 'connecting';
 
@@ -117,12 +122,12 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
           wsRef.current = null;
         }
         statusRef.current = 'disconnected';
-        onDisconnectRef.current?.();
         console.log('WebSocket: 连接关闭', event.code, event.reason);
 
         if (intentionalDisconnectRef.current) {
           return;
         }
+        onDisconnectRef.current?.();
 
         // 只有在非正常关闭时才自动重连
         // 1000 = 正常关闭, 1001 = 端点离开, 1005 = 无状态码

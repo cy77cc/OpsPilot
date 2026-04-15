@@ -233,6 +233,76 @@ func TestRetryResumeApproval_ErrorTaxonomy(t *testing.T) {
 		}
 	})
 
+	t.Run("retry resume preserves existing decided payload metadata", func(t *testing.T) {
+		db := newApprovalSubmitTestDB(t)
+		seedApprovalSubmitTask(t, db, approvalSubmitTaskSeed{
+			approvalID: "approval-retry-preserve",
+			runID:      "run-retry-preserve",
+			sessionID:  "session-retry-preserve",
+			userID:     42,
+			status:     "approved",
+			approvedBy: 42,
+			runStatus:  "resume_failed_retryable",
+		})
+		seedApprovalDecisionOutboxWithPayload(t, db, "approval-retry-preserve", "run-retry-preserve", "session-retry-preserve", map[string]any{
+			"approval_id":   "approval-retry-preserve",
+			"run_id":        "run-retry-preserve",
+			"session_id":    "session-retry-preserve",
+			"status":        "approved",
+			"custom_marker": "keep-me",
+			"idempotency": map[string]any{
+				"key":          "submit-key-keep",
+				"approval_id":  "approval-retry-preserve",
+				"payload_hash": "submit-hash-keep",
+				"result_snapshot": map[string]any{
+					"approval_id": "approval-retry-preserve",
+					"status":      "approved",
+					"message":     "approval approved successfully",
+				},
+			},
+		})
+		router := newApprovalSubmitTestRouter(db, 42)
+
+		recorder := performRetryResumeApproval(t, router, retryResumeApprovalTestRequest{
+			approvalID: "approval-retry-preserve",
+			body: map[string]any{
+				"trigger_id": "retry-trigger-preserve",
+			},
+		})
+		resp := decodeApprovalSubmitResponse(t, recorder)
+		if resp.Code != uint32(xcode.Success) {
+			t.Fatalf("expected retry-resume success, got %d body=%s", resp.Code, recorder.Body.String())
+		}
+
+		var outbox ai.AIApprovalOutboxEvent
+		if err := db.Where("approval_id = ? AND event_type = ?", "approval-retry-preserve", "ai.approval.decided").First(&outbox).Error; err != nil {
+			t.Fatalf("load decision outbox after retry: %v", err)
+		}
+		payload, err := parseJSONMap(outbox.PayloadJSON)
+		if err != nil {
+			t.Fatalf("decode decision outbox payload: %v payload=%s", err, outbox.PayloadJSON)
+		}
+
+		if payload["custom_marker"] != "keep-me" {
+			t.Fatalf("expected existing payload keys to be preserved, got %#v", payload)
+		}
+		idempotency, ok := payload["idempotency"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected idempotency snapshot to be preserved, got %#v", payload["idempotency"])
+		}
+		if idempotency["key"] != "submit-key-keep" {
+			t.Fatalf("expected submit idempotency key to remain, got %#v", idempotency["key"])
+		}
+		retryResume, ok := payload["retry_resume"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected retry_resume metadata to be attached, got %#v", payload["retry_resume"])
+		}
+		triggerValue := mapStringValue(retryResume, "trigger_id", "TriggerID")
+		if triggerValue != "retry-trigger-preserve" {
+			t.Fatalf("expected retry trigger to be persisted, got %#v", retryResume)
+		}
+	})
+
 	t.Run("same trigger id returns original outcome without requeue", func(t *testing.T) {
 		db := newApprovalSubmitTestDB(t)
 		seedApprovalSubmitTask(t, db, approvalSubmitTaskSeed{
@@ -486,6 +556,25 @@ func seedApprovalDecisionOutbox(t *testing.T, db *gorm.DB, approvalID, runID, se
 	}
 }
 
+func seedApprovalDecisionOutboxWithPayload(t *testing.T, db *gorm.DB, approvalID, runID, sessionID string, payload map[string]any) {
+	t.Helper()
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal decision outbox payload: %v", err)
+	}
+	if err := db.Create(&ai.AIApprovalOutboxEvent{
+		ApprovalID:  approvalID,
+		RunID:       runID,
+		SessionID:   sessionID,
+		ToolCallID:  approvalID + "-tool-call",
+		EventType:   "ai.approval.decided",
+		PayloadJSON: string(payloadJSON),
+		Status:      "done",
+	}).Error; err != nil {
+		t.Fatalf("seed approval decision outbox: %v", err)
+	}
+}
+
 func performApprovalSubmit(t *testing.T, router *gin.Engine, req approvalSubmitTestRequest) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -544,6 +633,21 @@ func jsonEqual(left, right []byte) bool {
 		return false
 	}
 	return reflect.DeepEqual(leftValue, rightValue)
+}
+
+func parseJSONMap(raw string) (map[string]any, error) {
+	var out map[string]any
+	err := json.Unmarshal([]byte(raw), &out)
+	return out, err
+}
+
+func mapStringValue(values map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := values[key].(string); ok {
+			return val
+		}
+	}
+	return ""
 }
 
 func defaultString(value, fallback string) string {

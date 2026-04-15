@@ -31,6 +31,16 @@ vi.mock('../../api/modules/ai', () => ({
   aiApi: mockAiApi,
 }));
 
+vi.mock('../../components/AI', () => ({
+  AICopilotButton: ({ onOpen }: { onOpen?: () => void }) => (
+    <button type="button" onClick={onOpen}>
+      AI Assistant
+    </button>
+  ),
+  AISurfaceBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  CopilotSurface: ({ open }: { open?: boolean }) => (open ? <div>AI 助手</div> : null),
+}));
+
 vi.mock('../Project/ProjectSwitcher', () => ({
   default: () => <div data-testid="project-switcher" />,
 }));

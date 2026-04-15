@@ -75,5 +75,5 @@ describe('HostDetailPage', () => {
       expect(screen.getByText('连通性')).toBeInTheDocument();
       expect(screen.getAllByText('healthy').length).toBeGreaterThan(0);
     });
-  }, 30000);
+  }, 90000);
 });

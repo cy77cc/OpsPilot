@@ -28,6 +28,7 @@ const HostTerminalPage: React.FC = () => {
   const terminalInitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const termWrapRef = React.useRef<HTMLDivElement>(null);
   const filePaneRef = React.useRef<HTMLDivElement>(null);
+  const unmountedRef = React.useRef(false);
   const [status, setStatus] = React.useState<ConnStatus>('idle');
   const [host, setHost] = React.useState<Host | null>(null);
   const [sessionID, setSessionID] = React.useState('');
@@ -140,6 +141,7 @@ const HostTerminalPage: React.FC = () => {
 
   React.useEffect(() => {
     let cancelled = false;
+    unmountedRef.current = false;
     const tryInit = () => {
       if (cancelled) return;
       if (!setupTerminal()) {
@@ -150,14 +152,19 @@ const HostTerminalPage: React.FC = () => {
     };
     terminalInitTimerRef.current = setTimeout(tryInit, 0);
     const onResize = () => safeFit();
-    window.addEventListener('resize', onResize);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', onResize);
+    }
     return () => {
       cancelled = true;
+      unmountedRef.current = true;
       if (terminalInitTimerRef.current) {
         clearTimeout(terminalInitTimerRef.current);
         terminalInitTimerRef.current = null;
       }
-      window.removeEventListener('resize', onResize);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', onResize);
+      }
       clearPendingTerminalInput();
       wsRef.current?.close();
       wsRef.current = null;
@@ -185,28 +192,35 @@ const HostTerminalPage: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (status !== 'connected') return;
+    if (status !== 'connected' || typeof window === 'undefined') return;
     const raf = window.requestAnimationFrame(() => safeFit());
     return () => window.cancelAnimationFrame(raf);
   }, [status, filePaneWidth, safeFit]);
 
   const wsURLFromPath = (wsPath: string) => {
+    if (typeof window === 'undefined') {
+      return wsPath;
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${protocol}://${window.location.host}${wsPath}`;
   };
 
   const refreshFiles = React.useCallback(async (dirPath: string) => {
-    if (!id) return;
+    if (!id || unmountedRef.current) return;
     setFilesLoading(true);
     try {
       const res = await Api.hosts.listFiles(id, dirPath);
+      if (unmountedRef.current) return;
       setFiles(res.data.list || []);
       setCwd(res.data.path || dirPath);
       setPathInput(res.data.path || dirPath);
     } catch (err) {
+      if (unmountedRef.current) return;
       message.error(err instanceof Error ? err.message : '加载文件列表失败');
     } finally {
-      setFilesLoading(false);
+      if (!unmountedRef.current) {
+        setFilesLoading(false);
+      }
     }
   }, [id]);
 
@@ -229,6 +243,9 @@ const HostTerminalPage: React.FC = () => {
     let cancelled = false;
 
     const doConnect = async () => {
+      if (unmountedRef.current) {
+        return;
+      }
       setStatus('connecting');
       try {
         const [hostResp, sessResp] = await Promise.all([
@@ -236,7 +253,7 @@ const HostTerminalPage: React.FC = () => {
           Api.hosts.createTerminalSession(id),
         ]);
 
-        if (cancelled) return;
+        if (cancelled || unmountedRef.current) return;
 
         setHost(hostResp.data);
         setSessionID(sessResp.data.session_id);
@@ -244,7 +261,7 @@ const HostTerminalPage: React.FC = () => {
         const ws = new WebSocket(wsURLFromPath(sessResp.data.ws_path));
         wsRef.current = ws;
         ws.onopen = () => {
-          if (cancelled) return;
+          if (cancelled || unmountedRef.current) return;
           setStatus('connected');
           safeFitRef.current();
           const term = xtermRef.current;
@@ -284,12 +301,12 @@ const HostTerminalPage: React.FC = () => {
           }
         };
         ws.onerror = () => {
-          if (cancelled) return;
+          if (cancelled || unmountedRef.current) return;
           setStatus('error');
           xtermRef.current?.writeln('\r\n\x1b[31mTerminal websocket error\x1b[0m');
         };
         ws.onclose = () => {
-          if (cancelled) return;
+          if (cancelled || unmountedRef.current) return;
           setStatus('closed');
           resizeObserverRef.current?.disconnect();
           resizeObserverRef.current = null;
@@ -301,7 +318,7 @@ const HostTerminalPage: React.FC = () => {
         };
         await refreshFilesRef.current('.');
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || unmountedRef.current) return;
         setStatus('error');
         message.error(err instanceof Error ? err.message : '终端连接失败');
         connectingRef.current = false;
@@ -324,7 +341,7 @@ const HostTerminalPage: React.FC = () => {
   const connect = React.useCallback(async () => {
     // Manual reconnect - reset the flag first
     connectingRef.current = false;
-    if (!id) return;
+    if (!id || unmountedRef.current) return;
 
     connectingRef.current = true;
     setStatus('connecting');
@@ -333,12 +350,14 @@ const HostTerminalPage: React.FC = () => {
         Api.hosts.getHostDetail(id),
         Api.hosts.createTerminalSession(id),
       ]);
+      if (unmountedRef.current) return;
       setHost(hostResp.data);
       setSessionID(sessResp.data.session_id);
 
       const ws = new WebSocket(wsURLFromPath(sessResp.data.ws_path));
       wsRef.current = ws;
       ws.onopen = () => {
+        if (unmountedRef.current) return;
         setStatus('connected');
         safeFitRef.current();
         const term = xtermRef.current;
@@ -378,10 +397,12 @@ const HostTerminalPage: React.FC = () => {
         }
       };
       ws.onerror = () => {
+        if (unmountedRef.current) return;
         setStatus('error');
         xtermRef.current?.writeln('\r\n\x1b[31mTerminal websocket error\x1b[0m');
       };
       ws.onclose = () => {
+        if (unmountedRef.current) return;
         setStatus('closed');
         resizeObserverRef.current?.disconnect();
         resizeObserverRef.current = null;
@@ -393,6 +414,7 @@ const HostTerminalPage: React.FC = () => {
       };
       await refreshFilesRef.current('.');
     } catch (err) {
+      if (unmountedRef.current) return;
       setStatus('error');
       message.error(err instanceof Error ? err.message : '终端连接失败');
       connectingRef.current = false;
@@ -400,6 +422,9 @@ const HostTerminalPage: React.FC = () => {
   }, [clearPendingTerminalInput, id, queueTerminalInput]);
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
     const raf = window.requestAnimationFrame(() => {
       safeFit();
     });
@@ -416,7 +441,9 @@ const HostTerminalPage: React.FC = () => {
         // noop
       }
     }
-    setStatus('closed');
+    if (!unmountedRef.current) {
+      setStatus('closed');
+    }
   }, [flushPendingTerminalInput, id, sessionID]);
 
   const openFile = async (item: HostFileItem) => {
@@ -482,7 +509,7 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const downloadFile = async (item: HostFileItem) => {
-    if (!id || item.is_dir) return;
+    if (!id || item.is_dir || typeof document === 'undefined') return;
     const blob = await Api.hosts.downloadFile(id, item.path);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

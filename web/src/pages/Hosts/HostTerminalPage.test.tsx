@@ -57,7 +57,6 @@ class WebSocketMock {
   onclose: (() => void) | null = null;
   constructor(url: string) {
     WebSocketMock.urls.push(url);
-    setTimeout(() => this.onopen?.(), 0);
   }
   send() {}
   close() {

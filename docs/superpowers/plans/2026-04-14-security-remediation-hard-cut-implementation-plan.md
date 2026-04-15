@@ -763,23 +763,23 @@ git commit -m "fix(web-consistency): align governance menu routes and remove har
 - Modify: `docs/reviews/2026-04-14-full-architecture-security-review.md` (mark resolved evidence)
 - Modify: `README.md` (auth/session transport note)
 
-- [ ] **Step 1: Run backend full test pass**
+- [x] **Step 1: Run backend full test pass**
 Run: `go test ./...`  
 Expected: PASS
 
-- [ ] **Step 2: Run frontend full test pass**
+- [x] **Step 2: Run frontend full test pass**
 Run: `cd web && npm test`  
 Expected: PASS
 
-- [ ] **Step 3: Run lint and build checks**
+- [x] **Step 3: Run lint and build checks**
 Run: `make build && make web-build`  
 Expected: successful build artifacts.
 
-- [ ] **Step 4: Validate reviewed findings closure**
+- [x] **Step 4: Validate reviewed findings closure**
 Run: manual checklist against `docs/reviews/2026-04-14-full-architecture-security-review.md`  
 Expected: each R-001~R-017 mapped to code/test evidence.
 
-- [ ] **Step 5: Commit closeout updates**
+- [x] **Step 5: Commit closeout updates**
 ```bash
 git add docs/reviews/2026-04-14-full-architecture-security-review.md README.md
 git commit -m "docs: record remediation evidence for full hard-cut security review"

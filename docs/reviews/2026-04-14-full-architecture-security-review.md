@@ -285,14 +285,10 @@
   - 代码：`web/src/components/RBAC/Authorized.tsx`。
   - 测试：`web/src/components/RBAC/Authorized.test.tsx`（断言不再导出 `checkPermission`）。
 
-### 全量验证结果（Task 15 指定命令）
+### 全量验证结果（Task 15 指定命令，2026-04-15）
 
-1. `go test ./...`：**失败**
-   - 失败点：`internal/modules/ai/handler/approval`、`internal/modules/ai/handler/chat`。
-   - 说明：失败集中在 AI handler 语义与 `host` 既有测试用例；与本次文档更新及 Task 15 收尾动作本身无新增代码改动耦合。
-2. `cd web && npm test`：**失败**
-   - 失败点：`src/pages/Deployment/Infrastructure/ClusterDetailPage.test.tsx`（6 个失败）及 3 个 `window is not defined` 未处理异常。
-   - 说明：为前端既有大套件不稳定/失败，不由本次 closeout 文档修改引入。
-3. `make build && make web-build`：**通过**
-   - `make build`：已修正为 `go build -o bin/k8s-manage ./cmd/opspilot`，执行成功。
-   - `make web-build`：**通过**（`tsc -b && vite build` 成功）。
+1. `go test ./...`：**通过**
+2. `cd web && npm test -- --silent`：**通过**
+   - 汇总：`Test Files 54 passed`，`Tests 308 passed | 1 skipped`，无 `Unhandled Errors`。
+3. `make web-build`：**通过**（`tsc -b && vite build` 成功）
+4. `make build`：**通过**（`go build -o bin/k8s-manage ./cmd/opspilot` 成功）
