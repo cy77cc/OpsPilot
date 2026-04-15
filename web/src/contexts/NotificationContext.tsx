@@ -11,6 +11,7 @@ import { ApiRequestError, isAuthBusinessCode } from '../api/api';
 import { useNotificationWebSocket } from '../hooks/useNotificationWebSocket';
 import { playNotificationSound } from '../hooks/useNotificationSound';
 import { notify as sendBrowserNotification } from '../utils/browserNotification';
+import { safeNavigate } from '../utils/safeNavigate';
 
 type ApprovalActionState = {
   state: 'submitting' | 'refresh-needed';
@@ -176,7 +177,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
             tag: notif.id,
             onClick: () => {
               if (notif.notification?.action_url) {
-                window.location.href = notif.notification.action_url;
+                safeNavigate(notif.notification.action_url);
               }
             },
           }

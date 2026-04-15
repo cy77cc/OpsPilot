@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
 
 const { Title, Text } = Typography;
+const LOGIN_ERROR_TEXT = '登录失败，请检查用户名或密码后重试';
 
 const LoginPage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
@@ -19,8 +20,8 @@ const LoginPage: React.FC = () => {
       await login(values);
       const redirect = (location.state as { from?: string } | null)?.from || '/';
       navigate(redirect, { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+    } catch {
+      setError(LOGIN_ERROR_TEXT);
     } finally {
       setLoading(false);
     }
