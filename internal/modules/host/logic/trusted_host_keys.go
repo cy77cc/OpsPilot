@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	golangssh "golang.org/x/crypto/ssh"
@@ -20,6 +21,8 @@ import (
 )
 
 const trustKnownHostsPathEnvKey = "OPS_KNOWN_HOSTS_PATH"
+
+var trustHostKeyOpMu sync.Mutex
 
 // TrustHostKeyReq 描述显式信任主机密钥请求。
 type TrustHostKeyReq struct {
@@ -33,6 +36,9 @@ type TrustHostKeyReq struct {
 
 // TrustHostKey 将指定主机密钥标记为 trusted 并同步 known_hosts。
 func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64, req TrustHostKeyReq) (*model.TrustedHostKey, error) {
+	trustHostKeyOpMu.Lock()
+	defer trustHostKeyOpMu.Unlock()
+
 	normalized, err := normalizeTrustHostKeyReq(req)
 	if err != nil {
 		return nil, err
@@ -57,6 +63,7 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 		LastSeenAt:        now,
 	}
 	rotatedIDs := make([]uint64, 0)
+	rotatedLastSeen := make(map[uint64]time.Time)
 	createdID := uint64(0)
 
 	err = s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -88,6 +95,7 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 			rotatedIDs = rotatedIDs[:0]
 			for _, entry := range existing {
 				rotatedIDs = append(rotatedIDs, entry.ID)
+				rotatedLastSeen[entry.ID] = entry.LastSeenAt
 			}
 			if err := tx.Model(&model.TrustedHostKey{}).
 				Where("id IN ?", rotatedIDs).
@@ -111,24 +119,29 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 	}
 
 	if err := syncKnownHostsEntry(path, normalized.Host, normalized.Port, normalized.PublicKey); err != nil {
-		_ = s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		rollbackErr := s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if createdID != 0 {
 				if removeErr := tx.Where("id = ?", createdID).Delete(&model.TrustedHostKey{}).Error; removeErr != nil {
 					return removeErr
 				}
 			}
 			if len(rotatedIDs) > 0 {
-				if restoreErr := tx.Model(&model.TrustedHostKey{}).
-					Where("id IN ?", rotatedIDs).
-					Updates(map[string]any{
-						"status":     model.TrustedHostKeyStatusTrusted,
-						"updated_at": now,
-					}).Error; restoreErr != nil {
-					return restoreErr
+				for _, id := range rotatedIDs {
+					restore := map[string]any{
+						"status":       model.TrustedHostKeyStatusTrusted,
+						"updated_at":   now,
+						"last_seen_at": rotatedLastSeen[id],
+					}
+					if restoreErr := tx.Model(&model.TrustedHostKey{}).Where("id = ?", id).Updates(restore).Error; restoreErr != nil {
+						return restoreErr
+					}
 				}
 			}
 			return nil
 		})
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("sync known_hosts failed: %w (rollback failed: %v)", err, rollbackErr)
+		}
 		return nil, err
 	}
 
