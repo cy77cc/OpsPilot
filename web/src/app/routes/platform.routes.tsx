@@ -1,7 +1,8 @@
 import React from 'react';
-import { Navigate, Route } from 'react-router-dom';
+import { Route } from 'react-router-dom';
 import type { WithAuth } from './routeGuards';
 import LegacyGovernanceRedirect from '../../components/Auth/LegacyGovernanceRedirect';
+import { LEGACY_GOVERNANCE_MENU_ITEMS } from '../layout/navigation.config';
 import {
   ToolsPage,
   SettingsPage,
@@ -25,6 +26,14 @@ interface PlatformRoutesProps {
   governanceMenuEnabled: boolean;
 }
 
+type LegacyGovernancePath = (typeof LEGACY_GOVERNANCE_MENU_ITEMS)[number]['key'];
+
+const LEGACY_GOVERNANCE_PAGES: Record<LegacyGovernancePath, React.ReactElement> = {
+  '/settings/users': <UsersPage />,
+  '/settings/roles': <RolesPage />,
+  '/settings/permissions': <PermissionsPage />,
+};
+
 export function renderPlatformRoutes({ withAuth, governanceMenuEnabled }: PlatformRoutesProps) {
   return (
     <>
@@ -40,18 +49,17 @@ export function renderPlatformRoutes({ withAuth, governanceMenuEnabled }: Platfo
     <Route path="/governance/users" element={withAuth('rbac', 'read', <UsersPage />)} />
     <Route path="/governance/roles" element={withAuth('rbac', 'read', <RolesPage />)} />
     <Route path="/governance/permissions" element={withAuth('rbac', 'read', <PermissionsPage />)} />
-    <Route
-      path="/settings/users"
-      element={governanceMenuEnabled ? <LegacyGovernanceRedirect to="/governance/users" /> : <Navigate to="/settings" replace />}
-    />
-    <Route
-      path="/settings/roles"
-      element={governanceMenuEnabled ? <LegacyGovernanceRedirect to="/governance/roles" /> : <Navigate to="/settings" replace />}
-    />
-    <Route
-      path="/settings/permissions"
-      element={governanceMenuEnabled ? <LegacyGovernanceRedirect to="/governance/permissions" /> : <Navigate to="/settings" replace />}
-    />
+    {LEGACY_GOVERNANCE_MENU_ITEMS.map(({ key: legacyPath }) => (
+      <Route
+        key={legacyPath}
+        path={legacyPath}
+        element={
+          governanceMenuEnabled
+            ? <LegacyGovernanceRedirect to={legacyPath.replace('/settings/', '/governance/')} />
+            : withAuth('rbac', 'read', LEGACY_GOVERNANCE_PAGES[legacyPath])
+        }
+      />
+    ))}
     <Route path="/services" element={withAuth('service', 'read', <ServiceListPage />)} />
     <Route path="/services/provision" element={withAuth('service', 'write', <ServiceProvisionPage />)} />
     <Route path="/services/:id" element={withAuth('service', 'read', <ServiceDetailPage />)} />
