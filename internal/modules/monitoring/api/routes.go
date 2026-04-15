@@ -39,7 +39,7 @@ func RegisterMonitoringHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext)
 	h := monitoringhandler.NewHandler(svcCtx)
 	h.StartRuleSync()
 
-	// Alertmanager webhook endpoint (internal call, no JWT).
+	// Alertmanager webhook endpoint (internal call, no JWT, requires X-OpsPilot-Signature).
 	v1.POST("/alerts/receiver", h.ReceiveWebhook)
 
 	g := v1.Group("", middleware.JWTAuth())

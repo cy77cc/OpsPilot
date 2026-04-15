@@ -223,6 +223,7 @@ type Prometheus struct {
 	Host           string        `mapstructure:"host"`            // 主机
 	Port           string        `mapstructure:"port"`            // 端口
 	PushgatewayURL string        `mapstructure:"pushgateway_url"` // Pushgateway 地址
+	WebhookSecret  string        `mapstructure:"webhook_secret"`  // Alertmanager Webhook 签名密钥
 	Timeout        time.Duration `mapstructure:"timeout"`         // 超时时间
 	MaxConcurrent  int           `mapstructure:"max_concurrent"`  // 最大并发数
 	RetryCount     int           `mapstructure:"retry_count"`     // 重试次数

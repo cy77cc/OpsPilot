@@ -173,6 +173,7 @@ prometheus:
   host: ${PROMETHEUS_HOST}
   port: ${PROMETHEUS_PORT}
   pushgateway_url: ${PROMETHEUS_PUSHGATEWAY_URL}
+  webhook_secret: ${PROMETHEUS_WEBHOOK_SECRET}
   timeout: 10s
   max_concurrent: 10
   retry_count: 3

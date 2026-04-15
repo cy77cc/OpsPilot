@@ -10,19 +10,27 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	monitoringlogic "github.com/cy77cc/OpsPilot/internal/modules/monitoring/logic"
 	model "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
-	monitoringlogic "github.com/cy77cc/OpsPilot/internal/modules/monitoring/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
+
+const maxWebhookPayloadBytes = 1 << 20 // 1 MiB
 
 // Handler 是监控服务的 HTTP 处理器。
 //
@@ -73,6 +81,10 @@ func (h *Handler) StartRuleSync() {
 // @Failure 500 {object} httpx.Response
 // @Router /alerts/receiver [post]
 func (h *Handler) ReceiveWebhook(c *gin.Context) {
+	if !verifyWebhookSignature(c) {
+		return
+	}
+
 	var req AlertmanagerWebhook
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -87,6 +99,71 @@ func (h *Handler) ReceiveWebhook(c *gin.Context) {
 		"status":    "success",
 		"processed": processed,
 	})
+}
+
+func verifyWebhookSignature(c *gin.Context) bool {
+	secret := strings.TrimSpace(config.CFG.Prometheus.WebhookSecret)
+	if secret == "" {
+		httpx.Fail(c, xcode.ServerError, "prometheus webhook secret is not configured")
+		return false
+	}
+
+	signature := strings.TrimSpace(c.GetHeader("X-OpsPilot-Signature"))
+	if signature == "" {
+		httpx.Fail(c, xcode.Unauthorized, "missing webhook signature")
+		return false
+	}
+
+	body, err := readWebhookPayload(c.Request.Body)
+	if err != nil {
+		if err == errWebhookPayloadTooLarge {
+			httpx.Fail(c, xcode.ParamError, "webhook payload too large")
+			return false
+		}
+		httpx.ServerErr(c, err)
+		return false
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	expected := signWebhookBody(secret, body)
+	actual, err := decodeWebhookSignature(signature)
+	if err != nil {
+		httpx.Fail(c, xcode.Unauthorized, "invalid webhook signature")
+		return false
+	}
+	if !hmac.Equal(expected, actual) {
+		httpx.Fail(c, xcode.Unauthorized, "invalid webhook signature")
+		return false
+	}
+	return true
+}
+
+var errWebhookPayloadTooLarge = xcode.NewErrCodeMsg(xcode.ParamError, "webhook payload too large")
+
+func readWebhookPayload(body io.Reader) ([]byte, error) {
+	limited := &io.LimitedReader{R: body, N: maxWebhookPayloadBytes + 1}
+	raw, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > maxWebhookPayloadBytes {
+		return nil, errWebhookPayloadTooLarge
+	}
+	return raw, nil
+}
+
+func signWebhookBody(secret string, body []byte) []byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return mac.Sum(nil)
+}
+
+func decodeWebhookSignature(raw string) ([]byte, error) {
+	signature := strings.TrimSpace(raw)
+	if strings.HasPrefix(strings.ToLower(signature), "sha256=") {
+		signature = strings.TrimSpace(signature[len("sha256="):])
+	}
+	return hex.DecodeString(signature)
 }
 
 // ListAlerts 获取告警事件列表。
