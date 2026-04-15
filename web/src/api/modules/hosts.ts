@@ -162,7 +162,23 @@ export interface HostProbeResult {
   warnings: string[];
   errorCode?: string;
   message?: string;
+  hostKey?: HostKeyTrustPayload;
   expiresAt: string;
+}
+
+export interface HostKeyTrustPayload {
+  host: string;
+  port: number;
+  algorithm: string;
+  fingerprintSha256: string;
+  publicKey: string;
+  knownHostsPath?: string;
+  trustedFingerprints?: string[];
+}
+
+export interface HostKeyTrustErrorData {
+  errorType: 'ssh_host_key_unknown' | 'ssh_host_key_mismatch' | 'ssh_host_key_revoked';
+  hostKey: HostKeyTrustPayload;
 }
 
 export interface SSHKeyItem {
@@ -249,6 +265,20 @@ const parseLabels = (labels: any): string[] => {
   }
   return raw.split(',').map((x) => x.trim()).filter(Boolean);
 };
+
+const toHostKeyTrustPayload = (raw: any): HostKeyTrustPayload => ({
+  host: String(raw?.host || '').trim(),
+  port: Number(raw?.port || 0),
+  algorithm: String(raw?.algorithm || '').trim(),
+  fingerprintSha256: String(raw?.fingerprint_sha256 || raw?.fingerprintSha256 || '').trim(),
+  publicKey: String(raw?.public_key || raw?.publicKey || '').trim(),
+  knownHostsPath: raw?.known_hosts_path || raw?.knownHostsPath || undefined,
+  trustedFingerprints: Array.isArray(raw?.trusted_fingerprints)
+    ? raw.trusted_fingerprints.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : Array.isArray(raw?.trustedFingerprints)
+      ? raw.trustedFingerprints.map((x: unknown) => String(x).trim()).filter(Boolean)
+      : undefined,
+});
 
 export const hostApi = {
   async getHostList(params?: HostListParams): Promise<ApiResponse<PaginatedResponse<Host>>> {
@@ -380,6 +410,7 @@ export const hostApi = {
         warnings: d.warnings || [],
         errorCode: d.error_code,
         message: d.message,
+        hostKey: d.host_key ? toHostKeyTrustPayload(d.host_key) : undefined,
         expiresAt: d.expires_at,
       },
     };
@@ -392,6 +423,17 @@ export const hostApi = {
       password: data.password,
       ssh_key_id: data.sshKeyId,
       port: data.port || 22,
+    });
+  },
+
+  async trustHostKey(id: string, payload: HostKeyTrustPayload & { replaceExisting?: boolean }): Promise<ApiResponse<any>> {
+    return apiService.post(`/hosts/${id}/trust-host-key`, {
+      host: payload.host,
+      port: payload.port,
+      algorithm: payload.algorithm,
+      fingerprint_sha256: payload.fingerprintSha256,
+      public_key: payload.publicKey,
+      replace_existing: !!payload.replaceExisting,
     });
   },
 
