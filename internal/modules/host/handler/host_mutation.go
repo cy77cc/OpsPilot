@@ -347,3 +347,43 @@ func (h *Handler) UpdateCredentials(c *gin.Context) {
 	}
 	httpx.OK(c, gin.H{"node": node, "probe": probeResp})
 }
+
+// TrustHostKey 显式信任主机密钥并同步 known_hosts。
+func (h *Handler) TrustHostKey(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:write", "host:trust_host_key", "host:*") {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+
+	var req hostlogic.TrustHostKeyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	item, err := h.hostService.TrustHostKey(c.Request.Context(), id, getUID(c), req)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, err.Error())
+		return
+	}
+	httpx.OK(c, item)
+}
+
+// ListTrustedHostKeys 列出主机密钥信任记录。
+func (h *Handler) ListTrustedHostKeys(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:trust_host_key", "host:*") {
+		return
+	}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	items, err := h.hostService.ListTrustedHostKeys(c.Request.Context(), id)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, items)
+}

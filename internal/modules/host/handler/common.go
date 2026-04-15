@@ -62,7 +62,11 @@ func (h *Handler) StartHealthCollector() {
 //   - id: 解析后的主机 ID
 //   - ok: 解析是否成功，失败时已返回错误响应
 func parseID(c *gin.Context) (uint64, bool) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	return parseUintParam(c, "id")
+}
+
+func parseUintParam(c *gin.Context, param string) (uint64, bool) {
+	id, err := strconv.ParseUint(c.Param(param), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return 0, false
