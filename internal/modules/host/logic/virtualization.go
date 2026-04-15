@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
@@ -33,6 +34,8 @@ type KVMProvisionReq struct {
 	Password      string  `json:"password"`       // SSH 密码
 	SSHKeyID      *uint64 `json:"ssh_key_id"`     // SSH 密钥 ID
 }
+
+const redactedVirtualizationPassword = "[REDACTED]"
 
 // KVMPreview 预览 KVM 虚拟机配置。
 //
@@ -106,9 +109,17 @@ func (s *HostService) KVMProvision(ctx context.Context, uid uint64, hostID uint6
 		Status:     "running",
 		CreatedBy:  uid,
 	}
-	rawReq, _ := json.Marshal(req)
+	sanitizedReq := req
+	if strings.TrimSpace(sanitizedReq.Password) != "" {
+		sanitizedReq.Password = redactedVirtualizationPassword
+	}
+	rawReq, _ := json.Marshal(sanitizedReq)
 	task.RequestJSON = string(rawReq)
 	if err := s.svcCtx.DB.WithContext(ctx).Create(task).Error; err != nil {
+		return nil, nil, err
+	}
+	passwordCipher, err := s.ensureSSHPasswordCipher(req.Password)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -117,7 +128,7 @@ func (s *HostService) KVMProvision(ctx context.Context, uid uint64, hostID uint6
 		IP:           req.IP,
 		Port:         DefaultSSHPort,
 		SSHUser:      firstNonEmpty(req.SSHUser, "root"),
-		SSHPassword:  req.Password,
+		SSHPassword:  passwordCipher,
 		Status:       "online",
 		Source:       "kvm_provision",
 		Provider:     "kvm",

@@ -143,9 +143,10 @@ type Metrics struct {
 
 // Security 包含安全相关配置。
 type Security struct {
-	TrustedProxies []string `mapstructure:"trusted_proxies"` // 信任的代理 IP
-	HideBanner     bool     `mapstructure:"hide_banner"`     // 是否隐藏启动横幅
-	EncryptionKey  string   `mapstructure:"encryption_key"`  // 数据加密密钥
+	TrustedProxies        []string `mapstructure:"trusted_proxies"`         // 信任的代理 IP
+	HideBanner            bool     `mapstructure:"hide_banner"`             // 是否隐藏启动横幅
+	EncryptionKey         string   `mapstructure:"encryption_key"`          // 数据加密密钥
+	WebSocketAllowOrigins []string `mapstructure:"websocket_allow_origins"` // WebSocket 允许的来源
 }
 
 // LLM 包含大语言模型配置。
@@ -222,6 +223,7 @@ type Prometheus struct {
 	Host           string        `mapstructure:"host"`            // 主机
 	Port           string        `mapstructure:"port"`            // 端口
 	PushgatewayURL string        `mapstructure:"pushgateway_url"` // Pushgateway 地址
+	WebhookSecret  string        `mapstructure:"webhook_secret"`  // Alertmanager Webhook 签名密钥
 	Timeout        time.Duration `mapstructure:"timeout"`         // 超时时间
 	MaxConcurrent  int           `mapstructure:"max_concurrent"`  // 最大并发数
 	RetryCount     int           `mapstructure:"retry_count"`     // 重试次数

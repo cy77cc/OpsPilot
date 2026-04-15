@@ -6,8 +6,9 @@ package websocket
 
 import (
 	"net/http"
-	"strconv"
+	"strings"
 
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -17,39 +18,19 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许所有来源，生产环境应限制
+		return isOriginAllowed(r.Header.Get("Origin"), config.CFG.Security.WebSocketAllowOrigins)
 	},
 }
 
 // HandleWebSocket 处理 WebSocket 连接请求。
 //
-// 从查询参数或上下文中获取用户 ID，
+// 仅从鉴权上下文中获取用户 ID，
 // 升级 HTTP 连接为 WebSocket，注册到 Hub 并启动读写协程。
 func HandleWebSocket(c *gin.Context) {
-	// 从上下文获取用户ID
-	userIDStr := c.Query("user_id")
-	if userIDStr == "" {
-		userID, exists := c.Get("user_id")
-		if exists {
-			switch v := userID.(type) {
-			case uint64:
-				userIDStr = strconv.FormatUint(v, 10)
-			case float64:
-				userIDStr = strconv.FormatUint(uint64(v), 10)
-			case int:
-				userIDStr = strconv.Itoa(v)
-			}
-		}
-	}
-
-	if userIDStr == "" {
+	// 仅信任鉴权中间件注入的 uid，禁止查询参数冒充。
+	userID, ok := userIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
-		return
-	}
-
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
 		return
 	}
 
@@ -73,4 +54,39 @@ func HandleWebSocket(c *gin.Context) {
 	// 启动读写协程
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+func userIDFromContext(c *gin.Context) (uint64, bool) {
+	userID, exists := c.Get("uid")
+	if !exists {
+		return 0, false
+	}
+
+	switch v := userID.(type) {
+	case uint:
+		return uint64(v), true
+	case uint64:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+func isOriginAllowed(origin string, allowOrigins []string) bool {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return false
+	}
+
+	for _, allowed := range allowOrigins {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "*" {
+			return true
+		}
+		if strings.EqualFold(allowed, origin) {
+			return true
+		}
+	}
+
+	return false
 }

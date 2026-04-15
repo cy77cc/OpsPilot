@@ -5,6 +5,7 @@ package utils
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
@@ -26,8 +27,15 @@ var (
 	ErrTokenNotValidYet = errors.New("Token is not valid yet")
 	ErrTokenNotValidId  = errors.New("Token is not valid id")
 	ErrTokenSignature   = errors.New("Token signature is invalid")
-	MySecret            = []byte(config.CFG.JWT.Secret) // JWT 签名密钥
 )
+
+// currentJWTSecret 读取并校验运行时 JWT 密钥。
+func currentJWTSecret() ([]byte, error) {
+	if strings.TrimSpace(config.CFG.JWT.Secret) == "" {
+		return nil, errors.New("jwt secret is empty")
+	}
+	return []byte(config.CFG.JWT.Secret), nil
+}
 
 // GenToken 使用 HMAC-SHA256 生成 JWT Token。
 //
@@ -35,6 +43,10 @@ var (
 //   - id: 用户 ID
 //   - isRefreshToken: 是否为刷新 Token
 func GenToken(id uint, isRefreshToken bool) (string, error) {
+	jwtSecret, err := currentJWTSecret()
+	if err != nil {
+		return "", err
+	}
 
 	var tokenExpireDuration = config.CFG.JWT.Expire
 
@@ -52,16 +64,21 @@ func GenToken(id uint, isRefreshToken bool) (string, error) {
 	// 指定加密方式
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
 	// 使用密钥加密
-	return token.SignedString(MySecret)
+	return token.SignedString(jwtSecret)
 }
 
 // ParseToken 解析token
 func ParseToken(tokenString string) (*MyClaims, error) {
+	jwtSecret, err := currentJWTSecret()
+	if err != nil {
+		return nil, xcode.NewErrCode(xcode.TokenInvalid)
+	}
+
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&MyClaims{},
 		func(token *jwt.Token) (interface{}, error) {
-			return MySecret, nil
+			return jwtSecret, nil
 		},
 	)
 	if err != nil {

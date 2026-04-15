@@ -4,6 +4,7 @@
 package notification
 
 import (
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ import (
 func RegisterNotificationHandlers(r *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	svc := handler.NewNotificationService(svcCtx)
 
-	notifications := r.Group("/notifications")
+	notifications := r.Group("/notifications", middleware.JWTAuth())
 	{
 		notifications.GET("", svc.ListNotifications)
 		notifications.GET("/unread-count", svc.UnreadCount)

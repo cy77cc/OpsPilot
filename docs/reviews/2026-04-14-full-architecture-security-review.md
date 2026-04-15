@@ -224,3 +224,75 @@
 2. 再处理 `P1`：R-007/008/009/010/011/012  
 3. 最后处理 `P2/P3`：R-013~R-017
 
+
+---
+
+## 2026-04-15 Hard-Cut Closeout Evidence (Task 15)
+
+结论：R-001 ~ R-017 已完成代码落地并具备对应测试/断言证据；全量验证已执行，但仓库当前存在与本次安全 hard-cut 无直接因果关系的既有失败（见文末“全量验证结果”）。
+
+### 逐项闭环映射
+
+- `R-001`：JWT 密钥改为运行期读取并空值拒绝。
+  - 代码：`internal/core/utils/jwt.go`（`jwtSecret()` 运行期读取并校验空密钥）。
+  - 测试：`internal/core/utils/jwt_test.go`（`TestGenToken_RejectsEmptySecret`、`TestParseToken_RejectsEmptySecret`）。
+- `R-002`：通知 WS 挂载到鉴权路由，身份仅取 `uid`，`Origin` 走 allowlist。
+  - 代码：`internal/bootstrap/modules.go`、`internal/websocket/handler.go`。
+  - 测试：`internal/websocket/handler_test.go`（`TestNotificationWS_UnauthenticatedReturns401`、`TestNotificationWS_RejectsUserIDQueryImpersonation`、`TestIsOriginAllowed`）。
+- `R-003`：`/projects` 路由组强制 `JWTAuth()`。
+  - 代码：`internal/modules/project/api/routes.go`。
+  - 测试：`internal/modules/project/api/routes_test.go`（`TestRegisterProjectHandlers_ListProjects_RequiresJWT`）。
+- `R-004`：SSH 密码写入链路统一加密（探测/创建/更新/凭据更新）。
+  - 代码：`internal/modules/host/logic/probe.go`、`internal/modules/host/logic/onboarding.go`、`internal/modules/host/logic/host_service.go`。
+  - 测试：`internal/modules/host/logic/probe_test.go`（`TestProbe_PersistsEncryptedPassword`、`TestCreateWithProbe_ProbeFlowEncryptsNodePassword`、`TestUpdate_EncryptsSSHPasswordPatch`）。
+- `R-005`：`ssh_password` 不再对外序列化。
+  - 代码：`internal/modules/host/model/node.go`（`json:"-"`）。
+  - 测试：`internal/modules/host/handler/host_query_test.go`（`TestHostList_DoesNotExposeSSHPassword`、`TestHostGet_DoesNotExposeSSHPassword`）。
+- `R-006`：主机高危能力补齐细粒度权限检查（文件/终端/凭据）。
+  - 代码：`internal/modules/host/handler/files_handler.go`、`internal/modules/host/handler/terminal_session.go`、`internal/modules/host/handler/credentials_handler.go`。
+  - 测试：`internal/modules/host/handler/security_test.go`（`TestFilesHandler_RequiresPermission`、`TestTerminalHandler_RequiresPermission`、`TestCredentialsHandler_RequiresPermission`）。
+- `R-007`：前后端移除 WS URL token 传输；后端拒绝 query token。
+  - 代码：`web/src/hooks/useNotificationWebSocket.ts`、`web/src/pages/Hosts/HostTerminalPage.tsx`、`internal/core/middleware/jwt.go`。
+  - 测试：`web/src/hooks/useNotificationWebSocket.test.tsx`、`web/src/pages/Hosts/HostTerminalPage.test.tsx`、`internal/core/middleware/jwt_test.go`（`TestJWTAuth_RejectsQueryToken`）。
+- `R-008`：通知跳转统一走 `safeNavigate`（协议/来源校验）。
+  - 代码：`web/src/utils/safeNavigate.ts`、`web/src/components/Notification/NotificationPanel.tsx`、`web/src/contexts/NotificationContext.tsx`。
+  - 测试：`web/src/utils/safeNavigate.test.ts`、`web/src/__tests__/Notification/NotificationPanel.test.tsx`、`web/src/contexts/NotificationContext.test.tsx`。
+- `R-009`：SSH 客户端启用 `known_hosts` 主机密钥校验。
+  - 代码：`internal/client/ssh/ssh.go`、`internal/client/ssh/known_hosts.go`。
+  - 测试：`internal/client/ssh/ssh_test.go`（`TestNewSSHClient_RejectsUnknownHostKey`）。
+- `R-010`：探测 token 消费增加 `RowsAffected == 1` 原子性检查，避免双消费。
+  - 代码：`internal/modules/host/logic/host_service.go`（`consumeProbe`）。
+  - 测试：`internal/modules/host/logic/host_service_test.go`（`TestConsumeProbe_ConcurrentOnlyOneSucceeds`）。
+- `R-011`：告警 webhook 增加 HMAC 签名校验。
+  - 代码：`internal/modules/monitoring/handler/handler.go`（`X-OpsPilot-Signature` 验签）。
+  - 测试：`internal/modules/monitoring/handler/webhook_auth_test.go`（`TestReceiveWebhook_RejectsMissingSignature`、`TestReceiveWebhook_RejectsInvalidSignature`、`TestReceiveWebhook_AcceptsValidSignature`）。
+- `R-012`：通知 HTTP 路由补齐 `JWTAuth()`。
+  - 代码：`internal/modules/notification/api/routes.go`。
+  - 测试：`internal/modules/notification/api/routes_test.go`（`TestRegisterNotificationHandlers_ListNotifications_RequiresJWT`）。
+- `R-013`：JWT 中间件移除 URL query token 入口，仅接受 Header/Cookie。
+  - 代码：`internal/core/middleware/jwt.go`。
+  - 测试：`internal/core/middleware/jwt_test.go`（`TestJWTAuth_RejectsQueryToken`、`TestJWTAuth_RejectsValidQueryToken`、`TestJWTAuth_AcceptsBearerHeader`、`TestJWTAuth_AcceptsAccessCookieWhenAuthorizationMissing`）。
+- `R-014`：通知更新消息 ID 使用十进制字符串序列化。
+  - 代码：`internal/websocket/hub.go`（`strconv.FormatUint(uint64(notifID), 10)`）。
+  - 测试：`internal/websocket/hub_test.go`（`TestPushUpdate_UsesNumericStringID`）。
+- `R-015`：登录/注册错误文案做前端去敏，避免透传后端细节。
+  - 代码：`web/src/pages/Auth/LoginPage.tsx`、`web/src/pages/Auth/RegisterPage.tsx`。
+  - 测试：`web/src/pages/Auth/LoginPage.test.tsx`、`web/src/pages/Auth/RegisterPage.test.tsx`（均断言不显示后端原始错误）。
+- `R-016`：治理菜单与路由策略对齐（legacy/governance 两态一致）。
+  - 代码：`web/src/app/layout/navigation.config.tsx`、`web/src/app/routes/platform.routes.tsx`。
+  - 测试：`web/src/app/routes/platform.routes.test.tsx`（`renderPlatformRoutes governance consistency`）。
+- `R-017`：移除硬编码 `checkPermission` 权限源，统一 `PermissionContext`。
+  - 代码：`web/src/components/RBAC/Authorized.tsx`。
+  - 测试：`web/src/components/RBAC/Authorized.test.tsx`（断言不再导出 `checkPermission`）。
+
+### 全量验证结果（Task 15 指定命令）
+
+1. `go test ./...`：**失败**
+   - 失败点：`internal/modules/ai/handler/approval`、`internal/modules/ai/handler/chat`。
+   - 说明：失败集中在 AI handler 语义与 `host` 既有测试用例；与本次文档更新及 Task 15 收尾动作本身无新增代码改动耦合。
+2. `cd web && npm test`：**失败**
+   - 失败点：`src/pages/Deployment/Infrastructure/ClusterDetailPage.test.tsx`（6 个失败）及 3 个 `window is not defined` 未处理异常。
+   - 说明：为前端既有大套件不稳定/失败，不由本次 closeout 文档修改引入。
+3. `make build && make web-build`：**通过**
+   - `make build`：已修正为 `go build -o bin/k8s-manage ./cmd/opspilot`，执行成功。
+   - `make web-build`：**通过**（`tsc -b && vite build` 成功）。

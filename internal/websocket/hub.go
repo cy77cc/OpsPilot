@@ -7,6 +7,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -189,7 +190,7 @@ func (h *Hub) PushNotification(userID uint64, notif *notificationmodel.UserNotif
 func (h *Hub) PushUpdate(userID uint64, notifID uint, readAt, dismissedAt, confirmedAt *time.Time) {
 	msg := WSMessage{
 		Type: "update",
-		ID:   string(rune(notifID)),
+		ID:   strconv.FormatUint(uint64(notifID), 10),
 	}
 
 	if readAt != nil {

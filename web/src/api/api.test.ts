@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ApiRequestError, TOKEN_EVENTS, isAuthBusinessCode } from './api';
+import apiService, { ApiRequestError, TOKEN_EVENTS, isAuthBusinessCode } from './api';
 
 describe('ApiRequestError', () => {
   it('creates error with message only', () => {
@@ -241,5 +241,74 @@ describe('Token Refresh Events', () => {
 
     window.removeEventListener(TOKEN_EVENTS.REFRESHED, handler1);
     window.removeEventListener(TOKEN_EVENTS.REFRESHED, handler2);
+  });
+});
+
+describe('ApiService cookie-session refresh and retry', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('refreshAccessToken posts to /auth/refresh without refresh-token body or token storage keys', async () => {
+    const instance = (apiService as any).instance;
+    const postSpy = vi.spyOn(instance, 'post').mockResolvedValue({
+      data: { data: { accessToken: 'rotated-access-token' } },
+    });
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+    const refreshedHandler = vi.fn();
+
+    window.addEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+
+    const refreshed = await apiService.refreshAccessToken();
+
+    expect(refreshed).toBe(true);
+    expect(postSpy).toHaveBeenCalledTimes(1);
+    expect(postSpy).toHaveBeenCalledWith('/auth/refresh');
+    expect(postSpy.mock.calls[0]).toHaveLength(1);
+
+    const tokenKeyReads = getItemSpy.mock.calls.filter(
+      ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
+    );
+    expect(tokenKeyReads).toEqual([]);
+    expect(refreshedHandler).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+  });
+
+  it('retry path replays original request without Authorization injection from localStorage token', async () => {
+    const instance = (apiService as any).instance;
+    const requestSpy = vi.spyOn(instance, 'request').mockResolvedValue({
+      data: { success: true, data: { ok: true } },
+    });
+    const refreshSpy = vi.spyOn(apiService, 'refreshAccessToken').mockResolvedValue(true);
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+
+    localStorage.setItem('token', 'stale-local-storage-token');
+
+    const originalConfig = {
+      url: '/secure/resource',
+      method: 'get',
+      headers: {
+        'X-Request-ID': 'request-1',
+      },
+    };
+
+    await (apiService as any).tryRefreshAndRetry(originalConfig);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(requestSpy).toHaveBeenCalledWith(originalConfig);
+    expect((requestSpy.mock.calls[0][0] as { headers?: Record<string, string> }).headers?.Authorization).toBeUndefined();
+
+    const tokenKeyReads = getItemSpy.mock.calls.filter(
+      ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
+    );
+    expect(tokenKeyReads).toEqual([]);
   });
 });

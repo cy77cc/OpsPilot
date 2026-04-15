@@ -49,12 +49,14 @@ vi.mock('xterm-addon-fit', () => ({
 
 class WebSocketMock {
   static OPEN = 1;
+  static urls: string[] = [];
   readyState = WebSocketMock.OPEN;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: (() => void) | null = null;
-  constructor() {
+  constructor(url: string) {
+    WebSocketMock.urls.push(url);
     setTimeout(() => this.onopen?.(), 0);
   }
   send() {}
@@ -68,6 +70,8 @@ class WebSocketMock {
 describe('HostTerminalPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    WebSocketMock.urls = [];
 
     mockApi.hosts.getHostDetail.mockResolvedValue({
       data: { id: '1', name: 'node-1', ip: '10.0.0.1' },
@@ -85,6 +89,25 @@ describe('HostTerminalPage', () => {
     });
     mockApi.hosts.readFile.mockResolvedValue({ data: { content: 'kind: ConfigMap' } });
     mockApi.hosts.writeFile.mockResolvedValue({ data: {} });
+  });
+
+  it('opens websocket without appending token query', async () => {
+    localStorage.setItem('token', 'sensitive-token');
+    mockApi.hosts.createTerminalSession.mockResolvedValue({
+      data: { session_id: 's1', ws_path: '/ws/host?trace=1' },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(WebSocketMock.urls.length).toBeGreaterThan(0));
+    expect(WebSocketMock.urls[0]).toContain('/ws/host?trace=1');
+    expect(WebSocketMock.urls[0]).not.toContain('token=');
   });
 
   it('opens modal editor after clicking a file and saves content', async () => {

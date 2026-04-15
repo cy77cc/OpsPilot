@@ -52,6 +52,7 @@ class ApiService {
     this.instance = axios.create({
       baseURL: import.meta.env.VITE_API_BASE || '/api/v1',
       timeout: 30000,
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -60,11 +61,6 @@ class ApiService {
     // 请求拦截器
     this.instance.interceptors.request.use(
       (config) => {
-        // 添加认证token
-        const token = localStorage.getItem('token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
         const projectId = localStorage.getItem('projectId');
         if (projectId) {
           config.headers['X-Project-ID'] = projectId;
@@ -160,14 +156,7 @@ class ApiService {
     if (!refreshed) {
       return Promise.reject(new Error('登录已过期，请重新登录'));
     }
-    const nextConfig: AxiosRequestConfig = {
-      ...config,
-      headers: {
-        ...(config.headers || {}),
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-      },
-    };
-    return this.instance.request<ApiResponse<any>>(nextConfig);
+    return this.instance.request<ApiResponse<any>>(config);
   }
 
   /**
@@ -181,29 +170,12 @@ class ApiService {
       return this.refreshPromise;
     }
 
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      dispatchTokenExpired();
-      return false;
-    }
-
     this.refreshPromise = (async () => {
       try {
-        const response = await this.instance.post<ApiResponse<any>>('/auth/refresh', { refreshToken });
+        const response = await this.instance.post<ApiResponse<any>>('/auth/refresh');
         const payload = response.data;
-        const token = payload?.data?.accessToken || payload?.data?.token;
+        const token = payload?.data?.accessToken || payload?.data?.token || '';
         const nextRefreshToken = payload?.data?.refreshToken;
-
-        if (!token) {
-          dispatchTokenExpired();
-          return false;
-        }
-
-        // 更新 localStorage
-        localStorage.setItem('token', token);
-        if (nextRefreshToken) {
-          localStorage.setItem('refreshToken', nextRefreshToken);
-        }
 
         // 触发刷新成功事件
         dispatchTokenRefreshed({
@@ -213,10 +185,6 @@ class ApiService {
 
         return true;
       } catch {
-        // 清除状态
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-
         // 触发刷新失败事件
         dispatchTokenExpired();
 

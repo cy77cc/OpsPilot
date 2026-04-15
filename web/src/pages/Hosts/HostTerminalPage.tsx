@@ -192,9 +192,7 @@ const HostTerminalPage: React.FC = () => {
 
   const wsURLFromPath = (wsPath: string) => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const token = localStorage.getItem('token');
-    const suffix = token ? `${wsPath.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : '';
-    return `${protocol}://${window.location.host}${wsPath}${suffix}`;
+    return `${protocol}://${window.location.host}${wsPath}`;
   };
 
   const refreshFiles = React.useCallback(async (dirPath: string) => {
@@ -220,20 +218,13 @@ const HostTerminalPage: React.FC = () => {
 
   // Use a ref to track connection state across StrictMode remounts
   const connectingRef = React.useRef(false);
-  const mountCountRef = React.useRef(0);
 
   React.useEffect(() => {
-    mountCountRef.current += 1;
-    const mountNum = mountCountRef.current;
-    console.log(`[HostTerminalPage] useEffect #${mountNum} - connectingRef: ${connectingRef.current}, id: ${id}`);
-
     // Prevent duplicate connections
     if (connectingRef.current || !id) {
-      console.log(`[HostTerminalPage] Skipping connection - already connecting or no id`);
       return;
     }
     connectingRef.current = true;
-    console.log(`[HostTerminalPage] Starting connection #${mountNum}`);
 
     let cancelled = false;
 
@@ -320,7 +311,6 @@ const HostTerminalPage: React.FC = () => {
     void doConnect();
 
     return () => {
-      console.log(`[HostTerminalPage] Cleanup #${mountNum} - cancelling`);
       cancelled = true;
       // Close websocket on cleanup
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

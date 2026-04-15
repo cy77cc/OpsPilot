@@ -4,6 +4,7 @@ import { CheckOutlined, SettingOutlined } from '@ant-design/icons';
 import NotificationList from './NotificationList';
 import { useNotificationContext } from '../../contexts/NotificationContext';
 import type { UserNotification, NotificationType } from '../../types/notification';
+import { safeNavigate } from '../../utils/safeNavigate';
 
 interface NotificationPanelProps {
   onViewAll?: () => void;
@@ -34,7 +35,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
     }
     // 跳转到详情页
     if (notification.notification.action_url) {
-      window.location.href = notification.notification.action_url;
+      safeNavigate(notification.notification.action_url);
     }
   };
 

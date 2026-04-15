@@ -19,6 +19,12 @@ interface BuildMenuSectionsOptions {
   canReadGovernance: boolean;
 }
 
+export const LEGACY_GOVERNANCE_MENU_ITEMS = [
+  { key: '/settings/users', label: '用户管理' },
+  { key: '/settings/roles', label: '角色管理' },
+  { key: '/settings/permissions', label: '权限列表' },
+] as const;
+
 export function buildMenuSections({
   t,
   governanceMenuEnabled,
@@ -75,11 +81,11 @@ export function buildMenuSections({
         { key: '/settings', icon: <SettingOutlined />, label: '基础设置' },
         { key: '/settings/ai-models', icon: <SettingOutlined />, label: 'AI 模型配置' },
         ...(!governanceMenuEnabled
-          ? [
-              { key: '/settings/users', icon: <UserOutlined />, label: '用户管理' },
-              { key: '/settings/roles', icon: <UserOutlined />, label: '角色管理' },
-              { key: '/settings/permissions', icon: <UserOutlined />, label: '权限列表' },
-            ]
+          ? LEGACY_GOVERNANCE_MENU_ITEMS.map(({ key, label }) => ({
+              key,
+              icon: <UserOutlined />,
+              label,
+            }))
           : []),
         ...(governanceMenuEnabled && canReadGovernance
           ? [{ key: '/governance/users', icon: <UserOutlined />, label: '访问治理' }]

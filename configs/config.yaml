@@ -114,6 +114,9 @@ security:
     - 192.168.0.0/16
   hide_banner: true
   encryption_key: ${SECURITY_ENCRYPTION_KEY}
+  websocket_allow_origins:
+    - http://localhost:3000
+    - http://127.0.0.1:3000
 
 llm:
   enable: true
@@ -170,6 +173,7 @@ prometheus:
   host: ${PROMETHEUS_HOST}
   port: ${PROMETHEUS_PORT}
   pushgateway_url: ${PROMETHEUS_PUSHGATEWAY_URL}
+  webhook_secret: ${PROMETHEUS_WEBHOOK_SECRET}
   timeout: 10s
   max_concurrent: 10
   retry_count: 3

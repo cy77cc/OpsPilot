@@ -28,9 +28,13 @@ func NewSSHClient(user, password, host string, port int, privateKey, passphrase 
 	if err != nil {
 		return nil, err
 	}
+	hostKeyCallback, err := loadKnownHostsVerifier()
+	if err != nil {
+		return nil, err
+	}
 	config := &ssh.ClientConfig{
 		User:            user,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         10 * time.Second,
 		Auth:            authMethods,
 	}

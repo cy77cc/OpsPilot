@@ -47,7 +47,7 @@ func (h *Handler) SSHCheck(c *gin.Context) {
 		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
 		return
 	}
-	password := strings.TrimSpace(node.SSHPassword)
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -101,7 +101,7 @@ func (h *Handler) SSHExec(c *gin.Context) {
 		httpx.OK(c, gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1})
 		return
 	}
-	password := strings.TrimSpace(node.SSHPassword)
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -157,7 +157,7 @@ func (h *Handler) BatchExec(c *gin.Context) {
 			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1}
 			continue
 		}
-		password := strings.TrimSpace(node.SSHPassword)
+		password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
 		if strings.TrimSpace(privateKey) != "" {
 			password = ""
 		}

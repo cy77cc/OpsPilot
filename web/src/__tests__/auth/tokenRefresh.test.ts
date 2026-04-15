@@ -4,6 +4,25 @@ import {
   dispatchTokenRefreshed,
 } from '../../utils/tokenManager';
 
+const TOKEN_STORAGE_KEYS = new Set(['token', 'refreshToken']);
+
+const createTokenStorageSpies = () => {
+  const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+  const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+  const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
+
+  const assertNoTokenStorageDependency = () => {
+    const tokenKeyCalls = [...getItemSpy.mock.calls, ...setItemSpy.mock.calls, ...removeItemSpy.mock.calls]
+      .filter(([key]) => TOKEN_STORAGE_KEYS.has(String(key)));
+
+    expect(tokenKeyCalls).toEqual([]);
+  };
+
+  return {
+    assertNoTokenStorageDependency,
+  };
+};
+
 // Test the token refresh flow using actual event system
 describe('Token Refresh Flow', () => {
   const TOKEN_EVENTS = {
@@ -79,9 +98,6 @@ describe('Token Refresh Flow', () => {
     it('tokenExpired event triggers logout flow', () => {
       const handler = vi.fn();
 
-      localStorage.setItem('token', 'expiring-token');
-      localStorage.setItem('refreshToken', 'expiring-refresh');
-
       window.addEventListener(TOKEN_EVENTS.EXPIRED, handler);
 
       window.dispatchEvent(new CustomEvent(TOKEN_EVENTS.EXPIRED));
@@ -112,8 +128,9 @@ describe('Token Refresh Flow', () => {
     });
   });
 
-  describe('LocalStorage Sync', () => {
-    it('dispatches tokenRefreshed event', () => {
+  describe('Refresh Event Dispatch', () => {
+    it('dispatches tokenRefreshed event without token storage dependency', () => {
+      const { assertNoTokenStorageDependency } = createTokenStorageSpies();
       const handler = vi.fn();
 
       window.addEventListener(TOKEN_EVENTS.REFRESHED, handler);
@@ -125,6 +142,7 @@ describe('Token Refresh Flow', () => {
       });
 
       expect(handler).toHaveBeenCalled();
+      assertNoTokenStorageDependency();
 
       window.removeEventListener(TOKEN_EVENTS.REFRESHED, handler);
     });

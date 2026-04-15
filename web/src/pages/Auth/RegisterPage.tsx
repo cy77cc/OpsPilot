@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
 
 const { Title, Text } = Typography;
+const REGISTER_ERROR_TEXT = '注册失败，请稍后重试';
 
 const RegisterPage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
@@ -17,8 +18,8 @@ const RegisterPage: React.FC = () => {
       setError(null);
       await register(values);
       navigate('/', { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '注册失败');
+    } catch {
+      setError(REGISTER_ERROR_TEXT);
     } finally {
       setLoading(false);
     }

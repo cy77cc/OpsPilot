@@ -32,22 +32,4 @@ const Authorized: React.FC<AuthorizedProps> = ({
   return <>{children}</>;
 };
 
-// 权限验证工具函数
-export const checkPermission = async (resource: string, action: string): Promise<boolean> => {
-  const permissions = [
-    'host:read',
-    'host:write',
-    'task:read',
-    'task:write',
-    'kubernetes:read',
-    'kubernetes:write',
-    'monitoring:read',
-    'config:read',
-    'config:write',
-    'rbac:read',
-    'rbac:write'
-  ];
-  return permissions.includes(`${resource}:${action}`);
-};
-
 export default Authorized;

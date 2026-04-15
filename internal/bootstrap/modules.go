@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
@@ -60,5 +61,6 @@ func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 	notificationapi.RegisterNotificationHandlers(v1, appCtx)
 	jobsapi.RegisterJobsHandlers(v1, appCtx)
 
-	engine.GET("/ws/notifications", websocket.HandleWebSocket)
+	ws := engine.Group("/ws", middleware.JWTAuth())
+	ws.GET("/notifications", websocket.HandleWebSocket)
 }

@@ -30,7 +30,7 @@ type Node struct {
 	IP                   string     `gorm:"column:ip;type:varchar(45);not null" json:"ip"`                                                               // IP 地址
 	Port                 int        `gorm:"column:port;default:22" json:"port"`                                                                          // SSH 端口
 	SSHUser              string     `gorm:"column:ssh_user;type:varchar(64);not null;default:root" json:"ssh_user"`                                      // SSH 用户名
-	SSHPassword          string     `gorm:"column:ssh_password;type:varchar(256)" json:"ssh_password"`                                                   // SSH 密码 (加密存储)
+	SSHPassword          string     `gorm:"column:ssh_password;type:text" json:"-"`                                                                      // SSH 密码 (加密存储)
 	SSHKeyID             *NodeID    `gorm:"column:ssh_key_id" json:"ssh_key_id"`                                                                         // SSH 密钥 ID
 	OS                   string     `gorm:"column:os;type:varchar(64)" json:"os"`                                                                        // 操作系统
 	Arch                 string     `gorm:"column:arch;type:varchar(32)" json:"arch"`                                                                    // 架构: amd64/arm64

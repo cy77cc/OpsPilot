@@ -46,27 +46,39 @@ describe('useNotificationWebSocket', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not connect when token is missing', () => {
+  it('connects without token or user_id query parameters', () => {
     renderHook(() => useNotificationWebSocket({ userId: 1 }));
     vi.runAllTimers();
 
-    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0].url).toContain('/ws/notifications');
+    expect(MockWebSocket.instances[0].url).not.toContain('token=');
+    expect(MockWebSocket.instances[0].url).not.toContain('user_id=');
   });
 
-  it('adds token to websocket url when connecting', () => {
+  it('connects even when userId is not provided', () => {
+    renderHook(() => useNotificationWebSocket());
+    vi.runAllTimers();
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0].url).toContain('/ws/notifications');
+    expect(MockWebSocket.instances[0].url).not.toContain('token=');
+    expect(MockWebSocket.instances[0].url).not.toContain('user_id=');
+  });
+
+  it('does not append token query when local token exists', () => {
     localStorage.setItem('token', 'test-token');
 
     renderHook(() => useNotificationWebSocket({ userId: 1 }));
     vi.runAllTimers();
 
     expect(MockWebSocket.instances).toHaveLength(1);
-    expect(MockWebSocket.instances[0].url).toContain('/ws/notifications?user_id=1');
-    expect(MockWebSocket.instances[0].url).toContain('token=test-token');
+    expect(MockWebSocket.instances[0].url).toContain('/ws/notifications');
+    expect(MockWebSocket.instances[0].url).not.toContain('user_id=');
+    expect(MockWebSocket.instances[0].url).not.toContain('token=');
   });
 
   it('does not reconnect after unmount disconnect', () => {
-    localStorage.setItem('token', 'test-token');
-
     const { unmount } = renderHook(() => useNotificationWebSocket({ userId: 1 }));
     vi.runAllTimers();
     expect(MockWebSocket.instances).toHaveLength(1);

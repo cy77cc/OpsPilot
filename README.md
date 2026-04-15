@@ -55,6 +55,13 @@ AI 模块当前不是独立 Demo，而是平台的一等能力，已具备：
                            +----------------------+    +----------------------+
 ```
 
+### 认证与会话传输说明
+
+- HTTP 会话采用 HttpOnly Cookie 传输（后端 `withCredentials` + 服务端 Cookie 校验），不再依赖前端持久化 token。
+- `JWTAuth` 仅接受 `Authorization: Bearer` 或受信任 Cookie，不接受 URL 查询参数 `token`。
+- 通知与终端 WebSocket 连接不再拼接 `token`/`user_id` 查询参数，身份由服务端鉴权上下文绑定。
+- 前端认证态以 `/auth/me` 和内存状态为主，避免 localStorage 长驻凭据扩散风险。
+
 ### 后端架构
 
 - 入口：`main.go` -> `internal/cmd` -> `internal/server`

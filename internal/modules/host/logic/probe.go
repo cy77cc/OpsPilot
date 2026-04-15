@@ -54,6 +54,10 @@ func (s *HostService) Probe(ctx context.Context, userID uint64, req ProbeReq) (*
 	hash := hashToken(token)
 	factsJSON, _ := json.Marshal(resp.Facts)
 	warningsJSON, _ := json.Marshal(resp.Warnings)
+	passwordCipher, err := s.ensureSSHPasswordCipher(req.Password)
+	if err != nil {
+		return nil, err
+	}
 	probe := model.HostProbeSession{
 		TokenHash:      hash,
 		Name:           req.Name,
@@ -61,7 +65,7 @@ func (s *HostService) Probe(ctx context.Context, userID uint64, req ProbeReq) (*
 		Port:           req.Port,
 		AuthType:       req.AuthType,
 		Username:       req.Username,
-		PasswordCipher: req.Password,
+		PasswordCipher: passwordCipher,
 		Reachable:      resp.Reachable,
 		LatencyMS:      resp.LatencyMS,
 		FactsJSON:      string(factsJSON),

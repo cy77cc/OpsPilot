@@ -4,6 +4,11 @@ import { BrowserRouter } from 'react-router-dom';
 import { NotificationProvider } from '../../contexts/NotificationContext';
 import { NotificationPanel } from '../../components/Notification';
 
+const safeNavigateMock = vi.hoisted(() => vi.fn());
+vi.mock('../../utils/safeNavigate', () => ({
+  safeNavigate: safeNavigateMock,
+}));
+
 // Mock notification API
 vi.mock('../../api/modules/notification', () => ({
   notificationApi: {
@@ -141,6 +146,20 @@ describe('NotificationPanel', () => {
 
     // Click on notification title
     fireEvent.click(screen.getAllByText('CPU 使用率超过 90%')[0]);
+  });
+
+  it('uses safe navigation helper for action URLs', async () => {
+    renderWithProviders(<NotificationPanel />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CPU 使用率超过 90%')[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByText('CPU 使用率超过 90%')[0]);
+
+    await waitFor(() => {
+      expect(safeNavigateMock).toHaveBeenCalledWith('/monitor?alert_id=alert-001');
+    });
   });
 });
 

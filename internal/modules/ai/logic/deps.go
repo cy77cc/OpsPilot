@@ -43,6 +43,8 @@ func New(deps Deps) *Logic {
 	}
 	if deps.ServiceContext != nil && deps.ServiceContext.DB != nil {
 		l.chatLogic = chat.New(deps.ServiceContext)
+		l.chatLogic.AIRouter = deps.AIRouter
+		l.chatLogic.CheckpointStore = deps.CheckpointStore
 	}
 	return l
 }

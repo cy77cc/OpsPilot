@@ -2,15 +2,10 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import type { ReactNode } from 'react';
 import { authApi } from '../../api/modules/auth';
 import type { AuthUser, LoginParams, RegisterParams } from '../../api/modules/auth';
-import apiService, { TOKEN_EVENTS } from '../../api/api';
-import {
-  startTokenExpiryCheck,
-  stopTokenExpiryCheck,
-} from '../../utils/tokenManager';
+import { TOKEN_EVENTS } from '../../api/api';
 
 interface AuthContextType {
   user: AuthUser | null;
-  token: string | null;
   loading: boolean;
   isAuthenticated: boolean;
   login: (payload: LoginParams) => Promise<void>;
@@ -27,90 +22,58 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  const persistSession = (nextToken: string, nextUser: AuthUser, permissions?: string[]) => {
-    localStorage.setItem('token', nextToken);
+  const persistSession = (nextUser: AuthUser, permissions?: string[]) => {
     localStorage.setItem('user', JSON.stringify(nextUser));
     if (permissions) {
       localStorage.setItem('permissions', JSON.stringify(permissions));
     }
-    setToken(nextToken);
     setUser(nextUser);
   };
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     localStorage.removeItem('permissions');
-    setToken(null);
     setUser(null);
   }, []);
 
-  const refreshUser = async () => {
-    if (!localStorage.getItem('token')) {
-      clearSession();
-      return;
-    }
+  const refreshUser = useCallback(async () => {
     const res = await authApi.getMe();
     setUser(res.data);
     localStorage.setItem('user', JSON.stringify(res.data));
     if (res.data.permissions) {
       localStorage.setItem('permissions', JSON.stringify(res.data.permissions));
     }
-  };
+  }, []);
 
   const login = async (payload: LoginParams) => {
     const res = await authApi.login(payload);
-    if (res.data.refreshToken) {
-      localStorage.setItem('refreshToken', res.data.refreshToken);
-    }
-    persistSession(res.data.token, res.data.user, res.data.permissions);
-    // 登录成功后启动 token 过期检查
-    startTokenExpiryCheck();
+    persistSession(res.data.user, res.data.permissions);
   };
 
   const register = async (payload: RegisterParams) => {
     const res = await authApi.register(payload);
-    if (res.data.refreshToken) {
-      localStorage.setItem('refreshToken', res.data.refreshToken);
-    }
-    persistSession(res.data.token, res.data.user, res.data.permissions);
-    // 注册成功后启动 token 过期检查
-    startTokenExpiryCheck();
+    persistSession(res.data.user, res.data.permissions);
   };
 
   const logout = useCallback(() => {
-    const refreshToken = localStorage.getItem('refreshToken') || undefined;
-    void authApi.logout(refreshToken).catch(() => undefined);
-    // 登出时停止 token 过期检查
-    stopTokenExpiryCheck();
+    void authApi.logout().catch(() => undefined);
     clearSession();
   }, [clearSession]);
 
   // 处理 token 刷新成功事件
   const handleTokenRefreshed = useCallback(
-    (event: Event) => {
-      const customEvent = event as CustomEvent<{ token: string; refreshToken?: string }>;
-      const { token: newToken } = customEvent.detail;
-
-      // 更新状态
-      setToken(newToken);
-
-      // localStorage 已在 ApiService 中更新
+    (_event: Event) => {
       console.log('[Auth] Token refreshed successfully');
+      void refreshUser().catch(() => clearSession());
     },
-    []
+    [clearSession, refreshUser]
   );
 
   // 处理 token 过期事件
   const handleTokenExpired = useCallback(() => {
     console.log('[Auth] Token expired, redirecting to login');
-
-    // 停止检查
-    stopTokenExpiryCheck();
 
     // 清除状态
     clearSession();
@@ -125,33 +88,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     window.location.href = '/login';
   }, [clearSession]);
 
-  // 处理需要刷新 token 事件（主动刷新）
-  const handleNeedsRefresh = useCallback(async () => {
-    console.log('[Auth] Token needs refresh, triggering refresh');
-    await apiService.refreshAccessToken();
-  }, []);
-
   // 初始化和事件监听
   useEffect(() => {
     let mounted = true;
 
     const bootstrap = async () => {
       try {
-        const storedToken = localStorage.getItem('token');
-        if (!storedToken) {
-          clearSession();
-          return;
-        }
         const userText = localStorage.getItem('user');
         if (userText && mounted) {
           setUser(JSON.parse(userText) as AuthUser);
         }
         await refreshUser();
-
-        // 初始化成功后启动 token 过期检查
-        if (mounted) {
-          startTokenExpiryCheck();
-        }
       } catch {
         clearSession();
       } finally {
@@ -165,7 +112,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // 监听 token 事件
     window.addEventListener(TOKEN_EVENTS.REFRESHED, handleTokenRefreshed);
     window.addEventListener(TOKEN_EVENTS.EXPIRED, handleTokenExpired);
-    window.addEventListener(TOKEN_EVENTS.NEEDS_REFRESH, handleNeedsRefresh);
 
     return () => {
       mounted = false;
@@ -173,25 +119,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // 清理事件监听
       window.removeEventListener(TOKEN_EVENTS.REFRESHED, handleTokenRefreshed);
       window.removeEventListener(TOKEN_EVENTS.EXPIRED, handleTokenExpired);
-      window.removeEventListener(TOKEN_EVENTS.NEEDS_REFRESH, handleNeedsRefresh);
-
-      // 停止 token 检查
-      stopTokenExpiryCheck();
     };
-  }, [clearSession, handleTokenRefreshed, handleTokenExpired, handleNeedsRefresh]);
+  }, [clearSession, handleTokenRefreshed, handleTokenExpired, refreshUser]);
 
   const value = useMemo(
     () => ({
       user,
-      token,
       loading,
-      isAuthenticated: Boolean(token && user),
+      isAuthenticated: Boolean(user),
       login,
       register,
       logout,
       refreshUser,
     }),
-    [user, token, loading, logout]
+    [user, loading, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
