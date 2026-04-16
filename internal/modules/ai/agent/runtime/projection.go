@@ -252,6 +252,27 @@ func BuildProjection(events []ai.AIRunEvent) (*RunProjection, []*ai.AIRunContent
 					"tool_name":   approval.ToolName,
 				},
 			})
+		case EventTypeDelegationNode:
+			flushText()
+			currentExecutor = nil
+			payload, err := UnmarshalEventPayload(EventTypeDelegationNode, event.PayloadJSON)
+			if err != nil {
+				return nil, nil, err
+			}
+			node := payload.(*DelegationNodePayload)
+			projection.Blocks = append(projection.Blocks, ProjectionBlock{
+				ID:    blockID("delegation", len(projection.Blocks)+1),
+				Type:  "delegation.node",
+				Title: node.Title,
+				Agent: node.AgentName,
+				Data: map[string]any{
+					"delegation_id": node.DelegationID,
+					"status":        node.Status,
+					"summary":       node.Summary,
+					"risk_level":    node.RiskLevel,
+				},
+				EventIDs: []string{event.ID},
+			})
 		case EventTypeRunState:
 			payload, err := UnmarshalEventPayload(EventTypeRunState, event.PayloadJSON)
 			if err != nil {

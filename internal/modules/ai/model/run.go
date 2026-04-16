@@ -1,9 +1,19 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+)
+
+const (
+	RunStatusRunning               = "running"
+	RunStatusDelegating            = "delegating"
+	RunStatusWaitingSubagent       = "waiting_subagent"
+	RunStatusWaitingApproval       = "waiting_approval"
+	RunStatusResuming              = "resuming"
+	RunStatusResumeFailedRetryable = "resume_failed_retryable"
 )
 
 type AIRun struct {
@@ -71,3 +81,18 @@ type AIRunContent struct {
 }
 
 func (AIRunContent) TableName() string { return "ai_run_contents" }
+
+// IsOpenRunStatus reports whether a run is still open for tailing/reconnect.
+func IsOpenRunStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case RunStatusWaitingApproval,
+		RunStatusResuming,
+		RunStatusRunning,
+		RunStatusResumeFailedRetryable,
+		RunStatusDelegating,
+		RunStatusWaitingSubagent:
+		return true
+	default:
+		return false
+	}
+}

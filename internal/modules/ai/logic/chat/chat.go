@@ -12,11 +12,11 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
-	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/stream"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -303,12 +303,7 @@ func isRecordNotFound(err error) bool {
 }
 
 func isTailOpenStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "waiting_approval", "resuming", "running", "resume_failed_retryable":
-		return true
-	default:
-		return false
-	}
+	return ai.IsOpenRunStatus(status)
 }
 
 // BuildAugmentedMessage 构建增强后的用户消息。
@@ -455,6 +450,53 @@ func TruncateString(s string, maxLen int) string {
 
 type EventEmitter func(event string, data any)
 
+type delegationStreamState struct {
+	active       bool
+	delegationID string
+	agentName    string
+	intent       string
+}
+
+func (s *delegationStreamState) expand(_ string, events []airuntime.PublicStreamEvent) []airuntime.PublicStreamEvent {
+	if len(events) == 0 {
+		return events
+	}
+	expanded := make([]airuntime.PublicStreamEvent, 0, len(events))
+	for _, projected := range events {
+		if projected.Event == "agent_handoff" {
+			data, _ := projected.Data.(map[string]any)
+			target := strings.TrimSpace(stream.StringValue(data, "to"))
+			if isDelegationTarget(target) {
+				if !s.active {
+					s.active = true
+					s.delegationID = uuid.NewString()
+				}
+				if s.agentName == "" {
+					s.agentName = target
+				}
+				if s.intent == "" {
+					s.intent = strings.TrimSpace(stream.StringValue(data, "intent"))
+				}
+			}
+		}
+		expanded = append(expanded, projected)
+	}
+	return expanded
+}
+
+func isDelegationTarget(target string) bool {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return false
+	}
+	switch strings.ToLower(trimmed) {
+	case "executor", "supervisor":
+		return false
+	default:
+		return true
+	}
+}
+
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
 func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) error {
 	if l.RunDAO == nil || l.AIRouter == nil {
@@ -501,12 +543,14 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	agentInput := []*schema.Message{schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))}
 	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
 	projector := airuntime.NewStreamProjector()
+	delegationState := &delegationStreamState{}
 	result, err := stream.ProcessAgentIterator(ctx, stream.IteratorProcessInput{
 		Iterator:  iterator,
 		Projector: projector,
 		Emit:      emit,
 		ConsumeProjected: func(_ stream.IteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
-			_, consumeErr := ConsumeProjectedEvents(ctx, l, shell.Run.ID, shell.SessionID, &seq, events, emit)
+			expanded := delegationState.expand(shell.Run.ID, events)
+			_, consumeErr := ConsumeProjectedEvents(ctx, l, shell.Run.ID, shell.SessionID, &seq, expanded, emit)
 			return consumeErr
 		},
 		HandleRunUpdate: func(update stream.RunUpdate) {
@@ -527,6 +571,9 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 			return fmt.Errorf("finalize iterator error: %w", err)
 		}
 		return nil
+	}
+	if err := emitDelegationNodeIfNeeded(ctx, l, shell, delegationState, &seq, result.SummaryText, result.AssistantSnapshot, emit); err != nil {
+		return fmt.Errorf("emit delegation node: %w", err)
 	}
 	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
 		runStatus := aidao.AIRunStatusUpdate{Status: "waiting_approval", AssistantMessageID: shell.AssistantMessage.ID}
@@ -555,6 +602,43 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	}
 	_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
 	emit(done.Event, withEventID(done.Data, eid))
+	return nil
+}
+
+func emitDelegationNodeIfNeeded(ctx context.Context, l *Logic, shell ChatShell, state *delegationStreamState, seq *int, summaryText, assistantSnapshot string, emit EventEmitter) error {
+	if state == nil || !state.active {
+		return nil
+	}
+	summary := strings.TrimSpace(summaryText)
+	if summary == "" {
+		summary = strings.TrimSpace(assistantSnapshot)
+	}
+	if summary == "" {
+		return nil
+	}
+	agentName := strings.TrimSpace(state.agentName)
+	if agentName == "" {
+		agentName = "specialist"
+	}
+	payload := map[string]any{
+		"delegation_id": state.delegationID,
+		"agent_name":    agentName,
+		"status":        "returned",
+		"title":         fmt.Sprintf("%s summary", agentName),
+		"summary":       summary,
+	}
+	if intent := strings.TrimSpace(state.intent); intent != "" {
+		payload["intent"] = intent
+	}
+	if risk := strings.TrimSpace(shell.Run.RiskLevel); risk != "" {
+		payload["risk_level"] = risk
+	}
+	eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, "delegation_node", payload)
+	if err != nil {
+		return err
+	}
+	emit("delegation_node", withEventID(payload, eid))
+	state.active = false
 	return nil
 }
 
@@ -639,12 +723,14 @@ func EmitExistingShellTerminal(ctx context.Context, l *Logic, shell ChatShell, e
 	switch shell.Run.Status {
 	case "failed", "failed_runtime":
 		emit("error", map[string]any{"run_id": shell.Run.ID, "message": stream.SanitizeUserFacingError(errors.New(shell.Run.ErrorMessage))})
-	case "waiting_approval":
-		emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": "waiting_approval", "agent": "executor", "summary": shell.AssistantMessage.Content})
 	case "cancelled", "expired":
 		emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "agent": "executor", "summary": shell.AssistantMessage.Content})
 	case "completed", "completed_with_tool_errors":
 		emit("done", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "summary": shell.AssistantMessage.Content})
+	default:
+		if ai.IsOpenRunStatus(shell.Run.Status) {
+			emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "agent": "executor", "summary": shell.AssistantMessage.Content})
+		}
 	}
 }
 
@@ -653,7 +739,7 @@ func AppendRunEventWithID(ctx context.Context, l *Logic, runID, sessionID string
 	if l.RunEventDAO == nil || seq == nil {
 		return "", nil
 	}
-	eventType, raw, err := stream.MarshalProjectedEvent(eventName, payload)
+	eventType, raw, err := marshalRuntimeEvent(eventName, payload)
 	if err != nil {
 		return "", err
 	}
@@ -662,11 +748,35 @@ func AppendRunEventWithID(ctx context.Context, l *Logic, runID, sessionID string
 	}
 	eventID := uuid.NewString()
 	*seq++
+	agentName := stream.EventAgentName(payload)
+	if eventType == airuntime.EventTypeDelegationNode {
+		data, _ := payload.(map[string]any)
+		agentName = strings.TrimSpace(stream.StringValue(data, "agent_name"))
+	}
 	return eventID, l.RunEventDAO.Create(ctx, &ai.AIRunEvent{
 		ID: eventID, RunID: runID, SessionID: sessionID, Seq: *seq,
-		EventType: string(eventType), AgentName: stream.EventAgentName(payload),
+		EventType: string(eventType), AgentName: agentName,
 		ToolCallID: stream.EventToolCallID(payload), PayloadJSON: raw,
 	})
+}
+
+func marshalRuntimeEvent(eventName string, payload any) (airuntime.EventType, string, error) {
+	eventType, raw, err := stream.MarshalProjectedEvent(eventName, payload)
+	if err != nil || eventType != "" || eventName != "delegation_node" {
+		return eventType, raw, err
+	}
+	data, _ := payload.(map[string]any)
+	node := &airuntime.DelegationNodePayload{
+		DelegationID: strings.TrimSpace(stream.StringValue(data, "delegation_id")),
+		AgentName:    strings.TrimSpace(stream.StringValue(data, "agent_name")),
+		Intent:       strings.TrimSpace(stream.StringValue(data, "intent")),
+		Status:       strings.TrimSpace(stream.StringValue(data, "status")),
+		Title:        strings.TrimSpace(stream.StringValue(data, "title")),
+		Summary:      strings.TrimSpace(stream.StringValue(data, "summary")),
+		RiskLevel:    strings.TrimSpace(stream.StringValue(data, "risk_level")),
+	}
+	raw, err = airuntime.MarshalEventPayload(airuntime.EventTypeDelegationNode, node)
+	return airuntime.EventTypeDelegationNode, raw, err
 }
 
 // ConsumeProjectedEvents 消费投影事件并持久化。
@@ -686,7 +796,7 @@ func assistantStatusFromRunStatus(status string) string {
 	switch status {
 	case "failed_runtime":
 		return "error"
-	case "waiting_approval":
+	case "waiting_approval", "running", "delegating", "waiting_subagent", "resuming", "resume_failed_retryable":
 		return "streaming"
 	default:
 		return "done"

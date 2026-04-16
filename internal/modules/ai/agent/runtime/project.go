@@ -47,35 +47,39 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		if event.Handoff == nil {
 			return nil
 		}
+		from := strings.TrimSpace(event.Handoff.From)
+		to := strings.TrimSpace(event.Handoff.To)
 		// 更新持久化状态
 		state.Persisted.Phase = "executing"
-		state.Persisted.PhaseLabel = fmt.Sprintf("%s 开始处理", strings.TrimSpace(event.Handoff.To))
+		state.Persisted.PhaseLabel = fmt.Sprintf("%s 开始处理", to)
 		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
-			ID:     fmt.Sprintf("handoff:%s", strings.TrimSpace(event.Handoff.To)),
+			ID:     fmt.Sprintf("handoff:%s", to),
 			Kind:   "agent_handoff",
-			Label:  strings.TrimSpace(event.Handoff.To),
+			Label:  to,
 			Status: "done",
 		})
-		return []PublicStreamEvent{{
+		projected := []PublicStreamEvent{{
 			Event: "agent_handoff",
 			Data: map[string]any{
-				"from":   strings.TrimSpace(event.Handoff.From),
-				"to":     strings.TrimSpace(event.Handoff.To),
-				"intent": mapAgentNameToIntentType(strings.TrimSpace(event.Handoff.To)),
+				"from":   from,
+				"to":     to,
+				"intent": mapAgentNameToIntentType(to),
 			},
 		}}
+		if isDelegationTarget(to) {
+			applyPersistedRunState(state, string(RunStateDelegating))
+			projected = append([]PublicStreamEvent{
+				newRunStatePublicEvent(string(RunStateDelegating), "supervisor"),
+			}, projected...)
+			applyPersistedRunState(state, string(RunStateWaitingSubagent))
+			projected = append(projected, newRunStatePublicEvent(string(RunStateWaitingSubagent), "supervisor"))
+		}
+		return projected
 	case NormalizedKindInterrupt:
 		if event.Interrupt == nil {
 			return nil
 		}
-		state.RunPhase = "waiting_approval"
-		// 更新持久化状态
-		state.Persisted.Phase = "waiting_approval"
-		state.Persisted.PhaseLabel = "等待审批"
-		state.Persisted.Status = &PersistedStatus{
-			Kind:  "waiting_approval",
-			Label: "等待审批",
-		}
+		applyPersistedRunState(state, string(RunStateWaitingApproval))
 		state.Persisted.Activities = append(state.Persisted.Activities, PersistedActivity{
 			ID:     event.Interrupt.CallID,
 			Kind:   "tool_approval",
@@ -95,9 +99,7 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 					"timeout_seconds": event.Interrupt.TimeoutSeconds,
 				},
 			},
-			NewRunStateEvent("waiting_approval", map[string]any{
-				"agent": event.AgentName,
-			}),
+			newRunStatePublicEvent(string(RunStateWaitingApproval), strings.TrimSpace(event.AgentName)),
 		}
 	case NormalizedKindToolCall:
 		if event.Tool == nil {
@@ -160,6 +162,66 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		return projectNormalizedMessage(event, state)
 	default:
 		return nil
+	}
+}
+
+func applyPersistedRunState(state *ProjectionState, status string) {
+	if state == nil || state.Persisted == nil {
+		return
+	}
+	switch strings.TrimSpace(status) {
+	case string(RunStateDelegating):
+		state.RunPhase = string(RunStateDelegating)
+		state.Persisted.Phase = "executing"
+		state.Persisted.PhaseLabel = "委派专家分析"
+		state.Persisted.Status = &PersistedStatus{
+			Kind:  string(RunStateDelegating),
+			Label: "委派专家分析",
+		}
+	case string(RunStateWaitingSubagent):
+		state.RunPhase = string(RunStateWaitingSubagent)
+		state.Persisted.Phase = "executing"
+		state.Persisted.PhaseLabel = "等待专家摘要"
+		state.Persisted.Status = &PersistedStatus{
+			Kind:  string(RunStateWaitingSubagent),
+			Label: "等待专家摘要",
+		}
+	case string(RunStateWaitingApproval):
+		state.RunPhase = string(RunStateWaitingApproval)
+		state.Persisted.Phase = "waiting_approval"
+		state.Persisted.PhaseLabel = "等待审批"
+		state.Persisted.Status = &PersistedStatus{
+			Kind:  string(RunStateWaitingApproval),
+			Label: "等待审批",
+		}
+	default:
+		state.RunPhase = strings.TrimSpace(status)
+	}
+}
+
+func isDelegationTarget(target string) bool {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return false
+	}
+	switch strings.ToLower(trimmed) {
+	case "executor", "supervisor":
+		return false
+	default:
+		return true
+	}
+}
+
+func newRunStatePublicEvent(status, agent string) PublicStreamEvent {
+	data := map[string]any{
+		"status": strings.TrimSpace(status),
+	}
+	if strings.TrimSpace(agent) != "" {
+		data["agent"] = strings.TrimSpace(agent)
+	}
+	return PublicStreamEvent{
+		Event: "run_state",
+		Data:  data,
 	}
 }
 
