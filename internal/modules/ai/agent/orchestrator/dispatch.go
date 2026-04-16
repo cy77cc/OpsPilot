@@ -1,14 +1,12 @@
 package orchestrator
 
 import (
-	"strings"
-
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 )
 
 // BuildDispatchDecision computes whether a scene should delegate to a specialist.
 func (s *Supervisor) BuildDispatchDecision(scene string) airuntime.DispatchDecision {
-	normalized := strings.TrimSpace(scene)
+	normalized := normalizeScene(scene)
 	specialistAvailable := false
 	if s != nil && s.registry != nil {
 		_, specialistAvailable = s.registry.Lookup(normalized)
