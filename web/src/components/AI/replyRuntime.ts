@@ -256,6 +256,21 @@ function trimActivities(activities: AssistantReplyActivity[]): AssistantReplyAct
   return activities.slice(activities.length - MAX_ACTIVITIES);
 }
 
+function sanitizeSnapshotActivity(activity: AssistantReplyActivity): AssistantReplyActivity {
+  if (activity.kind !== 'delegation') {
+    return activity;
+  }
+  return {
+    id: activity.id,
+    kind: 'delegation',
+    label: activity.label,
+    detail: activity.detail,
+    status: activity.status,
+    stepIndex: activity.stepIndex,
+    createdAt: activity.createdAt,
+  };
+}
+
 function reconcilePlan(
   previous: AssistantReplyPlan | undefined,
   steps: string[],
@@ -594,7 +609,9 @@ export function applyRuntimeSnapshot(
   snapshot: Partial<AssistantReplyRuntime> & { todos?: AssistantReplyTodo[] },
 ): AssistantReplyRuntime {
   return {
-    activities: Array.isArray(snapshot.activities) ? [...snapshot.activities] : [],
+    activities: Array.isArray(snapshot.activities)
+      ? snapshot.activities.map((activity) => sanitizeSnapshotActivity(activity))
+      : [],
     plan: snapshot.plan ? { ...snapshot.plan } : undefined,
     phase: snapshot.phase,
     phaseLabel: snapshot.phaseLabel,

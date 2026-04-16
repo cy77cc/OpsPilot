@@ -154,10 +154,28 @@ function mergeProjectionPages(current: AIRunProjection, page: AIRunProjection): 
  */
 function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRuntime {
   let steps: AssistantReplyPlanStep[] = [];
+  const activities: AssistantReplyActivity[] = [];
   let executorIndex = 0;
   let executorStepIndex = 0;
 
   for (const block of projection.blocks) {
+    if (block.type === 'delegation.node') {
+      const summary = typeof block.data?.summary === 'string' ? block.data.summary : '';
+      const delegationStatus = typeof block.data?.status === 'string' ? block.data.status : '';
+      activities.push({
+        id: block.id,
+        kind: 'delegation',
+        label: block.title || block.agent || 'Delegation summary',
+        detail: summary || undefined,
+        status: delegationStatus === 'returned'
+          ? 'done'
+          : delegationStatus === 'failed'
+            ? 'error'
+            : 'active',
+      });
+      continue;
+    }
+
     if (block.type === 'plan') {
       const next = reconcileHistoricalPlan([], block.steps || [], 0, false);
       steps = next.steps;
@@ -215,7 +233,7 @@ function projectionToLazyRuntime(projection: AIRunProjection): AssistantReplyRun
     }));
 
   return {
-    activities: [],
+    activities,
     plan: steps.length > 0 ? { steps } : undefined,
     summary: projection.summary?.title ? { title: projection.summary.title } : undefined,
     status: {

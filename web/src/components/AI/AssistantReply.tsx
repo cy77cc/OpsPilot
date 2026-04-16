@@ -158,6 +158,9 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
   activityDetail: css`
     color: ${token.colorTextDescription};
   `,
+  delegationLabel: css`
+    font-weight: 600;
+  `,
   taskBoard: css`
     display: flex;
     flex-direction: column;
@@ -515,6 +518,27 @@ function getTodoStatusLabel(status: string): string {
   }
 }
 
+function renderNonToolActivity(
+  activity: AssistantReplyActivity,
+  styles: Record<string, string>,
+): React.ReactNode {
+  if (activity.kind === 'delegation') {
+    return (
+      <div key={activity.id} className={styles.activity} data-testid="delegation-activity">
+        <strong className={styles.delegationLabel}>{activity.label}</strong>
+        {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div key={activity.id} className={styles.activity}>
+      <span>{activity.label}</span>
+      {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
+    </div>
+  );
+}
+
 // StepContentRenderer 按 segments 顺序渲染步骤内容
 function StepContentRenderer({
   step,
@@ -851,10 +875,7 @@ function AssistantReplyContent({
                   activity={activity}
                 />
               ) : (
-                <div key={activity.id} className={styles.activity}>
-                  <span>{activity.label}</span>
-                  {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-                </div>
+                renderNonToolActivity(activity, styles)
               )
             ))}
           </div>
@@ -870,10 +891,7 @@ function AssistantReplyContent({
                 activity={activity}
               />
             ) : (
-              <div key={activity.id} className={styles.activity}>
-                <span>{activity.label}</span>
-                {activity.detail ? <span className={styles.activityDetail}>{activity.detail}</span> : null}
-              </div>
+              renderNonToolActivity(activity, styles)
             )
           ))}
         </div>

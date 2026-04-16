@@ -28,6 +28,7 @@ export type AssistantReplyActivityKind =
   | 'agent_handoff'
   | 'plan'
   | 'replan'
+  | 'delegation'
   | 'tool'
   | 'tool_approval'
   | 'hint'

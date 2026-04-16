@@ -164,7 +164,7 @@ export interface AIRunProjectionExecutorItem {
 
 export interface AIRunProjectionBlock {
   id: string;
-  type: 'agent_handoff' | 'plan' | 'replan' | 'executor' | 'error';
+  type: 'agent_handoff' | 'plan' | 'replan' | 'executor' | 'error' | 'delegation.node';
   title: string;
   agent?: string;
   event_ids?: string[];

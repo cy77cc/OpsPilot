@@ -337,6 +337,49 @@ describe('historyProjection', () => {
     });
   });
 
+  it('hydrates delegation summary nodes into assistant activities', async () => {
+    (aiApi.getRunProjection as any).mockResolvedValue({
+      data: {
+        version: 1,
+        run_id: 'run-1',
+        session_id: 'sess-1',
+        status: 'completed',
+        blocks: [
+          {
+            id: 'delegation-1',
+            type: 'delegation.node',
+            title: 'Monitor summary',
+            agent: 'monitor',
+            data: {
+              delegation_id: 'd-1',
+              status: 'returned',
+              summary: 'p95 increased',
+              risk_level: 'medium',
+            },
+          },
+        ],
+      },
+    });
+
+    const hydrated = await hydrateAssistantHistoryFromProjection({
+      id: 'msg-1',
+      role: 'assistant',
+      content: '',
+      run_id: 'run-1',
+      timestamp: '',
+    } as any);
+
+    expect(hydrated.runtime?.activities).toEqual([
+      {
+        id: 'delegation-1',
+        kind: 'delegation',
+        label: 'Monitor summary',
+        detail: 'p95 increased',
+        status: 'done',
+      },
+    ]);
+  });
+
   it('keeps historical step titles visible before lazy content loads', async () => {
     (aiApi.getRunProjection as any).mockResolvedValue({
       data: {

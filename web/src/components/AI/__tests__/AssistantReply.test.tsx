@@ -260,6 +260,29 @@ describe('AssistantReply', () => {
     expect(screen.getByTestId('x-markdown')).toHaveTextContent('发现 2 个异常节点');
   });
 
+  it('renders delegation activities as summary-only nodes', () => {
+    render(
+      <AssistantReply
+        content="最终结论"
+        runtime={{
+          activities: [
+            {
+              id: 'delegation-1',
+              kind: 'delegation',
+              label: 'Monitor summary',
+              detail: 'p95 increased for checkout-api',
+              status: 'done',
+            },
+          ],
+          status: { kind: 'completed', label: 'completed' },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('delegation-activity')).toHaveTextContent('Monitor summary');
+    expect(screen.getByTestId('delegation-activity')).toHaveTextContent('p95 increased for checkout-api');
+  });
+
   it('normalizes escaped line breaks before rendering markdown body', () => {
     render(
       <AssistantReply
