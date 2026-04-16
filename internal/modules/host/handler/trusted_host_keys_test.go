@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -180,8 +182,26 @@ func TestTrustHostKey_RotatesExistingEntry(t *testing.T) {
 
 func TestTrustHostKey_AllowsOnboardingWithoutHostRecord(t *testing.T) {
 	db, hostSvc := newTrustedHostKeyHandlerTestDeps(t)
-	const uid = uint64(1)
+	const (
+		uid        = uint64(1)
+		probeToken = "onboarding-trust-probe"
+	)
 	grantHostPermission(t, db, uid, "host:trust_host_key")
+	if err := db.WithContext(context.Background()).Create(&hostmodel.HostProbeSession{
+		TokenHash:    hashProbeTokenForTest(probeToken),
+		Name:         "onboarding-host",
+		IP:           "118.193.38.89",
+		Port:         13012,
+		AuthType:     "password",
+		Username:     "root",
+		Reachable:    false,
+		WarningsJSON: `[]`,
+		FactsJSON:    `{}`,
+		ExpiresAt:    time.Now().Add(10 * time.Minute),
+		CreatedBy:    uid,
+	}).Error; err != nil {
+		t.Fatalf("seed probe session: %v", err)
+	}
 
 	algorithm, fingerprint, publicKey := generateAuthorizedKeyMeta(t)
 	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
@@ -193,6 +213,7 @@ func TestTrustHostKey_AllowsOnboardingWithoutHostRecord(t *testing.T) {
 		"algorithm":          algorithm,
 		"fingerprint_sha256": fingerprint,
 		"public_key":         publicKey,
+		"probe_token":        probeToken,
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -216,6 +237,46 @@ func TestTrustHostKey_AllowsOnboardingWithoutHostRecord(t *testing.T) {
 	}
 	if item.HostID != 0 {
 		t.Fatalf("expected onboarding trust entry with host_id 0, got %d", item.HostID)
+	}
+}
+
+func TestTrustHostKey_OnboardingRequiresProbeToken(t *testing.T) {
+	db, hostSvc := newTrustedHostKeyHandlerTestDeps(t)
+	const uid = uint64(1)
+	grantHostPermission(t, db, uid, "host:trust_host_key")
+
+	algorithm, fingerprint, publicKey := generateAuthorizedKeyMeta(t)
+	payload, err := json.Marshal(map[string]any{
+		"host":               "118.193.38.89",
+		"port":               13012,
+		"algorithm":          algorithm,
+		"fingerprint_sha256": fingerprint,
+		"public_key":         publicKey,
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+	ctx, recorder := newHostMutationTestContext(http.MethodPost, "/api/v1/hosts/0/trust-host-key", bytes.NewReader(payload), gin.Params{{Key: "id", Value: "0"}}, uid)
+
+	h := &Handler{svcCtx: &svc.ServiceContext{DB: db}, hostService: hostSvc}
+	h.TrustHostKey(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 response envelope, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, recorder.Body.String())
+	}
+	if resp.Code != int(xcode.ParamError) {
+		t.Fatalf("expected param error code, got %+v", resp)
+	}
+	if !strings.Contains(resp.Msg, "probe_token is required") {
+		t.Fatalf("expected probe token validation error, got %+v", resp)
 	}
 }
 
@@ -298,6 +359,7 @@ func newTrustedHostKeyHandlerTestDeps(t *testing.T) (*gorm.DB, *hostlogic.HostSe
 		&usermodel.Permission{},
 		&usermodel.UserRole{},
 		&usermodel.RolePermission{},
+		&hostmodel.HostProbeSession{},
 		&hostmodel.Node{},
 		&hostmodel.TrustedHostKey{},
 	); err != nil {
@@ -404,6 +466,11 @@ func knownHostsLine(host string, port int, authorizedKey string) (string, error)
 		return "", err
 	}
 	return knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, key), nil
+}
+
+func hashProbeTokenForTest(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, golangssh.PublicKey, func()) {

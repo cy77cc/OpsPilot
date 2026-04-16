@@ -179,6 +179,7 @@ export interface HostKeyTrustPayload {
 export interface HostKeyTrustErrorData {
   errorType: 'ssh_host_key_unknown' | 'ssh_host_key_mismatch' | 'ssh_host_key_revoked';
   hostKey: HostKeyTrustPayload;
+  probeToken?: string;
 }
 
 export interface SSHKeyItem {
@@ -305,6 +306,7 @@ const throwHostKeyTrustRequired = (raw: any, fallbackType?: HostKeyTrustErrorDat
   error.details = {
     error_type: inferHostKeyErrorType(raw?.error_type || raw?.errorType || fallbackType, raw?.message || raw?.error_message),
     host_key: hostKeyRaw,
+    probe_token: raw?.probe_token || raw?.probeToken,
   };
   throw error;
 };
@@ -458,13 +460,14 @@ export const hostApi = {
     return res;
   },
 
-  async trustHostKey(id: string, payload: HostKeyTrustPayload & { replaceExisting?: boolean }): Promise<ApiResponse<any>> {
+  async trustHostKey(id: string, payload: HostKeyTrustPayload & { replaceExisting?: boolean; probeToken?: string }): Promise<ApiResponse<any>> {
     return apiService.post(`/hosts/${id}/trust-host-key`, {
       host: payload.host,
       port: payload.port,
       algorithm: payload.algorithm,
       fingerprint_sha256: payload.fingerprintSha256,
       public_key: payload.publicKey,
+      probe_token: payload.probeToken,
       replace_existing: !!payload.replaceExisting,
     });
   },
@@ -616,6 +619,14 @@ export const hostApi = {
     const resp = await fetch(`${base}/hosts/${id}/files/download?path=${encodeURIComponent(filePath)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
+    const contentType = String(resp.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      const payload = await resp.json().catch(() => null);
+      if (payload?.data) {
+        throwHostKeyTrustRequired(payload.data);
+      }
+      throw new Error(payload?.msg || payload?.message || `下载失败: ${resp.status}`);
+    }
     if (!resp.ok) {
       throw new Error(`下载失败: ${resp.status}`);
     }

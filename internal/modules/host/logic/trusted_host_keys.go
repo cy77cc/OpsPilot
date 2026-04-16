@@ -31,6 +31,7 @@ type TrustHostKeyReq struct {
 	Algorithm         string `json:"algorithm"`
 	FingerprintSHA256 string `json:"fingerprint_sha256"`
 	PublicKey         string `json:"public_key"`
+	ProbeToken        string `json:"probe_token"`
 	ReplaceExisting   bool   `json:"replace_existing"`
 }
 
@@ -77,6 +78,10 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 			}
 			if node.IP != normalized.Host || node.Port != normalized.Port {
 				return errors.New("host and port must match target node")
+			}
+		} else {
+			if err := validateOnboardingTrustProbe(tx, operator, normalized.ProbeToken, normalized.Host, normalized.Port); err != nil {
+				return err
 			}
 		}
 
@@ -180,6 +185,7 @@ func normalizeTrustHostKeyReq(req TrustHostKeyReq) (*TrustHostKeyReq, error) {
 	req.Algorithm = strings.TrimSpace(req.Algorithm)
 	req.FingerprintSHA256 = strings.TrimSpace(req.FingerprintSHA256)
 	req.PublicKey = strings.TrimSpace(req.PublicKey)
+	req.ProbeToken = strings.TrimSpace(req.ProbeToken)
 	if req.Host == "" {
 		return nil, errors.New("host is required")
 	}
@@ -207,6 +213,30 @@ func normalizeTrustHostKeyReq(req TrustHostKeyReq) (*TrustHostKeyReq, error) {
 		return nil, errors.New("fingerprint_sha256 does not match public_key")
 	}
 	return &req, nil
+}
+
+func validateOnboardingTrustProbe(tx *gorm.DB, operator uint64, probeToken, host string, port int) error {
+	if strings.TrimSpace(probeToken) == "" {
+		return errors.New("probe_token is required for onboarding host trust")
+	}
+
+	var probe model.HostProbeSession
+	if err := tx.Where("token_hash = ?", hashToken(probeToken)).First(&probe).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("probe_token is invalid or expired")
+		}
+		return err
+	}
+	if probe.CreatedBy != 0 && operator != 0 && probe.CreatedBy != operator {
+		return errors.New("probe_token is invalid or expired")
+	}
+	if probe.ConsumedAt != nil || time.Now().After(probe.ExpiresAt) {
+		return errors.New("probe_token is invalid or expired")
+	}
+	if strings.TrimSpace(probe.IP) != host || probe.Port != port {
+		return errors.New("probe_token target does not match host key")
+	}
+	return nil
 }
 
 func trustKnownHostsPath() (string, error) {

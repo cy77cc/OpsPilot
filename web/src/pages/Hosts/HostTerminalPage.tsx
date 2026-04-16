@@ -567,13 +567,23 @@ const HostTerminalPage: React.FC = () => {
 
   const downloadFile = async (item: HostFileItem) => {
     if (!id || item.is_dir || typeof document === 'undefined') return;
-    const blob = await Api.hosts.downloadFile(id, item.path);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = item.name;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const operation = async () => {
+        const blob = await Api.hosts.downloadFile(id, item.path);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
+    } catch (err) {
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '下载失败');
+      }
+    }
   };
 
   const toParentPath = React.useCallback((path: string) => {
@@ -869,9 +879,17 @@ const HostTerminalPage: React.FC = () => {
         mode={pendingTrust?.errorType === 'ssh_host_key_mismatch' ? 'rotate' : 'create'}
         hostKey={pendingTrust?.hostKey || null}
         onCancel={() => setPendingTrust(null)}
-        onConfirm={() => void confirmTrustAndRetry(async () => {
-          await retryOperationRef.current();
-        })}
+        onConfirm={async () => {
+          try {
+            await confirmTrustAndRetry(async () => {
+              await retryOperationRef.current();
+            });
+          } catch (err) {
+            if (!parseHostKeyTrustError(err)) {
+              message.error(err instanceof Error ? err.message : '信任主机指纹失败');
+            }
+          }
+        }}
       />
     </div>
   );

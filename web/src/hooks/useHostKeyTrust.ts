@@ -53,6 +53,7 @@ export function parseHostKeyTrustError(error: unknown): HostKeyTrustErrorData | 
   return {
     errorType,
     hostKey,
+    probeToken: typeof data?.probe_token === 'string' ? data.probe_token.trim() || undefined : undefined,
   };
 }
 
@@ -81,6 +82,7 @@ export function useHostKeyTrust(hostId: string) {
     try {
       await Api.hosts.trustHostKey(hostId, {
         ...pendingTrust.hostKey,
+        probeToken: pendingTrust.probeToken,
         replaceExisting: pendingTrust.errorType !== 'ssh_host_key_unknown',
       });
       setPendingTrust(null);

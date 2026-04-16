@@ -161,6 +161,38 @@ describe('HostTerminalPage', () => {
     expect(await screen.findByText('信任此主机指纹？')).toBeInTheDocument();
   });
 
+  it('shows host-key trust confirmation when downloading a file requires trust', async () => {
+    mockApi.hosts.downloadFile.mockRejectedValueOnce({
+      businessCode: 2000,
+      message: 'ssh host key verification failed',
+      details: {
+        error_type: 'ssh_host_key_unknown',
+        host_key: {
+          host: '10.0.0.1',
+          port: 22,
+          algorithm: 'ssh-ed25519',
+          fingerprint_sha256: 'SHA256:test-download',
+          public_key: 'ssh-ed25519 AAAADOWNLOAD',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
+    const fileCell = screen.getAllByTitle('app.yaml')[0];
+    const row = fileCell.closest('div')?.parentElement as HTMLElement;
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+
+    expect(await screen.findByText('信任此主机指纹？')).toBeInTheDocument();
+  });
+
   it('uses full viewport layout so terminal bottom line is not clipped by page chrome', async () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>

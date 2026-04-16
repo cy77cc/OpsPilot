@@ -476,9 +476,17 @@ const HostDetailPage: React.FC = () => {
         mode={pendingTrust?.errorType === 'ssh_host_key_mismatch' ? 'rotate' : 'create'}
         hostKey={pendingTrust?.hostKey || null}
         onCancel={() => setPendingTrust(null)}
-        onConfirm={() => void confirmTrustAndRetry(async () => {
-          await retryOperationRef.current();
-        })}
+        onConfirm={async () => {
+          try {
+            await confirmTrustAndRetry(async () => {
+              await retryOperationRef.current();
+            });
+          } catch (err) {
+            if (!parseHostKeyTrustError(err)) {
+              message.error(err instanceof Error ? err.message : '信任主机指纹失败');
+            }
+          }
+        }}
       />
     </div>
   );
