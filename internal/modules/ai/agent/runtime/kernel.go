@@ -21,8 +21,8 @@ func (k *Kernel) DefaultExecutionShape() ExecutionShape {
 	return ExecutionShapeSingleAgent
 }
 
-func (k *Kernel) BuildDispatchDecision(_ string, specialistAvailable bool) DispatchDecision {
-	if specialistAvailable {
+func (k *Kernel) BuildDispatchDecision(scene string, specialistAvailable bool) DispatchDecision {
+	if specialistAvailable && scene == "monitoring" {
 		return DispatchDecision{ExecutionShape: ExecutionShapeDelegatedSpecialist}
 	}
 	return DispatchDecision{ExecutionShape: ExecutionShapeSingleAgent}

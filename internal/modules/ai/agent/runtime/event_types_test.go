@@ -62,6 +62,20 @@ func TestDecodeEventPayload_RunState(t *testing.T) {
 	}
 }
 
+func TestDecodeEventPayload_DelegationNode(t *testing.T) {
+	payload, err := UnmarshalEventPayload(EventTypeDelegationNode, `{"delegation_id":"d-1","agent_name":"monitor","status":"returned","title":"Monitor summary","summary":"p95 increased"}`)
+	if err != nil {
+		t.Fatalf("unmarshal delegation node: %v", err)
+	}
+	node, ok := payload.(*DelegationNodePayload)
+	if !ok {
+		t.Fatalf("unexpected payload type: %#v", payload)
+	}
+	if node.DelegationID != "d-1" || node.AgentName != "monitor" {
+		t.Fatalf("unexpected payload: %#v", node)
+	}
+}
+
 func TestDecodeEventPayload_RejectsUnknownShape(t *testing.T) {
 	if _, err := UnmarshalEventPayload(EventTypeToolCall, `{"agent":"executor","tool_name":"host_list_inventory"}`); err == nil {
 		t.Fatal("expected invalid tool call payload error")

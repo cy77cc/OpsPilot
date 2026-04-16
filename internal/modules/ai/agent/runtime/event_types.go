@@ -26,6 +26,7 @@ const (
 	EventTypeToolApproval   EventType = "tool_approval"    // 工具审批请求
 	EventTypeToolResult     EventType = "tool_result"      // 工具调用结果
 	EventTypeOpsPlanUpdated EventType = "ops_plan_updated" // Ops 计划快照更新
+	EventTypeDelegationNode EventType = "delegation_node"  // 委派节点摘要
 	EventTypeRunState       EventType = "run_state"        // 运行状态变更
 	EventTypeDone           EventType = "done"             // 执行完成
 	EventTypeError          EventType = "error"            // 执行错误
@@ -95,6 +96,17 @@ type ToolResultPayload struct {
 // OpsPlanUpdatedPayload Ops 计划快照更新负载。
 type OpsPlanUpdatedPayload struct {
 	Todos []todo.OpsTODO `json:"todos"`
+}
+
+// DelegationNodePayload 委派节点摘要负载。
+type DelegationNodePayload struct {
+	DelegationID string `json:"delegation_id"`
+	AgentName    string `json:"agent_name"`
+	Intent       string `json:"intent,omitempty"`
+	Status       string `json:"status"`
+	Title        string `json:"title"`
+	Summary      string `json:"summary"`
+	RiskLevel    string `json:"risk_level,omitempty"`
 }
 
 // RunStatePayload 运行状态负载。
@@ -175,6 +187,8 @@ func newPayloadTarget(eventType EventType) (any, error) {
 		return &ToolResultPayload{}, nil
 	case EventTypeOpsPlanUpdated:
 		return &OpsPlanUpdatedPayload{Todos: []todo.OpsTODO{}}, nil
+	case EventTypeDelegationNode:
+		return &DelegationNodePayload{}, nil
 	case EventTypeRunState:
 		return &RunStatePayload{}, nil
 	case EventTypeDone:
@@ -274,6 +288,19 @@ func validatePayload(eventType EventType, payload any) (any, error) {
 		}
 		if value.Todos == nil {
 			value.Todos = []todo.OpsTODO{}
+		}
+		return value, nil
+	case EventTypeDelegationNode:
+		value, ok := payload.(*DelegationNodePayload)
+		if !ok {
+			return nil, errors.New("delegation_node payload type mismatch")
+		}
+		if strings.TrimSpace(value.DelegationID) == "" ||
+			strings.TrimSpace(value.AgentName) == "" ||
+			strings.TrimSpace(value.Status) == "" ||
+			strings.TrimSpace(value.Title) == "" ||
+			strings.TrimSpace(value.Summary) == "" {
+			return nil, errors.New("invalid delegation_node payload")
 		}
 		return value, nil
 	case EventTypeRunState:
