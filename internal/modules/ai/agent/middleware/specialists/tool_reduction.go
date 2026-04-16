@@ -10,8 +10,18 @@ func ShouldReduceMonitorMetric(pointCount int) bool {
 }
 
 func monitorMetricNeedsArtifact(pointCount int) bool {
-	if pointCount < 0 {
-		pointCount = 0
+	return shared.ShouldOffloadResult("summary_plus_artifact", approximateMetricBytes(pointCount))
+}
+
+func approximateMetricBytes(pointCount int) int {
+	if pointCount <= 0 {
+		return 0
 	}
-	return shared.ShouldOffloadResult("summary_plus_artifact", pointCount*monitorMetricPointApproxBytes)
+
+	maxInt := int(^uint(0) >> 1)
+	if pointCount > maxInt/monitorMetricPointApproxBytes {
+		return maxInt
+	}
+
+	return pointCount * monitorMetricPointApproxBytes
 }
