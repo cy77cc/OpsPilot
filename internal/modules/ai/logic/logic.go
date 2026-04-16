@@ -11,6 +11,9 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
@@ -20,8 +23,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
 	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -51,14 +52,28 @@ var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 // ── 工厂函数 ─────────────────────────────────────────────────
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	// 从上下文获取场景元数据
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
-	scene := strings.TrimSpace(sceneMeta.Scene)
-	if scene == "" {
-		scene = "ai" // 默认场景
-	}
+	registry := orchestrator.NewRegistry()
+	registry.Register("monitoring", orchestrator.SpecialistSpec{Name: "monitor", Domain: "monitoring", ReadOnly: true})
+	registry.Register("kubernetes", orchestrator.SpecialistSpec{Name: "kubernetes", Domain: "kubernetes", ReadOnly: true})
+	registry.Register("host", orchestrator.SpecialistSpec{Name: "host", Domain: "host", ReadOnly: true})
+	registry.Register("cicd", orchestrator.SpecialistSpec{Name: "cicd", Domain: "cicd", ReadOnly: true})
+	return createSupervisorAgent(ctx, registry, sceneMeta.Scene)
+}
 
-	return createAgentForScene(ctx, scene)
+func createSupervisorAgent(ctx context.Context, registry *orchestrator.Registry, scene string) (adk.ResumableAgent, error) {
+	supervisor := orchestrator.NewSupervisor(registry)
+	normalizedScene := strings.TrimSpace(scene)
+	if normalizedScene == "" {
+		normalizedScene = "ai"
+	}
+	if supervisor.ShouldDelegate(normalizedScene) {
+		if spec, ok := registry.Lookup(normalizedScene); ok && strings.TrimSpace(spec.Domain) != "" {
+			normalizedScene = spec.Domain
+		}
+	}
+	// Task 3 wires supervisor-driven scene dispatch only. Specialist internals are introduced later.
+	return createAgentForScene(ctx, normalizedScene)
 }
 
 // createAgentForScene 为指定场景创建 Agent。
