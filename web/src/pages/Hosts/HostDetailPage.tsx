@@ -25,7 +25,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Host, HostAuditItem, HostHealthSnapshot, HostMetricPoint, SSHKeyItem } from '../../api/modules/hosts';
 import { useStableFetch } from '../../hooks';
+import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 import { DetailSkeleton } from '../../components/LoadingSkeleton';
+import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
 
 type HostEditFormValues = {
   name: string;
@@ -57,6 +59,14 @@ const HostDetailPage: React.FC = () => {
 
   const [editForm] = Form.useForm<HostEditFormValues>();
   const [keyForm] = Form.useForm<{ name: string; privateKey: string; passphrase?: string }>();
+  const retryOperationRef = React.useRef<() => Promise<void>>(async () => {});
+  const {
+    pendingTrust,
+    setPendingTrust,
+    confirming,
+    runWithTrustRetry,
+    confirmTrustAndRetry,
+  } = useHostKeyTrust(id);
 
   const loadSSHKeys = useCallback(async () => {
     setKeysLoading(true);
@@ -122,23 +132,33 @@ const HostDetailPage: React.FC = () => {
 
   const runHealthCheck = async () => {
     if (!id) return;
-    const res = await Api.hosts.runHealthCheck(id, true);
-    const data: Partial<HostHealthSnapshot> = res.data || {};
-    Modal.info({
-      title: '健康检查结果',
-      width: 680,
-      content: (
-        <Descriptions bordered size="small" column={1}>
-          <Descriptions.Item label="健康状态">{data.state || 'unknown'}</Descriptions.Item>
-          <Descriptions.Item label="连通性">{data.connectivityStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="资源">{data.resourceStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="系统">{data.systemStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="延迟">{data.latencyMs || 0} ms</Descriptions.Item>
-          <Descriptions.Item label="错误">{data.errorMessage || '-'}</Descriptions.Item>
-        </Descriptions>
-      ),
-    });
-    await load();
+    const operation = async () => {
+      const res = await Api.hosts.runHealthCheck(id, true);
+      const data: Partial<HostHealthSnapshot> = res.data || {};
+      Modal.info({
+        title: '健康检查结果',
+        width: 680,
+        content: (
+          <Descriptions bordered size="small" column={1}>
+            <Descriptions.Item label="健康状态">{data.state || 'unknown'}</Descriptions.Item>
+            <Descriptions.Item label="连通性">{data.connectivityStatus || '-'}</Descriptions.Item>
+            <Descriptions.Item label="资源">{data.resourceStatus || '-'}</Descriptions.Item>
+            <Descriptions.Item label="系统">{data.systemStatus || '-'}</Descriptions.Item>
+            <Descriptions.Item label="延迟">{data.latencyMs || 0} ms</Descriptions.Item>
+            <Descriptions.Item label="错误">{data.errorMessage || '-'}</Descriptions.Item>
+          </Descriptions>
+        ),
+      });
+      await load();
+    };
+    retryOperationRef.current = operation;
+    try {
+      await runWithTrustRetry(operation);
+    } catch (err) {
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '健康检查失败');
+      }
+    }
   };
 
   const openEditModal = () => {
@@ -187,28 +207,34 @@ const HostDetailPage: React.FC = () => {
 
     setSaving(true);
     try {
-      await Api.hosts.updateHost(id, {
-        name: values.name,
-        status: values.status,
-        region: values.region || '',
-        description: values.description || '',
-        tags,
-      });
+      const operation = async () => {
+        await Api.hosts.updateHost(id, {
+          name: values.name,
+          status: values.status,
+          region: values.region || '',
+          description: values.description || '',
+          tags,
+        });
 
-      await Api.hosts.updateCredentials(id, {
-        authType: values.authType,
-        username: values.username,
-        port: values.port || 22,
-        password: values.authType === 'password' ? (values.password || '') : undefined,
-        sshKeyId: values.authType === 'key' ? values.sshKeyId : undefined,
-      });
+        await Api.hosts.updateCredentials(id, {
+          authType: values.authType,
+          username: values.username,
+          port: values.port || 22,
+          password: values.authType === 'password' ? (values.password || '') : undefined,
+          sshKeyId: values.authType === 'key' ? values.sshKeyId : undefined,
+        });
 
-      const check = await Api.hosts.sshCheck(id);
-      message.success(check.data?.reachable ? '保存成功，SSH 连通性正常' : `保存成功，SSH 检查失败：${check.data?.message || '未知错误'}`);
-      setEditOpen(false);
-      await load();
+        const check = await Api.hosts.sshCheck(id);
+        message.success(check.data?.reachable ? '保存成功，SSH 连通性正常' : `保存成功，SSH 检查失败：${check.data?.message || '未知错误'}`);
+        setEditOpen(false);
+        await load();
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '保存主机失败');
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '保存主机失败');
+      }
     } finally {
       setSaving(false);
     }
@@ -443,6 +469,17 @@ const HostDetailPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <HostKeyTrustModal
+        open={Boolean(pendingTrust)}
+        loading={confirming}
+        mode={pendingTrust?.errorType === 'ssh_host_key_mismatch' ? 'rotate' : 'create'}
+        hostKey={pendingTrust?.hostKey || null}
+        onCancel={() => setPendingTrust(null)}
+        onConfirm={() => void confirmTrustAndRetry(async () => {
+          await retryOperationRef.current();
+        })}
+      />
     </div>
   );
 };

@@ -178,6 +178,47 @@ func TestTrustHostKey_RotatesExistingEntry(t *testing.T) {
 	}
 }
 
+func TestTrustHostKey_AllowsOnboardingWithoutHostRecord(t *testing.T) {
+	db, hostSvc := newTrustedHostKeyHandlerTestDeps(t)
+	const uid = uint64(1)
+	grantHostPermission(t, db, uid, "host:trust_host_key")
+
+	algorithm, fingerprint, publicKey := generateAuthorizedKeyMeta(t)
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
+
+	body := map[string]any{
+		"host":               "118.193.38.89",
+		"port":               13012,
+		"algorithm":          algorithm,
+		"fingerprint_sha256": fingerprint,
+		"public_key":         publicKey,
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+	ctx, recorder := newHostMutationTestContext(http.MethodPost, "/api/v1/hosts/0/trust-host-key", bytes.NewReader(payload), gin.Params{{Key: "id", Value: "0"}}, uid)
+
+	h := &Handler{svcCtx: &svc.ServiceContext{DB: db}, hostService: hostSvc}
+	h.TrustHostKey(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	assertHandlerSuccess(t, recorder)
+
+	var item hostmodel.TrustedHostKey
+	if err := db.WithContext(context.Background()).
+		Where("host_id = ? AND host = ? AND port = ?", 0, "118.193.38.89", 13012).
+		First(&item).Error; err != nil {
+		t.Fatalf("query trusted host key: %v", err)
+	}
+	if item.HostID != 0 {
+		t.Fatalf("expected onboarding trust entry with host_id 0, got %d", item.HostID)
+	}
+}
+
 func TestHealthCheck_ReturnsHostKeyTrustPayload(t *testing.T) {
 	db, hostSvc := newTrustedHostKeyHandlerTestDeps(t)
 	const (

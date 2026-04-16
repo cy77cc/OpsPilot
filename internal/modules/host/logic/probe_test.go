@@ -30,7 +30,7 @@ func newHostLogicTestService(t *testing.T) (*HostService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.HostProbeSession{}, &model.Node{}); err != nil {
+	if err := db.AutoMigrate(&model.HostProbeSession{}, &model.Node{}, &model.TrustedHostKey{}); err != nil {
 		t.Fatalf("auto migrate host tables: %v", err)
 	}
 
@@ -257,6 +257,63 @@ func TestCreateWithProbe_ProbeFlowEncryptsNodePassword(t *testing.T) {
 		t.Fatalf("load created node: %v", err)
 	}
 	assertCipherRoundTrip(t, node.SSHPassword, plainPassword)
+}
+
+func TestCreateWithProbe_ReassignsOnboardingTrustedHostKeys(t *testing.T) {
+	hostSvc, db := newHostLogicTestService(t)
+
+	const (
+		probeToken = "task7-probe-token"
+		userID     = uint64(1002)
+		host       = "10.10.0.30"
+		port       = 22
+	)
+	if err := db.WithContext(context.Background()).Create(&model.HostProbeSession{
+		TokenHash:      hashToken(probeToken),
+		Name:           "probe-trust-node",
+		IP:             host,
+		Port:           port,
+		AuthType:       "password",
+		Username:       "root",
+		PasswordCipher: "Probe-Create-Password",
+		Reachable:      true,
+		FactsJSON:      `{"hostname":"task7-host"}`,
+		WarningsJSON:   `[]`,
+		ExpiresAt:      time.Now().Add(10 * time.Minute),
+		CreatedBy:      userID,
+	}).Error; err != nil {
+		t.Fatalf("seed probe session: %v", err)
+	}
+	seedTrust := &model.TrustedHostKey{
+		HostID:            0,
+		Host:              host,
+		Port:              port,
+		Algorithm:         "ssh-ed25519",
+		FingerprintSHA256: "SHA256:test-fingerprint",
+		PublicKey:         "ssh-ed25519 AAAATEST",
+		Status:            model.TrustedHostKeyStatusTrusted,
+		CreatedBy:         userID,
+		ConfirmedAt:       time.Now(),
+		LastSeenAt:        time.Now(),
+	}
+	if err := db.WithContext(context.Background()).Create(seedTrust).Error; err != nil {
+		t.Fatalf("seed onboarding trusted host key: %v", err)
+	}
+
+	created, err := hostSvc.CreateWithProbe(context.Background(), userID, false, CreateReq{
+		ProbeToken: probeToken,
+	})
+	if err != nil {
+		t.Fatalf("create with probe token: %v", err)
+	}
+
+	var trusted model.TrustedHostKey
+	if err := db.WithContext(context.Background()).First(&trusted, seedTrust.ID).Error; err != nil {
+		t.Fatalf("reload trusted host key: %v", err)
+	}
+	if trusted.HostID != uint64(created.ID) {
+		t.Fatalf("expected trusted host key host_id=%d, got %d", created.ID, trusted.HostID)
+	}
 }
 
 func TestUpdate_EncryptsSSHPasswordPatch(t *testing.T) {

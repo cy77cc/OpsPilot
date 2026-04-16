@@ -67,15 +67,17 @@ func (s *HostService) TrustHostKey(ctx context.Context, hostID, operator uint64,
 	createdID := uint64(0)
 
 	err = s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var node model.Node
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&node, hostID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.New("host not found")
+		if hostID != 0 {
+			var node model.Node
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&node, hostID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errors.New("host not found")
+				}
+				return err
 			}
-			return err
-		}
-		if node.IP != normalized.Host || node.Port != normalized.Port {
-			return errors.New("host and port must match target node")
+			if node.IP != normalized.Host || node.Port != normalized.Port {
+				return errors.New("host and port must match target node")
+			}
 		}
 
 		var existing []model.TrustedHostKey
@@ -158,6 +160,19 @@ func (s *HostService) ListTrustedHostKeys(ctx context.Context, hostID uint64) ([
 		return nil, err
 	}
 	return list, nil
+}
+
+func reassignOnboardingTrustedHostKeys(tx *gorm.DB, hostID, operator uint64, host string, port int) error {
+	host = strings.TrimSpace(host)
+	if tx == nil || hostID == 0 || operator == 0 || host == "" || port <= 0 {
+		return nil
+	}
+	return tx.Model(&model.TrustedHostKey{}).
+		Where("host_id = ? AND created_by = ? AND host = ? AND port = ?", 0, operator, host, port).
+		Updates(map[string]any{
+			"host_id":    hostID,
+			"updated_at": time.Now(),
+		}).Error
 }
 
 func normalizeTrustHostKeyReq(req TrustHostKeyReq) (*TrustHostKeyReq, error) {

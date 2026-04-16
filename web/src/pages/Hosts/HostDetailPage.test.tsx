@@ -13,6 +13,7 @@ const mockApi = vi.hoisted(() => ({
     updateHost: vi.fn(),
     updateCredentials: vi.fn(),
     sshCheck: vi.fn(),
+    trustHostKey: vi.fn(),
     listSSHKeys: vi.fn(),
     createSSHKey: vi.fn(),
   },
@@ -69,11 +70,44 @@ describe('HostDetailPage', () => {
       expect(screen.getByText('维护信息: disk replace')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '健康检查' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '健康检查' })[0]);
     await waitFor(() => {
       expect(screen.getAllByText('健康检查结果').length).toBeGreaterThan(0);
       expect(screen.getByText('连通性')).toBeInTheDocument();
       expect(screen.getAllByText('healthy').length).toBeGreaterThan(0);
     });
   }, 90000);
+
+  it('offers host-key trust confirmation when health check returns unknown host key', async () => {
+    mockApi.hosts.runHealthCheck.mockRejectedValueOnce({
+      businessCode: 2000,
+      message: 'ssh host key verification failed',
+      details: {
+        error_type: 'ssh_host_key_unknown',
+        host_key: {
+          host: '118.193.38.89',
+          port: 13012,
+          algorithm: 'ssh-ed25519',
+          fingerprint_sha256: 'SHA256:test',
+          public_key: 'ssh-ed25519 AAAATEST',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id" element={<HostDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('健康状态: critical')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '健康检查' })[0]);
+
+    expect(await screen.findByText('信任此主机指纹？')).toBeInTheDocument();
+  });
 });
