@@ -15,6 +15,9 @@ import (
 	sharedmiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/shared"
 	workermiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/workers"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	cicdspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/cicd"
+	hostspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/host"
+	kubernetesspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/kubernetes"
 	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
 	isolationworker "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/workers/isolation"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
@@ -658,6 +661,17 @@ func buildDelegationSummary(window delegationWindow, runRiskLevel string) contra
 		}
 	}
 
+	switch normalizeDelegationAgent(base.AgentName) {
+	case "monitor":
+		base = monitorspecialist.BuildMonitorSummary(base, "", "")
+	case "kubernetes":
+		base = kubernetesspecialist.BuildKubernetesSummary(base, "", "")
+	case "host":
+		base = hostspecialist.BuildHostSummary(base, "")
+	case "cicd":
+		base = cicdspecialist.BuildCICDSummary(base, "")
+	}
+
 	return sharedmiddleware.ApplySummaryDefaults(
 		base,
 		fmt.Sprintf("%s completed delegated analysis for the requested scope.", buildDelegationNodeTitle(base.AgentName)),
@@ -782,7 +796,7 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 		return nil
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: l.AIRouter, EnableStreaming: true, CheckPointStore: l.CheckpointStore})
-	agentInput := []*schema.Message{schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))}
+	agentInput := buildSessionAgentInput(ctx, l, shell, input)
 	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
 	projector := airuntime.NewStreamProjector()
 	delegationState := &delegationStreamState{}
@@ -839,12 +853,52 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	if result.HasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
 	}
-	if err := FinalizeRunCritical(ctx, l, shell, runStatus, ""); err != nil {
+	finalAssistantContent := strings.TrimSpace(result.AssistantSnapshot)
+	if finalAssistantContent == "" {
+		finalAssistantContent = strings.TrimSpace(result.SummaryText)
+	}
+	if err := FinalizeRunCritical(ctx, l, shell, runStatus, finalAssistantContent); err != nil {
 		return fmt.Errorf("finalize run critical: %w", err)
 	}
 	_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
 	emit(done.Event, withEventID(done.Data, eid))
 	return nil
+}
+
+func buildSessionAgentInput(ctx context.Context, l *Logic, shell ChatShell, input ChatInput) []*schema.Message {
+	history := loadSessionHistoryMessages(ctx, l, shell)
+	current := schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))
+	return append(history, current)
+}
+
+func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) []*schema.Message {
+	if l == nil || l.ChatDAO == nil || strings.TrimSpace(shell.SessionID) == "" {
+		return nil
+	}
+	rows, err := l.ChatDAO.ListMessagesBySession(ctx, shell.SessionID)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+
+	history := make([]*schema.Message, 0, len(rows))
+	for _, row := range rows {
+		if row.ID == shell.UserMessage.ID || row.ID == shell.AssistantMessage.ID {
+			continue
+		}
+		content := strings.TrimSpace(row.Content)
+		if content == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(row.Role)) {
+		case "user":
+			history = append(history, schema.UserMessage(content))
+		case "assistant":
+			history = append(history, schema.AssistantMessage(content, nil))
+		case "system":
+			history = append(history, schema.SystemMessage(content))
+		}
+	}
+	return history
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {

@@ -30,6 +30,26 @@ func TestBuildDelegationPayload_IsolationWorkerWrapsIntoMonitorSummary(t *testin
 	}
 }
 
+func TestBuildDelegationPayload_HostDelegationUsesHostSpecialistSummary(t *testing.T) {
+	t.Parallel()
+
+	payload := buildDelegationPayload(delegationWindow{
+		DelegationID: "delegation-host-1",
+		AgentName:    "host",
+		Summary:      "",
+	}, "low")
+
+	if got := payload["agent_name"]; got != "host" {
+		t.Fatalf("expected host agent name, got %#v", got)
+	}
+	if got := payload["status"]; got != "returned" {
+		t.Fatalf("expected returned status, got %#v", got)
+	}
+	if got := payload["summary"]; got == "" {
+		t.Fatalf("expected non-empty host summary, got %#v", payload)
+	}
+}
+
 func TestDelegationStreamState_PrefersStructuredMonitorMetricSummaryOverDelta(t *testing.T) {
 	t.Parallel()
 

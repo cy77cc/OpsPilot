@@ -35,5 +35,11 @@ func TestNewRegistry_RegistersCoreSpecialists(t *testing.T) {
 		if spec.Name != tt.want.Name || spec.Domain != tt.want.Domain || spec.ReadOnly != tt.want.ReadOnly {
 			t.Fatalf("scene %s: got spec %+v, want %+v", tt.scene, spec, tt.want)
 		}
+		if spec.Description == "" {
+			t.Fatalf("scene %s: expected non-empty specialist description", tt.scene)
+		}
+		if spec.Instruction == "" {
+			t.Fatalf("scene %s: expected non-empty specialist instruction", tt.scene)
+		}
 	}
 }

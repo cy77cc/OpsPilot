@@ -6,17 +6,11 @@ package logic
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
-	adkdeep "github.com/cloudwego/eino/adk/prebuilt/deep"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
-	agenttodo "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/todo"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
@@ -26,7 +20,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/event"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
@@ -55,170 +48,7 @@ var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 // ── 工厂函数 ─────────────────────────────────────────────────
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
-	sceneMeta := runtimectx.AIMetadataFrom(ctx)
-	registry := orchestrator.NewDefaultRegistry()
-	return createDeepAgent(ctx, registry, sceneMeta.Scene)
-}
-
-func createDeepAgent(ctx context.Context, registry *orchestrator.Registry, scene string) (adk.ResumableAgent, error) {
-	if registry == nil {
-		registry = orchestrator.NewDefaultRegistry()
-	}
-
-	normalizedScene := strings.TrimSpace(scene)
-	if normalizedScene == "" {
-		normalizedScene = "ai"
-	}
-
-	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
-	if err != nil {
-		return nil, fmt.Errorf("create chat model: %w", err)
-	}
-
-	sceneTools := tools.BuildToolsForSceneWithMode(ctx, normalizedScene, false)
-	if len(sceneTools) == 0 {
-		return nil, fmt.Errorf("no tools available for scene: %s", normalizedScene)
-	}
-
-	mainHandlers, err := middleware.BuildAgentHandlers(ctx, normalizedScene, sceneTools)
-	if err != nil {
-		return nil, fmt.Errorf("build deep agent handlers: %w", err)
-	}
-
-	todoMiddleware, err := agenttodo.NewWriteOpsTodosMiddleware()
-	if err != nil {
-		return nil, fmt.Errorf("build write ops todos middleware: %w", err)
-	}
-
-	subAgents, err := buildDeepSubAgents(ctx, registry)
-	if err != nil {
-		return nil, err
-	}
-
-	return adkdeep.New(ctx, &adkdeep.Config{
-		Name:                   "deep_main",
-		Description:            "OpsPilot deep orchestrator for governed operations and specialist delegation.",
-		ChatModel:              chatModel,
-		Instruction:            buildDeepInstruction(normalizedScene),
-		SubAgents:              subAgents,
-		ToolsConfig:            adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: sceneTools}},
-		WithoutWriteTodos:      true,
-		WithoutGeneralSubAgent: true,
-		Handlers:               append(mainHandlers, todoMiddleware),
-		MaxIteration:           32,
-	})
-}
-
-// createAgentForScene 为指定场景创建 Agent。
-func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent, error) {
-	return createNamedSceneAgent(ctx, scene, scene, "", sceneRequiresReadOnlyExecution(scene))
-}
-
-func createNamedSceneAgent(ctx context.Context, name, scene, description string, readOnly bool) (adk.ResumableAgent, error) {
-	svcCtx, ok := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
-	if !ok || svcCtx == nil {
-		return nil, fmt.Errorf("service context not found")
-	}
-
-	// 1. 创建 LLM 模型（复用现有 client）
-	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
-	if err != nil {
-		return nil, fmt.Errorf("create chat model: %w", err)
-	}
-
-	// 2. 获取场景化工具集
-	sceneTools := tools.BuildToolsForSceneWithMode(ctx, scene, readOnly)
-	if len(sceneTools) == 0 {
-		return nil, fmt.Errorf("no tools available for scene: %s", scene)
-	}
-
-	// 3. 构建中间件链
-	middlewares, err := middleware.BuildAgentHandlers(ctx, scene, sceneTools)
-	if err != nil {
-		return nil, fmt.Errorf("build agent handlers: %w", err)
-	}
-
-	// 4. 创建 ChatModelAgent（使用 Handlers 字段应用中间件）
-	agentName := strings.TrimSpace(name)
-	if agentName == "" {
-		agentName = strings.TrimSpace(scene)
-	}
-
-	agentDescription := strings.TrimSpace(description)
-	if agentDescription == "" {
-		agentDescription = fmt.Sprintf("%s operations specialist", strings.TrimSpace(scene))
-	}
-
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Name:        agentName,
-		Description: agentDescription,
-		Model:       chatModel,
-		ToolsConfig: adk.ToolsConfig{
-			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: sceneTools,
-			},
-		},
-		Handlers: middlewares, // 注入中间件链
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create chat model agent: %w", err)
-	}
-
-	return agent, nil
-}
-
-func buildDeepSubAgents(ctx context.Context, registry *orchestrator.Registry) ([]adk.Agent, error) {
-	if registry == nil {
-		registry = orchestrator.NewDefaultRegistry()
-	}
-	entries := registry.Entries()
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Scene < entries[j].Scene
-	})
-
-	subAgents := make([]adk.Agent, 0, len(entries))
-	for _, entry := range entries {
-		spec := entry.Spec
-		agentName := strings.TrimSpace(spec.Name)
-		if agentName == "" {
-			continue
-		}
-		domain := strings.TrimSpace(spec.Domain)
-		if domain == "" {
-			domain = strings.TrimSpace(entry.Scene)
-		}
-		desc := fmt.Sprintf("%s specialist. Keep results compact and prefer summary-only returns.", agentName)
-		specialist, err := createNamedSceneAgent(ctx, agentName, domain, desc, true)
-		if err != nil {
-			return nil, fmt.Errorf("create deep sub-agent %s: %w", agentName, err)
-		}
-		subAgents = append(subAgents, specialist)
-	}
-	return subAgents, nil
-}
-
-func buildDeepInstruction(scene string) string {
-	trimmedScene := strings.TrimSpace(scene)
-	if trimmedScene == "" {
-		trimmedScene = "ai"
-	}
-	return fmt.Sprintf(`You are the Deep main agent for OpsPilot.
-
-Current scene hint: %s.
-
-Execution policy:
-1. Default to solving directly with the current toolset.
-2. Use task sub-agents only when needed for context isolation, parallel research, or specialist tool selection.
-3. Sub-agents are read-only and must return compact summaries.
-4. Any write, mutation, or governed action must be performed by you through approval-aware tools.
-5. Keep user-facing output concise, structured, and actionable.
-`, trimmedScene)
-}
-
-func sceneRequiresReadOnlyExecution(scene string) bool {
-	registry := orchestrator.NewDefaultRegistry()
-	spec, ok := registry.Lookup(scene)
-	return ok && spec.ReadOnly
+	return orchestrator.NewOpsPilotAgentFromContext(ctx)
 }
 
 // NewAILogic 从 ServiceContext 创建 Logic 实例。

@@ -20,13 +20,13 @@ func TestSceneRequiresReadOnlyExecution_RegisteredReadOnlyScenes(t *testing.T) {
 	t.Parallel()
 
 	for _, scene := range []string{"monitoring", "host", "cicd", "kubernetes"} {
-		if !sceneRequiresReadOnlyExecution(scene) {
+		if !orchestrator.SceneRequiresReadOnlyExecution(scene) {
 			t.Fatalf("expected %s to require read-only execution", scene)
 		}
 	}
 
 	for _, scene := range []string{"service", "deployment", "governance", "unknown"} {
-		if sceneRequiresReadOnlyExecution(scene) {
+		if orchestrator.SceneRequiresReadOnlyExecution(scene) {
 			t.Fatalf("did not expect %s to require read-only execution", scene)
 		}
 	}

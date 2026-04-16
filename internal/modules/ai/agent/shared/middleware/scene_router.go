@@ -59,10 +59,10 @@ func NewSceneRouter(ctx context.Context, cfg *SceneRouterConfig) (*SceneRouterMi
 // WrapInvokableToolCall 拦截同步工具调用，过滤场景专属工具。
 //
 // 该方法会检查工具是否在当前场景允许列表中：
-//  - 如果允许，直接调用原始端点
-//  - 如果不允许，返回错误信息
+//   - 如果允许，直接调用原始端点
+//   - 如果不允许，返回错误信息
 func (m *SceneRouterMiddleware) WrapInvokableToolCall(
-	_ context.Context,
+	ctx context.Context,
 	endpoint adk.InvokableToolCallEndpoint,
 	tCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
@@ -70,17 +70,13 @@ func (m *SceneRouterMiddleware) WrapInvokableToolCall(
 		return endpoint, nil
 	}
 
-	// 如果场景未设置，尝试从上下文获取
-	if m.currentScene == "" {
-		sceneMeta := runtimectx.AIMetadataFrom(context.Background())
-		m.currentScene = NormalizeScene(sceneMeta.Scene)
-	}
+	scene := m.resolveScene(ctx)
 
 	// 检查工具是否在当前场景允许列表中
-	allowedTools := m.sceneToolMap[m.currentScene]
+	allowedTools := m.sceneToolMap[scene]
 	if !isToolAllowed(tCtx.Name, allowedTools) {
 		return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
-			return "", fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, m.currentScene)
+			return "", fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, scene)
 		}, nil
 	}
 
@@ -92,7 +88,7 @@ func (m *SceneRouterMiddleware) WrapInvokableToolCall(
 //
 // 与 WrapInvokableToolCall 类似，但处理流式输出。
 func (m *SceneRouterMiddleware) WrapStreamableToolCall(
-	_ context.Context,
+	ctx context.Context,
 	endpoint adk.StreamableToolCallEndpoint,
 	tCtx *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
@@ -100,20 +96,25 @@ func (m *SceneRouterMiddleware) WrapStreamableToolCall(
 		return endpoint, nil
 	}
 
-	// 如果场景未设置，尝试从上下文获取
-	if m.currentScene == "" {
-		sceneMeta := runtimectx.AIMetadataFrom(context.Background())
-		m.currentScene = NormalizeScene(sceneMeta.Scene)
-	}
-
-	allowedTools := m.sceneToolMap[m.currentScene]
+	scene := m.resolveScene(ctx)
+	allowedTools := m.sceneToolMap[scene]
 	if !isToolAllowed(tCtx.Name, allowedTools) {
 		return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
-			return nil, fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, m.currentScene)
+			return nil, fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, scene)
 		}, nil
 	}
 
 	return endpoint, nil
+}
+
+func (m *SceneRouterMiddleware) resolveScene(ctx context.Context) string {
+	if scene := NormalizeScene(runtimectx.AIMetadataFrom(ctx).Scene); strings.TrimSpace(scene) != "" {
+		return scene
+	}
+	if scene := NormalizeScene(m.currentScene); strings.TrimSpace(scene) != "" {
+		return scene
+	}
+	return "ai"
 }
 
 // isToolAllowed 检查工具是否在允许列表中。

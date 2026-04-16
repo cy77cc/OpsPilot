@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
+	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
@@ -67,5 +69,38 @@ func TestBuildAgentHandlers_WithoutServiceContextKeepsFallbackApprovalMiddleware
 	}
 	if approvalMw.config.Orchestrator != nil {
 		t.Fatal("expected fallback middleware without orchestrator when service context missing")
+	}
+}
+
+func TestBuildAgentHandlers_SceneRouterAllowsProvidedToolsInAIScene(t *testing.T) {
+	ctx := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{Scene: "ai"})
+	cpuTool, err := einoutils.InferTool("os_get_cpu_mem", "mock", func(ctx context.Context, input map[string]any) (string, error) {
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("build mock tool: %v", err)
+	}
+
+	handlers, err := BuildAgentHandlers(ctx, "ai", []tool.BaseTool{cpuTool})
+	if err != nil {
+		t.Fatalf("build handlers: %v", err)
+	}
+	router, ok := handlers[0].(*SceneRouterMiddleware)
+	if !ok {
+		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+	}
+
+	endpoint, err := router.WrapInvokableToolCall(context.Background(), func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+		return "executed", nil
+	}, &adk.ToolContext{Name: "os_get_cpu_mem"})
+	if err != nil {
+		t.Fatalf("wrap tool call: %v", err)
+	}
+	out, callErr := endpoint(context.Background(), "{}")
+	if callErr != nil {
+		t.Fatalf("expected os_get_cpu_mem to be allowed in ai scene when provided by toolset, got err=%v", callErr)
+	}
+	if out != "executed" {
+		t.Fatalf("unexpected tool output: %q", out)
 	}
 }

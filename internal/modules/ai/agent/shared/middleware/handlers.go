@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -23,8 +24,9 @@ func BuildAgentHandlers(ctx context.Context, scene string, tools []tool.BaseTool
 	var middlewares []adk.ChatModelAgentMiddleware
 
 	// 1. 场景路由器（最先执行，设置边界）
+	sceneToolMap := buildSceneToolMapForAgent(ctx, scene, tools)
 	sceneRouter, err := NewSceneRouter(ctx, &SceneRouterConfig{
-		SceneToolMap: DefaultSceneToolMap(),
+		SceneToolMap: sceneToolMap,
 	})
 	if err != nil {
 		return nil, err
@@ -49,4 +51,45 @@ func BuildAgentHandlers(ctx context.Context, scene string, tools []tool.BaseTool
 	middlewares = append(middlewares, argMw)
 
 	return middlewares, nil
+}
+
+func buildSceneToolMapForAgent(ctx context.Context, scene string, tools []tool.BaseTool) map[string][]string {
+	sceneToolMap := DefaultSceneToolMap()
+	targetScene := NormalizeScene(scene)
+	if targetScene == "" {
+		targetScene = NormalizeScene(runtimectx.AIMetadataFrom(ctx).Scene)
+	}
+	if targetScene == "" {
+		targetScene = "ai"
+	}
+
+	toolNames := collectToolNames(ctx, tools)
+	if len(toolNames) > 0 {
+		sceneToolMap[targetScene] = toolNames
+	}
+	return sceneToolMap
+}
+
+func collectToolNames(ctx context.Context, tools []tool.BaseTool) []string {
+	if len(tools) == 0 {
+		return nil
+	}
+	unique := make(map[string]struct{}, len(tools))
+	names := make([]string, 0, len(tools))
+	for _, t := range tools {
+		if t == nil {
+			continue
+		}
+		info, err := t.Info(ctx)
+		if err != nil || info == nil || info.Name == "" {
+			continue
+		}
+		if _, ok := unique[info.Name]; ok {
+			continue
+		}
+		unique[info.Name] = struct{}{}
+		names = append(names, info.Name)
+	}
+	slices.Sort(names)
+	return names
 }

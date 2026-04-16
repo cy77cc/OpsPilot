@@ -41,6 +41,12 @@ func DefaultSceneToolMap() map[string][]string {
 			// 主机操作
 			"host_exec",
 			"host_list_inventory",
+			"os_get_cpu_mem",
+			"os_get_disk_fs",
+			"os_get_net_stat",
+			"os_get_process_top",
+			"os_get_journal_tail",
+			"os_get_container_runtime",
 		},
 		"cluster": {
 			// 集群管理
@@ -95,6 +101,12 @@ func DefaultSceneToolMap() map[string][]string {
 			"service_status",
 			"service_catalog_list",
 			"host_list_inventory",
+			"os_get_cpu_mem",
+			"os_get_disk_fs",
+			"os_get_net_stat",
+			"os_get_process_top",
+			"os_get_journal_tail",
+			"os_get_container_runtime",
 			"monitor_alert",
 			"monitor_metric",
 			"k8s_query",

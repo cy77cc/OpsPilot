@@ -264,6 +264,67 @@ func TestChatHandler_WithSessionID_ReusesSession(t *testing.T) {
 	}
 }
 
+func TestChatHandler_SecondTurnIncludesPreviousUserContextInAgentInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := newAIHandlerTestHarness(db)
+	agent := &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			adk.EventFromMessage(schema.AssistantMessage("ack", nil), nil, schema.Assistant, ""),
+		},
+	}
+	h.logic.AIRouter = agent
+
+	// First turn
+	recorder1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(recorder1)
+	c1.Set("uid", uint64(2001))
+	c1.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"first-question"}`))
+	c1.Request.Header.Set("Content-Type", "application/json")
+	h.Chat(c1)
+
+	events1 := decodeSSEEvents(t, recorder1.Body.String())
+	if len(events1) == 0 {
+		t.Fatal("expected SSE events on first turn")
+	}
+	metaData1, ok := events1[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected first meta payload map, got %T", events1[0].Data)
+	}
+	sessionID, _ := metaData1["session_id"].(string)
+	if strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("expected session_id in first turn meta payload, got %#v", metaData1)
+	}
+
+	// Second turn in same session
+	recorder2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(recorder2)
+	c2.Set("uid", uint64(2001))
+	c2.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"second-question","session_id":"`+sessionID+`"}`))
+	c2.Request.Header.Set("Content-Type", "application/json")
+	h.Chat(c2)
+
+	if agent.runCalls != 2 {
+		t.Fatalf("expected 2 agent runs, got %d", agent.runCalls)
+	}
+	if len(agent.capturedAgentInputTexts) < 2 {
+		t.Fatalf("expected at least 2 captured input snapshots, got %d", len(agent.capturedAgentInputTexts))
+	}
+
+	secondTurnInputs := agent.capturedAgentInputTexts[1]
+	joined := strings.Join(secondTurnInputs, "\n---\n")
+	if !strings.Contains(joined, "first-question") {
+		t.Fatalf("expected second turn agent input to include previous user question, got %q", joined)
+	}
+	if !strings.Contains(joined, "ack") {
+		t.Fatalf("expected second turn agent input to include previous assistant reply, got %q", joined)
+	}
+	if !strings.Contains(joined, "second-question") {
+		t.Fatalf("expected second turn agent input to include current user question, got %q", joined)
+	}
+}
+
 func TestChatHandler_PersistsSceneFromRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1337,14 +1398,25 @@ type scriptedAgent struct {
 	runEvents         []*adk.AgentEvent
 	capturedRequestID string
 	runCalls          int
+	capturedAgentInputTexts [][]string
 }
 
 func (s *scriptedAgent) Name(context.Context) string        { return "scripted-agent" }
 func (s *scriptedAgent) Description(context.Context) string { return "scripted agent for tests" }
 
-func (s *scriptedAgent) Run(ctx context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+func (s *scriptedAgent) Run(ctx context.Context, input *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	s.runCalls++
 	s.capturedRequestID = runtimectx.FromContext(ctx).RequestID
+	if input != nil {
+		texts := make([]string, 0, len(input.Messages))
+		for _, msg := range input.Messages {
+			if msg == nil {
+				continue
+			}
+			texts = append(texts, msg.Content)
+		}
+		s.capturedAgentInputTexts = append(s.capturedAgentInputTexts, texts)
+	}
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 	go func() {
 		for _, event := range s.runEvents {

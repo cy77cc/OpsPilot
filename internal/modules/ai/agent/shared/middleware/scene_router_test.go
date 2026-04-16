@@ -26,10 +26,10 @@ func mockTool(name string) tool.BaseTool {
 
 func TestSceneRouterMiddleware_FiltersToolsByScene(t *testing.T) {
 	tests := []struct {
-		name           string
-		scene          string
-		toolName       string
-		shouldAllow    bool
+		name        string
+		scene       string
+		toolName    string
+		shouldAllow bool
 	}{
 		{
 			name:        "kubernetes scene allows k8s_query",
@@ -71,8 +71,7 @@ func TestSceneRouterMiddleware_FiltersToolsByScene(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			// 设置当前场景
-			router.currentScene = tt.scene
+			callCtx := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{Scene: tt.scene})
 
 			// 创建模拟工具上下文
 			tCtx := &adk.ToolContext{
@@ -81,7 +80,7 @@ func TestSceneRouterMiddleware_FiltersToolsByScene(t *testing.T) {
 
 			// 测试工具调用拦截
 			wrapped, err := router.WrapInvokableToolCall(
-				context.Background(),
+				callCtx,
 				func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 					return "executed", nil
 				},
@@ -90,7 +89,7 @@ func TestSceneRouterMiddleware_FiltersToolsByScene(t *testing.T) {
 			require.NoError(t, err)
 
 			// 执行工具调用
-			result, err := wrapped(context.Background(), "{}")
+			result, err := wrapped(callCtx, "{}")
 			if tt.shouldAllow {
 				assert.NoError(t, err)
 				assert.Equal(t, "executed", result)
@@ -160,6 +159,27 @@ func TestSceneRouterMiddleware_ReadsSceneFromRuntime(t *testing.T) {
 
 	// 验证路由器从上下文读取了正确的场景
 	assert.Equal(t, "kubernetes", router.currentScene)
+}
+
+func TestSceneRouterMiddleware_UsesPerRequestRuntimeScene(t *testing.T) {
+	router, err := NewSceneRouter(context.Background(), &SceneRouterConfig{
+		SceneToolMap: DefaultSceneToolMap(),
+	})
+	require.NoError(t, err)
+	router.currentScene = "ai"
+
+	hostCtx := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{Scene: "host"})
+	wrapped, err := router.WrapInvokableToolCall(
+		hostCtx,
+		func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+			return "executed", nil
+		},
+		&adk.ToolContext{Name: "os_get_cpu_mem"},
+	)
+	require.NoError(t, err)
+	out, callErr := wrapped(hostCtx, "{}")
+	assert.NoError(t, callErr)
+	assert.Equal(t, "executed", out)
 }
 
 func TestDefaultScenePromptMap_ContainsAllScenes(t *testing.T) {

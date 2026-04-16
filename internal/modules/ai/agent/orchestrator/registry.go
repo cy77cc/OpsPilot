@@ -1,12 +1,21 @@
 package orchestrator
 
-import "strings"
+import (
+	"strings"
+
+	cicdspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/cicd"
+	hostspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/host"
+	k8sspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/kubernetes"
+	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
+)
 
 // SpecialistSpec describes a registered specialist target for a scene.
 type SpecialistSpec struct {
-	Name     string
-	Domain   string
-	ReadOnly bool
+	Name        string
+	Domain      string
+	Description string
+	Instruction string
+	ReadOnly    bool
 }
 
 // Registry keeps specialist routing metadata by scene.
@@ -25,11 +34,41 @@ func NewRegistry() *Registry {
 
 func NewDefaultRegistry() *Registry {
 	registry := NewRegistry()
-	registry.Register("monitoring", SpecialistSpec{Name: "monitor", Domain: "monitoring", ReadOnly: true})
-	registry.Register("kubernetes", SpecialistSpec{Name: "kubernetes", Domain: "kubernetes", ReadOnly: true})
-	registry.Register("host", SpecialistSpec{Name: "host", Domain: "host", ReadOnly: true})
-	registry.Register("cicd", SpecialistSpec{Name: "cicd", Domain: "cicd", ReadOnly: true})
+	{
+		name, domain, description, instruction, readOnly := monitorspecialist.Spec()
+		registerFromSpecialist(registry, monitorspecialist.Scene(), name, domain, description, instruction, readOnly)
+	}
+	{
+		name, domain, description, instruction, readOnly := k8sspecialist.Spec()
+		registerFromSpecialist(registry, k8sspecialist.Scene(), name, domain, description, instruction, readOnly)
+	}
+	{
+		name, domain, description, instruction, readOnly := hostspecialist.Spec()
+		registerFromSpecialist(registry, hostspecialist.Scene(), name, domain, description, instruction, readOnly)
+	}
+	{
+		name, domain, description, instruction, readOnly := cicdspecialist.Spec()
+		registerFromSpecialist(registry, cicdspecialist.Scene(), name, domain, description, instruction, readOnly)
+	}
 	return registry
+}
+
+func registerFromSpecialist(
+	registry *Registry,
+	scene string,
+	name string,
+	domain string,
+	description string,
+	instruction string,
+	readOnly bool,
+) {
+	registry.Register(scene, SpecialistSpec{
+		Name:        name,
+		Domain:      domain,
+		Description: description,
+		Instruction: instruction,
+		ReadOnly:    readOnly,
+	})
 }
 
 func (r *Registry) Register(scene string, spec SpecialistSpec) {
