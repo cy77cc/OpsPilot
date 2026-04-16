@@ -6,10 +6,10 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/contracts"
 )
 
-func ReduceMetricPoints(metric string, points []float64) contracts.DelegationSummary {
+func ReduceMetricPoints(taskID string, metric string, points []float64) contracts.DelegationSummary {
 	if len(points) == 0 {
 		return contracts.DelegationSummary{
-			TaskID:     "empty",
+			TaskID:     taskID,
 			AgentName:  "isolation_worker",
 			Status:     contracts.StatusReturned,
 			Summary:    "No metric samples were returned.",
@@ -25,7 +25,7 @@ func ReduceMetricPoints(metric string, points []float64) contracts.DelegationSum
 	}
 
 	return contracts.DelegationSummary{
-		TaskID:    "reduced",
+		TaskID:    taskID,
 		AgentName: "isolation_worker",
 		Status:    contracts.StatusReturned,
 		Summary:   fmt.Sprintf("%s peaked at %.2f during the requested range.", metric, peak),
