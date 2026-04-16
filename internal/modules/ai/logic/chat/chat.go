@@ -11,7 +11,12 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	contracts "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/contracts"
+	sharedmiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/shared"
+	workermiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/workers"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
+	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
+	isolationworker "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/workers/isolation"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
@@ -451,10 +456,11 @@ func TruncateString(s string, maxLen int) string {
 type EventEmitter func(event string, data any)
 
 type delegationWindow struct {
-	DelegationID string
-	AgentName    string
-	Intent       string
-	Summary      string
+	DelegationID      string
+	AgentName         string
+	Intent            string
+	Summary           string
+	StructuredSummary *contracts.DelegationSummary
 }
 
 type delegationStreamState struct {
@@ -471,6 +477,9 @@ func (s *delegationStreamState) observe(events []airuntime.PublicStreamEvent) {
 		case "delta":
 			data, _ := projected.Data.(map[string]any)
 			s.observeDelta(data)
+		case "tool_result":
+			data, _ := projected.Data.(map[string]any)
+			s.observeToolResult(data)
 		}
 	}
 }
@@ -483,7 +492,7 @@ func (s *delegationStreamState) observeHandoff(data map[string]any) {
 	to := strings.TrimSpace(stream.StringValue(data, "to"))
 	intent := strings.TrimSpace(stream.StringValue(data, "intent"))
 
-	if s.active != nil && (sameAgentIdentity(from, s.active.AgentName) || isDelegationReturnTarget(to)) {
+	if s.active != nil && isDelegationReturnTarget(to) {
 		s.closeActiveWindow()
 	}
 
@@ -499,7 +508,7 @@ func (s *delegationStreamState) observeHandoff(data map[string]any) {
 }
 
 func (s *delegationStreamState) observeDelta(data map[string]any) {
-	if data == nil || s.active == nil {
+	if data == nil || s.active == nil || s.active.StructuredSummary != nil {
 		return
 	}
 	content := stream.StringValue(data, "content")
@@ -507,6 +516,29 @@ func (s *delegationStreamState) observeDelta(data map[string]any) {
 		return
 	}
 	s.active.Summary += content
+}
+
+func (s *delegationStreamState) observeToolResult(data map[string]any) {
+	if data == nil || s.active == nil || s.active.StructuredSummary != nil {
+		return
+	}
+	if strings.TrimSpace(stream.StringValue(data, "tool_name")) != "monitor_metric" {
+		return
+	}
+
+	agent := normalizeDelegationAgent(stream.StringValue(data, "agent"))
+	if agent != "monitor" && agent != "isolation_worker" {
+		return
+	}
+
+	summary, ok := buildStructuredMonitorMetricSummary(*s.active, stream.StringValue(data, "content"))
+	if !ok {
+		return
+	}
+
+	s.active.StructuredSummary = &summary
+	s.active.AgentName = summary.AgentName
+	s.active.Summary = summary.Summary
 }
 
 func (s *delegationStreamState) windowsForEmit() []delegationWindow {
@@ -577,20 +609,119 @@ func shouldEmitDelegationWindow(window delegationWindow) bool {
 }
 
 func buildDelegationPayload(window delegationWindow, runRiskLevel string) map[string]any {
+	summary := buildDelegationSummary(window, runRiskLevel)
 	payload := map[string]any{
 		"delegation_id": strings.TrimSpace(window.DelegationID),
-		"agent_name":    normalizeDelegationAgent(window.AgentName),
-		"status":        "returned",
-		"title":         buildDelegationNodeTitle(window.AgentName),
-		"summary":       compactDelegationSummary(window.Summary),
+		"agent_name":    normalizeDelegationAgent(summary.AgentName),
+		"status":        string(summary.Status),
+		"title":         buildDelegationNodeTitle(summary.AgentName),
+		"summary":       compactDelegationSummary(summary.Summary),
 	}
 	if intent := strings.TrimSpace(window.Intent); intent != "" {
 		payload["intent"] = intent
 	}
-	if risk := strings.TrimSpace(runRiskLevel); risk != "" {
+	if risk := strings.TrimSpace(string(summary.RiskLevel)); risk != "" {
 		payload["risk_level"] = risk
 	}
 	return payload
+}
+
+func buildDelegationSummary(window delegationWindow, runRiskLevel string) contracts.DelegationSummary {
+	if window.StructuredSummary != nil {
+		summary := *window.StructuredSummary
+		summary.RiskLevel = firstNonEmptyRiskLevel(summary.RiskLevel, delegationRiskLevel(runRiskLevel))
+		return summary
+	}
+
+	base := contracts.DelegationSummary{
+		TaskID:    strings.TrimSpace(window.DelegationID),
+		AgentName: normalizeDelegationAgent(window.AgentName),
+		Status:    contracts.StatusReturned,
+		Summary:   compactDelegationSummary(window.Summary),
+		RiskLevel: delegationRiskLevel(runRiskLevel),
+	}
+
+	if strings.EqualFold(base.AgentName, "isolation_worker") {
+		base = sharedmiddleware.ApplySummaryDefaults(
+			base,
+			"Isolation worker completed metric reduction for the requested scope.",
+			"Ask the monitor specialist to return a compact read-only summary to the supervisor.",
+		)
+		if err := workermiddleware.ValidateStrictSummary(base); err == nil {
+			wrapped := monitorspecialist.BuildMonitorSummary(base, "", "")
+			wrapped.RiskLevel = firstNonEmptyRiskLevel(wrapped.RiskLevel, delegationRiskLevel(runRiskLevel))
+			return sharedmiddleware.ApplySummaryDefaults(
+				wrapped,
+				"MonitorAgent completed delegated analysis for the requested scope.",
+				"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+			)
+		}
+	}
+
+	return sharedmiddleware.ApplySummaryDefaults(
+		base,
+		fmt.Sprintf("%s completed delegated analysis for the requested scope.", buildDelegationNodeTitle(base.AgentName)),
+		"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+	)
+}
+
+func buildStructuredMonitorMetricSummary(window delegationWindow, raw string) (contracts.DelegationSummary, bool) {
+	type metricPoint struct {
+		Value float64 `json:"value"`
+	}
+	type metricResult struct {
+		Query     string        `json:"query"`
+		TimeRange string        `json:"time_range"`
+		Points    []metricPoint `json:"points"`
+	}
+
+	var payload metricResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
+		return contracts.DelegationSummary{}, false
+	}
+	if strings.TrimSpace(payload.Query) == "" {
+		return contracts.DelegationSummary{}, false
+	}
+
+	values := make([]float64, 0, len(payload.Points))
+	for _, point := range payload.Points {
+		values = append(values, point.Value)
+	}
+
+	workerSummary := isolationworker.ReduceMetricPoints(strings.TrimSpace(window.DelegationID), payload.Query, values)
+	if err := workermiddleware.ValidateStrictSummary(workerSummary); err != nil {
+		return contracts.DelegationSummary{}, false
+	}
+
+	monitorSummary := monitorspecialist.BuildMonitorSummary(workerSummary, "", payload.TimeRange)
+	monitorSummary = sharedmiddleware.ApplySummaryDefaults(
+		monitorSummary,
+		"MonitorAgent completed delegated metric analysis for the requested scope.",
+		"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+	)
+	return monitorSummary, true
+}
+
+func delegationRiskLevel(value string) contracts.RiskLevel {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(contracts.RiskHigh):
+		return contracts.RiskHigh
+	case string(contracts.RiskMedium):
+		return contracts.RiskMedium
+	case string(contracts.RiskLow):
+		return contracts.RiskLow
+	default:
+		return ""
+	}
+}
+
+func firstNonEmptyRiskLevel(levels ...contracts.RiskLevel) contracts.RiskLevel {
+	for _, level := range levels {
+		if strings.TrimSpace(string(level)) != "" {
+			return level
+		}
+	}
+	return ""
 }
 
 func emitDelegationWindows(ctx context.Context, l *Logic, shell ChatShell, state *delegationStreamState, seq *int, emit EventEmitter) error {

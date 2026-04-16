@@ -38,6 +38,7 @@ type StreamEvent struct {
 var publicEventNames = map[string]struct{}{
 	"meta":          {},
 	"agent_handoff": {},
+	"delegation_node": {},
 	"delta":         {},
 	"tool_call":     {},
 	"tool_result":   {},

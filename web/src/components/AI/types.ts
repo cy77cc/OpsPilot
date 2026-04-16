@@ -155,6 +155,8 @@ export interface AssistantReplySummary {
 
 export type AssistantReplyStatusKind =
   | 'streaming'
+  | 'delegating'
+  | 'waiting_subagent'
   | 'completed'
   | 'soft-timeout'
   | 'error'

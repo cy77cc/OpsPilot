@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/cicd"
@@ -14,24 +15,41 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/service"
 )
 
-// BuildToolsForScene 根据场景构建工具列表。
-//
-// 该函数根据场景名称返回对应模块的工具实例。
-// 如果场景不匹配任何已知模块，返回通用工具集。
 func BuildToolsForScene(ctx context.Context, scene string) []tool.BaseTool {
+	return BuildToolsForSceneWithMode(ctx, scene, false)
+}
+
+// BuildToolsForSceneWithMode 根据场景和访问模式构建工具列表。
+func BuildToolsForSceneWithMode(ctx context.Context, scene string, readOnly bool) []tool.BaseTool {
 	var tools []tool.InvokableTool
 
-	switch scene {
+	switch normalizeScene(scene) {
 	case "kubernetes", "cluster":
-		tools = kubernetes.NewKubernetesTools(ctx)
+		if readOnly {
+			tools = kubernetes.NewKubernetesReadonlyTools(ctx)
+		} else {
+			tools = kubernetes.NewKubernetesTools(ctx)
+		}
 	case "cicd":
-		tools = cicd.NewCICDTools(ctx)
+		if readOnly {
+			tools = cicd.NewCICDReadonlyTools(ctx)
+		} else {
+			tools = cicd.NewCICDTools(ctx)
+		}
 	case "monitoring":
-		tools = monitor.NewMonitorTools(ctx)
+		tools = monitor.NewMonitorReadonlyTools(ctx)
 	case "host":
-		tools = host.NewHostTools(ctx)
+		if readOnly {
+			tools = host.NewHostReadonlyTools(ctx)
+		} else {
+			tools = host.NewHostTools(ctx)
+		}
 	case "service":
-		tools = service.NewServiceTools(ctx)
+		if readOnly {
+			tools = service.NewServiceReadonlyTools(ctx)
+		} else {
+			tools = service.NewServiceTools(ctx)
+		}
 	case "deployment":
 		tools = deployment.NewDeploymentTools(ctx)
 	case "infrastructure":
@@ -55,12 +73,15 @@ func BuildToolsForScene(ctx context.Context, scene string) []tool.BaseTool {
 func buildDefaultTools(ctx context.Context) []tool.InvokableTool {
 	var tools []tool.InvokableTool
 
-	// 添加各模块的工具（优先使用只读版本，如果不存在则使用完整版本）
+	// 添加各模块的只读工具，避免默认路由暴露变更型能力。
 	tools = append(tools, service.NewServiceReadonlyTools(ctx)...)
 	tools = append(tools, monitor.NewMonitorReadonlyTools(ctx)...)
 	tools = append(tools, kubernetes.NewKubernetesReadonlyTools(ctx)...)
-	// host 包没有只读版本，使用完整版本
-	tools = append(tools, host.NewHostTools(ctx)...)
+	tools = append(tools, host.NewHostReadonlyTools(ctx)...)
 
 	return tools
+}
+
+func normalizeScene(scene string) string {
+	return strings.ToLower(strings.TrimSpace(scene))
 }

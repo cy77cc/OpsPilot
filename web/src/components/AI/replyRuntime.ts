@@ -647,11 +647,56 @@ export function applyToolResult(
   );
 }
 
+export function applyDelegationNode(
+  runtime: AssistantReplyRuntime,
+  payload: { delegation_id: string; agent_name: string; status: string; title: string; summary: string },
+): AssistantReplyRuntime {
+  return upsertActivity(
+    runtime,
+    {
+      id: payload.delegation_id || payload.title,
+      kind: 'delegation',
+      label: payload.title || payload.agent_name || 'Delegation summary',
+      detail: payload.summary,
+      status: payload.status === 'failed' ? 'error' : payload.status === 'returned' ? 'done' : 'active',
+    },
+    (item) => item.id === (payload.delegation_id || payload.title),
+  );
+}
+
 export function applyRunState(
   runtime: AssistantReplyRuntime,
   payload: { run_id: string; status: string; agent?: string; summary?: string },
 ): AssistantReplyRuntime {
   switch (payload.status) {
+    case 'delegating':
+      return mergePendingRun({
+        ...runtime,
+        phase: 'executing',
+        phaseLabel: '委派专家分析',
+        status: {
+          kind: 'delegating',
+          label: '委派专家分析',
+        },
+      }, {
+        runId: payload.run_id,
+        status: runtime.pendingRun?.status || 'running',
+        resumable: runtime.pendingRun?.resumable ?? true,
+      });
+    case 'waiting_subagent':
+      return mergePendingRun({
+        ...runtime,
+        phase: 'executing',
+        phaseLabel: '等待专家摘要',
+        status: {
+          kind: 'waiting_subagent',
+          label: '等待专家摘要',
+        },
+      }, {
+        runId: payload.run_id,
+        status: runtime.pendingRun?.status || 'running',
+        resumable: runtime.pendingRun?.resumable ?? true,
+      });
     case 'waiting_approval':
       return mergePendingRun({
         ...runtime,

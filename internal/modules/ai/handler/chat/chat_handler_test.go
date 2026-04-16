@@ -795,6 +795,61 @@ func TestChat_MultiDelegationWindowsEmitAttributedNodes(t *testing.T) {
 	}
 }
 
+func TestChat_DelegationWindowSurvivesInternalWorkerHandoff(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := newAIHandlerTestHarness(db)
+	h.logic.AIRouter = &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("monitor")},
+			{AgentName: "monitor", Action: adk.NewTransferToAgentAction("isolation_worker")},
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(schema.AssistantMessage("worker summarized p95 increase", nil), nil, schema.Assistant, "")
+				event.AgentName = "isolation_worker"
+				return event
+			}(),
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(208))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"inspect p95 for checkout-api over 24h"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+
+	var delegation map[string]any
+	for _, event := range events {
+		if event.Event != "delegation_node" {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected delegation_node payload map, got %T", event.Data)
+		}
+		if data["agent_name"] == "monitor" {
+			delegation = data
+			break
+		}
+	}
+
+	if delegation == nil {
+		t.Fatalf("expected monitor delegation node, got %#v", events)
+	}
+
+	summary, _ := delegation["summary"].(string)
+	if !strings.Contains(summary, "worker summarized p95 increase") {
+		t.Fatalf("expected worker summary to be attributed to monitor delegation, got %#v", delegation)
+	}
+}
+
 func TestChatHandler_EmitsSSEErrorInsteadOfJSONEnvelopeOnLateFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	adksupervisor "github.com/cloudwego/eino/adk/prebuilt/supervisor"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
@@ -53,31 +54,72 @@ var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
-	registry := orchestrator.NewRegistry()
-	registry.Register("monitoring", orchestrator.SpecialistSpec{Name: "monitor", Domain: "monitoring", ReadOnly: true})
-	registry.Register("kubernetes", orchestrator.SpecialistSpec{Name: "kubernetes", Domain: "kubernetes", ReadOnly: true})
-	registry.Register("host", orchestrator.SpecialistSpec{Name: "host", Domain: "host", ReadOnly: true})
-	registry.Register("cicd", orchestrator.SpecialistSpec{Name: "cicd", Domain: "cicd", ReadOnly: true})
+	registry := orchestrator.NewDefaultRegistry()
 	return createSupervisorAgent(ctx, registry, sceneMeta.Scene)
 }
 
 func createSupervisorAgent(ctx context.Context, registry *orchestrator.Registry, scene string) (adk.ResumableAgent, error) {
-	supervisor := orchestrator.NewSupervisor(registry)
+	if registry == nil {
+		registry = orchestrator.NewDefaultRegistry()
+	}
+
 	normalizedScene := strings.TrimSpace(scene)
 	if normalizedScene == "" {
 		normalizedScene = "ai"
 	}
-	if supervisor.ShouldDelegate(normalizedScene) {
-		if spec, ok := registry.Lookup(normalizedScene); ok && strings.TrimSpace(spec.Domain) != "" {
-			normalizedScene = spec.Domain
-		}
+
+	spec, ok := lookupDelegatedSpecialist(registry, normalizedScene)
+	if !ok {
+		return createAgentForScene(ctx, normalizedScene)
 	}
-	// Task 3 wires supervisor-driven scene dispatch only. Specialist internals are introduced later.
-	return createAgentForScene(ctx, normalizedScene)
+
+	rootSupervisor := orchestrator.NewDeterministicTransferAgent(
+		"supervisor",
+		"Routes the current request to the selected specialist agent.",
+		spec.Name,
+	)
+
+	var specialist adk.Agent
+	var err error
+	if strings.EqualFold(spec.Name, "monitor") || strings.EqualFold(spec.Domain, "monitoring") {
+		specialist, err = createMonitoringSpecialistAgent(ctx)
+	} else {
+		specialist, err = createNamedSceneAgent(ctx, spec.Name, spec.Domain, fmt.Sprintf("%s specialist", spec.Name), spec.ReadOnly)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return adksupervisor.New(ctx, &adksupervisor.Config{
+		Supervisor: rootSupervisor,
+		SubAgents:  []adk.Agent{specialist},
+	})
+}
+
+func createMonitoringSpecialistAgent(ctx context.Context) (adk.ResumableAgent, error) {
+	worker, err := createNamedSceneAgent(ctx, "isolation_worker", "monitoring", "Isolates heavy monitoring output and returns compact summaries.", true)
+	if err != nil {
+		return nil, err
+	}
+
+	monitorSupervisor := orchestrator.NewDeterministicTransferAgent(
+		"monitor",
+		"Monitoring specialist that delegates heavy-output work to the isolation worker.",
+		"isolation_worker",
+	)
+
+	return adksupervisor.New(ctx, &adksupervisor.Config{
+		Supervisor: monitorSupervisor,
+		SubAgents:  []adk.Agent{worker},
+	})
 }
 
 // createAgentForScene 为指定场景创建 Agent。
 func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent, error) {
+	return createNamedSceneAgent(ctx, scene, scene, "", sceneRequiresReadOnlyExecution(scene))
+}
+
+func createNamedSceneAgent(ctx context.Context, name, scene, description string, readOnly bool) (adk.ResumableAgent, error) {
 	svcCtx, ok := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
 	if !ok || svcCtx == nil {
 		return nil, fmt.Errorf("service context not found")
@@ -90,7 +132,7 @@ func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent,
 	}
 
 	// 2. 获取场景化工具集
-	sceneTools := tools.BuildToolsForScene(ctx, scene)
+	sceneTools := tools.BuildToolsForSceneWithMode(ctx, scene, readOnly)
 	if len(sceneTools) == 0 {
 		return nil, fmt.Errorf("no tools available for scene: %s", scene)
 	}
@@ -102,8 +144,20 @@ func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent,
 	}
 
 	// 4. 创建 ChatModelAgent（使用 Handlers 字段应用中间件）
+	agentName := strings.TrimSpace(name)
+	if agentName == "" {
+		agentName = strings.TrimSpace(scene)
+	}
+
+	agentDescription := strings.TrimSpace(description)
+	if agentDescription == "" {
+		agentDescription = fmt.Sprintf("%s operations specialist", strings.TrimSpace(scene))
+	}
+
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Model: chatModel,
+		Name:        agentName,
+		Description: agentDescription,
+		Model:       chatModel,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				Tools: sceneTools,
@@ -116,6 +170,35 @@ func createAgentForScene(ctx context.Context, scene string) (adk.ResumableAgent,
 	}
 
 	return agent, nil
+}
+
+func lookupDelegatedSpecialist(registry *orchestrator.Registry, scene string) (orchestrator.SpecialistSpec, bool) {
+	if registry == nil {
+		registry = orchestrator.NewDefaultRegistry()
+	}
+
+	normalizedScene := strings.TrimSpace(scene)
+	if normalizedScene == "" {
+		return orchestrator.SpecialistSpec{}, false
+	}
+
+	spec, ok := registry.Lookup(normalizedScene)
+	if !ok {
+		return orchestrator.SpecialistSpec{}, false
+	}
+
+	supervisor := orchestrator.NewSupervisor(registry)
+	if !supervisor.ShouldDelegate(normalizedScene) {
+		return orchestrator.SpecialistSpec{}, false
+	}
+
+	return spec, true
+}
+
+func sceneRequiresReadOnlyExecution(scene string) bool {
+	registry := orchestrator.NewDefaultRegistry()
+	spec, ok := registry.Lookup(scene)
+	return ok && spec.ReadOnly
 }
 
 // NewAILogic 从 ServiceContext 创建 Logic 实例。

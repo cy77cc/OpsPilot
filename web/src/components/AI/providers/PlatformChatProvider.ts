@@ -7,6 +7,7 @@ import type { A2UIStreamHandlers } from '../../../api/modules/ai';
 import {
   applyAgentHandoff,
   applyApprovalExpired,
+  applyDelegationNode,
   applyDelta,
   applyDone,
   applyMeta,
@@ -353,6 +354,10 @@ export class PlatformChatRequest extends AbstractXRequestClass<
         if (hasVisibleContent) {
           emitRuntimeOnlyUpdate();
         }
+      },
+      onDelegationNode: (payload) => {
+        runtime = applyDelegationNode(runtime, payload);
+        emitRuntimeOnlyUpdate();
       },
       onOpsPlanUpdated: (payload) => {
         const snapshot = (payload.runtime || payload.snapshot || payload) as Record<string, unknown>;

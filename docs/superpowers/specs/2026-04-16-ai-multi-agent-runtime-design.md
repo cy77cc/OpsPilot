@@ -679,3 +679,34 @@ The first multi-agent design does not include:
 6. artifacts hold evidence; the main context holds conclusions
 7. public projection shows summary nodes, not child internals
 8. approval and resume always return through the supervisor
+
+## 17. Current Gaps and Implementation Issues
+
+Based on a review of the existing codebase on 2026-04-16, the following discrepancies and issues were identified:
+
+### 17.1 Architectural Gaps
+
+1.  **Single-Agent Bottleneck**: The current implementation in `internal/modules/ai/logic/logic.go` uses a single scene-based agent (`adk.NewChatModelAgent`). This matches "Option A" in Section 2.1, which this design explicitly identifies as insufficient for handling high-volume operational analysis.
+2.  **Missing Directory Structure**: The recommended directory structure under `internal/modules/ai/agent/` (with `orchestrator/`, `specialists/`, and `workers/`) does not exist. The current structure is flatter and lacks clear role boundaries.
+3.  **No Isolation Workers**: There is no implementation of the `IsolationWorker` layer. High-volume tools (like Prometheus) currently return raw data directly to the main agent context.
+
+### 17.2 Runtime and Protocol Gaps
+
+1.  **Incomplete State Machine**: The current run status and projection surfaces already cover `running`, `waiting_approval`, and `resuming`, but the runtime does not yet model delegation-specific states, child-task ownership, or resume targets for multi-agent execution. Critical states like `delegating` and `waiting_subagent` are missing.
+2.  **Missing Delegation Contracts**: `DelegationTask` and `DelegationSummary` structs are not implemented. There is no typed protocol for inter-agent communication.
+3.  **Event Family Gaps**: The current runtime SSE payload layer in `internal/modules/ai/agent/runtime/event_types.go` does not yet model `delegation.*`, `artifact.*`, or `summary.*` families, and the canonical runtime event model for multi-agent execution has not been introduced.
+
+### 17.3 Middleware Gaps
+
+1.  **Context Pollution**: Missing `artifact_offload.go` and `tool_reduction.go` middlewares. Large tool outputs such as `monitor_metric` are not yet reduced or offloaded before downstream consumption, which creates a high risk of polluting agent context.
+2.  **Summary Formatting**: No `summary_formatter.go` exists to enforce compact returns from child agents.
+
+### 17.4 Tool Implementation Issues
+
+1.  **Raw Prometheus Output**: The `monitor_metric` tool in `internal/modules/ai/agent/tools/monitor/tools.go` returns raw `MetricPoint` lists (up to 500+ points). In a multi-agent setup, this should be handled by a worker and summarized.
+2.  **OutputMode Mismatch**: Some tools (e.g., `monitor_metric`) specify `OutputMode: "summary_plus_artifact"` in their catalog metadata, but the actual tool implementation does not support artifact creation or summarization.
+
+### 17.5 Frontend Gaps
+
+1.  **Missing Projections**: The frontend `web/src/components/AI/historyProjection.ts` and `replyRuntime.ts` do not support the `delegation.node` projection type.
+2.  **UI Components**: There are no UI components to render delegation summary nodes or provide links to offloaded artifacts.

@@ -345,6 +345,73 @@ describe('PlatformChatProvider', () => {
     );
   });
 
+  it('projects live delegation nodes into runtime activities', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onMeta?.({ session_id: 'sess-1', run_id: 'run-1', turn: 1 });
+      handlers.onDelegationNode?.({
+        delegation_id: 'delegation-1',
+        agent_name: 'monitor',
+        status: 'returned',
+        title: 'Monitor summary',
+        summary: 'p95 increased for checkout-api',
+      });
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'monitoring' });
+    await request.asyncHandler;
+
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime: expect.objectContaining({
+          activities: [
+            expect.objectContaining({
+              id: 'delegation-1',
+              kind: 'delegation',
+              label: 'Monitor summary',
+              detail: 'p95 increased for checkout-api',
+            }),
+          ],
+        }),
+      }),
+      expect.any(Headers),
+    );
+  });
+
+  it('projects delegation run states into the live runtime stream', async () => {
+    const request = new PlatformChatRequest();
+    const onUpdate = vi.fn();
+    request.options.callbacks = {
+      onUpdate,
+      onSuccess: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    vi.mocked(aiApi.chatStream).mockImplementation(async (_params, handlers) => {
+      handlers.onRunState?.({ run_id: 'run-1', status: 'delegating', agent: 'supervisor' } as any);
+      handlers.onRunState?.({ run_id: 'run-1', status: 'waiting_subagent', agent: 'supervisor' } as any);
+      handlers.onDone?.({ run_id: 'run-1', status: 'completed', iterations: 1 });
+    });
+
+    request.run({ message: 'hi', scene: 'monitoring' });
+    await request.asyncHandler;
+
+    const labels = onUpdate.mock.calls
+      .map(([chunk]) => chunk?.runtime?.status?.label)
+      .filter(Boolean);
+
+    expect(labels).toContain('委派专家分析');
+    expect(labels).toContain('等待专家摘要');
+  });
+
   it('observes unknown stream events without mutating runtime state', async () => {
     const onUnknownEvent = vi.fn();
     const provider = new PlatformChatProvider({ onUnknownEvent });

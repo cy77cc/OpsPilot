@@ -21,9 +21,9 @@ import (
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/hostpolicy"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -92,18 +92,30 @@ var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
 // 工具入口
 // =============================================================================
 
-// NewHostTools 创建主机只读工具子集。
+// NewHostTools 创建主机工具集。
+//
+// 返回主机工具列表，包括：
+//   - 主机命令执行（host_exec）
+//   - 主机清单查询（host_list_inventory）
+//   - 系统诊断：CPU/内存、磁盘、网络、进程、日志、容器运行时
+func NewHostTools(ctx context.Context) []tool.InvokableTool {
+	result := make([]tool.InvokableTool, 0, len(NewHostReadonlyTools(ctx))+1)
+	result = append(result, NewHostReadonlyTools(ctx)...)
+	result = append(result, HostExec(ctx))
+	return result
+}
+
+// NewHostReadonlyTools 创建主机只读工具子集。
 //
 // 返回只读工具列表，包括：
 //   - 主机命令执行（host_exec）
+//     注意：不包含 host_exec；delegated specialist 必须保持只读
 //   - 主机清单查询（host_list_inventory）
-//   - 批量执行预览（host_batch_exec_preview）
 //   - 系统诊断：CPU/内存、磁盘、网络、进程、日志、容器运行时
 //
 // 这些工具不修改任何状态，可安全用于诊断场景。
-func NewHostTools(ctx context.Context) []tool.InvokableTool {
+func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
-		HostExec(ctx),
 		HostListInventory(ctx),
 		OSGetCPUMem(ctx),
 		OSGetDiskFS(ctx),
@@ -147,8 +159,8 @@ type HostExecOutput struct {
 	ExitCode int    `json:"exit_code"`
 	Status   string `json:"status,omitempty"`
 
-	PolicyDecision string            `json:"policy_decision,omitempty"`
-	PolicyReasons  []string          `json:"policy_reasons,omitempty"`
+	PolicyDecision string                       `json:"policy_decision,omitempty"`
+	PolicyReasons  []string                     `json:"policy_reasons,omitempty"`
 	Violations     []hostpolicy.PolicyViolation `json:"violations,omitempty"`
 }
 

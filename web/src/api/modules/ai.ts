@@ -314,6 +314,16 @@ export interface A2UIToolResultEvent {
   content: string;
 }
 
+export interface A2UIDelegationNodeEvent {
+  delegation_id: string;
+  agent_name: string;
+  status: string;
+  title: string;
+  summary: string;
+  intent?: string;
+  risk_level?: string;
+}
+
 export interface A2UIOpsPlanUpdatedEvent {
   run_id?: string;
   session_id?: string;
@@ -366,6 +376,7 @@ export interface A2UIStreamHandlers {
   onToolCall?: (payload: A2UIToolCallEvent) => void;
   onToolApproval?: (payload: A2UIToolApprovalEvent) => void;
   onToolResult?: (payload: A2UIToolResultEvent) => void;
+  onDelegationNode?: (payload: A2UIDelegationNodeEvent) => void;
   onOpsPlanUpdated?: (payload: A2UIOpsPlanUpdatedEvent) => void;
   onRunResuming?: (payload: A2UIRunResumingEvent) => void;
   onRunResumed?: (payload: A2UIRunResumedEvent) => void;
@@ -481,6 +492,8 @@ function dispatchAIStreamEvent(
     handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);
   } else if (eventType === 'tool_result') {
     handlers.onToolResult?.(payload as A2UIToolResultEvent);
+  } else if (eventType === 'delegation_node') {
+    handlers.onDelegationNode?.(payload as A2UIDelegationNodeEvent);
   } else if (eventType === 'ops_plan_updated') {
     handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);
   } else if (eventType === 'ai.run.resuming') {
