@@ -69,10 +69,10 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 		if IsDelegationHandoff(from, to, mapAgentNameToIntentType(to)) {
 			applyPersistedRunState(state, string(RunStateDelegating))
 			projected = append([]PublicStreamEvent{
-				newRunStatePublicEvent(string(RunStateDelegating), "supervisor"),
+				newRunStatePublicEvent(string(RunStateDelegating), "deep_main"),
 			}, projected...)
 			applyPersistedRunState(state, string(RunStateWaitingSubagent))
-			projected = append(projected, newRunStatePublicEvent(string(RunStateWaitingSubagent), "supervisor"))
+			projected = append(projected, newRunStatePublicEvent(string(RunStateWaitingSubagent), "deep_main"))
 		}
 		return projected
 	case NormalizedKindInterrupt:

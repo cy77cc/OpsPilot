@@ -6,23 +6,13 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
 )
 
-func TestLookupDelegatedSpecialist_MonitoringOnly(t *testing.T) {
+func TestDefaultRegistryEntries_CoversDeepSpecialists(t *testing.T) {
 	t.Parallel()
 
 	registry := orchestrator.NewDefaultRegistry()
-
-	monitor, ok := lookupDelegatedSpecialist(registry, "monitoring")
-	if !ok {
-		t.Fatal("expected monitoring to use delegated specialist")
-	}
-	if monitor.Name != "monitor" {
-		t.Fatalf("expected monitor specialist, got %+v", monitor)
-	}
-
-	for _, scene := range []string{"host", "kubernetes", "cicd", "unknown"} {
-		if spec, delegated := lookupDelegatedSpecialist(registry, scene); delegated {
-			t.Fatalf("did not expect %s to delegate, got %+v", scene, spec)
-		}
+	entries := registry.Entries()
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 deep specialist entries, got %d", len(entries))
 	}
 }
 

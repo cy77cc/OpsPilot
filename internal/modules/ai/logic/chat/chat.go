@@ -568,7 +568,7 @@ func sameAgentIdentity(left, right string) bool {
 
 func isDelegationReturnTarget(target string) bool {
 	switch strings.ToLower(strings.TrimSpace(target)) {
-	case "supervisor", "executor":
+	case "executor", "deep_main", "orchestrator":
 		return true
 	default:
 		return false
@@ -645,7 +645,7 @@ func buildDelegationSummary(window delegationWindow, runRiskLevel string) contra
 		base = sharedmiddleware.ApplySummaryDefaults(
 			base,
 			"Isolation worker completed metric reduction for the requested scope.",
-			"Ask the monitor specialist to return a compact read-only summary to the supervisor.",
+			"Ask the monitor specialist to return a compact read-only summary to deep_main.",
 		)
 		if err := workermiddleware.ValidateStrictSummary(base); err == nil {
 			wrapped := monitorspecialist.BuildMonitorSummary(base, "", "")
@@ -653,7 +653,7 @@ func buildDelegationSummary(window delegationWindow, runRiskLevel string) contra
 			return sharedmiddleware.ApplySummaryDefaults(
 				wrapped,
 				"MonitorAgent completed delegated analysis for the requested scope.",
-				"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+				"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
 			)
 		}
 	}
@@ -661,7 +661,7 @@ func buildDelegationSummary(window delegationWindow, runRiskLevel string) contra
 	return sharedmiddleware.ApplySummaryDefaults(
 		base,
 		fmt.Sprintf("%s completed delegated analysis for the requested scope.", buildDelegationNodeTitle(base.AgentName)),
-		"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+		"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
 	)
 }
 
@@ -697,7 +697,7 @@ func buildStructuredMonitorMetricSummary(window delegationWindow, raw string) (c
 	monitorSummary = sharedmiddleware.ApplySummaryDefaults(
 		monitorSummary,
 		"MonitorAgent completed delegated metric analysis for the requested scope.",
-		"Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action.",
+		"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
 	)
 	return monitorSummary, true
 }

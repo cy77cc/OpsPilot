@@ -20,9 +20,9 @@ func BuildMonitorSummary(workerSummary contracts.DelegationSummary, service stri
 	nextAction := workerSummary.RecommendedNextAction
 	if strings.TrimSpace(nextAction) == "" {
 		if workerSummary.Status == contracts.StatusFailed {
-			nextAction = "Ask the supervisor to inspect failure details or retry with a narrower diagnostic scope."
+			nextAction = "Ask deep_main to inspect failure details or retry with a narrower diagnostic scope."
 		} else {
-			nextAction = "Ask the supervisor whether to continue with read-only diagnosis or prepare a governed action."
+			nextAction = "Ask deep_main whether to continue with read-only diagnosis or prepare a governed action."
 		}
 	}
 

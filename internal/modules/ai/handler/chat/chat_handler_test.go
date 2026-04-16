@@ -602,7 +602,7 @@ func TestChat_EmitsDelegationRunStatesAndNode(t *testing.T) {
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
 			{
-				AgentName: "supervisor",
+				AgentName: "deep_main",
 				Action:    adk.NewTransferToAgentAction("monitor"),
 			},
 			func() *adk.AgentEvent {
@@ -684,7 +684,7 @@ func TestChat_NonDelegationHandoffDoesNotEmitDelegationArtifacts(t *testing.T) {
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
 			{
-				AgentName: "supervisor",
+				AgentName: "deep_main",
 				Action:    adk.NewTransferToAgentAction("diagnosis"),
 			},
 			func() *adk.AgentEvent {
@@ -733,13 +733,13 @@ func TestChat_MultiDelegationWindowsEmitAttributedNodes(t *testing.T) {
 	h := newAIHandlerTestHarness(db)
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
-			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("monitor")},
+			{AgentName: "deep_main", Action: adk.NewTransferToAgentAction("monitor")},
 			func() *adk.AgentEvent {
 				event := adk.EventFromMessage(schema.AssistantMessage("monitor summary A", nil), nil, schema.Assistant, "")
 				event.AgentName = "monitor"
 				return event
 			}(),
-			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("host")},
+			{AgentName: "deep_main", Action: adk.NewTransferToAgentAction("host")},
 			func() *adk.AgentEvent {
 				event := adk.EventFromMessage(schema.AssistantMessage("host summary B", nil), nil, schema.Assistant, "")
 				event.AgentName = "host"
@@ -802,7 +802,7 @@ func TestChat_DelegationWindowSurvivesInternalWorkerHandoff(t *testing.T) {
 	h := newAIHandlerTestHarness(db)
 	h.logic.AIRouter = &scriptedAgent{
 		runEvents: []*adk.AgentEvent{
-			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("monitor")},
+			{AgentName: "deep_main", Action: adk.NewTransferToAgentAction("monitor")},
 			{AgentName: "monitor", Action: adk.NewTransferToAgentAction("isolation_worker")},
 			func() *adk.AgentEvent {
 				event := adk.EventFromMessage(schema.AssistantMessage("worker summarized p95 increase", nil), nil, schema.Assistant, "")

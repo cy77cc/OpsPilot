@@ -7,7 +7,7 @@ func TestProjectNormalizedEvent_HandoffDelegationEmitsStateTransitions(t *testin
 	events := projectNormalizedEvent(NormalizedEvent{
 		Kind: NormalizedKindHandoff,
 		Handoff: &NormalizedHandoff{
-			From: "supervisor",
+			From: "deep_main",
 			To:   "monitor",
 		},
 	}, state)
@@ -44,7 +44,7 @@ func TestProjectNormalizedEvent_HandoffNonDelegationSkipsDelegationStates(t *tes
 	events := projectNormalizedEvent(NormalizedEvent{
 		Kind: NormalizedKindHandoff,
 		Handoff: &NormalizedHandoff{
-			From: "supervisor",
+			From: "deep_main",
 			To:   "diagnosis",
 		},
 	}, state)

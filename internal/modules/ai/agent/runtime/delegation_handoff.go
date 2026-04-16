@@ -22,7 +22,7 @@ var explicitDelegationIntents = map[string]struct{}{
 	string(contracts.IntentReleaseReadiness):     {},
 }
 
-// IsDelegationHandoff reports whether a handoff is an explicit supervisor delegation.
+// IsDelegationHandoff reports whether a handoff is an explicit deep-main delegation.
 func IsDelegationHandoff(_ string, to, intent string) bool {
 	if _, ok := explicitDelegationTargets[normalizeAgentIdentity(to)]; ok {
 		return true

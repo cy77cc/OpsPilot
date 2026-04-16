@@ -14,6 +14,11 @@ type Registry struct {
 	byScene map[string]SpecialistSpec
 }
 
+type RegistryEntry struct {
+	Scene string
+	Spec  SpecialistSpec
+}
+
 func NewRegistry() *Registry {
 	return &Registry{byScene: map[string]SpecialistSpec{}}
 }
@@ -43,6 +48,17 @@ func (r *Registry) Lookup(scene string) (SpecialistSpec, bool) {
 	}
 	spec, ok := r.byScene[normalizeScene(scene)]
 	return spec, ok
+}
+
+func (r *Registry) Entries() []RegistryEntry {
+	if r == nil || r.byScene == nil {
+		return nil
+	}
+	entries := make([]RegistryEntry, 0, len(r.byScene))
+	for scene, spec := range r.byScene {
+		entries = append(entries, RegistryEntry{Scene: scene, Spec: spec})
+	}
+	return entries
 }
 
 func normalizeScene(scene string) string {

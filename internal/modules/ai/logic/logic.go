@@ -6,14 +6,16 @@ package logic
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
-	adksupervisor "github.com/cloudwego/eino/adk/prebuilt/supervisor"
+	adkdeep "github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
+	agenttodo "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/todo"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
@@ -55,10 +57,10 @@ var ErrInvalidProjectionCursor = chat.ErrInvalidProjectionCursor
 var newOpsPilotAgent = func(ctx context.Context) (adk.ResumableAgent, error) {
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
 	registry := orchestrator.NewDefaultRegistry()
-	return createSupervisorAgent(ctx, registry, sceneMeta.Scene)
+	return createDeepAgent(ctx, registry, sceneMeta.Scene)
 }
 
-func createSupervisorAgent(ctx context.Context, registry *orchestrator.Registry, scene string) (adk.ResumableAgent, error) {
+func createDeepAgent(ctx context.Context, registry *orchestrator.Registry, scene string) (adk.ResumableAgent, error) {
 	if registry == nil {
 		registry = orchestrator.NewDefaultRegistry()
 	}
@@ -68,49 +70,42 @@ func createSupervisorAgent(ctx context.Context, registry *orchestrator.Registry,
 		normalizedScene = "ai"
 	}
 
-	spec, ok := lookupDelegatedSpecialist(registry, normalizedScene)
-	if !ok {
-		return createAgentForScene(ctx, normalizedScene)
+	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("create chat model: %w", err)
 	}
 
-	rootSupervisor := orchestrator.NewDeterministicTransferAgent(
-		"supervisor",
-		"Routes the current request to the selected specialist agent.",
-		spec.Name,
-	)
-
-	var specialist adk.Agent
-	var err error
-	if strings.EqualFold(spec.Name, "monitor") || strings.EqualFold(spec.Domain, "monitoring") {
-		specialist, err = createMonitoringSpecialistAgent(ctx)
-	} else {
-		specialist, err = createNamedSceneAgent(ctx, spec.Name, spec.Domain, fmt.Sprintf("%s specialist", spec.Name), spec.ReadOnly)
+	sceneTools := tools.BuildToolsForSceneWithMode(ctx, normalizedScene, false)
+	if len(sceneTools) == 0 {
+		return nil, fmt.Errorf("no tools available for scene: %s", normalizedScene)
 	}
+
+	mainHandlers, err := middleware.BuildAgentHandlers(ctx, normalizedScene, sceneTools)
+	if err != nil {
+		return nil, fmt.Errorf("build deep agent handlers: %w", err)
+	}
+
+	todoMiddleware, err := agenttodo.NewWriteOpsTodosMiddleware()
+	if err != nil {
+		return nil, fmt.Errorf("build write ops todos middleware: %w", err)
+	}
+
+	subAgents, err := buildDeepSubAgents(ctx, registry)
 	if err != nil {
 		return nil, err
 	}
 
-	return adksupervisor.New(ctx, &adksupervisor.Config{
-		Supervisor: rootSupervisor,
-		SubAgents:  []adk.Agent{specialist},
-	})
-}
-
-func createMonitoringSpecialistAgent(ctx context.Context) (adk.ResumableAgent, error) {
-	worker, err := createNamedSceneAgent(ctx, "isolation_worker", "monitoring", "Isolates heavy monitoring output and returns compact summaries.", true)
-	if err != nil {
-		return nil, err
-	}
-
-	monitorSupervisor := orchestrator.NewDeterministicTransferAgent(
-		"monitor",
-		"Monitoring specialist that delegates heavy-output work to the isolation worker.",
-		"isolation_worker",
-	)
-
-	return adksupervisor.New(ctx, &adksupervisor.Config{
-		Supervisor: monitorSupervisor,
-		SubAgents:  []adk.Agent{worker},
+	return adkdeep.New(ctx, &adkdeep.Config{
+		Name:                   "deep_main",
+		Description:            "OpsPilot deep orchestrator for governed operations and specialist delegation.",
+		ChatModel:              chatModel,
+		Instruction:            buildDeepInstruction(normalizedScene),
+		SubAgents:              subAgents,
+		ToolsConfig:            adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: sceneTools}},
+		WithoutWriteTodos:      true,
+		WithoutGeneralSubAgent: true,
+		Handlers:               append(mainHandlers, todoMiddleware),
+		MaxIteration:           32,
 	})
 }
 
@@ -172,27 +167,52 @@ func createNamedSceneAgent(ctx context.Context, name, scene, description string,
 	return agent, nil
 }
 
-func lookupDelegatedSpecialist(registry *orchestrator.Registry, scene string) (orchestrator.SpecialistSpec, bool) {
+func buildDeepSubAgents(ctx context.Context, registry *orchestrator.Registry) ([]adk.Agent, error) {
 	if registry == nil {
 		registry = orchestrator.NewDefaultRegistry()
 	}
+	entries := registry.Entries()
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Scene < entries[j].Scene
+	})
 
-	normalizedScene := strings.TrimSpace(scene)
-	if normalizedScene == "" {
-		return orchestrator.SpecialistSpec{}, false
+	subAgents := make([]adk.Agent, 0, len(entries))
+	for _, entry := range entries {
+		spec := entry.Spec
+		agentName := strings.TrimSpace(spec.Name)
+		if agentName == "" {
+			continue
+		}
+		domain := strings.TrimSpace(spec.Domain)
+		if domain == "" {
+			domain = strings.TrimSpace(entry.Scene)
+		}
+		desc := fmt.Sprintf("%s specialist. Keep results compact and prefer summary-only returns.", agentName)
+		specialist, err := createNamedSceneAgent(ctx, agentName, domain, desc, true)
+		if err != nil {
+			return nil, fmt.Errorf("create deep sub-agent %s: %w", agentName, err)
+		}
+		subAgents = append(subAgents, specialist)
 	}
+	return subAgents, nil
+}
 
-	spec, ok := registry.Lookup(normalizedScene)
-	if !ok {
-		return orchestrator.SpecialistSpec{}, false
+func buildDeepInstruction(scene string) string {
+	trimmedScene := strings.TrimSpace(scene)
+	if trimmedScene == "" {
+		trimmedScene = "ai"
 	}
+	return fmt.Sprintf(`You are the Deep main agent for OpsPilot.
 
-	supervisor := orchestrator.NewSupervisor(registry)
-	if !supervisor.ShouldDelegate(normalizedScene) {
-		return orchestrator.SpecialistSpec{}, false
-	}
+Current scene hint: %s.
 
-	return spec, true
+Execution policy:
+1. Default to solving directly with the current toolset.
+2. Use task sub-agents only when needed for context isolation, parallel research, or specialist tool selection.
+3. Sub-agents are read-only and must return compact summaries.
+4. Any write, mutation, or governed action must be performed by you through approval-aware tools.
+5. Keep user-facing output concise, structured, and actionable.
+`, trimmedScene)
 }
 
 func sceneRequiresReadOnlyExecution(scene string) bool {
