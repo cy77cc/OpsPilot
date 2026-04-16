@@ -62,6 +62,12 @@ AI 模块当前不是独立 Demo，而是平台的一等能力，已具备：
 - 通知与终端 WebSocket 连接不再拼接 `token`/`user_id` 查询参数，身份由服务端鉴权上下文绑定。
 - 前端认证态以 `/auth/me` 和内存状态为主（通知上下文不依赖 localStorage token 键），避免 localStorage 长驻凭据扩散风险。
 
+### SSH Host Key Trust
+
+- OpsPilot 默认保持严格的 SSH 主机密钥校验，不会自动接受首次见到或发生轮换的主机指纹。
+- 首次接入、健康检查、凭据更新、终端和文件操作遇到未知或变更指纹时，页面会先要求用户显式确认信任，再重试原始操作。
+- 已确认的主机指纹会同时写入 OpsPilot 的主机信任记录和运行时 `known_hosts` 文件，避免手工维护 `known_hosts`。
+
 ### 后端架构
 
 - 入口：`main.go` -> `internal/cmd` -> `internal/server`
