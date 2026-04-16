@@ -76,6 +76,59 @@ func TestDecodeEventPayload_DelegationNode(t *testing.T) {
 	}
 }
 
+func TestDecodeEventPayload_DelegationNode_RejectsMissingOrBlankRequiredFields(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "missing delegation_id", raw: `{"agent_name":"monitor","status":"returned","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "blank delegation_id", raw: `{"delegation_id":" ","agent_name":"monitor","status":"returned","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "missing agent_name", raw: `{"delegation_id":"d-1","status":"returned","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "blank agent_name", raw: `{"delegation_id":"d-1","agent_name":" ","status":"returned","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "missing status", raw: `{"delegation_id":"d-1","agent_name":"monitor","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "blank status", raw: `{"delegation_id":"d-1","agent_name":"monitor","status":" ","title":"Monitor summary","summary":"p95 increased"}`},
+		{name: "missing title", raw: `{"delegation_id":"d-1","agent_name":"monitor","status":"returned","summary":"p95 increased"}`},
+		{name: "blank title", raw: `{"delegation_id":"d-1","agent_name":"monitor","status":"returned","title":" ","summary":"p95 increased"}`},
+		{name: "missing summary", raw: `{"delegation_id":"d-1","agent_name":"monitor","status":"returned","title":"Monitor summary"}`},
+		{name: "blank summary", raw: `{"delegation_id":"d-1","agent_name":"monitor","status":"returned","title":"Monitor summary","summary":" "}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := UnmarshalEventPayload(EventTypeDelegationNode, tt.raw); err == nil {
+				t.Fatal("expected delegation_node validation error")
+			}
+		})
+	}
+}
+
+func TestDecodeEventPayload_RunState_AcceptsLegacyStatuses(t *testing.T) {
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{name: "running", status: "running"},
+		{name: "resume_failed_retryable", status: "resume_failed_retryable"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := `{"status":"` + tt.status + `","agent":"executor"}`
+			payload, err := UnmarshalEventPayload(EventTypeRunState, raw)
+			if err != nil {
+				t.Fatalf("unmarshal run state: %v", err)
+			}
+			runState, ok := payload.(*RunStatePayload)
+			if !ok {
+				t.Fatalf("unexpected payload type: %#v", payload)
+			}
+			if runState.Status != tt.status || runState.Agent != "executor" {
+				t.Fatalf("unexpected run state payload: %#v", runState)
+			}
+		})
+	}
+}
+
 func TestDecodeEventPayload_RejectsUnknownShape(t *testing.T) {
 	if _, err := UnmarshalEventPayload(EventTypeToolCall, `{"agent":"executor","tool_name":"host_list_inventory"}`); err == nil {
 		t.Fatal("expected invalid tool call payload error")
