@@ -48,6 +48,11 @@ func (s *HostService) Probe(ctx context.Context, userID uint64, req ProbeReq) (*
 	}
 	if err != nil {
 		resp.ErrorCode, resp.Message = mapProbeError(err)
+		if code, message, hostKeyHint, ok := hostKeyTrustHintFromError(req.IP, req.Port, err); ok {
+			resp.ErrorCode = code
+			resp.Message = message
+			resp.HostKey = hostKeyHint
+		}
 	}
 
 	token := uuid.NewString()
@@ -120,6 +125,44 @@ func mapProbeError(err error) (string, string) {
 	default:
 		return "connect_error", err.Error()
 	}
+}
+
+func hostKeyTrustHintFromError(host string, port int, err error) (string, string, *HostKeyTrustHint, bool) {
+	trustErr, ok := sshclient.AsHostKeyTrustError(err)
+	if !ok {
+		return "", "", nil, false
+	}
+
+	var errorCode string
+	switch trustErr.Failure {
+	case sshclient.HostKeyTrustFailureUnknown:
+		errorCode = "ssh_host_key_unknown"
+	case sshclient.HostKeyTrustFailureMismatch:
+		errorCode = "ssh_host_key_mismatch"
+	case sshclient.HostKeyTrustFailureRevoked:
+		errorCode = "ssh_host_key_revoked"
+	default:
+		return "", "", nil, false
+	}
+
+	hintHost := strings.TrimSpace(host)
+	if hintHost == "" {
+		hintHost = strings.TrimSpace(trustErr.Host)
+	}
+	hintPort := port
+	if hintPort <= 0 {
+		hintPort = trustErr.Port
+	}
+	trustedFingerprints := append([]string(nil), trustErr.TrustedFingerprints...)
+	return errorCode, trustErr.Error(), &HostKeyTrustHint{
+		Host:                hintHost,
+		Port:                hintPort,
+		Algorithm:           trustErr.Algorithm,
+		FingerprintSHA256:   trustErr.FingerprintSHA256,
+		PublicKey:           trustErr.PublicKey,
+		KnownHostsPath:      trustErr.KnownHostsPath,
+		TrustedFingerprints: trustedFingerprints,
+	}, true
 }
 
 // loadPrivateKey 加载 SSH 密钥的私钥内容。

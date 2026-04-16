@@ -260,6 +260,8 @@
 - `R-009`：SSH 客户端启用 `known_hosts` 主机密钥校验。
   - 代码：`internal/client/ssh/ssh.go`、`internal/client/ssh/known_hosts.go`。
   - 测试：`internal/client/ssh/ssh_test.go`（`TestNewSSHClient_RejectsUnknownHostKey`）。
+  - 后续证据：主机侧已增加显式主机指纹信任流程，信任结果双写到 OpsPilot 信任记录与运行时 `known_hosts`。
+  - 覆盖范围：主机接入探测、健康检查、凭据更新、SSH 检查、终端、文件浏览/编辑/上传/下载链路。
 - `R-010`：探测 token 消费增加 `RowsAffected == 1` 原子性检查，避免双消费。
   - 代码：`internal/modules/host/logic/host_service.go`（`consumeProbe`）。
   - 测试：`internal/modules/host/logic/host_service_test.go`（`TestConsumeProbe_ConcurrentOnlyOneSucceeds`）。

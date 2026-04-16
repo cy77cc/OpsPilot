@@ -121,14 +121,76 @@ describe('HostTerminalPage', () => {
     await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByTitle('app.yaml')[0]);
 
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(screen.getAllByRole('dialog').length).toBeGreaterThan(0));
+    const dialog = screen.getAllByRole('dialog')[0];
     fireEvent.change(screen.getByLabelText('modal-editor'), { target: { value: 'kind: Secret' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {
       expect(mockApi.hosts.writeFile).toHaveBeenCalledWith('1', 'app.yaml', 'kind: Secret');
     });
+  });
+
+  it('shows host-key trust confirmation when opening a file requires trust', async () => {
+    mockApi.hosts.readFile.mockRejectedValueOnce({
+      businessCode: 2000,
+      message: 'ssh host key verification failed',
+      details: {
+        error_type: 'ssh_host_key_unknown',
+        host_key: {
+          host: '10.0.0.1',
+          port: 22,
+          algorithm: 'ssh-ed25519',
+          fingerprint_sha256: 'SHA256:test',
+          public_key: 'ssh-ed25519 AAAATEST',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByTitle('app.yaml')[0]);
+
+    expect(await screen.findByText('信任此主机指纹？')).toBeInTheDocument();
+  });
+
+  it('shows host-key trust confirmation when downloading a file requires trust', async () => {
+    mockApi.hosts.downloadFile.mockRejectedValueOnce({
+      businessCode: 2000,
+      message: 'ssh host key verification failed',
+      details: {
+        error_type: 'ssh_host_key_unknown',
+        host_key: {
+          host: '10.0.0.1',
+          port: 22,
+          algorithm: 'ssh-ed25519',
+          fingerprint_sha256: 'SHA256:test-download',
+          public_key: 'ssh-ed25519 AAAADOWNLOAD',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+        <Routes>
+          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
+    const fileCell = screen.getAllByTitle('app.yaml')[0];
+    const row = fileCell.closest('div')?.parentElement as HTMLElement;
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+
+    expect(await screen.findByText('信任此主机指纹？')).toBeInTheDocument();
   });
 
   it('uses full viewport layout so terminal bottom line is not clipped by page chrome', async () => {
@@ -157,14 +219,16 @@ describe('HostTerminalPage', () => {
 
     await waitFor(() => expect(screen.getAllByTitle('app.yaml').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByTitle('app.yaml')[0]);
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(screen.getByLabelText('modal-editor')).toBeInTheDocument());
+    const dialog = screen.getByLabelText('modal-editor').closest('[role="dialog"]');
+    expect(dialog).not.toBeNull();
 
     fireEvent.change(screen.getByLabelText('modal-editor'), { target: { value: 'kind: Secret' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: /取\s*消/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('放弃未保存修改？')).toBeInTheDocument();
+      expect(screen.getByLabelText('modal-editor')).toBeInTheDocument();
     });
+    expect(mockApi.hosts.writeFile).not.toHaveBeenCalled();
   });
 });

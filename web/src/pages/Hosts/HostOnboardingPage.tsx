@@ -21,6 +21,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
 import { useAuth } from '../../components/Auth/AuthContext';
+import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
+import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
 
 interface StepOneForm {
   name: string;
@@ -53,6 +55,14 @@ const HostOnboardingPage: React.FC = () => {
   const [keyCreating, setKeyCreating] = useState(false);
   const [form] = Form.useForm<StepOneForm & StepThreeForm>();
   const [keyForm] = Form.useForm<{ name: string; privateKey: string; passphrase?: string }>();
+  const retryOperationRef = React.useRef<() => Promise<void>>(async () => {});
+  const {
+    pendingTrust,
+    setPendingTrust,
+    confirming,
+    runWithTrustRetry,
+    confirmTrustAndRetry,
+  } = useHostKeyTrust('0');
 
   const canForceCreate = user?.username?.toLowerCase() === 'admin';
 
@@ -97,22 +107,30 @@ const HostOnboardingPage: React.FC = () => {
     const values = await form.validateFields(['name', 'ip', 'port', 'authType', 'username', 'password', 'sshKeyId']);
     setLoading(true);
     try {
-      const result = await Api.hosts.probeHost({
-        name: values.name,
-        ip: values.ip,
-        port: values.port,
-        authType: values.authType,
-        username: values.username,
-        password: values.password,
-        sshKeyId: values.sshKeyId,
-      });
-      setStepOneValues(values);
-      setProbeResult(result.data);
-      setCurrentStep(1);
-      if (result.data.reachable) {
-        message.success('探测成功，请确认后入库');
-      } else {
-        message.warning(result.data.message || '探测失败，可修改后重试');
+      const operation = async () => {
+        const result = await Api.hosts.probeHost({
+          name: values.name,
+          ip: values.ip,
+          port: values.port,
+          authType: values.authType,
+          username: values.username,
+          password: values.password,
+          sshKeyId: values.sshKeyId,
+        });
+        setStepOneValues(values);
+        setProbeResult(result.data);
+        setCurrentStep(1);
+        if (result.data.reachable) {
+          message.success('探测成功，请确认后入库');
+        } else {
+          message.warning(result.data.message || '探测失败，可修改后重试');
+        }
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
+    } catch (err) {
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '执行探测失败');
       }
     } finally {
       setLoading(false);
@@ -359,6 +377,25 @@ const HostOnboardingPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <HostKeyTrustModal
+        open={Boolean(pendingTrust)}
+        loading={confirming}
+        mode={pendingTrust?.errorType === 'ssh_host_key_mismatch' ? 'rotate' : 'create'}
+        hostKey={pendingTrust?.hostKey || null}
+        onCancel={() => setPendingTrust(null)}
+        onConfirm={async () => {
+          try {
+            await confirmTrustAndRetry(async () => {
+              await retryOperationRef.current();
+            });
+          } catch (err) {
+            if (!parseHostKeyTrustError(err)) {
+              message.error(err instanceof Error ? err.message : '信任主机指纹失败');
+            }
+          }
+        }}
+      />
     </div>
   );
 };

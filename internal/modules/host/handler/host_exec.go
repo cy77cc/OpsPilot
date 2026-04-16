@@ -53,6 +53,9 @@ func (h *Handler) SSHCheck(c *gin.Context) {
 	}
 	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return
+		}
 		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
 		return
 	}
@@ -107,6 +110,9 @@ func (h *Handler) SSHExec(c *gin.Context) {
 	}
 	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return
+		}
 		httpx.OK(c, gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1})
 		return
 	}
@@ -163,6 +169,10 @@ func (h *Handler) BatchExec(c *gin.Context) {
 		}
 		cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 		if err != nil {
+			if hint := hostKeyTrustHintFromError(err); hint != nil {
+				results[fmt.Sprintf("%d", id)] = hostKeyErrorPayload(err.Error(), hint)
+				continue
+			}
 			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1}
 			continue
 		}

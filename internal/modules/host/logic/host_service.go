@@ -91,16 +91,28 @@ type ProbeFacts struct {
 	DiskGB   int    `json:"disk_gb"`   // 磁盘大小（GB）
 }
 
+// HostKeyTrustHint 主机密钥信任提示信息。
+type HostKeyTrustHint struct {
+	Host                string   `json:"host"`
+	Port                int      `json:"port"`
+	Algorithm           string   `json:"algorithm"`
+	FingerprintSHA256   string   `json:"fingerprint_sha256"`
+	PublicKey           string   `json:"public_key"`
+	KnownHostsPath      string   `json:"known_hosts_path,omitempty"`
+	TrustedFingerprints []string `json:"trusted_fingerprints,omitempty"`
+}
+
 // ProbeResp SSH 探测响应。
 type ProbeResp struct {
-	ProbeToken string     `json:"probe_token"`          // 探测令牌，用于后续创建主机
-	Reachable  bool       `json:"reachable"`            // 是否可达
-	LatencyMS  int64      `json:"latency_ms"`           // 延迟（毫秒）
-	Facts      ProbeFacts `json:"facts"`                // 系统信息
-	Warnings   []string   `json:"warnings"`             // 警告信息
-	ErrorCode  string     `json:"error_code,omitempty"` // 错误码
-	Message    string     `json:"message,omitempty"`    // 错误消息
-	ExpiresAt  time.Time  `json:"expires_at"`           // 令牌过期时间
+	ProbeToken string            `json:"probe_token"`          // 探测令牌，用于后续创建主机
+	Reachable  bool              `json:"reachable"`            // 是否可达
+	LatencyMS  int64             `json:"latency_ms"`           // 延迟（毫秒）
+	Facts      ProbeFacts        `json:"facts"`                // 系统信息
+	Warnings   []string          `json:"warnings"`             // 警告信息
+	ErrorCode  string            `json:"error_code,omitempty"` // 错误码
+	Message    string            `json:"message,omitempty"`    // 错误消息
+	HostKey    *HostKeyTrustHint `json:"host_key,omitempty"`   // 主机密钥信任提示
+	ExpiresAt  time.Time         `json:"expires_at"`           // 令牌过期时间
 }
 
 // CreateReq 创建主机请求参数。

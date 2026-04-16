@@ -54,6 +54,8 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/:id", h.Get)
 		g.PUT("/:id", h.Update)
 		g.PUT("/:id/credentials", h.UpdateCredentials)
+		g.POST("/:id/trust-host-key", h.TrustHostKey)
+		g.GET("/:id/trusted-host-keys", h.ListTrustedHostKeys)
 		g.DELETE("/:id", h.Delete)
 		g.POST("/:id/actions", h.Action)
 

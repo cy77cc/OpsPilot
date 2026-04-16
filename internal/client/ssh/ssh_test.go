@@ -45,6 +45,28 @@ func TestNewSSHClient_RejectsUnknownHostKey(t *testing.T) {
 	}
 }
 
+func TestNewSSHClient_UnknownHostKeyErrorIncludesActionableDetails(t *testing.T) {
+	host, port, shutdown := startTestPasswordSSHServer(t, "tester", "secret")
+	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty known_hosts file: %v", err)
+	}
+	t.Setenv(knownHostsPathEnvKey, knownHostsPath)
+
+	_, err := NewSSHClient("tester", "secret", host, port, "", "")
+	if err == nil {
+		t.Fatal("expected unknown host key rejection")
+	}
+	if !strings.Contains(err.Error(), "fingerprint ") {
+		t.Fatalf("expected fingerprint detail, got %v", err)
+	}
+	if !strings.Contains(err.Error(), knownHostsPath) {
+		t.Fatalf("expected known_hosts path detail, got %v", err)
+	}
+}
+
 func startTestPasswordSSHServer(t *testing.T, username, password string) (string, int, func()) {
 	t.Helper()
 

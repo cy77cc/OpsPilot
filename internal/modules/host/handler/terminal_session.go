@@ -149,6 +149,9 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 	}
 	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
 	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return
+		}
 		httpx.Fail(c, xcode.ExternalAPIFail, err.Error())
 		return
 	}

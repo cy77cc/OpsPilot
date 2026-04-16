@@ -9,12 +9,14 @@ import {
 export class ApiRequestError extends Error {
   statusCode?: number;
   businessCode?: number;
+  details?: unknown;
 
-  constructor(message: string, statusCode?: number, businessCode?: number) {
+  constructor(message: string, statusCode?: number, businessCode?: number, details?: unknown) {
     super(message);
     this.name = 'ApiRequestError';
     this.statusCode = statusCode;
     this.businessCode = businessCode;
+    this.details = details;
   }
 }
 
@@ -89,7 +91,7 @@ class ApiService {
             return this.tryRefreshAndRetry(originalConfig);
           }
           if (payload.code !== 1000 && payload.code !== 200) {
-            return Promise.reject(new ApiRequestError(payload.msg || payload.message || '请求失败', response.status, payload.code));
+            return Promise.reject(new ApiRequestError(payload.msg || payload.message || '请求失败', response.status, payload.code, payload.data));
           }
           response.data = {
             success: true,
@@ -116,7 +118,7 @@ class ApiService {
         }
         const message = error.response?.data?.message || error.response?.data?.error?.message || error.message || '网络错误';
         const businessCode = typeof error.response?.data?.code === 'number' ? error.response.data.code : undefined;
-        return Promise.reject(new ApiRequestError(message, error.response?.status, businessCode));
+        return Promise.reject(new ApiRequestError(message, error.response?.status, businessCode, error.response?.data?.data));
       }
     );
   }

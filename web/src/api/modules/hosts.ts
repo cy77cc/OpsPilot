@@ -162,7 +162,24 @@ export interface HostProbeResult {
   warnings: string[];
   errorCode?: string;
   message?: string;
+  hostKey?: HostKeyTrustPayload;
   expiresAt: string;
+}
+
+export interface HostKeyTrustPayload {
+  host: string;
+  port: number;
+  algorithm: string;
+  fingerprintSha256: string;
+  publicKey: string;
+  knownHostsPath?: string;
+  trustedFingerprints?: string[];
+}
+
+export interface HostKeyTrustErrorData {
+  errorType: 'ssh_host_key_unknown' | 'ssh_host_key_mismatch' | 'ssh_host_key_revoked';
+  hostKey: HostKeyTrustPayload;
+  probeToken?: string;
 }
 
 export interface SSHKeyItem {
@@ -248,6 +265,50 @@ const parseLabels = (labels: any): string[] => {
     }
   }
   return raw.split(',').map((x) => x.trim()).filter(Boolean);
+};
+
+const toHostKeyTrustPayload = (raw: any): HostKeyTrustPayload => ({
+  host: String(raw?.host || '').trim(),
+  port: Number(raw?.port || 0),
+  algorithm: String(raw?.algorithm || '').trim(),
+  fingerprintSha256: String(raw?.fingerprint_sha256 || raw?.fingerprintSha256 || '').trim(),
+  publicKey: String(raw?.public_key || raw?.publicKey || '').trim(),
+  knownHostsPath: raw?.known_hosts_path || raw?.knownHostsPath || undefined,
+  trustedFingerprints: Array.isArray(raw?.trusted_fingerprints)
+    ? raw.trusted_fingerprints.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : Array.isArray(raw?.trustedFingerprints)
+      ? raw.trustedFingerprints.map((x: unknown) => String(x).trim()).filter(Boolean)
+      : undefined,
+});
+
+const inferHostKeyErrorType = (rawType: unknown, message: unknown): HostKeyTrustErrorData['errorType'] => {
+  const normalized = String(rawType || '').trim();
+  if (normalized === 'ssh_host_key_unknown' || normalized === 'ssh_host_key_mismatch' || normalized === 'ssh_host_key_revoked') {
+    return normalized;
+  }
+  const lowered = String(message || '').toLowerCase();
+  if (lowered.includes('revoked')) {
+    return 'ssh_host_key_revoked';
+  }
+  if (lowered.includes('mismatch')) {
+    return 'ssh_host_key_mismatch';
+  }
+  return 'ssh_host_key_unknown';
+};
+
+const throwHostKeyTrustRequired = (raw: any, fallbackType?: HostKeyTrustErrorData['errorType']) => {
+  const hostKeyRaw = raw?.host_key || raw?.hostKey;
+  if (!hostKeyRaw) {
+    return;
+  }
+  const error: any = new Error(raw?.message || raw?.error_message || 'ssh host key verification failed');
+  error.businessCode = 2000;
+  error.details = {
+    error_type: inferHostKeyErrorType(raw?.error_type || raw?.errorType || fallbackType, raw?.message || raw?.error_message),
+    host_key: hostKeyRaw,
+    probe_token: raw?.probe_token || raw?.probeToken,
+  };
+  throw error;
 };
 
 export const hostApi = {
@@ -362,6 +423,7 @@ export const hostApi = {
       ssh_key_id: data.sshKeyId,
     });
     const d = res.data || {};
+    throwHostKeyTrustRequired(d);
     return {
       ...res,
       data: {
@@ -380,18 +442,33 @@ export const hostApi = {
         warnings: d.warnings || [],
         errorCode: d.error_code,
         message: d.message,
+        hostKey: d.host_key ? toHostKeyTrustPayload(d.host_key) : undefined,
         expiresAt: d.expires_at,
       },
     };
   },
 
   async updateCredentials(id: string, data: { authType: 'password' | 'key'; username: string; password?: string; sshKeyId?: number; port?: number }): Promise<ApiResponse<any>> {
-    return apiService.put(`/hosts/${id}/credentials`, {
+    const res = await apiService.put<any>(`/hosts/${id}/credentials`, {
       auth_type: data.authType,
       username: data.username,
       password: data.password,
       ssh_key_id: data.sshKeyId,
       port: data.port || 22,
+    });
+    throwHostKeyTrustRequired(res.data);
+    return res;
+  },
+
+  async trustHostKey(id: string, payload: HostKeyTrustPayload & { replaceExisting?: boolean; probeToken?: string }): Promise<ApiResponse<any>> {
+    return apiService.post(`/hosts/${id}/trust-host-key`, {
+      host: payload.host,
+      port: payload.port,
+      algorithm: payload.algorithm,
+      fingerprint_sha256: payload.fingerprintSha256,
+      public_key: payload.publicKey,
+      probe_token: payload.probeToken,
+      replace_existing: !!payload.replaceExisting,
     });
   },
 
@@ -460,6 +537,7 @@ export const hostApi = {
   async runHealthCheck(id: string, deep?: boolean): Promise<ApiResponse<HostHealthSnapshot>> {
     const response = await apiService.post<any>(`/hosts/${id}/health/check`, { deep: !!deep });
     const d = response.data || {};
+    throwHostKeyTrustRequired(d);
     return {
       ...response,
       data: {
@@ -483,7 +561,9 @@ export const hostApi = {
   },
 
   async sshCheck(id: string): Promise<ApiResponse<{ reachable: boolean; message?: string }>> {
-    return apiService.post(`/hosts/${id}/ssh/check`);
+    const res = await apiService.post<any>(`/hosts/${id}/ssh/check`);
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async sshExec(id: string, command: string): Promise<ApiResponse<SSHExecResult>> {
@@ -491,7 +571,9 @@ export const hostApi = {
   },
 
   async createTerminalSession(id: string): Promise<ApiResponse<HostTerminalSession>> {
-    return apiService.post(`/hosts/${id}/terminal/sessions`);
+    const res = await apiService.post<any>(`/hosts/${id}/terminal/sessions`);
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async getTerminalSession(id: string, sessionId: string): Promise<ApiResponse<any>> {
@@ -503,24 +585,32 @@ export const hostApi = {
   },
 
   async listFiles(id: string, dirPath: string): Promise<ApiResponse<{ path: string; list: HostFileItem[]; total: number }>> {
-    return apiService.get(`/hosts/${id}/files`, { params: { path: dirPath } });
+    const res = await apiService.get<any>(`/hosts/${id}/files`, { params: { path: dirPath } });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async readFile(id: string, filePath: string): Promise<ApiResponse<{ path: string; content: string }>> {
-    return apiService.get(`/hosts/${id}/files/content`, { params: { path: filePath } });
+    const res = await apiService.get<any>(`/hosts/${id}/files/content`, { params: { path: filePath } });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async writeFile(id: string, filePath: string, content: string): Promise<ApiResponse<{ path: string; size: number }>> {
-    return apiService.put(`/hosts/${id}/files/content`, { path: filePath, content });
+    const res = await apiService.put<any>(`/hosts/${id}/files/content`, { path: filePath, content });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async uploadFile(id: string, dirPath: string, file: File): Promise<ApiResponse<{ path: string }>> {
     const form = new FormData();
     form.append('file', file);
-    return apiService.post(`/hosts/${id}/files/upload`, form, {
+    const res = await apiService.post<any>(`/hosts/${id}/files/upload`, form, {
       params: { path: dirPath },
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async downloadFile(id: string, filePath: string): Promise<Blob> {
@@ -529,6 +619,14 @@ export const hostApi = {
     const resp = await fetch(`${base}/hosts/${id}/files/download?path=${encodeURIComponent(filePath)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
+    const contentType = String(resp.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      const payload = await resp.json().catch(() => null);
+      if (payload?.data) {
+        throwHostKeyTrustRequired(payload.data);
+      }
+      throw new Error(payload?.msg || payload?.message || `下载失败: ${resp.status}`);
+    }
     if (!resp.ok) {
       throw new Error(`下载失败: ${resp.status}`);
     }
@@ -536,15 +634,21 @@ export const hostApi = {
   },
 
   async mkdir(id: string, dirPath: string): Promise<ApiResponse<{ path: string }>> {
-    return apiService.post(`/hosts/${id}/files/mkdir`, { path: dirPath });
+    const res = await apiService.post<any>(`/hosts/${id}/files/mkdir`, { path: dirPath });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async renamePath(id: string, oldPath: string, newPath: string): Promise<ApiResponse<{ old_path: string; new_path: string }>> {
-    return apiService.post(`/hosts/${id}/files/rename`, { old_path: oldPath, new_path: newPath });
+    const res = await apiService.post<any>(`/hosts/${id}/files/rename`, { old_path: oldPath, new_path: newPath });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async deletePath(id: string, targetPath: string): Promise<ApiResponse<{ path: string }>> {
-    return apiService.delete(`/hosts/${id}/files`, { params: { path: targetPath } });
+    const res = await apiService.delete<any>(`/hosts/${id}/files`, { params: { path: targetPath } });
+    throwHostKeyTrustRequired(res.data);
+    return res;
   },
 
   async batchExec(hostIds: string[], command: string): Promise<ApiResponse<Record<string, SSHExecResult>>> {

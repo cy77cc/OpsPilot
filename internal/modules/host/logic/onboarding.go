@@ -9,6 +9,7 @@ import (
 	"time"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	"gorm.io/gorm"
 )
 
 // CreateWithProbe 通过探测令牌创建主机。
@@ -76,7 +77,12 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 		node.ParentHostID = nodeIDPtr(*req.ParentHostID)
 	}
 
-	if err := s.svcCtx.DB.WithContext(ctx).Create(node).Error; err != nil {
+	if err := s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(node).Error; err != nil {
+			return err
+		}
+		return reassignOnboardingTrustedHostKeys(tx, uint64(node.ID), userID, probe.IP, probe.Port)
+	}); err != nil {
 		return nil, err
 	}
 	return node, nil

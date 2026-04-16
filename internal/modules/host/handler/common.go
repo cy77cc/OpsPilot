@@ -12,7 +12,9 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
+	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
@@ -62,12 +64,49 @@ func (h *Handler) StartHealthCollector() {
 //   - id: 解析后的主机 ID
 //   - ok: 解析是否成功，失败时已返回错误响应
 func parseID(c *gin.Context) (uint64, bool) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	return parseUintParam(c, "id")
+}
+
+func parseUintParam(c *gin.Context, param string) (uint64, bool) {
+	id, err := strconv.ParseUint(c.Param(param), 10, 64)
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return 0, false
 	}
 	return id, true
+}
+
+func hostKeyErrorPayload(message string, hostKey any) gin.H {
+	return gin.H{
+		"reachable": false,
+		"message":   strings.TrimSpace(message),
+		"host_key":  hostKey,
+	}
+}
+
+func hostKeyTrustHintFromError(err error) *hostlogic.HostKeyTrustHint {
+	trustErr, ok := sshclient.AsHostKeyTrustError(err)
+	if !ok {
+		return nil
+	}
+	return &hostlogic.HostKeyTrustHint{
+		Host:                strings.TrimSpace(trustErr.Host),
+		Port:                trustErr.Port,
+		Algorithm:           strings.TrimSpace(trustErr.Algorithm),
+		FingerprintSHA256:   strings.TrimSpace(trustErr.FingerprintSHA256),
+		PublicKey:           strings.TrimSpace(trustErr.PublicKey),
+		KnownHostsPath:      strings.TrimSpace(trustErr.KnownHostsPath),
+		TrustedFingerprints: append([]string(nil), trustErr.TrustedFingerprints...),
+	}
+}
+
+func writeHostKeyPayloadIfNeeded(c *gin.Context, err error) bool {
+	hostKey := hostKeyTrustHintFromError(err)
+	if hostKey == nil {
+		return false
+	}
+	httpx.OK(c, hostKeyErrorPayload(err.Error(), hostKey))
+	return true
 }
 
 // getUID 从 Gin 上下文中获取当前用户 ID。

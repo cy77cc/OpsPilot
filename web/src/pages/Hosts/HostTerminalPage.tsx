@@ -8,7 +8,9 @@ import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { Api } from '../../api';
 import type { Host, HostFileItem } from '../../api/modules/hosts';
+import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
 import { useStableFetch } from '../../hooks';
+import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 
 const { Text } = Typography;
 const TERMINAL_INPUT_BATCH_MS = 16;
@@ -44,6 +46,14 @@ const HostTerminalPage: React.FC = () => {
   const [newDirName, setNewDirName] = React.useState('');
   const [pathInput, setPathInput] = React.useState('.');
   const [filePaneWidth, setFilePaneWidth] = React.useState(0);
+  const retryOperationRef = React.useRef<() => Promise<void>>(async () => {});
+  const {
+    pendingTrust,
+    setPendingTrust,
+    confirming,
+    runWithTrustRetry,
+    confirmTrustAndRetry,
+  } = useHostKeyTrust(id);
 
   const fileColumnMode = React.useMemo<'full' | 'compact' | 'minimal'>(() => {
     if (filePaneWidth > 0 && filePaneWidth < 420) return 'minimal';
@@ -209,20 +219,25 @@ const HostTerminalPage: React.FC = () => {
     if (!id || unmountedRef.current) return;
     setFilesLoading(true);
     try {
-      const res = await Api.hosts.listFiles(id, dirPath);
+      retryOperationRef.current = async () => {
+        await refreshFiles(dirPath);
+      };
+      const res = await runWithTrustRetry(() => Api.hosts.listFiles(id, dirPath));
       if (unmountedRef.current) return;
       setFiles(res.data.list || []);
       setCwd(res.data.path || dirPath);
       setPathInput(res.data.path || dirPath);
     } catch (err) {
       if (unmountedRef.current) return;
-      message.error(err instanceof Error ? err.message : '加载文件列表失败');
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '加载文件列表失败');
+      }
     } finally {
       if (!unmountedRef.current) {
         setFilesLoading(false);
       }
     }
-  }, [id]);
+  }, [id, runWithTrustRetry]);
 
   // Store callbacks in refs to avoid useEffect dependency issues
   const safeFitRef = React.useRef(safeFit);
@@ -248,10 +263,13 @@ const HostTerminalPage: React.FC = () => {
       }
       setStatus('connecting');
       try {
-        const [hostResp, sessResp] = await Promise.all([
+        retryOperationRef.current = async () => {
+          await connect();
+        };
+        const [hostResp, sessResp] = await runWithTrustRetry(() => Promise.all([
           Api.hosts.getHostDetail(id),
           Api.hosts.createTerminalSession(id),
-        ]);
+        ]));
 
         if (cancelled || unmountedRef.current) return;
 
@@ -319,6 +337,10 @@ const HostTerminalPage: React.FC = () => {
         await refreshFilesRef.current('.');
       } catch (err) {
         if (cancelled || unmountedRef.current) return;
+        if (parseHostKeyTrustError(err)) {
+          connectingRef.current = false;
+          return;
+        }
         setStatus('error');
         message.error(err instanceof Error ? err.message : '终端连接失败');
         connectingRef.current = false;
@@ -336,7 +358,7 @@ const HostTerminalPage: React.FC = () => {
       // Reset connecting flag so reconnection can happen
       connectingRef.current = false;
     };
-  }, [clearPendingTerminalInput, id, queueTerminalInput]); // Only depend on id - stable!
+  }, [clearPendingTerminalInput, id, queueTerminalInput, runWithTrustRetry]); // Only depend on id - stable!
 
   const connect = React.useCallback(async () => {
     // Manual reconnect - reset the flag first
@@ -346,10 +368,13 @@ const HostTerminalPage: React.FC = () => {
     connectingRef.current = true;
     setStatus('connecting');
     try {
-      const [hostResp, sessResp] = await Promise.all([
+      retryOperationRef.current = async () => {
+        await connect();
+      };
+      const [hostResp, sessResp] = await runWithTrustRetry(() => Promise.all([
         Api.hosts.getHostDetail(id),
         Api.hosts.createTerminalSession(id),
-      ]);
+      ]));
       if (unmountedRef.current) return;
       setHost(hostResp.data);
       setSessionID(sessResp.data.session_id);
@@ -415,11 +440,15 @@ const HostTerminalPage: React.FC = () => {
       await refreshFilesRef.current('.');
     } catch (err) {
       if (unmountedRef.current) return;
+      if (parseHostKeyTrustError(err)) {
+        connectingRef.current = false;
+        return;
+      }
       setStatus('error');
       message.error(err instanceof Error ? err.message : '终端连接失败');
       connectingRef.current = false;
     }
-  }, [clearPendingTerminalInput, id, queueTerminalInput]);
+  }, [clearPendingTerminalInput, id, queueTerminalInput, runWithTrustRetry]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -453,13 +482,19 @@ const HostTerminalPage: React.FC = () => {
       return;
     }
     try {
-      const res = await Api.hosts.readFile(id, item.path);
-      setActiveFilePath(item.path);
-      setModalContent(res.data.content || '');
-      setModalDirty(false);
-      setFileModalOpen(true);
+      const operation = async () => {
+        const res = await Api.hosts.readFile(id, item.path);
+        setActiveFilePath(item.path);
+        setModalContent(res.data.content || '');
+        setModalDirty(false);
+        setFileModalOpen(true);
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '读取文件失败');
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '读取文件失败');
+      }
     }
   };
 
@@ -467,12 +502,18 @@ const HostTerminalPage: React.FC = () => {
     if (!id || !activeFilePath) return;
     setModalSaving(true);
     try {
-      await Api.hosts.writeFile(id, activeFilePath, modalContent);
-      setModalDirty(false);
-      message.success('文件已保存');
-      await refreshFiles(cwd);
+      const operation = async () => {
+        await Api.hosts.writeFile(id, activeFilePath, modalContent);
+        setModalDirty(false);
+        message.success('文件已保存');
+        await refreshFiles(cwd);
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '保存失败');
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '保存失败');
+      }
     } finally {
       setModalSaving(false);
     }
@@ -481,16 +522,22 @@ const HostTerminalPage: React.FC = () => {
   const handleDeletePath = async (item: HostFileItem) => {
     if (!id) return;
     try {
-      await Api.hosts.deletePath(id, item.path);
-      if (item.path === activeFilePath) {
-        setActiveFilePath('');
-        setModalContent('');
-        setModalDirty(false);
-        setFileModalOpen(false);
-      }
-      await refreshFiles(cwd);
+      const operation = async () => {
+        await Api.hosts.deletePath(id, item.path);
+        if (item.path === activeFilePath) {
+          setActiveFilePath('');
+          setModalContent('');
+          setModalDirty(false);
+          setFileModalOpen(false);
+        }
+        await refreshFiles(cwd);
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败');
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '删除失败');
+      }
     }
   };
 
@@ -502,21 +549,41 @@ const HostTerminalPage: React.FC = () => {
       content: <Input defaultValue={item.name} onChange={(e) => { nextName = e.target.value; }} />,
       onOk: async () => {
         const parent = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '.';
-        await Api.hosts.renamePath(id, item.path, `${parent}/${nextName}`);
-        await refreshFiles(cwd);
+        const operation = async () => {
+          await Api.hosts.renamePath(id, item.path, `${parent}/${nextName}`);
+          await refreshFiles(cwd);
+        };
+        retryOperationRef.current = operation;
+        try {
+          await runWithTrustRetry(operation);
+        } catch (err) {
+          if (!parseHostKeyTrustError(err)) {
+            message.error(err instanceof Error ? err.message : '重命名失败');
+          }
+        }
       },
     });
   };
 
   const downloadFile = async (item: HostFileItem) => {
     if (!id || item.is_dir || typeof document === 'undefined') return;
-    const blob = await Api.hosts.downloadFile(id, item.path);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = item.name;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const operation = async () => {
+        const blob = await Api.hosts.downloadFile(id, item.path);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+      retryOperationRef.current = operation;
+      await runWithTrustRetry(operation);
+    } catch (err) {
+      if (!parseHostKeyTrustError(err)) {
+        message.error(err instanceof Error ? err.message : '下载失败');
+      }
+    }
   };
 
   const toParentPath = React.useCallback((path: string) => {
@@ -609,9 +676,20 @@ const HostTerminalPage: React.FC = () => {
                       showUploadList={false}
                       customRequest={async (opt) => {
                         const file = opt.file as File;
-                        await Api.hosts.uploadFile(id, cwd, file);
-                        opt.onSuccess?.({}, new XMLHttpRequest());
-                        await refreshFiles(cwd);
+                        const operation = async () => {
+                          await Api.hosts.uploadFile(id, cwd, file);
+                          opt.onSuccess?.({}, new XMLHttpRequest());
+                          await refreshFiles(cwd);
+                        };
+                        retryOperationRef.current = operation;
+                        try {
+                          await runWithTrustRetry(operation);
+                        } catch (err) {
+                          if (!parseHostKeyTrustError(err)) {
+                            message.error(err instanceof Error ? err.message : '上传失败');
+                            opt.onError?.(err as Error);
+                          }
+                        }
                       }}
                     >
                       <Button size="small" icon={<UploadOutlined />} />
@@ -770,10 +848,20 @@ const HostTerminalPage: React.FC = () => {
         title="新建目录"
         onOk={async () => {
           if (!newDirName.trim()) return;
-          await Api.hosts.mkdir(id, `${cwd}/${newDirName.trim()}`.replace('//', '/'));
-          setNewDirOpen(false);
-          setNewDirName('');
-          await refreshFiles(cwd);
+          const operation = async () => {
+            await Api.hosts.mkdir(id, `${cwd}/${newDirName.trim()}`.replace('//', '/'));
+            setNewDirOpen(false);
+            setNewDirName('');
+            await refreshFiles(cwd);
+          };
+          retryOperationRef.current = operation;
+          try {
+            await runWithTrustRetry(operation);
+          } catch (err) {
+            if (!parseHostKeyTrustError(err)) {
+              message.error(err instanceof Error ? err.message : '创建目录失败');
+            }
+          }
         }}
         onCancel={() => setNewDirOpen(false)}
       >
@@ -784,6 +872,25 @@ const HostTerminalPage: React.FC = () => {
           onChange={(e) => setNewDirName(e.target.value)}
         />
       </Modal>
+
+      <HostKeyTrustModal
+        open={Boolean(pendingTrust)}
+        loading={confirming}
+        mode={pendingTrust?.errorType === 'ssh_host_key_mismatch' ? 'rotate' : 'create'}
+        hostKey={pendingTrust?.hostKey || null}
+        onCancel={() => setPendingTrust(null)}
+        onConfirm={async () => {
+          try {
+            await confirmTrustAndRetry(async () => {
+              await retryOperationRef.current();
+            });
+          } catch (err) {
+            if (!parseHostKeyTrustError(err)) {
+              message.error(err instanceof Error ? err.message : '信任主机指纹失败');
+            }
+          }
+        }}
+      />
     </div>
   );
 };
