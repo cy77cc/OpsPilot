@@ -431,7 +431,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	// 查询最近的 AI 会话
 	sessions := make([]aimodel.AIChatSession, 0, 5)
 	if err := l.svcCtx.DB.WithContext(ctx).
-		Order("created_at DESC").
+		Order("updated_at DESC").
 		Limit(5).
 		Find(&sessions).Error; err != nil {
 		return out, err
