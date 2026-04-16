@@ -66,7 +66,7 @@ func projectNormalizedEvent(event NormalizedEvent, state *ProjectionState) []Pub
 				"intent": mapAgentNameToIntentType(to),
 			},
 		}}
-		if isDelegationTarget(to) {
+		if IsDelegationHandoff(from, to, mapAgentNameToIntentType(to)) {
 			applyPersistedRunState(state, string(RunStateDelegating))
 			projected = append([]PublicStreamEvent{
 				newRunStatePublicEvent(string(RunStateDelegating), "supervisor"),
@@ -196,19 +196,6 @@ func applyPersistedRunState(state *ProjectionState, status string) {
 		}
 	default:
 		state.RunPhase = strings.TrimSpace(status)
-	}
-}
-
-func isDelegationTarget(target string) bool {
-	trimmed := strings.TrimSpace(target)
-	if trimmed == "" {
-		return false
-	}
-	switch strings.ToLower(trimmed) {
-	case "executor", "supervisor":
-		return false
-	default:
-		return true
 	}
 }
 

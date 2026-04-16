@@ -676,6 +676,125 @@ func TestChat_EmitsDelegationRunStatesAndNode(t *testing.T) {
 	}
 }
 
+func TestChat_NonDelegationHandoffDoesNotEmitDelegationArtifacts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := newAIHandlerTestHarness(db)
+	h.logic.AIRouter = &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{
+				AgentName: "supervisor",
+				Action:    adk.NewTransferToAgentAction("diagnosis"),
+			},
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(schema.AssistantMessage("diagnosis response", nil), nil, schema.Assistant, "")
+				event.AgentName = "diagnosis"
+				return event
+			}(),
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(206))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"analyze this issue"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+
+	for _, event := range events {
+		if event.Event == "delegation_node" {
+			t.Fatalf("did not expect delegation_node for non-delegation handoff, got %#v", event)
+		}
+		if event.Event != "run_state" {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected run_state payload map, got %T", event.Data)
+		}
+		status, _ := data["status"].(string)
+		if status == "delegating" || status == "waiting_subagent" {
+			t.Fatalf("unexpected delegation run_state for non-delegation handoff: %#v", data)
+		}
+	}
+}
+
+func TestChat_MultiDelegationWindowsEmitAttributedNodes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newAIHandlerTestDB(t)
+	h := newAIHandlerTestHarness(db)
+	h.logic.AIRouter = &scriptedAgent{
+		runEvents: []*adk.AgentEvent{
+			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("monitor")},
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(schema.AssistantMessage("monitor summary A", nil), nil, schema.Assistant, "")
+				event.AgentName = "monitor"
+				return event
+			}(),
+			{AgentName: "supervisor", Action: adk.NewTransferToAgentAction("host")},
+			func() *adk.AgentEvent {
+				event := adk.EventFromMessage(schema.AssistantMessage("host summary B", nil), nil, schema.Assistant, "")
+				event.AgentName = "host"
+				return event
+			}(),
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(207))
+	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"run multi-agent checks"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Chat(c)
+
+	events := decodeSSEEvents(t, recorder.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events to be emitted")
+	}
+
+	nodesByAgent := map[string]map[string]any{}
+	for _, event := range events {
+		if event.Event != "delegation_node" {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected delegation_node payload map, got %T", event.Data)
+		}
+		agent, _ := data["agent_name"].(string)
+		nodesByAgent[agent] = data
+	}
+
+	if len(nodesByAgent) != 2 {
+		t.Fatalf("expected 2 delegation nodes, got nodes=%#v events=%#v", nodesByAgent, events)
+	}
+	monitor := nodesByAgent["monitor"]
+	if monitor == nil {
+		t.Fatalf("missing monitor delegation node: %#v", nodesByAgent)
+	}
+	host := nodesByAgent["host"]
+	if host == nil {
+		t.Fatalf("missing host delegation node: %#v", nodesByAgent)
+	}
+	monitorSummary, _ := monitor["summary"].(string)
+	hostSummary, _ := host["summary"].(string)
+	if !strings.Contains(monitorSummary, "monitor summary A") || strings.Contains(monitorSummary, "host summary B") {
+		t.Fatalf("unexpected monitor summary attribution: %#v", monitor)
+	}
+	if !strings.Contains(hostSummary, "host summary B") || strings.Contains(hostSummary, "monitor summary A") {
+		t.Fatalf("unexpected host summary attribution: %#v", host)
+	}
+}
+
 func TestChatHandler_EmitsSSEErrorInsteadOfJSONEnvelopeOnLateFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

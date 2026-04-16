@@ -450,51 +450,162 @@ func TruncateString(s string, maxLen int) string {
 
 type EventEmitter func(event string, data any)
 
+type delegationWindow struct {
+	DelegationID string
+	AgentName    string
+	Intent       string
+	Summary      string
+}
+
 type delegationStreamState struct {
-	active       bool
-	delegationID string
-	agentName    string
-	intent       string
+	active    *delegationWindow
+	completed []delegationWindow
 }
 
-func (s *delegationStreamState) expand(_ string, events []airuntime.PublicStreamEvent) []airuntime.PublicStreamEvent {
-	if len(events) == 0 {
-		return events
-	}
-	expanded := make([]airuntime.PublicStreamEvent, 0, len(events))
+func (s *delegationStreamState) observe(events []airuntime.PublicStreamEvent) {
 	for _, projected := range events {
-		if projected.Event == "agent_handoff" {
+		switch projected.Event {
+		case "agent_handoff":
 			data, _ := projected.Data.(map[string]any)
-			target := strings.TrimSpace(stream.StringValue(data, "to"))
-			if isDelegationTarget(target) {
-				if !s.active {
-					s.active = true
-					s.delegationID = uuid.NewString()
-				}
-				if s.agentName == "" {
-					s.agentName = target
-				}
-				if s.intent == "" {
-					s.intent = strings.TrimSpace(stream.StringValue(data, "intent"))
-				}
-			}
+			s.observeHandoff(data)
+		case "delta":
+			data, _ := projected.Data.(map[string]any)
+			s.observeDelta(data)
 		}
-		expanded = append(expanded, projected)
 	}
-	return expanded
 }
 
-func isDelegationTarget(target string) bool {
-	trimmed := strings.TrimSpace(target)
-	if trimmed == "" {
-		return false
+func (s *delegationStreamState) observeHandoff(data map[string]any) {
+	if data == nil {
+		return
 	}
-	switch strings.ToLower(trimmed) {
-	case "executor", "supervisor":
-		return false
-	default:
+	from := strings.TrimSpace(stream.StringValue(data, "from"))
+	to := strings.TrimSpace(stream.StringValue(data, "to"))
+	intent := strings.TrimSpace(stream.StringValue(data, "intent"))
+
+	if s.active != nil && (sameAgentIdentity(from, s.active.AgentName) || isDelegationReturnTarget(to)) {
+		s.closeActiveWindow()
+	}
+
+	if !airuntime.IsDelegationHandoff(from, to, intent) {
+		return
+	}
+	s.closeActiveWindow()
+	s.active = &delegationWindow{
+		DelegationID: uuid.NewString(),
+		AgentName:    to,
+		Intent:       intent,
+	}
+}
+
+func (s *delegationStreamState) observeDelta(data map[string]any) {
+	if data == nil || s.active == nil {
+		return
+	}
+	content := stream.StringValue(data, "content")
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	s.active.Summary += content
+}
+
+func (s *delegationStreamState) windowsForEmit() []delegationWindow {
+	if s == nil {
+		return nil
+	}
+	if s.active != nil {
+		s.closeActiveWindow()
+	}
+	windows := s.completed
+	s.completed = nil
+	return windows
+}
+
+func (s *delegationStreamState) closeActiveWindow() {
+	if s == nil || s.active == nil {
+		return
+	}
+	window := *s.active
+	s.completed = append(s.completed, window)
+	s.active = nil
+}
+
+func sameAgentIdentity(left, right string) bool {
+	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
+}
+
+func isDelegationReturnTarget(target string) bool {
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case "supervisor", "executor":
 		return true
+	default:
+		return false
 	}
+}
+
+func compactDelegationSummary(summary string) string {
+	return strings.TrimSpace(summary)
+}
+
+func normalizeDelegationAgent(agent string) string {
+	trimmed := strings.TrimSpace(agent)
+	if trimmed == "" {
+		return "specialist"
+	}
+	return trimmed
+}
+
+func buildDelegationNodeTitle(agent string) string {
+	trimmed := strings.TrimSpace(agent)
+	if trimmed == "" {
+		return "Delegation summary"
+	}
+	return fmt.Sprintf("%s summary", trimmed)
+}
+
+func shouldEmitDelegationWindow(window delegationWindow) bool {
+	if strings.TrimSpace(window.DelegationID) == "" {
+		return false
+	}
+	if strings.TrimSpace(window.AgentName) == "" {
+		return false
+	}
+	if strings.TrimSpace(window.Summary) == "" {
+		return false
+	}
+	return true
+}
+
+func buildDelegationPayload(window delegationWindow, runRiskLevel string) map[string]any {
+	payload := map[string]any{
+		"delegation_id": strings.TrimSpace(window.DelegationID),
+		"agent_name":    normalizeDelegationAgent(window.AgentName),
+		"status":        "returned",
+		"title":         buildDelegationNodeTitle(window.AgentName),
+		"summary":       compactDelegationSummary(window.Summary),
+	}
+	if intent := strings.TrimSpace(window.Intent); intent != "" {
+		payload["intent"] = intent
+	}
+	if risk := strings.TrimSpace(runRiskLevel); risk != "" {
+		payload["risk_level"] = risk
+	}
+	return payload
+}
+
+func emitDelegationWindows(ctx context.Context, l *Logic, shell ChatShell, state *delegationStreamState, seq *int, emit EventEmitter) error {
+	for _, window := range state.windowsForEmit() {
+		if !shouldEmitDelegationWindow(window) {
+			continue
+		}
+		payload := buildDelegationPayload(window, shell.Run.RiskLevel)
+		eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, "delegation_node", payload)
+		if err != nil {
+			return err
+		}
+		emit("delegation_node", withEventID(payload, eid))
+	}
+	return nil
 }
 
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
@@ -549,8 +660,8 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 		Projector: projector,
 		Emit:      emit,
 		ConsumeProjected: func(_ stream.IteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
-			expanded := delegationState.expand(shell.Run.ID, events)
-			_, consumeErr := ConsumeProjectedEvents(ctx, l, shell.Run.ID, shell.SessionID, &seq, expanded, emit)
+			delegationState.observe(events)
+			_, consumeErr := ConsumeProjectedEvents(ctx, l, shell.Run.ID, shell.SessionID, &seq, events, emit)
 			return consumeErr
 		},
 		HandleRunUpdate: func(update stream.RunUpdate) {
@@ -572,7 +683,7 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 		}
 		return nil
 	}
-	if err := emitDelegationNodeIfNeeded(ctx, l, shell, delegationState, &seq, result.SummaryText, result.AssistantSnapshot, emit); err != nil {
+	if err := emitDelegationWindows(ctx, l, shell, delegationState, &seq, emit); err != nil {
 		return fmt.Errorf("emit delegation node: %w", err)
 	}
 	if persisted := projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
@@ -602,43 +713,6 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	}
 	_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
 	emit(done.Event, withEventID(done.Data, eid))
-	return nil
-}
-
-func emitDelegationNodeIfNeeded(ctx context.Context, l *Logic, shell ChatShell, state *delegationStreamState, seq *int, summaryText, assistantSnapshot string, emit EventEmitter) error {
-	if state == nil || !state.active {
-		return nil
-	}
-	summary := strings.TrimSpace(summaryText)
-	if summary == "" {
-		summary = strings.TrimSpace(assistantSnapshot)
-	}
-	if summary == "" {
-		return nil
-	}
-	agentName := strings.TrimSpace(state.agentName)
-	if agentName == "" {
-		agentName = "specialist"
-	}
-	payload := map[string]any{
-		"delegation_id": state.delegationID,
-		"agent_name":    agentName,
-		"status":        "returned",
-		"title":         fmt.Sprintf("%s summary", agentName),
-		"summary":       summary,
-	}
-	if intent := strings.TrimSpace(state.intent); intent != "" {
-		payload["intent"] = intent
-	}
-	if risk := strings.TrimSpace(shell.Run.RiskLevel); risk != "" {
-		payload["risk_level"] = risk
-	}
-	eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, "delegation_node", payload)
-	if err != nil {
-		return err
-	}
-	emit("delegation_node", withEventID(payload, eid))
-	state.active = false
 	return nil
 }
 
