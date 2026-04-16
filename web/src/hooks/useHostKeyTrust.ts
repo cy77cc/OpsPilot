@@ -43,7 +43,7 @@ function toHostKeyTrustPayload(raw: any): HostKeyTrustPayload | null {
 }
 
 export function parseHostKeyTrustError(error: unknown): HostKeyTrustErrorData | null {
-  const data = (error as any)?.response?.data?.data;
+  const data = (error as any)?.details || (error as any)?.response?.data?.data;
   const message = (error as any)?.message;
   const hostKey = toHostKeyTrustPayload(data?.host_key || data?.hostKey);
   const errorType = inferTrustErrorType(data?.error_type || data?.errorType, message || data?.message);

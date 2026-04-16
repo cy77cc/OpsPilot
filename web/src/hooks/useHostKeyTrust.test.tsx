@@ -23,18 +23,14 @@ describe('useHostKeyTrust', () => {
       .mockRejectedValueOnce({
         businessCode: 2000,
         message: 'ssh host key verification failed',
-        response: {
-          data: {
-            data: {
-              error_type: 'ssh_host_key_unknown',
-              host_key: {
-                host: '118.193.38.89',
-                port: 13012,
-                fingerprint_sha256: 'SHA256:test',
-                algorithm: 'ssh-ed25519',
-                public_key: 'ssh-ed25519 AAAATEST',
-              },
-            },
+        details: {
+          error_type: 'ssh_host_key_unknown',
+          host_key: {
+            host: '118.193.38.89',
+            port: 13012,
+            fingerprint_sha256: 'SHA256:test',
+            algorithm: 'ssh-ed25519',
+            public_key: 'ssh-ed25519 AAAATEST',
           },
         },
       })
