@@ -34,12 +34,6 @@ type chatCommandHandler struct {
 	useCase ChatUseCase
 }
 
-var chatContextBudget = runtimecontext.Budget{
-	Pinned:  1,
-	Recent:  12,
-	History: 6,
-}
-
 // NewChatCommandHandler creates the default chat command handler.
 func NewChatCommandHandler(useCase ChatUseCase) ChatHandler {
 	return &chatCommandHandler{useCase: useCase}
@@ -62,7 +56,7 @@ func (h *chatCommandHandler) Handle(ctx context.Context, req *ChatRequest, emit 
 		Message:         req.Message,
 		Scene:           req.Scene,
 		Context:         req.Context,
-		Budget:          chatContextBudget,
+		Budget:          runtimecontext.DefaultBudget,
 		UserID:          req.UserID,
 	}, emit)
 }

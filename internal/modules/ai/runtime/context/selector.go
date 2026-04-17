@@ -14,6 +14,13 @@ type Budget struct {
 	History int
 }
 
+// DefaultBudget is the shared chat context policy for app/runtime callers.
+var DefaultBudget = Budget{
+	Pinned:  1,
+	Recent:  12,
+	History: 6,
+}
+
 // SelectBudgeted returns a budgeted slice of messages while preserving stable order.
 func SelectBudgeted(history []Message, budget Budget) []Message {
 	if len(history) == 0 {

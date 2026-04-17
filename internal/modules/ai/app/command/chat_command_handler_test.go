@@ -81,7 +81,7 @@ func TestChatHandlerUsesExplicitContextBudget(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if stub.chatInput.Budget != (runtimecontext.Budget{Pinned: 1, Recent: 12, History: 6}) {
+	if stub.chatInput.Budget != runtimecontext.DefaultBudget {
 		t.Fatalf("expected explicit budget to be passed through, got %#v", stub.chatInput.Budget)
 	}
 	if stub.chatInput.Context != nil {

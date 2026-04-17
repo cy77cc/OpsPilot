@@ -18,12 +18,6 @@ type HTTPHandler struct {
 	svc *Service
 }
 
-var chatContextBudget = runtimecontext.Budget{
-	Pinned:  1,
-	Recent:  12,
-	History: 6,
-}
-
 func NewHTTPHandler(svc *Service) *HTTPHandler {
 	return &HTTPHandler{svc: svc}
 }
@@ -72,7 +66,7 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 		Message:         req.Message,
 		Scene:           req.Scene,
 		Context:         mapFromAny(req.Context),
-		Budget:          chatContextBudget,
+		Budget:          runtimecontext.DefaultBudget,
 		UserID:          httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)
