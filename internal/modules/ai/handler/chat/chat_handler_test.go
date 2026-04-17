@@ -15,8 +15,6 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
-	chat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/gin-gonic/gin"
@@ -66,127 +64,6 @@ func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 
 	if contentType := recorder.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
 		t.Fatalf("expected SSE content type, got %q", contentType)
-	}
-}
-
-func TestChatHandler_RejectsInvalidConversationRouteDecision(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	db := newAIHandlerTestDB(t)
-	agent := &scriptedAgent{
-		runEvents: []*adk.AgentEvent{
-			adk.EventFromMessage(schema.AssistantMessage("should-not-run", nil), nil, schema.Assistant, ""),
-		},
-	}
-	chatLogic := logic.NewLogicWithDB(db, agent)
-	chatSvc := chat.NewServiceWithLogicAndRouter(chatLogic, &stubRouteService{
-		decision: chat.RouteDecision{
-			Mode:           chat.ModeConversation,
-			TaskAction:     chat.TaskActionCreateTask,
-			RunAction:      chat.RunActionCreateRun,
-			ExecutionShape: chat.ExecutionShapeSingleAgent,
-			Domain:         chat.DomainGeneral,
-			ContextPlan: chat.ContextPlan{
-				ToolStrategy: chat.ToolStrategyDirect,
-			},
-		},
-	})
-	h := chat.NewHTTPHandler(chatSvc)
-
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Set("uid", uint64(999))
-	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hello"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	h.Chat(c)
-
-	events := decodeSSEEvents(t, recorder.Body.String())
-	if len(events) == 0 {
-		t.Fatal("expected SSE events to be emitted")
-	}
-
-	var errorMessage string
-	for _, event := range events {
-		if event.Event != "error" {
-			continue
-		}
-		data, ok := event.Data.(map[string]any)
-		if !ok {
-			t.Fatalf("expected error event data to be map, got %T", event.Data)
-		}
-		errorMessage, _ = data["message"].(string)
-		break
-	}
-
-	if errorMessage == "" {
-		t.Fatalf("expected route validation failure, got %q", errorMessage)
-	}
-	if agent.runCalls != 0 {
-		t.Fatalf("expected routing to stop before agent execution, got %d run calls", agent.runCalls)
-	}
-}
-
-func TestChatHandler_ValidConversationRouteBypassesRuntimeExecution(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	db := newAIHandlerTestDB(t)
-	agent := &scriptedAgent{
-		runEvents: []*adk.AgentEvent{
-			adk.EventFromMessage(schema.AssistantMessage("should-not-run", nil), nil, schema.Assistant, ""),
-		},
-	}
-	chatLogic := logic.NewLogicWithDB(db, agent)
-	chatSvc := chat.NewServiceWithLogicAndRouter(chatLogic, &stubRouteService{
-		decision: chat.RouteDecision{
-			Mode:           chat.ModeConversation,
-			TaskAction:     chat.TaskActionNone,
-			RunAction:      chat.RunActionNone,
-			ExecutionShape: chat.ExecutionShapeSingleAgent,
-			Domain:         chat.DomainGeneral,
-			ContextPlan: chat.ContextPlan{
-				ToolStrategy: chat.ToolStrategyDirect,
-			},
-		},
-	})
-	h := chat.NewHTTPHandler(chatSvc)
-
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Set("uid", uint64(998))
-	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hello"}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	h.Chat(c)
-
-	events := decodeSSEEvents(t, recorder.Body.String())
-	if len(events) == 0 {
-		t.Fatal("expected SSE events to be emitted")
-	}
-	if agent.runCalls != 0 {
-		t.Fatalf("expected conversation route to bypass runtime execution, got %d run calls", agent.runCalls)
-	}
-
-	var sawStatus bool
-	for _, event := range events {
-		if event.Event != "status" {
-			continue
-		}
-		data, ok := event.Data.(map[string]any)
-		if !ok {
-			t.Fatalf("expected status event data to be map, got %T", event.Data)
-		}
-		if data["mode"] != string(chat.ModeConversation) {
-			t.Fatalf("expected conversation mode in status payload, got %#v", data)
-		}
-		if data["state"] != "deferred" || data["reason"] != "not_implemented" {
-			t.Fatalf("expected deferred conversation payload, got %#v", data)
-		}
-		sawStatus = true
-		break
-	}
-	if !sawStatus {
-		t.Fatalf("expected conversation path status event, got %#v", events)
 	}
 }
 
@@ -1395,9 +1272,9 @@ type chatEvent struct {
 }
 
 type scriptedAgent struct {
-	runEvents         []*adk.AgentEvent
-	capturedRequestID string
-	runCalls          int
+	runEvents               []*adk.AgentEvent
+	capturedRequestID       string
+	runCalls                int
 	capturedAgentInputTexts [][]string
 }
 
@@ -1429,16 +1306,4 @@ func (s *scriptedAgent) Run(ctx context.Context, input *adk.AgentInput, _ ...adk
 
 func (s *scriptedAgent) Resume(ctx context.Context, _ *adk.ResumeInfo, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	return s.Run(ctx, nil)
-}
-
-type stubRouteService struct {
-	decision chat.RouteDecision
-	err      error
-}
-
-func (s *stubRouteService) Decide(_ context.Context, _ chat.RouteInput) (chat.RouteDecision, error) {
-	if s.err != nil {
-		return chat.RouteDecision{}, s.err
-	}
-	return s.decision, nil
 }
