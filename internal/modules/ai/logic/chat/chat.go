@@ -38,6 +38,7 @@ type ChatInput struct {
 	SessionID       string
 	ClientRequestID string
 	LastEventID     string
+	TraceID         string
 	Message         string
 	Scene           string
 	Context         map[string]any
@@ -132,7 +133,16 @@ func EnsureChatShell(ctx context.Context, l *Logic, input ChatInput) (ChatShell,
 		assistantMessageID := uuid.NewString()
 		createdUser = &ai.AIChatMessage{ID: userMessageID, SessionID: sessionID, Role: "user", Content: input.Message, Status: "done"}
 		createdAssistant = &ai.AIChatMessage{ID: assistantMessageID, SessionID: sessionID, Role: "assistant", Content: "", Status: "streaming"}
-		return &ai.AIRun{ID: uuid.NewString(), SessionID: sessionID, ClientRequestID: strings.TrimSpace(input.ClientRequestID), UserMessageID: userMessageID, AssistantMessageID: assistantMessageID, Status: "running", TraceJSON: "{}"}, createdUser, createdAssistant
+		return &ai.AIRun{
+			ID:                 uuid.NewString(),
+			SessionID:          sessionID,
+			ClientRequestID:    strings.TrimSpace(input.ClientRequestID),
+			UserMessageID:      userMessageID,
+			AssistantMessageID: assistantMessageID,
+			Status:             "running",
+			TraceID:            strings.TrimSpace(input.TraceID),
+			TraceJSON:          "{}",
+		}, createdUser, createdAssistant
 	})
 	if err != nil {
 		return shell, fmt.Errorf("create run shell: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/observability"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
 )
@@ -13,6 +14,7 @@ type ChatRequest struct {
 	SessionID       string
 	ClientRequestID string
 	LastEventID     string
+	TraceID         string
 	Message         string
 	Scene           string
 	Context         map[string]any
@@ -57,6 +59,7 @@ func (h *chatCommandHandler) buildChatInput(req *ChatRequest) logic.ChatInput {
 		SessionID:       req.SessionID,
 		ClientRequestID: req.ClientRequestID,
 		LastEventID:     req.LastEventID,
+		TraceID:         observability.EnsureTraceID(req.TraceID),
 		Message:         req.Message,
 		Scene:           req.Scene,
 		Context:         req.Context,

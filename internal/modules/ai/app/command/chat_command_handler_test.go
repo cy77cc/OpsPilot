@@ -38,6 +38,7 @@ func TestChatHandlerDelegatesTransportFieldsToUseCase(t *testing.T) {
 		SessionID:       "sess-1",
 		ClientRequestID: "req-1",
 		LastEventID:     "evt-1",
+		TraceID:         "trace-1",
 		Message:         "hello",
 		Scene:           "ops",
 		Context:         map[string]any{"team": "platform"},
@@ -53,6 +54,9 @@ func TestChatHandlerDelegatesTransportFieldsToUseCase(t *testing.T) {
 	}
 	if stub.chatInput.SessionID != "sess-1" || stub.chatInput.LastEventID != "evt-1" || stub.chatInput.UserID != 7 {
 		t.Fatalf("unexpected chat input: %#v", stub.chatInput)
+	}
+	if stub.chatInput.TraceID != "trace-1" {
+		t.Fatalf("expected trace id to be propagated, got %#v", stub.chatInput)
 	}
 	if !stub.emitCalled {
 		t.Fatal("expected emit callback to be passed through")
@@ -86,5 +90,8 @@ func TestChatHandlerUsesExplicitContextBudget(t *testing.T) {
 	}
 	if stub.chatInput.Context != nil {
 		t.Fatalf("expected empty context to remain nil, got %#v", stub.chatInput.Context)
+	}
+	if stub.chatInput.TraceID == "" {
+		t.Fatal("expected trace id to be generated")
 	}
 }
