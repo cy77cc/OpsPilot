@@ -366,6 +366,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	// 查询时间范围内的会话统计
 	type spanStats struct {
 		TotalCount   int64
+		SessionCount int64
 		TotalTokens  int64
 		TotalMs      int64
 		SuccessCount int64
@@ -375,7 +376,7 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Model(&aimodel.AITraceSpan{}).
 		Where("start_time >= ? AND start_time <= ?", since, now).
-		Select("COUNT(*) as total_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms").
+		Select("COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms").
 		Scan(&stats).Error; err != nil {
 		return out, err
 	}
@@ -402,11 +403,24 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 		avgDuration = stats.TotalMs / stats.TotalCount
 	}
 
+	// 计算平均 Token 消耗
+	var avgTokenPerInteraction int64
+	if stats.TotalCount > 0 {
+		avgTokenPerInteraction = stats.TotalTokens / stats.TotalCount
+	}
+
+	var avgTokenPerSession int64
+	if stats.SessionCount > 0 {
+		avgTokenPerSession = stats.TotalTokens / stats.SessionCount
+	}
+
 	out.Stats = dashboardv1.AIStatsSummary{
-		SessionCount:  stats.TotalCount,
-		TokenCount:    stats.TotalTokens,
-		AvgDurationMs: avgDuration,
-		SuccessRate:   successRate,
+		SessionCount:           stats.TotalCount,
+		TokenCount:             stats.TotalTokens,
+		AvgDurationMs:          avgDuration,
+		AvgTokenPerInteraction: avgTokenPerInteraction,
+		AvgTokenPerSession:     avgTokenPerSession,
+		SuccessRate:            successRate,
 	}
 
 	// 查询按场景分组的会话数量

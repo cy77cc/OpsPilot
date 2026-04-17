@@ -60,11 +60,13 @@ type MetricsSeries struct {
 
 // AIStatsSummary AI 助手统计摘要。
 type AIStatsSummary struct {
-	SessionCount   int64   `json:"sessionCount"`   // 会话总数
-	TokenCount     int64   `json:"tokenCount"`     // Token 消耗总数
-	AvgDurationMs  int64   `json:"avgDurationMs"`  // 平均响应时间（毫秒）
-	SuccessRate    float64 `json:"successRate"`    // 成功率 (0-100)
-	PreviousChange string  `json:"previousChange"` // 与上一周期对比变化趋势
+	SessionCount           int64   `json:"sessionCount"`           // 会话总数
+	TokenCount             int64   `json:"tokenCount"`             // Token 消耗总数
+	AvgDurationMs          int64   `json:"avgDurationMs"`          // 平均响应时间（毫秒）
+	AvgTokenPerInteraction int64   `json:"avgTokenPerInteraction"` // 平均每次交互消耗 Token
+	AvgTokenPerSession     int64   `json:"avgTokenPerSession"`     // 平均每个会话消耗 Token
+	SuccessRate            float64 `json:"successRate"`            // 成功率 (0-100)
+	PreviousChange         string  `json:"previousChange"`         // 与上一周期对比变化趋势
 }
 
 // AISessionItem 最近 AI 会话条目。
