@@ -10,11 +10,18 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
 	"github.com/gin-gonic/gin"
 )
 
 type HTTPHandler struct {
 	svc *Service
+}
+
+var chatContextBudget = runtimecontext.Budget{
+	Pinned:  1,
+	Recent:  12,
+	History: 6,
 }
 
 func NewHTTPHandler(svc *Service) *HTTPHandler {
@@ -65,6 +72,7 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 		Message:         req.Message,
 		Scene:           req.Scene,
 		Context:         mapFromAny(req.Context),
+		Budget:          chatContextBudget,
 		UserID:          httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)

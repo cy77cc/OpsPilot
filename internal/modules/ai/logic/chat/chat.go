@@ -25,6 +25,7 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/stream"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -39,6 +40,7 @@ type ChatInput struct {
 	Message         string
 	Scene           string
 	Context         map[string]any
+	Budget          runtimecontext.Budget
 	UserID          uint64
 }
 
@@ -866,12 +868,12 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 }
 
 func buildSessionAgentInput(ctx context.Context, l *Logic, shell ChatShell, input ChatInput) []*schema.Message {
-	history := loadSessionHistoryMessages(ctx, l, shell)
+	history := loadSessionHistoryMessages(ctx, l, shell, input.Budget)
 	current := schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))
 	return append(history, current)
 }
 
-func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) []*schema.Message {
+func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell, budget runtimecontext.Budget) []*schema.Message {
 	if l == nil || l.ChatDAO == nil || strings.TrimSpace(shell.SessionID) == "" {
 		return nil
 	}
@@ -880,7 +882,7 @@ func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) 
 		return nil
 	}
 
-	history := make([]*schema.Message, 0, len(rows))
+	history := make([]runtimecontext.Message, 0, len(rows))
 	for _, row := range rows {
 		if row.ID == shell.UserMessage.ID || row.ID == shell.AssistantMessage.ID {
 			continue
@@ -891,14 +893,31 @@ func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) 
 		}
 		switch strings.ToLower(strings.TrimSpace(row.Role)) {
 		case "user":
-			history = append(history, schema.UserMessage(content))
+			history = append(history, runtimecontext.Message{Role: "user", Content: content})
 		case "assistant":
-			history = append(history, schema.AssistantMessage(content, nil))
+			history = append(history, runtimecontext.Message{Role: "assistant", Content: content})
 		case "system":
-			history = append(history, schema.SystemMessage(content))
+			history = append(history, runtimecontext.Message{Role: "system", Content: content, Pinned: true})
 		}
 	}
-	return history
+
+	selected := runtimecontext.SelectBudgeted(history, budget)
+	if len(selected) < len(history) {
+		selected = runtimecontext.CompressOverflow(history, budget)
+	}
+
+	result := make([]*schema.Message, 0, len(selected))
+	for _, msg := range selected {
+		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
+		case "assistant":
+			result = append(result, schema.AssistantMessage(msg.Content, nil))
+		case "system":
+			result = append(result, schema.SystemMessage(msg.Content))
+		default:
+			result = append(result, schema.UserMessage(msg.Content))
+		}
+	}
+	return result
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {
