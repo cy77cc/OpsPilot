@@ -27,6 +27,8 @@ func SelectBudgeted(history []Message, budget Budget) []Message {
 		return nil
 	}
 
+	budget = normalizeBudget(budget)
+
 	pinned := make([]Message, 0, budget.Pinned)
 	nonPinned := make([]Message, 0, len(history))
 	for _, msg := range history {
@@ -64,4 +66,20 @@ func SelectBudgeted(history []Message, budget Budget) []Message {
 	out = append(out, older...)
 	out = append(out, recent...)
 	return out
+}
+
+func normalizeBudget(budget Budget) Budget {
+	if budget == (Budget{}) {
+		return DefaultBudget
+	}
+	if budget.Pinned < 0 {
+		budget.Pinned = 0
+	}
+	if budget.Recent < 0 {
+		budget.Recent = 0
+	}
+	if budget.History < 0 {
+		budget.History = 0
+	}
+	return budget
 }

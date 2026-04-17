@@ -10,7 +10,6 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
-	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
 	"github.com/gin-gonic/gin"
 )
 
@@ -66,7 +65,6 @@ func (h *HTTPHandler) Chat(c *gin.Context) {
 		Message:         req.Message,
 		Scene:           req.Scene,
 		Context:         mapFromAny(req.Context),
-		Budget:          runtimecontext.DefaultBudget,
 		UserID:          httpx.UIDFromCtx(c),
 	}, func(event string, data any) {
 		writeChatEvent(writer, c, event, data)

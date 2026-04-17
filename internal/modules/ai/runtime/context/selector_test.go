@@ -27,3 +27,24 @@ func TestSelectBudgeted_PrefersPinnedThenRecentThenHistory(t *testing.T) {
 		t.Fatalf("expected recent messages at tail, got %+v", got)
 	}
 }
+
+func TestSelectBudgeted_ClampsNegativePinned(t *testing.T) {
+	history := []Message{
+		{Role: "system", Content: "pinned-1", Pinned: true},
+		{Role: "user", Content: "h1"},
+		{Role: "assistant", Content: "h2"},
+	}
+
+	got := SelectBudgeted(history, Budget{
+		Pinned:  -1,
+		Recent:  1,
+		History: 1,
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(got))
+	}
+	if got[0].Content != "h1" || got[1].Content != "h2" {
+		t.Fatalf("expected negative pinned to behave like zero, got %+v", got)
+	}
+}

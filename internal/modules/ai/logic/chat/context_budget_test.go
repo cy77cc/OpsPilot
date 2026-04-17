@@ -56,24 +56,17 @@ func TestBuildSessionAgentInput_UsesBudgetedSessionHistory(t *testing.T) {
 
 	got := buildSessionAgentInput(ctx, l, shell, ChatInput{
 		Message: "hello",
-		Budget: runtimecontext.Budget{
-			Pinned:  1,
-			Recent:  2,
-			History: 1,
-		},
+		Budget:  runtimecontext.Budget{},
 	})
 
 	if len(got) != 6 {
 		t.Fatalf("expected 6 messages including current turn, got %d", len(got))
 	}
-	if got[0].Role != "system" || got[0].Content != "compressed 1 overflow messages" {
-		t.Fatalf("expected compressed overflow marker first, got %#v", got[0])
+	if got[0].Role != "system" || got[0].Content != "pinned-1" {
+		t.Fatalf("expected default budget to preserve pinned message first, got %#v", got[0])
 	}
-	if got[1].Role != "system" || got[1].Content != "pinned-1" {
-		t.Fatalf("expected pinned system message second, got %#v", got[1])
-	}
-	if got[2].Content != "h2" || got[3].Content != "recent-1" || got[4].Content != "recent-2" {
-		t.Fatalf("expected budgeted history selection in the middle, got %#v", got)
+	if got[1].Content != "h1" || got[2].Content != "h2" || got[3].Content != "recent-1" || got[4].Content != "recent-2" {
+		t.Fatalf("expected default budget to retain the normal history slice, got %#v", got)
 	}
 	if got[5].Role != "user" || !strings.Contains(got[5].Content, "hello") {
 		t.Fatalf("expected current user turn last, got %#v", got[5])
