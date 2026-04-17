@@ -24,6 +24,17 @@ func (d *AIRunContentDAO) Create(ctx context.Context, content *model.AIRunConten
 	return d.db.WithContext(ctx).Create(content).Error
 }
 
+// Upsert creates or updates a content record by primary key.
+func (d *AIRunContentDAO) Upsert(ctx context.Context, content *model.AIRunContent) error {
+	if content == nil {
+		return nil
+	}
+	return d.db.WithContext(ctx).
+		Where("id = ?", content.ID).
+		Assign(content).
+		FirstOrCreate(&model.AIRunContent{}).Error
+}
+
 // Get 根据 ID 获取内容记录。
 //
 // 参数:

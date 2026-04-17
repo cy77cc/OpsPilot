@@ -42,7 +42,7 @@ type projectionCursor struct {
 
 // GetRunProjection 获取运行投影。
 func GetRunProjection(ctx context.Context, l *Logic, userID uint64, runID string) (*ai.AIRunProjection, error) {
-	if l.RunProjectionDAO == nil || l.RunEventDAO == nil {
+	if l.RunProjectionDAO == nil {
 		return nil, nil
 	}
 	run, err := l.GetRun(ctx, userID, runID)
@@ -53,11 +53,14 @@ func GetRunProjection(ctx context.Context, l *Logic, userID uint64, runID string
 	if err != nil {
 		return nil, err
 	}
-	if projection != nil && isSteadyProjectionStatus(projection.Status) && strings.TrimSpace(projection.ProjectionJSON) != "" {
+	if projection != nil && strings.TrimSpace(projection.ProjectionJSON) != "" {
 		var decoded airuntime.RunProjection
 		if err := json.Unmarshal([]byte(projection.ProjectionJSON), &decoded); err == nil && strings.TrimSpace(decoded.RunID) != "" {
 			return projection, nil
 		}
+	}
+	if l.RunEventDAO == nil {
+		return projection, nil
 	}
 	events, err := l.RunEventDAO.ListByRun(ctx, runID)
 	if err != nil {
@@ -119,68 +122,71 @@ func GetRunProjectionPayload(ctx context.Context, l *Logic, userID uint64, runID
 	return paged, nil
 }
 
-func persistIncrementalProjection(ctx context.Context, l *Logic, runID, sessionID string, events []airuntime.PublicStreamEvent) error {
-	if l == nil || l.RunProjectionDAO == nil || len(events) == 0 {
-		return nil
+func loadIncrementalProjectionState(ctx context.Context, l *Logic, runID string) (projectionruntime.State, *ai.AIRunProjection, error) {
+	if l == nil || l.RunProjectionDAO == nil {
+		return projectionruntime.State{}, nil, nil
 	}
 	current, err := l.RunProjectionDAO.GetByRunID(ctx, runID)
 	if err != nil {
-		return err
+		return projectionruntime.State{}, nil, err
 	}
-	state := projectionruntime.State{}
-	if current != nil && strings.TrimSpace(current.ProjectionJSON) != "" {
-		if decoded, err := decodeIncrementalProjectionState(current.ProjectionJSON); err == nil {
-			state = decoded
+	if current == nil || strings.TrimSpace(current.ProjectionJSON) == "" {
+		return projectionruntime.State{}, current, nil
+	}
+	var decoded airuntime.RunProjection
+	if err := json.Unmarshal([]byte(current.ProjectionJSON), &decoded); err != nil {
+		return projectionruntime.State{}, current, nil
+	}
+	state := projectionruntime.FromProjection(&decoded)
+	state.Version = current.Version
+	if l.RunContentDAO != nil {
+		if contentID := state.CurrentContentID(); strings.TrimSpace(contentID) != "" {
+			content, err := l.RunContentDAO.Get(ctx, contentID)
+			if err != nil {
+				return projectionruntime.State{}, current, err
+			}
+			if content != nil {
+				state.Contents = append(state.Contents, content)
+			}
 		}
 	}
-	for _, event := range events {
-		state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
-			Type: event.Event,
-			Text: incrementalProjectionText(event),
-		})
+	return state, current, nil
+}
+
+func persistIncrementalProjection(ctx context.Context, l *Logic, sessionID string, state projectionruntime.State, current *ai.AIRunProjection) error {
+	if l == nil || l.RunProjectionDAO == nil {
+		return nil
 	}
-	raw, err := json.Marshal(state)
+	projection := state.Projection()
+	if strings.TrimSpace(projection.SessionID) == "" {
+		projection.SessionID = sessionID
+	}
+	if strings.TrimSpace(projection.Status) == "" && current != nil {
+		projection.Status = current.Status
+	}
+	projectionJSON, err := json.Marshal(projection)
 	if err != nil {
 		return err
 	}
-	projection := &ai.AIRunProjection{
-		ID:             uuid.NewString(),
-		RunID:          runID,
-		SessionID:      sessionID,
-		Version:        state.Version,
-		Status:         "running",
-		ProjectionJSON: string(raw),
-	}
-	if current != nil {
-		projection.ID = current.ID
-		if strings.TrimSpace(current.Status) != "" {
-			projection.Status = current.Status
+	if l.RunContentDAO != nil {
+		for _, content := range state.Contents {
+			if err := l.RunContentDAO.Upsert(ctx, content); err != nil {
+				return err
+			}
 		}
 	}
-	return l.RunProjectionDAO.Upsert(ctx, projection)
-}
-
-func decodeIncrementalProjectionState(raw string) (projectionruntime.State, error) {
-	var state projectionruntime.State
-	if strings.TrimSpace(raw) == "" {
-		return state, nil
+	projectionRow := &ai.AIRunProjection{
+		ID:             uuid.NewString(),
+		RunID:          projection.RunID,
+		SessionID:      projection.SessionID,
+		Version:        projection.Version,
+		Status:         projection.Status,
+		ProjectionJSON: string(projectionJSON),
 	}
-	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-		return projectionruntime.State{}, err
+	if current != nil {
+		projectionRow.ID = current.ID
 	}
-	return state, nil
-}
-
-func incrementalProjectionText(event airuntime.PublicStreamEvent) string {
-	if event.Event != "delta" {
-		return ""
-	}
-	data, ok := event.Data.(map[string]any)
-	if !ok {
-		return ""
-	}
-	content, _ := data["content"].(string)
-	return content
+	return l.RunProjectionDAO.Upsert(ctx, projectionRow)
 }
 
 // GetRunContent 获取运行内容。
@@ -203,15 +209,6 @@ func GetRunContent(ctx context.Context, l *Logic, userID uint64, contentID strin
 		return nil, nil
 	}
 	return content, nil
-}
-
-func isSteadyProjectionStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "completed", "completed_with_tool_errors", "failed_runtime", "interrupted":
-		return true
-	default:
-		return false
-	}
 }
 
 func buildProjectionBlockPage(projection airuntime.RunProjection, fallbackCreatedAt time.Time, events []ai.AIRunEvent, cursor string, limit int) (*projectionBlockPage, error) {
