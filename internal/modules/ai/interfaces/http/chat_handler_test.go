@@ -29,6 +29,30 @@ func (s *stubCommandHandler) Handle(_ context.Context, req *command.ChatRequest,
 	return s.err
 }
 
+func TestChatHandlerDelegatesToCommandHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubCommandHandler{}
+	h := NewChatHandler(stub)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("uid", uint64(7))
+		c.Next()
+	})
+	r.POST("/ai/chat", h.HandleChat)
+
+	req := httptest.NewRequest(http.MethodPost, "/ai/chat", strings.NewReader(`{"message":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	r.ServeHTTP(rec, req)
+
+	if stub.req == nil {
+		t.Fatal("expected command handler to be called")
+	}
+}
+
 func TestChatHandler_PreservesSSEHeadersAndRequestMapping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
