@@ -10,7 +10,7 @@ import (
 	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
-	aichathandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
+	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -31,19 +31,20 @@ import (
 //   - POST /ai/approvals/:id/submit - 提交审批结果
 //   - POST /ai/approvals/:id/retry-resume - 重新入队可重试恢复
 func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	chatHandler := aichathandler.NewHTTPHandler(aichat.NewService(svcCtx))
+	chatService := aichat.NewService(svcCtx)
+	queryHandler := aihttp.NewChatQueryHandler(chatService)
 	approvalHandler := aiapprovalhandler.NewHTTPHandler(aiapproval.NewService(svcCtx))
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
-		g.GET("/sessions", chatHandler.ListSessions)
-		g.POST("/sessions", chatHandler.CreateSession)
-		g.GET("/sessions/:id", chatHandler.GetSession)
-		g.DELETE("/sessions/:id", chatHandler.DeleteSession)
-		g.GET("/runs/:runId", chatHandler.GetRun)
-		g.GET("/runs/:runId/projection", chatHandler.GetRunProjection)
-		g.GET("/run-contents/:id", chatHandler.GetRunContent)
-		g.GET("/diagnosis/:reportId", chatHandler.GetDiagnosisReport)
+		g.GET("/sessions", queryHandler.ListSessions)
+		g.POST("/sessions", queryHandler.CreateSession)
+		g.GET("/sessions/:id", queryHandler.GetSession)
+		g.DELETE("/sessions/:id", queryHandler.DeleteSession)
+		g.GET("/runs/:runId", queryHandler.GetRun)
+		g.GET("/runs/:runId/projection", queryHandler.GetRunProjection)
+		g.GET("/run-contents/:id", queryHandler.GetRunContent)
+		g.GET("/diagnosis/:reportId", queryHandler.GetDiagnosisReport)
 
 		// 审批相关 (Human-in-the-Loop)
 		g.GET("/approvals/pending", approvalHandler.ListPendingApprovals)

@@ -56,7 +56,22 @@ func GetRunProjection(ctx context.Context, l *Logic, userID uint64, runID string
 	if projection != nil && strings.TrimSpace(projection.ProjectionJSON) != "" {
 		var decoded airuntime.RunProjection
 		if err := json.Unmarshal([]byte(projection.ProjectionJSON), &decoded); err == nil && strings.TrimSpace(decoded.RunID) != "" {
-			return projection, nil
+			if l.RunEventDAO == nil || !ai.IsOpenRunStatus(run.Status) {
+				return projection, nil
+			}
+			events, err := l.RunEventDAO.ListByRun(ctx, runID)
+			if err != nil {
+				return nil, err
+			}
+			if !projectionIsStale(projection, events) {
+				return projection, nil
+			}
+			built, contents, err := airuntime.BuildProjection(events)
+			if err != nil {
+				return nil, err
+			}
+			built.Status = run.Status
+			return upsertProjectionFromRuntime(ctx, l, projection.ID, runID, run.SessionID, built, contents)
 		}
 	}
 	if l.RunEventDAO == nil {
@@ -96,6 +111,52 @@ func GetRunProjection(ctx context.Context, l *Logic, userID uint64, runID string
 		return nil, err
 	}
 	return rebuilt, nil
+}
+
+func upsertProjectionFromRuntime(ctx context.Context, l *Logic, projectionID, runID, sessionID string, built *airuntime.RunProjection, contents []*ai.AIRunContent) (*ai.AIRunProjection, error) {
+	data, err := json.Marshal(built)
+	if err != nil {
+		return nil, err
+	}
+	rebuilt := &ai.AIRunProjection{
+		ID:             projectionID,
+		RunID:          runID,
+		SessionID:      sessionID,
+		Version:        built.Version,
+		Status:         built.Status,
+		ProjectionJSON: string(data),
+	}
+	if strings.TrimSpace(rebuilt.ID) == "" {
+		rebuilt.ID = uuid.NewString()
+	}
+	if l.SvcCtx == nil || l.SvcCtx.DB == nil {
+		return rebuilt, nil
+	}
+	if err := l.SvcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		projectionDAO := aidao.NewAIRunProjectionDAO(tx)
+		contentDAO := aidao.NewAIRunContentDAO(tx)
+		for _, content := range contents {
+			if existing, err := contentDAO.Get(ctx, content.ID); err != nil {
+				return err
+			} else if existing == nil {
+				if err := contentDAO.Create(ctx, content); err != nil {
+					return err
+				}
+			}
+		}
+		return projectionDAO.Upsert(ctx, rebuilt)
+	}); err != nil {
+		return nil, err
+	}
+	return rebuilt, nil
+}
+
+func projectionIsStale(projection *ai.AIRunProjection, events []ai.AIRunEvent) bool {
+	if projection == nil || len(events) == 0 {
+		return false
+	}
+	latest := events[len(events)-1]
+	return latest.CreatedAt.After(projection.UpdatedAt)
 }
 
 // GetRunProjectionPayload 获取投影的分页负载。

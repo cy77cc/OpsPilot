@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -15,6 +16,7 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	projectionruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/projection"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 func TestGetRunProjection_UsesIncrementalProjectionRow(t *testing.T) {
@@ -29,7 +31,7 @@ func TestGetRunProjection_UsesIncrementalProjectionRow(t *testing.T) {
 	if err := chatDAO.CreateSession(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	run := &ai.AIRun{ID: "run-1", SessionID: session.ID, UserMessageID: "msg-1", AssistantMessageID: "msg-2", Status: "running", TraceJSON: "{}"}
+	run := &ai.AIRun{ID: "run-1", SessionID: session.ID, UserMessageID: "msg-1", AssistantMessageID: "msg-2", Status: "completed", TraceJSON: "{}"}
 	if err := runDAO.CreateRun(ctx, run); err != nil {
 		t.Fatalf("create run: %v", err)
 	}
@@ -400,6 +402,74 @@ func TestLoadIncrementalProjectionState_HydratesCurrentContentForDeltaCoalescing
 	}
 	if decoded.Blocks[0].Items[0].StartEventID != "evt-1" || decoded.Blocks[0].Items[0].EndEventID != "evt-2" {
 		t.Fatalf("expected content event span to extend across reload, got %#v", decoded.Blocks[0].Items[0])
+	}
+}
+
+func TestGetRunProjection_RebuildsStaleOpenProjectionFromEvents(t *testing.T) {
+	db := newProjectionRuntimeTestDB(t)
+	ctx := context.Background()
+
+	chatDAO := aidaochat.NewAIChatDAO(db)
+	runDAO := aidao.NewAIRunDAO(db)
+	eventDAO := aidao.NewAIRunEventDAO(db)
+	projectionDAO := aidao.NewAIRunProjectionDAO(db)
+
+	session := &ai.AIChatSession{ID: "sess-1", UserID: 7, Scene: "ops", Title: "projection"}
+	if err := chatDAO.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	run := &ai.AIRun{ID: "run-1", SessionID: session.ID, UserMessageID: "msg-1", AssistantMessageID: "msg-2", Status: ai.RunStatusRunning, TraceJSON: "{}"}
+	if err := runDAO.CreateRun(ctx, run); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	staleProjection := &ai.AIRunProjection{
+		ID:             "proj-1",
+		RunID:          run.ID,
+		SessionID:      session.ID,
+		Version:        1,
+		Status:         "running",
+		ProjectionJSON: `{"version":1,"run_id":"run-1","session_id":"sess-1","status":"running","blocks":[]}`,
+	}
+	if err := projectionDAO.Upsert(ctx, staleProjection); err != nil {
+		t.Fatalf("seed projection: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := eventDAO.Create(ctx, &ai.AIRunEvent{
+		ID:          "evt-1",
+		RunID:       run.ID,
+		SessionID:   session.ID,
+		Seq:         1,
+		EventType:   "delta",
+		PayloadJSON: `{"agent":"executor","content":"fresh content"}`,
+	}); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+
+	l := &Logic{
+		ChatDAO:          chatDAO,
+		RunDAO:           runDAO,
+		RunEventDAO:      eventDAO,
+		RunProjectionDAO: projectionDAO,
+		SvcCtx:           &svc.ServiceContext{DB: db},
+	}
+	got, err := GetRunProjection(ctx, l, session.UserID, run.ID)
+	if err != nil {
+		t.Fatalf("get projection: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected projection")
+	}
+
+	var decoded airuntime.RunProjection
+	if err := json.Unmarshal([]byte(got.ProjectionJSON), &decoded); err != nil {
+		t.Fatalf("unmarshal projection: %v", err)
+	}
+	if len(decoded.Blocks) == 0 {
+		t.Fatalf("expected stale open projection to be rebuilt from events, got %#v", decoded)
+	}
+	if decoded.Blocks[0].ID != "block_executor_1" {
+		t.Fatalf("expected canonical rebuilt block id, got %#v", decoded.Blocks[0])
 	}
 }
 

@@ -64,3 +64,29 @@ func TestApplyEvent_CoalescesAdjacentDeltaChunks(t *testing.T) {
 		t.Fatalf("expected combined event span, got %#v", state.Blocks[0].Items[0])
 	}
 }
+
+func TestApplyEvent_UsesDeterministicBlockIDs(t *testing.T) {
+	state := State{RunID: "run-1", SessionID: "sess-1"}
+
+	state = ApplyEvent(state, Event{
+		ID:   "evt-1",
+		Type: "assistant.delta",
+		Text: "hello",
+		Data: map[string]any{"agent": "executor"},
+	})
+	state = ApplyEvent(state, Event{
+		ID:   "evt-2",
+		Type: "error",
+		Data: map[string]any{"message": "boom", "code": "AI_STREAM_INTERNAL"},
+	})
+
+	if len(state.Blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %#v", state.Blocks)
+	}
+	if state.Blocks[0].ID != "block_executor_1" {
+		t.Fatalf("expected deterministic executor block id, got %#v", state.Blocks[0])
+	}
+	if state.Blocks[1].ID != "block_error_2" {
+		t.Fatalf("expected deterministic error block id, got %#v", state.Blocks[1])
+	}
+}

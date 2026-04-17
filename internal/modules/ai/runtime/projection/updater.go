@@ -2,6 +2,7 @@ package projection
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
@@ -45,7 +46,7 @@ type State struct {
 
 	Contents []*ai.AIRunContent `json:"-"`
 
-	currentExecutorIndex int `json:"-"`
+	currentExecutorIndex int    `json:"-"`
 	currentContentID     string `json:"-"`
 }
 
@@ -417,7 +418,7 @@ func cloneMap(data map[string]any) map[string]any {
 }
 
 func blockID(prefix string, index int) string {
-	return "block_" + prefix + "_" + uuid.NewString()[:8]
+	return fmt.Sprintf("block_%s_%d", prefix, index)
 }
 
 func truncate(value string, max int) string {
