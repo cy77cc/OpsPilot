@@ -66,8 +66,8 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 		Role:        req.Role,
 		ClusterID:   req.ClusterID,
 		Source:      firstNonEmpty(req.Source, "manual_ssh"),
-		Provider:    req.Provider,
-		ProviderID:  req.ProviderID,
+		Provider:    nilIfEmpty(req.Provider),
+		ProviderID:  nilIfEmpty(req.ProviderID),
 		LastCheckAt: time.Now(),
 	}
 	if probe.SSHKeyID != nil {
@@ -186,8 +186,8 @@ func (s *HostService) createFromLegacyReq(ctx context.Context, req CreateReq) (*
 		Role:        req.Role,
 		ClusterID:   req.ClusterID,
 		Source:      firstNonEmpty(req.Source, "manual_ssh"),
-		Provider:    req.Provider,
-		ProviderID:  req.ProviderID,
+		Provider:    nilIfEmpty(req.Provider),
+		ProviderID:  nilIfEmpty(req.ProviderID),
 	}
 	if req.SSHKeyID != nil {
 		node.SSHKeyID = nodeIDPtr(*req.SSHKeyID)

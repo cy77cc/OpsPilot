@@ -365,8 +365,8 @@ func (s *HostService) ImportCloudInstances(ctx context.Context, uid uint64, req 
 			MemoryMB:    ins.MemoryMB,
 			DiskGB:      ins.DiskGB,
 			Source:      "cloud_import",
-			Provider:    req.Provider,
-			ProviderID:  ins.InstanceID,
+			Provider:    nilIfEmpty(req.Provider),
+			ProviderID:  nilIfEmpty(ins.InstanceID),
 			Region:      ins.Region,
 			LastCheckAt: time.Now(),
 		}
