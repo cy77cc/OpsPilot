@@ -25,11 +25,13 @@ func RunBootstrapMigrations() error {
 		if err := migration.RunDevAutoMigrate(db); err != nil {
 			return fmt.Errorf("run dev auto migrate failed: %w", err)
 		}
-	}
 
-	// Fix host unique index
-	if err := fixHostUniqueIndex(db); err != nil {
-		return fmt.Errorf("fix host unique index failed: %w", err)
+		// Fix host unique index only for PostgreSQL (MySQL doesn't support partial index WHERE clause)
+		if db.Dialector.Name() == "postgres" {
+			if err := fixHostUniqueIndex(db); err != nil {
+				return fmt.Errorf("fix host unique index failed: %w", err)
+			}
+		}
 	}
 
 	return nil

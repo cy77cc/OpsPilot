@@ -106,3 +106,68 @@ func TestConsumeProbe_ConcurrentOnlyOneSucceeds(t *testing.T) {
 		t.Fatalf("expected one success and one probe_not_found, got success=%d probe_not_found=%d", successes, notFound)
 	}
 }
+
+func TestFixCreateMultipleManualHosts(t *testing.T) {
+	s, db := newHostLogicTestService(t)
+    // 模拟迁移逻辑
+    if err := db.Exec("DROP INDEX IF EXISTS idx_provider_instance").Error; err != nil {
+        t.Fatal(err)
+    }
+    if err := db.Exec(`CREATE UNIQUE INDEX idx_provider_instance ON nodes(provider, provider_instance_id) WHERE provider IS NOT NULL AND provider != ''`).Error; err != nil {
+        t.Fatal(err)
+    }
+
+	ctx := context.Background()
+
+	// 1. 创建第一个手动主机
+	req1 := CreateReq{
+		Name:     "Host1",
+		IP:       "192.168.1.1",
+		Port:     22,
+		Username: "root",
+		Source:   "manual_ssh",
+	}
+	_, err := s.CreateWithProbe(ctx, 1, true, req1)
+	if err != nil {
+		t.Fatalf("Failed to create first manual host: %v", err)
+	}
+
+	// 2. 创建第二个手动主机 (之前会报错)
+	req2 := CreateReq{
+		Name:     "Host2",
+		IP:       "192.168.1.2",
+		Port:     22,
+		Username: "root",
+		Source:   "manual_ssh",
+	}
+	_, err = s.CreateWithProbe(ctx, 1, true, req2)
+	if err != nil {
+		t.Fatalf("Failed to create second manual host: %v", err)
+	}
+
+    // 3. 验证云主机依然有约束
+    provider := "aliyun"
+    insID := "i-12345"
+    node1 := &model.Node{
+        Name: "Cloud1",
+        IP: "1.1.1.1",
+        Provider: &provider,
+        ProviderID: &insID,
+        Status: "online",
+    }
+    if err := db.Create(node1).Error; err != nil {
+        t.Fatal(err)
+    }
+
+    node2 := &model.Node{
+        Name: "Cloud2",
+        IP: "1.1.1.2",
+        Provider: &provider,
+        ProviderID: &insID,
+        Status: "online",
+    }
+    err = db.Create(node2).Error
+    if err == nil {
+        t.Fatal("Expected unique constraint violation for duplicate cloud hosts")
+    }
+}
