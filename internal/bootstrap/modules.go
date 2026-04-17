@@ -7,6 +7,10 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	aicommand "github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
+	aichatservice "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
+	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
@@ -31,8 +35,15 @@ import (
 
 const aiBackgroundWorkerTick = 2 * time.Second
 
+func registerAIChatRoute(v1 *gin.RouterGroup, appCtx *svc.ServiceContext) {
+	chatCommandHandler := aicommand.NewChatCommandHandler(aichatservice.NewService(appCtx))
+	chatHTTPHandler := aihttp.NewChatHandler(chatCommandHandler)
+	aiGroup := v1.Group("/ai", middleware.JWTAuth())
+	aiGroup.POST("/chat", chatHTTPHandler.HandleChat)
+}
+
 // RegisterModules wires all HTTP modules into the shared router.
-func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
+func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gin.Engine) {
 	engine.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -41,9 +52,26 @@ func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
 	userapi.RegisterUserHandlers(v1, appCtx)
 	if appCtx != nil && appCtx.DB != nil {
 		ai := ailogic.NewAILogic(appCtx)
-		go ailogic.NewApprovalWorker(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
-		go ailogic.NewApprovalExpirer(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
+		approvalWorker := ailogic.NewApprovalWorker(ai)
+		expirer := ailogic.NewApprovalExpirer(ai)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			for runCtx.Err() == nil {
+				claimed, _ := approvalWorker.RunOnce(runCtx)
+				if !claimed {
+					return
+				}
+			}
+		}, aiBackgroundWorkerTick).Start(ctx)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			for runCtx.Err() == nil {
+				claimed, _ := expirer.RunOnce(runCtx)
+				if !claimed {
+					return
+				}
+			}
+		}, aiBackgroundWorkerTick).Start(ctx)
 	}
+	registerAIChatRoute(v1, appCtx)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

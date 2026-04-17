@@ -25,6 +25,8 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/stream"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
+	projectionruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/projection"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
@@ -36,9 +38,11 @@ type ChatInput struct {
 	SessionID       string
 	ClientRequestID string
 	LastEventID     string
+	TraceID         string
 	Message         string
 	Scene           string
 	Context         map[string]any
+	Budget          runtimecontext.Budget
 	UserID          uint64
 }
 
@@ -129,7 +133,16 @@ func EnsureChatShell(ctx context.Context, l *Logic, input ChatInput) (ChatShell,
 		assistantMessageID := uuid.NewString()
 		createdUser = &ai.AIChatMessage{ID: userMessageID, SessionID: sessionID, Role: "user", Content: input.Message, Status: "done"}
 		createdAssistant = &ai.AIChatMessage{ID: assistantMessageID, SessionID: sessionID, Role: "assistant", Content: "", Status: "streaming"}
-		return &ai.AIRun{ID: uuid.NewString(), SessionID: sessionID, ClientRequestID: strings.TrimSpace(input.ClientRequestID), UserMessageID: userMessageID, AssistantMessageID: assistantMessageID, Status: "running", TraceJSON: "{}"}, createdUser, createdAssistant
+		return &ai.AIRun{
+			ID:                 uuid.NewString(),
+			SessionID:          sessionID,
+			ClientRequestID:    strings.TrimSpace(input.ClientRequestID),
+			UserMessageID:      userMessageID,
+			AssistantMessageID: assistantMessageID,
+			Status:             "running",
+			TraceID:            strings.TrimSpace(input.TraceID),
+			TraceJSON:          "{}",
+		}, createdUser, createdAssistant
 	})
 	if err != nil {
 		return shell, fmt.Errorf("create run shell: %w", err)
@@ -849,6 +862,9 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	if err != nil {
 		return fmt.Errorf("append meta event: %w", err)
 	}
+	if err := persistTerminalProjectionEvent(ctx, l, shell.Run.ID, shell.SessionID, eid, done); err != nil {
+		return fmt.Errorf("persist terminal projection: %w", err)
+	}
 	runStatus := aidao.AIRunStatusUpdate{Status: "completed", AssistantMessageID: shell.AssistantMessage.ID}
 	if result.HasToolErrors {
 		runStatus.Status = "completed_with_tool_errors"
@@ -866,12 +882,12 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 }
 
 func buildSessionAgentInput(ctx context.Context, l *Logic, shell ChatShell, input ChatInput) []*schema.Message {
-	history := loadSessionHistoryMessages(ctx, l, shell)
+	history := loadSessionHistoryMessages(ctx, l, shell, input.Budget)
 	current := schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))
 	return append(history, current)
 }
 
-func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) []*schema.Message {
+func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell, budget runtimecontext.Budget) []*schema.Message {
 	if l == nil || l.ChatDAO == nil || strings.TrimSpace(shell.SessionID) == "" {
 		return nil
 	}
@@ -880,7 +896,7 @@ func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) 
 		return nil
 	}
 
-	history := make([]*schema.Message, 0, len(rows))
+	history := make([]runtimecontext.Message, 0, len(rows))
 	for _, row := range rows {
 		if row.ID == shell.UserMessage.ID || row.ID == shell.AssistantMessage.ID {
 			continue
@@ -891,14 +907,31 @@ func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell) 
 		}
 		switch strings.ToLower(strings.TrimSpace(row.Role)) {
 		case "user":
-			history = append(history, schema.UserMessage(content))
+			history = append(history, runtimecontext.Message{Role: "user", Content: content})
 		case "assistant":
-			history = append(history, schema.AssistantMessage(content, nil))
+			history = append(history, runtimecontext.Message{Role: "assistant", Content: content})
 		case "system":
-			history = append(history, schema.SystemMessage(content))
+			history = append(history, runtimecontext.Message{Role: "system", Content: content, Pinned: true})
 		}
 	}
-	return history
+
+	selected := runtimecontext.SelectBudgeted(history, budget)
+	if len(selected) < len(history) {
+		selected = runtimecontext.CompressOverflow(history, budget)
+	}
+
+	result := make([]*schema.Message, 0, len(selected))
+	for _, msg := range selected {
+		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
+		case "assistant":
+			result = append(result, schema.AssistantMessage(msg.Content, nil))
+		case "system":
+			result = append(result, schema.SystemMessage(msg.Content))
+		default:
+			result = append(result, schema.UserMessage(msg.Content))
+		}
+	}
+	return result
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {
@@ -914,6 +947,9 @@ func EmitTerminalFailure(ctx context.Context, l *Logic, shell ChatShell, seq *in
 	projected := airuntime.NewErrorEvent(shell.Run.ID, errors.New(publicErr))
 	eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, projected.Event, projected.Data)
 	if err != nil {
+		return err
+	}
+	if err := persistTerminalProjectionEvent(ctx, l, shell.Run.ID, shell.SessionID, eid, projected); err != nil {
 		return err
 	}
 	emit(projected.Event, withEventID(projected.Data, eid))
@@ -950,30 +986,34 @@ func FinalizeRunCritical(ctx context.Context, l *Logic, shell ChatShell, runUpda
 
 // PersistRunEnhancementsBestEffort 持久化投影和内容。
 func PersistRunEnhancementsBestEffort(ctx context.Context, l *Logic, runID, sessionID, status string, _ string) error {
-	if l.RunEventDAO == nil || l.RunProjectionDAO == nil || l.RunContentDAO == nil {
+	if l.RunProjectionDAO == nil {
 		return nil
 	}
-	events, err := l.RunEventDAO.ListByRun(ctx, runID)
+	current, err := l.RunProjectionDAO.GetByRunID(ctx, runID)
 	if err != nil {
 		return err
 	}
-	projection, contents, err := airuntime.BuildProjection(events)
-	if err != nil {
+	if current == nil || strings.TrimSpace(current.ProjectionJSON) == "" {
+		return nil
+	}
+	var projection airuntime.RunProjection
+	if err := json.Unmarshal([]byte(current.ProjectionJSON), &projection); err != nil {
 		return err
 	}
-	projection.Status = status
-	projectionJSON, err := json.Marshal(projection)
+	if strings.TrimSpace(status) != "" {
+		projection.Status = status
+	}
+	projectionJSON, err := json.Marshal(&projection)
 	if err != nil {
 		return err
-	}
-	for _, content := range contents {
-		if err := l.RunContentDAO.Create(ctx, content); err != nil {
-			return err
-		}
 	}
 	return l.RunProjectionDAO.Upsert(ctx, &ai.AIRunProjection{
-		ID: uuid.NewString(), RunID: runID, SessionID: sessionID,
-		Version: projection.Version, Status: projection.Status, ProjectionJSON: string(projectionJSON),
+		ID:             current.ID,
+		RunID:          runID,
+		SessionID:      sessionID,
+		Version:        current.Version,
+		Status:         projection.Status,
+		ProjectionJSON: string(projectionJSON),
 	})
 }
 
@@ -1041,12 +1081,25 @@ func marshalRuntimeEvent(eventName string, payload any) (airuntime.EventType, st
 // ConsumeProjectedEvents 消费投影事件并持久化。
 func ConsumeProjectedEvents(ctx context.Context, l *Logic, runID, sessionID string, seq *int, events []airuntime.PublicStreamEvent, emit EventEmitter) (stream.RunUpdate, error) {
 	update := stream.AccumulateProjectedEvents(events, nil)
+	state, current, err := loadIncrementalProjectionState(ctx, l, runID)
+	if err != nil {
+		return update, err
+	}
 	for _, projected := range events {
 		eid, err := AppendRunEventWithID(ctx, l, runID, sessionID, seq, projected.Event, projected.Data)
 		if err != nil {
 			return update, err
 		}
+		state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
+			ID:   eid,
+			Type: projected.Event,
+			Text: projectionEventText(projected),
+			Data: projected.Data,
+		})
 		emit(projected.Event, withEventID(projected.Data, eid))
+	}
+	if err := persistIncrementalProjection(ctx, l, sessionID, state, current); err != nil {
+		return update, err
 	}
 	return update, nil
 }
@@ -1076,4 +1129,30 @@ func withEventID(payload any, eventID string) any {
 	}
 	cp["event_id"] = eventID
 	return cp
+}
+
+func projectionEventText(event airuntime.PublicStreamEvent) string {
+	if event.Event != "delta" {
+		return ""
+	}
+	data, _ := event.Data.(map[string]any)
+	if data == nil {
+		return ""
+	}
+	content, _ := data["content"].(string)
+	return content
+}
+
+func persistTerminalProjectionEvent(ctx context.Context, l *Logic, runID, sessionID, eventID string, event airuntime.PublicStreamEvent) error {
+	state, current, err := loadIncrementalProjectionState(ctx, l, runID)
+	if err != nil {
+		return err
+	}
+	state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
+		ID:   eventID,
+		Type: event.Event,
+		Text: projectionEventText(event),
+		Data: event.Data,
+	})
+	return persistIncrementalProjection(ctx, l, sessionID, state, current)
 }
