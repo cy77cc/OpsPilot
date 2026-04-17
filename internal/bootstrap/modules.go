@@ -7,6 +7,8 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	aicommand "github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
+	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
@@ -61,6 +63,10 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 			}
 		}, aiBackgroundWorkerTick).Start(ctx)
 	}
+	chatCommandHandler := aicommand.NewChatCommandHandler()
+	chatHTTPHandler := aihttp.NewChatHandler(chatCommandHandler)
+	aiGroup := v1.Group("/ai", middleware.JWTAuth())
+	aiGroup.POST("/chat", chatHTTPHandler.HandleChat)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

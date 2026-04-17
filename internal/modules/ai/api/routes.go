@@ -18,7 +18,6 @@ import (
 // RegisterAIHandlers 注册用户侧 AI 路由。
 //
 // 所有路由需要 JWT 认证，包括:
-//   - POST /ai/chat - SSE 流式对话
 //   - GET /ai/sessions - 列出会话
 //   - POST /ai/sessions - 创建会话
 //   - GET /ai/sessions/:id - 获取会话详情
@@ -37,8 +36,6 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
-		// 对话相关
-		g.POST("/chat", chatHandler.Chat)
 		g.GET("/sessions", chatHandler.ListSessions)
 		g.POST("/sessions", chatHandler.CreateSession)
 		g.GET("/sessions/:id", chatHandler.GetSession)
