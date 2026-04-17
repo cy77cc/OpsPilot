@@ -30,7 +30,9 @@ func RegisterCMDBHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.POST("/relations", h.CreateRelation)
 		g.DELETE("/relations/:id", h.DeleteRelation)
 
+		g.GET("/tree", h.GetTree)
 		g.GET("/topology", h.Topology)
+		g.GET("/topology/subgraph", h.GetSubgraph)
 
 		g.POST("/sync/jobs", h.TriggerSync)
 		g.GET("/sync/jobs/:id", h.GetSyncJob)

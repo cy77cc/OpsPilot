@@ -16,9 +16,31 @@ import (
 	"time"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/cmdb/model"
+	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )
+
+// TreeNode is the logic layer representation of a tree node.
+type TreeNode struct {
+	ID      uint
+	Name    string
+	CIType  string
+	UIHints UIHints
+}
+
+// UIHints is the logic layer representation of UI hints.
+type UIHints struct {
+	Icon       string
+	Color      string
+	Expandable bool
+}
+
+// Subgraph is the logic layer representation of a subgraph.
+type Subgraph struct {
+	Nodes []model.CMDBCI
+	Edges []model.CMDBRelation
+}
 
 // Logic 是 CMDB 业务逻辑层的核心结构。
 //
@@ -52,6 +74,25 @@ type syncSummary struct {
 	Updated   int `json:"updated"`   // 更新数量
 	Unchanged int `json:"unchanged"` // 未变更数量
 	Failed    int `json:"failed"`    // 失败数量
+}
+
+// IngestionDTO 是资产摄取的输入数据结构。
+type IngestionDTO struct {
+	Source     string         `json:"source"`      // 数据来源
+	CIType     string         `json:"ci_type"`     // 资产类型
+	ExternalID string         `json:"external_id"` // 外部系统ID
+	Name       string         `json:"name"`        // 资产名称
+	Env        string         `json:"env"`         // 环境
+	Region     string         `json:"region"`      // 区域
+	Attributes map[string]any `json:"attributes"`  // 属性列表
+	Relations  []RelationDTO  `json:"relations"`   // 关系列表
+}
+
+// RelationDTO 是摄取过程中的关系定义。
+type RelationDTO struct {
+	TargetType  string `json:"target_type"`   // 目标资产类型
+	TargetExtID string `json:"target_ext_id"` // 目标资产外部ID
+	Type        string `json:"type"`          // 关系类型
 }
 
 // discoveredCI 是从外部数据源发现的资产信息。
@@ -439,6 +480,10 @@ func (l *Logic) RunSync(ctx context.Context, uid uint, source string) (*model.CM
 			switch {
 			case err == nil:
 				changed := existing.Name != d.Name || existing.Status != d.Status || existing.Owner != d.Owner || existing.AttrsJSON != d.AttrsJSON
+				// 生命周期管理：如果是从失联/停用状态恢复，标记为已变更以重置状态
+				if existing.Status == "stale" || existing.Status == "inactive" || existing.Status == "archived" {
+					changed = true
+				}
 				if changed {
 					updates := map[string]any{
 						"name":           d.Name,
@@ -449,6 +494,7 @@ func (l *Logic) RunSync(ctx context.Context, uid uint, source string) (*model.CM
 						"attrs_json":     d.AttrsJSON,
 						"updated_by":     uid,
 						"last_synced_at": now,
+						"last_seen_at":   now,
 					}
 					if uerr := tx.Model(&model.CMDBCI{}).Where("id = ?", existing.ID).Updates(updates).Error; uerr != nil {
 						summary.Failed++
@@ -458,6 +504,11 @@ func (l *Logic) RunSync(ctx context.Context, uid uint, source string) (*model.CM
 						summary.Updated++
 					}
 				} else {
+					// 即便没有业务字段变更，也记录同步/可见时间，防止被 Sweep 逻辑误判为失联
+					tx.Model(&model.CMDBCI{}).Where("id = ?", existing.ID).Updates(map[string]any{
+						"last_synced_at": now,
+						"last_seen_at":   now,
+					})
 					action = "unchanged"
 					summary.Unchanged++
 				}
@@ -610,15 +661,229 @@ func (l *Logic) syncServiceClusterRelationsTx(ctx context.Context, tx *gorm.DB, 
 			continue
 		}
 		var existing model.CMDBRelation
+		now := time.Now()
 		err := tx.Where("from_ci_id = ? AND to_ci_id = ? AND relation_type = ?", fromCI.ID, toCI.ID, "runs_on").First(&existing).Error
 		if err == gorm.ErrRecordNotFound {
-			rel := model.CMDBRelation{FromCIID: fromCI.ID, ToCIID: toCI.ID, RelationType: "runs_on", CreatedBy: uid}
+			rel := model.CMDBRelation{
+				FromCIID:     fromCI.ID,
+				ToCIID:       toCI.ID,
+				RelationType: "runs_on",
+				Source:       "service", // 标记数据源
+				Status:       "active",
+				LastSeenAt:   &now,
+				CreatedBy:    uid,
+			}
 			if err := tx.Create(&rel).Error; err != nil {
 				continue
 			}
+		} else if err == nil {
+			// 更新可见时间并恢复活跃状态，防止被 Sweep 逻辑误判
+			tx.Model(&model.CMDBRelation{}).Where("id = ?", existing.ID).Updates(map[string]any{
+				"last_seen_at": &now,
+				"status":       "active",
+			})
 		}
 	}
 	return nil
+}
+
+// Ingest 执行资产摄取逻辑。
+//
+// 实现 Match, Merge 和 Relation Sync 逻辑：
+//   - Match: 根据 Source 和 ExternalID 在 cmdb_identities 中查找 ci_id。
+//   - Merge: 更新 CI 的基础信息和属性，处理 AttrMetaJSON 中的 Managed 标记。
+//   - Relation Sync: 同步资产关系。
+//
+// 参数:
+//   - ctx: 上下文
+//   - in: 摄取数据 DTO
+//
+// 返回: 错误信息
+func (l *Logic) Ingest(ctx context.Context, in IngestionDTO) error {
+	now := time.Now()
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Match
+		var identity model.CMDBIdentity
+		err := tx.Where("source = ? AND external_id = ?", in.Source, in.ExternalID).First(&identity).Error
+
+		var ci model.CMDBCI
+		if err == gorm.ErrRecordNotFound {
+			// 如果没找到身份，则创建新的 CI 和 Identity
+			ci = model.CMDBCI{
+				CIUID:        ciUID(in.CIType, in.ExternalID),
+				CIType:       in.CIType,
+				Name:         in.Name,
+				Source:       in.Source,
+				ExternalID:   in.ExternalID,
+				Env:          in.Env,
+				Region:       in.Region,
+				FirstSeenAt:  &now,
+				LastSeenAt:   &now,
+				LastSyncedAt: &now,
+			}
+			if err := tx.Create(&ci).Error; err != nil {
+				return err
+			}
+			identity = model.CMDBIdentity{
+				CIID:       ci.ID,
+				Source:     in.Source,
+				ExternalID: in.ExternalID,
+			}
+			if err := tx.Create(&identity).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else {
+			// 找到身份，获取对应的 CI
+			if err := tx.First(&ci, identity.CIID).Error; err != nil {
+				return err
+			}
+		}
+
+		// 2. Merge
+		ci.Name = in.Name
+		ci.Env = in.Env
+		ci.Region = in.Region
+		ci.Status = "active" // 见到了即恢复活跃状态
+		ci.LastSeenAt = &now
+		ci.LastSyncedAt = &now
+
+		// 处理 AttrMetaJSON 中的权属标记
+		var currentAttrs map[string]any
+		if ci.AttrsJSON != "" {
+			_ = json.Unmarshal([]byte(ci.AttrsJSON), &currentAttrs)
+		}
+		if currentAttrs == nil {
+			currentAttrs = make(map[string]any)
+		}
+
+		var meta map[string]any
+		if ci.AttrMetaJSON != "" {
+			_ = json.Unmarshal([]byte(ci.AttrMetaJSON), &meta)
+		}
+
+		for k, v := range in.Attributes {
+			isManaged := false
+			if meta != nil {
+				if m, ok := meta[k].(map[string]any); ok {
+					if managed, _ := m["managed"].(bool); managed {
+						isManaged = true
+					}
+				}
+			}
+			if !isManaged {
+				currentAttrs[k] = v
+			}
+		}
+		attrsBuf, _ := json.Marshal(currentAttrs)
+		ci.AttrsJSON = string(attrsBuf)
+
+		if err := tx.Save(&ci).Error; err != nil {
+			return err
+		}
+
+		// 3. Relation Sync
+		for _, r := range in.Relations {
+			// 根据目标类型和外部ID定位目标 CI
+			targetUID := ciUID(r.TargetType, r.TargetExtID)
+			var targetCI model.CMDBCI
+			if err := tx.Where("ci_uid = ?", targetUID).First(&targetCI).Error; err != nil {
+				// 目标不存在则跳过
+				continue
+			}
+
+			var rel model.CMDBRelation
+			err := tx.Where("from_ci_id = ? AND to_ci_id = ? AND relation_type = ?", ci.ID, targetCI.ID, r.Type).First(&rel).Error
+			if err == gorm.ErrRecordNotFound {
+				rel = model.CMDBRelation{
+					FromCIID:     ci.ID,
+					ToCIID:       targetCI.ID,
+					RelationType: r.Type,
+					Source:       in.Source,
+					LastSeenAt:   &now,
+				}
+				if err := tx.Create(&rel).Error; err != nil {
+					return err
+				}
+			} else if err == nil {
+				rel.Status = "active" // 恢复活跃状态
+				rel.LastSeenAt = &now
+				if err := tx.Save(&rel).Error; err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+// Sweep 根据数据源清理过期的资产和关系。
+//
+// 采用状态阶梯管理逻辑：
+//  1. active -> stale (超过 threshold 未见)
+//  2. stale -> inactive (超过 threshold * 2 未见)
+//  3. inactive -> archived (超过 threshold * 3 未见)
+//
+// 参数:
+//   - ctx: 上下文
+//   - source: 数据源名称
+//   - threshold: 过期时间阈值 (stale 阈值)
+//
+// 返回: 状态变更的资产记录总数、错误信息
+func (l *Logic) Sweep(ctx context.Context, source string, threshold time.Time) (int64, error) {
+	var total int64
+	now := time.Now()
+	// 计算时间跨度（用于派生更高级别的阈值）
+	duration := now.Sub(threshold)
+	if duration <= 0 {
+		return 0, nil
+	}
+
+	// 定义阶梯阈值
+	inactiveThreshold := now.Add(-2 * duration)
+	archiveThreshold := now.Add(-3 * duration)
+
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 处理 CMDBRelation (先处理关系)
+		for _, statusFlow := range []struct {
+			from, to string
+			limit    time.Time
+		}{
+			{"inactive", "archived", archiveThreshold},
+			{"stale", "inactive", inactiveThreshold},
+			{"active", "stale", threshold},
+		} {
+			if err := tx.Model(&model.CMDBRelation{}).
+				Where("source = ? AND status = ? AND last_seen_at < ?", source, statusFlow.from, statusFlow.limit).
+				Update("status", statusFlow.to).Error; err != nil {
+				return err
+			}
+		}
+
+		// 2. 处理 CMDBCI
+		for _, statusFlow := range []struct {
+			from, to string
+			limit    time.Time
+		}{
+			{"inactive", "archived", archiveThreshold},
+			{"stale", "inactive", inactiveThreshold},
+			{"active", "stale", threshold},
+		} {
+			res := tx.Model(&model.CMDBCI{}).
+				Where("source = ? AND status = ? AND last_seen_at < ?", source, statusFlow.from, statusFlow.limit).
+				Update("status", statusFlow.to)
+			if res.Error != nil {
+				return res.Error
+			}
+			total += res.RowsAffected
+		}
+		return nil
+	})
+	return total, err
 }
 
 // defaultIfEmpty 如果字符串为空则返回默认值。
@@ -633,4 +898,213 @@ func defaultIfEmpty(v, d string) string {
 		return d
 	}
 	return strings.TrimSpace(v)
+}
+
+// GetTree 获取树状导航数据。
+//
+// 根据 parentID 和 viewType 返回下一级节点。
+// 支持四层模型: Project -> Service -> Cluster/DeployTarget -> Host.
+//
+// 参数:
+//   - ctx: 上下文
+//   - parentID: 父节点ID，为0时返回根节点 (L1)
+//   - viewType: 视图类型 (如: project, team)
+//
+// 返回: 树节点列表、错误信息
+func (l *Logic) GetTree(ctx context.Context, parentID uint, viewType string) ([]TreeNode, error) {
+	if parentID == 0 {
+		// Layer 1: Root nodes
+		var projects []projectmodel.Project
+		if err := l.svcCtx.DB.WithContext(ctx).Find(&projects).Error; err != nil {
+			return nil, err
+		}
+		out := make([]TreeNode, 0, len(projects))
+		for _, p := range projects {
+			out = append(out, TreeNode{
+				ID:      p.ID,
+				Name:    p.Name,
+				CIType:  "project",
+				UIHints: l.getUIHints("project"),
+			})
+		}
+		return out, nil
+	}
+
+	// Check if parent is a Project (not in CMDBCI)
+	var parentCI model.CMDBCI
+	err := l.svcCtx.DB.WithContext(ctx).First(&parentCI, parentID).Error
+	if err == gorm.ErrRecordNotFound {
+		// Assume parent is a Project, Layer 2: Services
+		var cis []model.CMDBCI
+		if err := l.svcCtx.DB.WithContext(ctx).Where("project_id = ? AND ci_type = ?", parentID, "service").Find(&cis).Error; err != nil {
+			return nil, err
+		}
+		out := make([]TreeNode, 0, len(cis))
+		for _, c := range cis {
+			out = append(out, TreeNode{
+				ID:      c.ID,
+				Name:    c.Name,
+				CIType:  "service",
+				UIHints: l.getUIHints("service"),
+			})
+		}
+		return out, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	// parent is a CI
+	switch parentCI.CIType {
+	case "service":
+		// Layer 3: Related Clusters and Deploy Targets
+		var rels []model.CMDBRelation
+		if err := l.svcCtx.DB.WithContext(ctx).Where("from_ci_id = ? AND relation_type = ?", parentCI.ID, "runs_on").Find(&rels).Error; err != nil {
+			return nil, err
+		}
+		ids := make([]uint, 0, len(rels))
+		for _, r := range rels {
+			ids = append(ids, r.ToCIID)
+		}
+		if len(ids) == 0 {
+			return []TreeNode{}, nil
+		}
+		var children []model.CMDBCI
+		if err := l.svcCtx.DB.WithContext(ctx).Where("id IN ?", ids).Find(&children).Error; err != nil {
+			return nil, err
+		}
+		out := make([]TreeNode, 0, len(children))
+		for _, c := range children {
+			out = append(out, TreeNode{
+				ID:      c.ID,
+				Name:    c.Name,
+				CIType:  c.CIType,
+				UIHints: l.getUIHints(c.CIType),
+			})
+		}
+		return out, nil
+	case "cluster", "deploy_target":
+		// Layer 4: Hosts (via contains relation)
+		var rels []model.CMDBRelation
+		if err := l.svcCtx.DB.WithContext(ctx).Where("from_ci_id = ? AND relation_type IN ?", parentCI.ID, []string{"contains", "includes"}).Find(&rels).Error; err != nil {
+			return nil, err
+		}
+		ids := make([]uint, 0, len(rels))
+		for _, r := range rels {
+			ids = append(ids, r.ToCIID)
+		}
+		if len(ids) == 0 {
+			return []TreeNode{}, nil
+		}
+		var children []model.CMDBCI
+		if err := l.svcCtx.DB.WithContext(ctx).Where("id IN ?", ids).Find(&children).Error; err != nil {
+			return nil, err
+		}
+		out := make([]TreeNode, 0, len(children))
+		for _, c := range children {
+			out = append(out, TreeNode{
+				ID:      c.ID,
+				Name:    c.Name,
+				CIType:  c.CIType,
+				UIHints: l.getUIHints(c.CIType),
+			})
+		}
+		return out, nil
+	}
+
+	return []TreeNode{}, nil
+}
+
+// GetSubgraph 获取局部拓扑。
+//
+// 以 rootID 为中心，返回指定深度的关联拓扑。
+//
+// 参数:
+//   - ctx: 上下文
+//   - rootID: 根节点资产ID
+//   - depth: 查询深度 (1-5)
+//   - relTypes: 过滤的关系类型
+//
+// 返回: 拓扑图数据 (包含节点和边)、错误信息
+func (l *Logic) GetSubgraph(ctx context.Context, rootID uint, depth int, relTypes []string) (*Subgraph, error) {
+	if depth <= 0 {
+		depth = 1
+	}
+	if depth > 5 {
+		depth = 5
+	}
+
+	nodeIDs := map[uint]bool{rootID: true}
+	currentLevel := []uint{rootID}
+	edgeIDs := map[uint]bool{}
+	
+	var allEdges []model.CMDBRelation
+
+	// BFS traversal
+	for d := 0; d < depth; d++ {
+		if len(currentLevel) == 0 {
+			break
+		}
+		
+		var nextLevel []uint
+		var rels []model.CMDBRelation
+		q := l.svcCtx.DB.WithContext(ctx).Where("from_ci_id IN ? OR to_ci_id IN ?", currentLevel, currentLevel)
+		if len(relTypes) > 0 {
+			q = q.Where("relation_type IN ?", relTypes)
+		}
+		if err := q.Find(&rels).Error; err != nil {
+			return nil, err
+		}
+
+		for _, r := range rels {
+			if !edgeIDs[r.ID] {
+				allEdges = append(allEdges, r)
+				edgeIDs[r.ID] = true
+				
+				otherID := r.ToCIID
+				if nodeIDs[r.ToCIID] {
+					otherID = r.FromCIID
+				}
+				
+				if !nodeIDs[otherID] {
+					nodeIDs[otherID] = true
+					nextLevel = append(nextLevel, otherID)
+				}
+			}
+		}
+		currentLevel = nextLevel
+	}
+
+	// Fetch all nodes
+	ids := make([]uint, 0, len(nodeIDs))
+	for id := range nodeIDs {
+		ids = append(ids, id)
+	}
+	var allNodes []model.CMDBCI
+	if len(ids) > 0 {
+		if err := l.svcCtx.DB.WithContext(ctx).Where("id IN ?", ids).Find(&allNodes).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return &Subgraph{Nodes: allNodes, Edges: allEdges}, nil
+}
+
+// getUIHints 根据资产类型生成 UI 提示。
+func (l *Logic) getUIHints(ciType string) UIHints {
+	switch ciType {
+	case "project":
+		return UIHints{Icon: "FolderOutlined", Color: "#1890ff", Expandable: true}
+	case "team":
+		return UIHints{Icon: "TeamOutlined", Color: "#fa8c16", Expandable: true}
+	case "service":
+		return UIHints{Icon: "AppstoreOutlined", Color: "#52c41a", Expandable: true}
+	case "cluster":
+		return UIHints{Icon: "ClusterOutlined", Color: "#722ed1", Expandable: true}
+	case "host":
+		return UIHints{Icon: "DesktopOutlined", Color: "#13c2c2", Expandable: false}
+	case "deploy_target":
+		return UIHints{Icon: "RocketOutlined", Color: "#faad14", Expandable: true}
+	default:
+		return UIHints{Icon: "InfoCircleOutlined", Color: "#bfbfbf", Expandable: false}
+	}
 }

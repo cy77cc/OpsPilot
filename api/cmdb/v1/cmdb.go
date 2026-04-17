@@ -28,6 +28,28 @@ type CIRelation struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type UIHints struct {
+	Icon       string `json:"icon"`
+	Color      string `json:"color"`
+	Expandable bool   `json:"expandable"`
+}
+
+type TreeNode struct {
+	ID      uint    `json:"id"`
+	Name    string  `json:"name"`
+	CIType  string  `json:"ci_type"`
+	UIHints UIHints `json:"ui_hints"`
+}
+
+type TreeResp struct {
+	Nodes []TreeNode `json:"nodes"`
+}
+
+type SubgraphResp struct {
+	Nodes []CI         `json:"nodes"`
+	Edges []CIRelation `json:"edges"`
+}
+
 type CreateCIReq struct {
 	CIType     string `json:"ci_type" binding:"required"`
 	Name       string `json:"name" binding:"required"`

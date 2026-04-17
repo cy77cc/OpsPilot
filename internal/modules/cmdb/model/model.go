@@ -26,14 +26,21 @@ type CMDBCI struct {
 	CIType       string         `gorm:"column:ci_type;type:varchar(64);not null;index" json:"ci_type"`                     // 配置项类型 (host, cluster, service 等)
 	Name         string         `gorm:"column:name;type:varchar(128);not null;index" json:"name"`                          // 配置项名称
 	Source       string         `gorm:"column:source;type:varchar(64);not null;default:'manual';index" json:"source"`      // 数据来源 (manual, host, cluster, service 等)
+	SourceMain   string         `gorm:"column:source_main;type:varchar(64);not null;default:'';index" json:"source_main"`  // 主数据源
 	ExternalID   string         `gorm:"column:external_id;type:varchar(160);not null;default:'';index" json:"external_id"` // 外部系统 ID
+	Env          string         `gorm:"column:env;type:varchar(32);not null;default:'prod';index" json:"env"`              // 环境 (prod, stage, dev 等)
+	Region       string         `gorm:"column:region;type:varchar(64);not null;default:'';index" json:"region"`            // 区域/数据中心
 	ProjectID    uint           `gorm:"column:project_id;default:0;index" json:"project_id"`                               // 所属项目 ID
 	TeamID       uint           `gorm:"column:team_id;default:0;index" json:"team_id"`                                     // 所属团队 ID
-	Owner        string         `gorm:"column:owner;type:varchar(128);not null;default:''" json:"owner"`                   // 负责人
+	Owner        string         `gorm:"column:owner;type:varchar(128);not null;default:''" json:"owner"`                   // 负责人 (显示名)
+	OwnerID      uint           `gorm:"column:owner_id;default:0;index" json:"owner_id"`                                   // 负责人用户 ID
 	Status       string         `gorm:"column:status;type:varchar(32);not null;default:'active';index" json:"status"`      // 状态 (active, inactive, unknown 等)
 	TagsJSON     string         `gorm:"column:tags_json;type:text" json:"tags_json"`                                       // 标签 JSON
 	AttrsJSON    string         `gorm:"column:attrs_json;type:text" json:"attrs_json"`                                     // 扩展属性 JSON
+	AttrMetaJSON string         `gorm:"column:attr_meta_json;type:text" json:"attr_meta_json"`                             // 属性元数据 JSON
 	LastSyncedAt *time.Time     `gorm:"column:last_synced_at" json:"last_synced_at,omitempty"`                             // 最后同步时间
+	FirstSeenAt  *time.Time     `gorm:"column:first_seen_at" json:"first_seen_at,omitempty"`                               // 首次发现时间
+	LastSeenAt   *time.Time     `gorm:"column:last_seen_at" json:"last_seen_at,omitempty"`                                 // 最后发现时间
 	CreatedBy    uint           `gorm:"column:created_by;default:0" json:"created_by"`                                     // 创建者用户 ID
 	UpdatedBy    uint           `gorm:"column:updated_by;default:0" json:"updated_by"`                                     // 最后更新者用户 ID
 	CreatedAt    time.Time      `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                // 创建时间
@@ -44,6 +51,25 @@ type CMDBCI struct {
 // TableName 返回 CMDBCI 的数据库表名。
 func (CMDBCI) TableName() string { return "cmdb_cis" }
 
+// CMDBIdentity 是配置项在不同数据源中的身份映射模型。
+//
+// 用于多源数据融合，记录同一个配置项在不同外部系统中的 ID
+// 以及同步时的置信度。
+//
+// 表名: cmdb_identities
+type CMDBIdentity struct {
+	ID         uint      `gorm:"primaryKey;column:id" json:"id"`                                                                 // 身份映射 ID
+	CIID       uint      `gorm:"column:ci_id;not null;index" json:"ci_id"`                                                       // 所属配置项 ID
+	Source     string    `gorm:"column:source;type:varchar(64);not null;uniqueIndex:idx_ident_source_extid,priority:1" json:"source"`    // 数据源 (如: aliyun, kubernetes, prometheus)
+	ExternalID string    `gorm:"column:external_id;type:varchar(160);not null;uniqueIndex:idx_ident_source_extid,priority:2" json:"external_id"` // 在外部系统中的 ID
+	Confidence float64   `gorm:"column:confidence;type:decimal(5,2);default:1.0" json:"confidence"`                              // 置信度 (0.0-1.0)
+	CreatedAt  time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                              // 创建时间
+	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                              // 更新时间
+}
+
+// TableName 返回 CMDBIdentity 的数据库表名。
+func (CMDBIdentity) TableName() string { return "cmdb_identities" }
+
 // CMDBRelation 是配置项之间的关系模型。
 //
 // 用于描述配置项之间的依赖、关联关系，如服务运行在集群上、
@@ -51,12 +77,16 @@ func (CMDBCI) TableName() string { return "cmdb_cis" }
 //
 // 表名: cmdb_relations
 type CMDBRelation struct {
-	ID           uint      `gorm:"primaryKey;column:id" json:"id"`                                                                                 // 关系 ID
-	FromCIID     uint      `gorm:"column:from_ci_id;not null;index:idx_cmdb_relation_from_to,priority:1" json:"from_ci_id"`                        // 源配置项 ID
-	ToCIID       uint      `gorm:"column:to_ci_id;not null;index:idx_cmdb_relation_from_to,priority:2" json:"to_ci_id"`                            // 目标配置项 ID
-	RelationType string    `gorm:"column:relation_type;type:varchar(64);not null;index:idx_cmdb_relation_from_to,priority:3" json:"relation_type"` // 关系类型 (runs_on, depends_on 等)
-	CreatedBy    uint      `gorm:"column:created_by;default:0" json:"created_by"`                                                                  // 创建者用户 ID
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                                             // 创建时间
+	ID           uint       `gorm:"primaryKey;column:id" json:"id"`                                                                                       // 关系 ID
+	FromCIID     uint       `gorm:"column:from_ci_id;not null;uniqueIndex:idx_rel_from_to_type,priority:1" json:"from_ci_id"`                              // 源配置项 ID
+	ToCIID       uint       `gorm:"column:to_ci_id;not null;uniqueIndex:idx_rel_from_to_type,priority:2" json:"to_ci_id"`                                  // 目标配置项 ID
+	RelationType string     `gorm:"column:relation_type;type:varchar(64);not null;uniqueIndex:idx_rel_from_to_type,priority:3" json:"relation_type"`      // 关系类型 (runs_on, depends_on 等)
+	Source       string     `gorm:"column:source;type:varchar(64);not null;default:'manual';index" json:"source"`                                         // 数据来源
+	Status       string     `gorm:"column:status;type:varchar(32);not null;default:'active';index" json:"status"`                                         // 状态
+	Confidence   float64    `gorm:"column:confidence;type:decimal(5,2);default:1.0" json:"confidence"`                                                    // 置信度 (0.0-1.0)
+	LastSeenAt   *time.Time `gorm:"column:last_seen_at" json:"last_seen_at,omitempty"`                                                                    // 最后发现时间
+	CreatedBy    uint       `gorm:"column:created_by;default:0" json:"created_by"`                                                                        // 创建者用户 ID
+	CreatedAt    time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                                                   // 创建时间
 }
 
 // TableName 返回 CMDBRelation 的数据库表名。

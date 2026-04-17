@@ -9,12 +9,42 @@ export interface CMDBAsset {
   name: string;
   status: string;
   owner: string;
+  ownerId?: number;
+  env?: string;
+  region?: string;
   projectId?: number;
   teamId?: number;
   tagsJson?: string;
   attrsJson?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CMDBTreeNode {
+  id: string;
+  name: string;
+  type: string;
+  parentId?: string;
+  children?: CMDBTreeNode[];
+  isLeaf?: boolean;
+}
+
+export interface CMDBTopologyData {
+  nodes: Array<{
+    id: string;
+    label: string;
+    type: string;
+    status?: string;
+    [key: string]: any;
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+    type?: string;
+    [key: string]: any;
+  }>;
 }
 
 export interface CMDBRelation {
@@ -41,7 +71,7 @@ export interface CMDBSyncJob {
 
 export const cmdbApi = {
   async listAssets(params?: { assetType?: string; status?: string; keyword?: string; page?: number; pageSize?: number }): Promise<ApiResponse<CMDBAsset[]>> {
-    const res = await apiService.get<any[]>('/cmdb/assets', {
+    const res = await apiService.get<any>('/cmdb/assets', {
       params: {
         asset_type: params?.assetType,
         status: params?.status,
@@ -50,9 +80,10 @@ export const cmdbApi = {
         page_size: params?.pageSize,
       },
     });
+    const list = res.data?.list || [];
     return {
       ...res,
-      data: (res.data || []).map((x: any) => ({
+      data: list.map((x: any) => ({
         id: String(x.id),
         ciUid: x.ci_uid,
         assetType: x.ci_type || x.asset_type,
@@ -60,6 +91,9 @@ export const cmdbApi = {
         name: x.name,
         status: x.status,
         owner: x.owner,
+        ownerId: x.owner_id,
+        env: x.env,
+        region: x.region,
         projectId: x.project_id,
         teamId: x.team_id,
         tagsJson: x.tags_json,
@@ -111,12 +145,13 @@ export const cmdbApi = {
   },
 
   async listRelations(params?: { assetId?: string }): Promise<ApiResponse<CMDBRelation[]>> {
-    const res = await apiService.get<any[]>('/cmdb/relations', {
+    const res = await apiService.get<any>('/cmdb/relations', {
       params: { asset_id: params?.assetId },
     });
+    const list = res.data?.list || [];
     return {
       ...res,
-      data: (res.data || []).map((x: any) => ({
+      data: list.map((x: any) => ({
         id: String(x.id),
         fromAssetId: String(x.from_asset_id ?? x.from_ci_id),
         toAssetId: String(x.to_asset_id ?? x.to_ci_id),
@@ -154,6 +189,66 @@ export const cmdbApi = {
   },
 
   async listChanges(params?: { assetId?: string }): Promise<ApiResponse<any[]>> {
-    return apiService.get('/cmdb/changes', { params: { asset_id: params?.assetId } });
+    const res = await apiService.get<any>('/cmdb/changes', { params: { asset_id: params?.assetId } });
+    return {
+      ...res,
+      data: res.data?.list || [],
+    };
+  },
+
+  async listAudits(assetId: string | number): Promise<ApiResponse<any[]>> {
+    const res = await apiService.get<any>(`/cmdb/assets/${assetId}/audits`);
+    return {
+      ...res,
+      data: res.data?.list || [],
+    };
+  },
+
+  async getTree(params: { parentId?: number; viewType?: string }): Promise<ApiResponse<CMDBTreeNode[]>> {
+    const res = await apiService.get<any>('/cmdb/tree', {
+      params: {
+        parent_id: params.parentId,
+        view_type: params.viewType,
+      },
+    });
+    return {
+      ...res,
+      data: res.data?.nodes || [],
+    };
+  },
+
+  async getTopologySubgraph(params: { rootId: number; depth?: number; relTypes?: string }): Promise<ApiResponse<CMDBTopologyData>> {
+    return apiService.get('/cmdb/topology/subgraph', {
+      params: {
+        root_id: params.rootId,
+        depth: params.depth,
+        rel_types: params.relTypes,
+      },
+    });
+  },
+
+  async getAsset(id: string): Promise<ApiResponse<CMDBAsset>> {
+    const res = await apiService.get<any>(`/cmdb/assets/${id}`);
+    if (res.data) {
+      res.data = {
+        id: String(res.data.id),
+        ciUid: res.data.ci_uid,
+        assetType: res.data.ci_type || res.data.asset_type,
+        source: res.data.source,
+        name: res.data.name,
+        status: res.data.status,
+        owner: res.data.owner,
+        ownerId: res.data.owner_id,
+        env: res.data.env,
+        region: res.data.region,
+        projectId: res.data.project_id,
+        teamId: res.data.team_id,
+        tagsJson: res.data.tags_json,
+        attrsJson: res.data.attrs_json,
+        createdAt: res.data.created_at,
+        updatedAt: res.data.updated_at,
+      };
+    }
+    return res;
   },
 };

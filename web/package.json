@@ -17,6 +17,7 @@
     "@ant-design/x": "^2.3.0",
     "@ant-design/x-markdown": "^2.3.0",
     "@ant-design/x-sdk": "^2.3.0",
+    "@antv/g6": "^4.8.25",
     "@faker-js/faker": "^10.3.0",
     "@monaco-editor/react": "^4.7.0",
     "@types/react-window": "^1.8.8",

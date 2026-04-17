@@ -364,6 +364,119 @@ func (h *Handler) Topology(c *gin.Context) {
 	httpx.OK(c, graph)
 }
 
+// GetTree 获取资产树。
+//
+// @Summary 获取资产树
+// @Description 获取 CMDB 资产的树状结构，支持按父节点 ID 展开
+// @Tags CMDB
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param parent_id query int false "父节点 ID"
+// @Param view_type query string false "视图类型"
+// @Success 200 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /cmdb/tree [get]
+func (h *Handler) GetTree(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cmdb:read") {
+		return
+	}
+	parentID := uint(atoiDefault(c.Query("parent_id"), 0))
+	viewType := strings.TrimSpace(c.Query("view_type"))
+	nodes, err := h.logic.GetTree(c.Request.Context(), parentID, viewType)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+
+	out := make([]cmdbv1.TreeNode, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, cmdbv1.TreeNode{
+			ID:     n.ID,
+			Name:   n.Name,
+			CIType: n.CIType,
+			UIHints: cmdbv1.UIHints{
+				Icon:       n.UIHints.Icon,
+				Color:      n.UIHints.Color,
+				Expandable: n.UIHints.Expandable,
+			},
+		})
+	}
+	httpx.OK(c, cmdbv1.TreeResp{Nodes: out})
+}
+
+// GetSubgraph 获取局部拓扑。
+//
+// @Summary 获取局部拓扑
+// @Description 以指定节点为中心获取局部拓扑结构
+// @Tags CMDB
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param root_id query int true "中心节点 ID"
+// @Param depth query int false "查询深度" default(1)
+// @Param rel_types query string false "关系类型过滤"
+// @Success 200 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /cmdb/topology/subgraph [get]
+func (h *Handler) GetSubgraph(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "cmdb:read") {
+		return
+	}
+	rootID := uint(atoiDefault(c.Query("root_id"), 0))
+	if rootID == 0 {
+		httpx.Fail(c, xcode.ParamError, "root_id is required")
+		return
+	}
+	depth := atoiDefault(c.Query("depth"), 1)
+	var relTypes []string
+	if rt := strings.TrimSpace(c.Query("rel_types")); rt != "" {
+		relTypes = strings.Split(rt, ",")
+	}
+
+	sub, err := h.logic.GetSubgraph(c.Request.Context(), rootID, depth, relTypes)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+
+	nodes := make([]cmdbv1.CI, 0, len(sub.Nodes))
+	for _, n := range sub.Nodes {
+		nodes = append(nodes, cmdbv1.CI{
+			ID:           n.ID,
+			CIUID:        n.CIUID,
+			CIType:       n.CIType,
+			Name:         n.Name,
+			Source:       n.Source,
+			ExternalID:   n.ExternalID,
+			ProjectID:    n.ProjectID,
+			TeamID:       n.TeamID,
+			Owner:        n.Owner,
+			Status:       n.Status,
+			TagsJSON:     n.TagsJSON,
+			AttrsJSON:    n.AttrsJSON,
+			LastSyncedAt: n.LastSyncedAt,
+			CreatedAt:    n.CreatedAt,
+			UpdatedAt:    n.UpdatedAt,
+		})
+	}
+
+	edges := make([]cmdbv1.CIRelation, 0, len(sub.Edges))
+	for _, e := range sub.Edges {
+		edges = append(edges, cmdbv1.CIRelation{
+			ID:           e.ID,
+			FromCIID:     e.FromCIID,
+			ToCIID:       e.ToCIID,
+			RelationType: e.RelationType,
+			CreatedAt:    e.CreatedAt,
+		})
+	}
+
+	httpx.OK(c, cmdbv1.SubgraphResp{Nodes: nodes, Edges: edges})
+}
+
 // TriggerSync 触发同步任务。
 //
 // @Summary 触发同步任务
