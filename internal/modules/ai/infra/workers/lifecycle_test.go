@@ -29,3 +29,38 @@ func TestRunnerStopsOnContextCancel(t *testing.T) {
 		t.Fatal("runner never ticked before cancel")
 	}
 }
+
+func TestRunnerTicksImmediately(t *testing.T) {
+	ticked := make(chan struct{}, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	r := NewRunner(func(context.Context) {
+		select {
+		case ticked <- struct{}{}:
+		default:
+		}
+	}, time.Hour)
+	done := r.Start(ctx)
+
+	select {
+	case <-ticked:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("runner did not tick immediately")
+	}
+
+	select {
+	case <-done:
+		t.Fatal("runner exited before cancel")
+	default:
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("runner did not stop after cancel")
+	}
+}

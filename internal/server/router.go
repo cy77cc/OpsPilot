@@ -11,14 +11,16 @@ import (
 
 // NewRouter constructs the shared HTTP router with middleware and modules.
 func NewRouter(ctx context.Context, appCtx *svc.ServiceContext) *gin.Engine {
-	return buildRouter(ctx, appCtx, bootstrap.RegisterModules)
+	return buildRouter(appCtx, func(appCtx *svc.ServiceContext, engine *gin.Engine) {
+		bootstrap.RegisterModules(ctx, appCtx, engine)
+	})
 }
 
-func buildRouter(ctx context.Context, appCtx *svc.ServiceContext, registerModules func(context.Context, *svc.ServiceContext, *gin.Engine)) *gin.Engine {
+func buildRouter(appCtx *svc.ServiceContext, registerModules func(*svc.ServiceContext, *gin.Engine)) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.ContextMiddleware(), middleware.Cors(), middleware.Logger())
 
-	registerModules(ctx, appCtx, r)
+	registerModules(appCtx, r)
 	RegisterSwaggerRoutes(r)
 	RegisterWebStaticRoutes(r)
 

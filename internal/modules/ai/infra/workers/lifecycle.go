@@ -27,24 +27,11 @@ func (r *Runner) Start(ctx context.Context) <-chan struct{} {
 			return
 		}
 
-		every := r.every
-		if every <= 0 {
-			every = time.Second
+		if r.tick != nil {
+			r.tick(ctx)
 		}
 
-		ticker := time.NewTicker(every)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if r.tick != nil {
-					r.tick(ctx)
-				}
-			}
-		}
+		<-ctx.Done()
 	}()
 
 	return done

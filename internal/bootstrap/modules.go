@@ -49,10 +49,10 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		approvalWorker := ailogic.NewApprovalWorker(ai)
 		expirer := ailogic.NewApprovalExpirer(ai)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			approvalWorker.RunOnce(runCtx)
+			approvalWorker.RunLoop(runCtx, aiBackgroundWorkerTick)
 		}, aiBackgroundWorkerTick).Start(ctx)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			expirer.RunOnce(runCtx)
+			expirer.RunLoop(runCtx, aiBackgroundWorkerTick)
 		}, aiBackgroundWorkerTick).Start(ctx)
 	}
 	aiapi.RegisterAIHandlers(v1, appCtx)
