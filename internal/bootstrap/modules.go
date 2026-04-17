@@ -45,10 +45,20 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		approvalWorker := ailogic.NewApprovalWorker(ai)
 		expirer := ailogic.NewApprovalExpirer(ai)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			approvalWorker.RunLoop(runCtx, aiBackgroundWorkerTick)
+			for runCtx.Err() == nil {
+				claimed, _ := approvalWorker.RunOnce(runCtx)
+				if !claimed {
+					return
+				}
+			}
 		}, aiBackgroundWorkerTick).Start(ctx)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			expirer.RunLoop(runCtx, aiBackgroundWorkerTick)
+			for runCtx.Err() == nil {
+				claimed, _ := expirer.RunOnce(runCtx)
+				if !claimed {
+					return
+				}
+			}
 		}, aiBackgroundWorkerTick).Start(ctx)
 	}
 	aiapi.RegisterAIHandlers(v1, appCtx)

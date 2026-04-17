@@ -34,9 +34,11 @@ import (
 // 非阻塞调用，在后台启动服务器。
 // 当 context 被取消时优雅关闭。
 func Start(ctx context.Context) error {
-	go startServer(ctx)
+	done := make(chan struct{})
+	go startServer(ctx, done)
 	<-ctx.Done()
 	logger.L().Info("Shutting Down...........")
+	<-done
 	return nil
 }
 
@@ -44,7 +46,9 @@ func Start(ctx context.Context) error {
 //
 // 初始化服务上下文、创建路由、启动监听。
 // 支持优雅关闭，超时时间为 10 秒。
-func startServer(ctx context.Context) {
+func startServer(ctx context.Context, done chan struct{}) {
+	defer close(done)
+
 	svcCtx := svc.MustNewServiceContext()
 	r := NewRouter(ctx, svcCtx)
 
@@ -58,7 +62,7 @@ func startServer(ctx context.Context) {
 
 		logger.L().Info("http server shutting down")
 
-		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.L().Error("http shutdown error", logger.Error(err))

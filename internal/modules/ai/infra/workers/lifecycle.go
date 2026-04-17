@@ -25,6 +25,9 @@ func (r *Runner) Start(ctx context.Context) <-chan struct{} {
 		}
 
 		tick := r.tick
+		if ctx.Err() != nil {
+			return
+		}
 		if tick != nil {
 			tick(ctx)
 		}

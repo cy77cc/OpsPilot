@@ -97,3 +97,23 @@ func TestRunnerTicksAgainAfterIntervalWhenCallbackReturns(t *testing.T) {
 		t.Fatalf("expected runner to tick more than once, got %d", got)
 	}
 }
+
+func TestRunnerDoesNotTickWhenContextAlreadyCanceled(t *testing.T) {
+	var ticks atomic.Int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	r := NewRunner(func(context.Context) { ticks.Add(1) }, 5*time.Millisecond)
+	done := r.Start(ctx)
+
+	select {
+	case <-done:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("runner did not stop for canceled context")
+	}
+
+	if got := ticks.Load(); got != 0 {
+		t.Fatalf("expected no ticks for canceled context, got %d", got)
+	}
+}
