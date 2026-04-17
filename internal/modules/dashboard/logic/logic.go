@@ -376,25 +376,15 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Model(&aimodel.AITraceSpan{}).
 		Where("start_time >= ? AND start_time <= ?", since, now).
-		Select("COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms").
+		Select("COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms, SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count").
 		Scan(&stats).Error; err != nil {
-		return out, err
-	}
-
-	// 查询成功数量
-	var successCount int64
-	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&aimodel.AITraceSpan{}).
-		Where("start_time >= ? AND start_time <= ?", since, now).
-		Where("status = ?", "success").
-		Count(&successCount).Error; err != nil {
 		return out, err
 	}
 
 	// 计算成功率
 	var successRate float64
 	if stats.TotalCount > 0 {
-		successRate = float64(successCount) / float64(stats.TotalCount) * 100
+		successRate = float64(stats.SuccessCount) / float64(stats.TotalCount) * 100
 	}
 
 	// 计算平均响应时间
@@ -415,14 +405,13 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	}
 
 	out.Stats = dashboardv1.AIStatsSummary{
-		SessionCount:           stats.TotalCount,
+		SessionCount:           stats.SessionCount,
 		TokenCount:             stats.TotalTokens,
 		AvgDurationMs:          avgDuration,
 		AvgTokenPerInteraction: avgTokenPerInteraction,
 		AvgTokenPerSession:     avgTokenPerSession,
 		SuccessRate:            successRate,
 	}
-
 	// 查询按场景分组的会话数量
 	var sceneCounts []struct {
 		Scene string
