@@ -9,14 +9,6 @@ interface AnimatedButtonProps {
   disabled?: boolean;
 }
 
-/**
- * 带动画效果的按钮组件
- *
- * 特性:
- * - Hover 时轻微放大
- * - 点击时缩放反馈
- * - 涟漪效果
- */
 const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   children,
   className = '',
@@ -31,7 +23,7 @@ const AnimatedButton: React.FC<AnimatedButtonProps> = ({
       onClick={onClick}
       disabled={disabled}
       whileHover={!disabled ? { scale: 1.02 } : undefined}
-      whileTap={!disabled ? { scale: 0.98 } : undefined}
+      whileTap={!disabled ? { scale: 0.94 } : undefined}
       transition={{
         type: 'spring',
         stiffness: 400,

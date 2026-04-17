@@ -17,11 +17,9 @@ export default function ProtectedApp() {
     <PermissionProvider>
       <NotificationProvider userId={user?.id}>
         <AppLayout>
-          <PageTransition>
-            <Suspense fallback={<PageSkeleton />}>
-              <ProtectedRoutes withAuth={withAuth} governanceMenuEnabled={governanceMenuEnabled} />
-            </Suspense>
-          </PageTransition>
+          <Suspense fallback={<PageSkeleton />}>
+            <ProtectedRoutes withAuth={withAuth} governanceMenuEnabled={governanceMenuEnabled} />
+          </Suspense>
         </AppLayout>
       </NotificationProvider>
     </PermissionProvider>

@@ -4,36 +4,29 @@ import React from 'react';
 interface AnimatedCardProps {
   children: React.ReactNode;
   className?: string;
-  delay?: number;
   onClick?: () => void;
 }
 
-/**
- * 带动画效果的卡片组件
- *
- * 特性:
- * - Hover 时轻微上浮和阴影增强
- * - 点击时缩放反馈
- * - 入场动画
- */
-const AnimatedCard: React.FC<AnimatedCardProps> = ({ children, className = '', delay = 0, onClick }) => {
+const AnimatedCard: React.FC<AnimatedCardProps> = ({
+  children,
+  className = '',
+  onClick,
+}) => {
   return (
     <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.3,
-        delay,
-        ease: [0.4, 0, 0.2, 1],
-      }}
-      whileHover={{
-        y: -4,
-        boxShadow: '0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.08)',
-        transition: { duration: 0.2 },
-      }}
-      whileTap={onClick ? { scale: 0.98 } : undefined}
+      className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 cursor-pointer ${className}`}
       onClick={onClick}
+      whileHover={{ 
+        y: -4, 
+        scale: 1.01, 
+        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" 
+      }}
+      whileTap={{ scale: 0.98 }}
+      transition={{
+        type: 'spring',
+        stiffness: 400,
+        damping: 17,
+      }}
     >
       {children}
     </motion.div>
