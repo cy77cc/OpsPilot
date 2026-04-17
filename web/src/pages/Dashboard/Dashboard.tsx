@@ -96,7 +96,7 @@ const Dashboard: React.FC = () => {
     const handler = () => load();
     window.addEventListener('project:changed', handler);
     return () => window.removeEventListener('project:changed', handler);
-  }, [load]);
+  }, [load, timeRange]);
 
   useInterval(() => {
     load();

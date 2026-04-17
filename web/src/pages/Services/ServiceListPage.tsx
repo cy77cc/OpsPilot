@@ -106,7 +106,7 @@ const ServiceListPage: React.FC = () => {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, env, runtime, serviceKind, labelSelector, query]);
 
   // 根据数量自动决定视图模式
   useEffect(() => {
