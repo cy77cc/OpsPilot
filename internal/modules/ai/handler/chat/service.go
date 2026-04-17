@@ -19,6 +19,10 @@ type Service struct {
 	router RouteService
 }
 
+func LegacyRoutingEnabled() bool {
+	return false
+}
+
 func NewService(svcCtx *svc.ServiceContext) *Service {
 	l := logic.NewAILogic(svcCtx)
 	return NewServiceWithLogic(l)
