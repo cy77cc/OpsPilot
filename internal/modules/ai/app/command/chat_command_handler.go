@@ -49,7 +49,11 @@ func (h *chatCommandHandler) Handle(ctx context.Context, req *ChatRequest, emit 
 	if err := h.useCase.ValidateReplayCursor(ctx, req.SessionID, req.ClientRequestID, req.LastEventID); err != nil {
 		return err
 	}
-	return h.useCase.Chat(ctx, logic.ChatInput{
+	return h.useCase.Chat(ctx, h.buildChatInput(req), emit)
+}
+
+func (h *chatCommandHandler) buildChatInput(req *ChatRequest) logic.ChatInput {
+	return logic.ChatInput{
 		SessionID:       req.SessionID,
 		ClientRequestID: req.ClientRequestID,
 		LastEventID:     req.LastEventID,
@@ -58,5 +62,5 @@ func (h *chatCommandHandler) Handle(ctx context.Context, req *ChatRequest, emit 
 		Context:         req.Context,
 		Budget:          runtimecontext.DefaultBudget,
 		UserID:          req.UserID,
-	}, emit)
+	}
 }

@@ -1067,6 +1067,9 @@ func ConsumeProjectedEvents(ctx context.Context, l *Logic, runID, sessionID stri
 		}
 		emit(projected.Event, withEventID(projected.Data, eid))
 	}
+	if err := persistIncrementalProjection(ctx, l, runID, sessionID, events); err != nil {
+		return update, err
+	}
 	return update, nil
 }
 

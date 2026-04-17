@@ -15,6 +15,7 @@ import (
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	projectionruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/projection"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -53,7 +54,10 @@ func GetRunProjection(ctx context.Context, l *Logic, userID uint64, runID string
 		return nil, err
 	}
 	if projection != nil && isSteadyProjectionStatus(projection.Status) && strings.TrimSpace(projection.ProjectionJSON) != "" {
-		return projection, nil
+		var decoded airuntime.RunProjection
+		if err := json.Unmarshal([]byte(projection.ProjectionJSON), &decoded); err == nil && strings.TrimSpace(decoded.RunID) != "" {
+			return projection, nil
+		}
 	}
 	events, err := l.RunEventDAO.ListByRun(ctx, runID)
 	if err != nil {
@@ -113,6 +117,70 @@ func GetRunProjectionPayload(ctx context.Context, l *Logic, userID uint64, runID
 		return nil, err
 	}
 	return paged, nil
+}
+
+func persistIncrementalProjection(ctx context.Context, l *Logic, runID, sessionID string, events []airuntime.PublicStreamEvent) error {
+	if l == nil || l.RunProjectionDAO == nil || len(events) == 0 {
+		return nil
+	}
+	current, err := l.RunProjectionDAO.GetByRunID(ctx, runID)
+	if err != nil {
+		return err
+	}
+	state := projectionruntime.State{}
+	if current != nil && strings.TrimSpace(current.ProjectionJSON) != "" {
+		if decoded, err := decodeIncrementalProjectionState(current.ProjectionJSON); err == nil {
+			state = decoded
+		}
+	}
+	for _, event := range events {
+		state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
+			Type: event.Event,
+			Text: incrementalProjectionText(event),
+		})
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	projection := &ai.AIRunProjection{
+		ID:             uuid.NewString(),
+		RunID:          runID,
+		SessionID:      sessionID,
+		Version:        state.Version,
+		Status:         "running",
+		ProjectionJSON: string(raw),
+	}
+	if current != nil {
+		projection.ID = current.ID
+		if strings.TrimSpace(current.Status) != "" {
+			projection.Status = current.Status
+		}
+	}
+	return l.RunProjectionDAO.Upsert(ctx, projection)
+}
+
+func decodeIncrementalProjectionState(raw string) (projectionruntime.State, error) {
+	var state projectionruntime.State
+	if strings.TrimSpace(raw) == "" {
+		return state, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return projectionruntime.State{}, err
+	}
+	return state, nil
+}
+
+func incrementalProjectionText(event airuntime.PublicStreamEvent) string {
+	if event.Event != "delta" {
+		return ""
+	}
+	data, ok := event.Data.(map[string]any)
+	if !ok {
+		return ""
+	}
+	content, _ := data["content"].(string)
+	return content
 }
 
 // GetRunContent 获取运行内容。
