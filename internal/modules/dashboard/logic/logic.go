@@ -365,18 +365,20 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 
 	// 查询时间范围内的会话统计
 	type spanStats struct {
-		TotalCount   int64
-		SessionCount int64
-		TotalTokens  int64
-		TotalMs      int64
-		SuccessCount int64
+		TotalCount      int64
+		SessionCount    int64
+		TotalTokens     int64
+		PromptTokens    int64
+		CompletionTokens int64
+		TotalMs         int64
+		SuccessCount    int64
 	}
 
 	var stats spanStats
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Model(&aimodel.AITraceSpan{}).
 		Where("start_time >= ? AND start_time <= ?", since, now).
-		Select("COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(duration_ms), 0) as total_ms, SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count").
+		Select("COUNT(*) as total_count, COUNT(DISTINCT session_id) as session_count, COALESCE(SUM(tokens), 0) as total_tokens, COALESCE(SUM(prompt_tokens), 0) as prompt_tokens, COALESCE(SUM(completion_tokens), 0) as completion_tokens, COALESCE(SUM(duration_ms), 0) as total_ms, SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count").
 		Scan(&stats).Error; err != nil {
 		return out, err
 	}
@@ -407,6 +409,8 @@ func (l *Logic) getAIActivity(ctx context.Context, since, now time.Time) (dashbo
 	out.Stats = dashboardv1.AIStatsSummary{
 		SessionCount:           stats.SessionCount,
 		TokenCount:             stats.TotalTokens,
+		PromptTokenCount:       stats.PromptTokens,
+		CompletionTokenCount:   stats.CompletionTokens,
 		AvgDurationMs:          avgDuration,
 		AvgTokenPerInteraction: avgTokenPerInteraction,
 		AvgTokenPerSession:     avgTokenPerSession,

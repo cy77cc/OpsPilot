@@ -51,7 +51,7 @@ const formatDuration = (ms: number): string => {
 };
 
 const formatTokens = (count: number): string => {
-  if (count < 1000) return `${count}`;
+  if (count < 1000) return count.toLocaleString();
   if (count < 1000000) return `${(count / 1000).toFixed(1)}K`;
   return `${(count / 1000000).toFixed(1)}M`;
 };
@@ -72,53 +72,70 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
     >
       {/* 统计指标 */}
       <Row gutter={[16, 24]}>
-        <Col span={8}>
+        <Col span={6}>
           <Statistic
             title="会话总数"
             value={stats.sessionCount}
             prefix={<MessageOutlined className="text-blue-500" />}
-            valueStyle={{ fontSize: 20 }}
+            valueStyle={{ fontSize: 18 }}
           />
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Statistic
-            title="Token 消耗 (总)"
+            title="Token (总)"
             value={formatTokens(stats.tokenCount)}
             prefix={<ThunderboltOutlined className="text-orange-500" />}
-            valueStyle={{ fontSize: 20 }}
+            valueStyle={{ fontSize: 18 }}
           />
         </Col>
-        <Col span={8}>
+        <Col span={6}>
+          <Statistic
+            title="Token (输入)"
+            value={formatTokens(stats.promptTokenCount)}
+            prefix={<ThunderboltOutlined className="text-blue-400" />}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        <Col span={6}>
+          <Statistic
+            title="Token (输出)"
+            value={formatTokens(stats.completionTokenCount)}
+            prefix={<ThunderboltOutlined className="text-cyan-400" />}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        
+        <Col span={6}>
           <Statistic
             title="成功率"
             value={stats.successRate}
             suffix="%"
             prefix={<CheckCircleOutlined className="text-green-500" />}
-            valueStyle={{ fontSize: 20, color: stats.successRate >= 95 ? '#22c55e' : stats.successRate >= 80 ? '#f59e0b' : '#ef4444' }}
+            valueStyle={{ fontSize: 18, color: stats.successRate >= 95 ? '#22c55e' : stats.successRate >= 80 ? '#f59e0b' : '#ef4444' }}
           />
         </Col>
-        <Col span={8}>
-          <Statistic
-            title="Token (平均/对话)"
-            value={formatTokens(stats.avgTokenPerSession)}
-            prefix={<ThunderboltOutlined className="text-blue-400" />}
-            valueStyle={{ fontSize: 20 }}
-          />
-        </Col>
-        <Col span={8}>
-          <Statistic
-            title="Token (平均/请求)"
-            value={formatTokens(stats.avgTokenPerInteraction)}
-            prefix={<ThunderboltOutlined className="text-cyan-400" />}
-            valueStyle={{ fontSize: 20 }}
-          />
-        </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Statistic
             title="平均响应"
             value={formatDuration(stats.avgDurationMs)}
             prefix={<ClockCircleOutlined className="text-purple-500" />}
-            valueStyle={{ fontSize: 20 }}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        <Col span={6}>
+          <Statistic
+            title="平均/对话"
+            value={formatTokens(stats.avgTokenPerSession)}
+            prefix={<ThunderboltOutlined className="text-orange-300" />}
+            valueStyle={{ fontSize: 18 }}
+          />
+        </Col>
+        <Col span={6}>
+          <Statistic
+            title="平均/请求"
+            value={formatTokens(stats.avgTokenPerInteraction)}
+            prefix={<ThunderboltOutlined className="text-orange-200" />}
+            valueStyle={{ fontSize: 18 }}
           />
         </Col>
       </Row>

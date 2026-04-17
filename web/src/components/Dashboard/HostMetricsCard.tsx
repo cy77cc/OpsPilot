@@ -80,7 +80,7 @@ const HostMetricsCard: React.FC<HostMetricsCardProps> = ({ cpuSeries, memorySeri
     axis: {
       y: {
         title: getYAxisTitle(metricType),
-        labelFormatter: (val: number) => `${val.toFixed(0)}%`,
+        labelFormatter: (val: number) => `${val.toFixed(2)}%`,
       },
     },
     tooltip: {

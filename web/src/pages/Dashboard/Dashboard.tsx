@@ -42,7 +42,16 @@ const emptyOverview: OverviewResponseV2 = {
   alerts: { firing: 0, recent: [] },
   events: [],
   ai: {
-    stats: { sessionCount: 0, tokenCount: 0, avgDurationMs: 0, successRate: 0, avgTokenPerInteraction: 0, avgTokenPerSession: 0 },
+    stats: {
+      sessionCount: 0,
+      tokenCount: 0,
+      promptTokenCount: 0,
+      completionTokenCount: 0,
+      avgDurationMs: 0,
+      successRate: 0,
+      avgTokenPerInteraction: 0,
+      avgTokenPerSession: 0
+    },
     sessions: [],
     byScene: {},
   },

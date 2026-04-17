@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudwego/eino/callbacks"
 	einomodel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -62,7 +63,10 @@ func (h *MetricsHandler) OnEndFn(ctx context.Context, info *callbacks.RunInfo, o
 
 	mo := einomodel.ConvCallbackOutput(output)
 	if mo != nil && mo.TokenUsage != nil {
+		span.PromptTokens = int64(mo.TokenUsage.PromptTokens)
+		span.CompletionTokens = int64(mo.TokenUsage.CompletionTokens)
 		span.Tokens = int64(mo.TokenUsage.TotalTokens)
+
 		usageLog.PromptTokens = int64(mo.TokenUsage.PromptTokens)
 		usageLog.CompletionTokens = int64(mo.TokenUsage.CompletionTokens)
 		usageLog.TotalTokens = int64(mo.TokenUsage.TotalTokens)
@@ -72,6 +76,28 @@ func (h *MetricsHandler) OnEndFn(ctx context.Context, info *callbacks.RunInfo, o
 	go func() {
 		_ = h.db.Create(span).Error
 		_ = h.db.Create(usageLog).Error
+	}()
+
+	return ctx
+}
+
+// OnEndWithStreamOutputFn 记录流式 AI 交互的结束和指标。
+func (h *MetricsHandler) OnEndWithStreamOutputFn(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
+	// 必须异步读取私有流副本，否则会阻塞主输出流
+	go func() {
+		defer output.Close()
+
+		var lastOutput callbacks.CallbackOutput
+		for {
+			chunk, err := output.Recv()
+			if err != nil {
+				break
+			}
+			lastOutput = chunk
+		}
+
+		// 获取最终累积的指标并持久化
+		_ = h.OnEndFn(ctx, info, lastOutput)
 	}()
 
 	return ctx
@@ -120,6 +146,7 @@ func (h *MetricsHandler) Build() callbacks.Handler {
 	return callbacks.NewHandlerBuilder().
 		OnStartFn(h.OnStartFn).
 		OnEndFn(h.OnEndFn).
+		OnEndWithStreamOutputFn(h.OnEndWithStreamOutputFn).
 		OnErrorFn(h.OnErrorFn).
 		Build()
 }

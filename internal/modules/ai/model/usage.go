@@ -12,8 +12,10 @@ type AITraceSpan struct {
 	SessionID  string         `gorm:"column:session_id;type:varchar(64);index" json:"session_id"`
 	Scene      string         `gorm:"column:scene;type:varchar(32);index" json:"scene"`
 	Status     string         `gorm:"column:status;type:varchar(32);index" json:"status"`
-	ModelName  string         `gorm:"column:model_name;type:varchar(128)" json:"model_name"`
-	Tokens     int64          `gorm:"column:tokens;not null;default:0" json:"tokens"`
+	ModelName        string         `gorm:"column:model_name;type:varchar(128)" json:"model_name"`
+	PromptTokens     int64          `gorm:"column:prompt_tokens;not null;default:0" json:"prompt_tokens"`
+	CompletionTokens int64          `gorm:"column:completion_tokens;not null;default:0" json:"completion_tokens"`
+	Tokens           int64          `gorm:"column:tokens;not null;default:0" json:"tokens"`
 	DurationMS int64          `gorm:"column:duration_ms;not null;default:0" json:"duration_ms"`
 	StartTime  time.Time      `gorm:"column:start_time;not null;index" json:"start_time"`
 	EndTime    *time.Time     `gorm:"column:end_time" json:"end_time"`

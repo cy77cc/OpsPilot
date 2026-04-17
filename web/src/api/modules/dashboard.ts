@@ -40,6 +40,8 @@ export interface MetricSeries {
 export interface AIStatsSummary {
   sessionCount: number;
   tokenCount: number;
+  promptTokenCount: number;
+  completionTokenCount: number;
   avgDurationMs: number;
   avgTokenPerInteraction: number;
   avgTokenPerSession: number;
@@ -202,6 +204,8 @@ const normalizeMetricSeries = (item: any): MetricSeries => ({
 const normalizeAIStats = (data: any): AIStatsSummary => ({
   sessionCount: Number(data?.sessionCount || 0),
   tokenCount: Number(data?.tokenCount || 0),
+  promptTokenCount: Number(data?.promptTokenCount || 0),
+  completionTokenCount: Number(data?.completionTokenCount || 0),
   avgDurationMs: Number(data?.avgDurationMs || 0),
   avgTokenPerInteraction: Number(data?.avgTokenPerInteraction || 0),
   avgTokenPerSession: Number(data?.avgTokenPerSession || 0),
