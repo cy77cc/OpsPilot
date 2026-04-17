@@ -20,18 +20,33 @@ func (r *Runner) Start(ctx context.Context) <-chan struct{} {
 	go func() {
 		defer close(done)
 
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		if r == nil {
+		if ctx == nil || r == nil {
 			return
 		}
 
-		if r.tick != nil {
-			r.tick(ctx)
+		tick := r.tick
+		if tick != nil {
+			tick(ctx)
 		}
 
-		<-ctx.Done()
+		every := r.every
+		if every <= 0 {
+			every = time.Second
+		}
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+
+			if tick != nil {
+				tick(ctx)
+			}
+		}
 	}()
 
 	return done

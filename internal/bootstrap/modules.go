@@ -38,10 +38,6 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
 	if appCtx != nil && appCtx.DB != nil {
