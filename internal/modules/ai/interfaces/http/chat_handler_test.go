@@ -129,7 +129,10 @@ func TestChatHandler_WritesNonCursorErrors(t *testing.T) {
 
 	r.ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), "boom") {
-		t.Fatalf("expected non-cursor error to be surfaced, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "AI_STREAM_INTERNAL") {
+		t.Fatalf("expected non-cursor error to use the public internal code, got %q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "boom") {
+		t.Fatalf("expected raw error to be hidden, got %q", rec.Body.String())
 	}
 }

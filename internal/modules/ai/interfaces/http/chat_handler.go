@@ -9,9 +9,9 @@ import (
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
-	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/streaming"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,7 +51,12 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 	writer := ssehandler.NewSSEWriter(c.Writer)
 
 	if h.commandHandler == nil {
-		writeChatEvent(writer, c, "error", gin.H{"message": "AI service not initialized"})
+		publicErr := streaming.MapStreamError(errors.New("AI service not initialized"))
+		writeChatEvent(writer, c, "error", gin.H{
+			"code":      publicErr.Code,
+			"message":   publicErr.Message,
+			"retryable": publicErr.Retryable,
+		})
 		return
 	}
 
@@ -67,14 +72,12 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		writeChatEvent(writer, c, event, data)
 	})
 	if err != nil {
-		if errors.Is(err, aidao.ErrRunEventCursorExpired) {
-			writeChatEvent(writer, c, "error", gin.H{
-				"code":    "AI_STREAM_CURSOR_EXPIRED",
-				"message": "last_event_id is too old; refresh the stream snapshot",
-			})
-			return
-		}
-		writeChatEvent(writer, c, "error", gin.H{"message": err.Error()})
+		publicErr := streaming.MapStreamError(err)
+		writeChatEvent(writer, c, "error", gin.H{
+			"code":      publicErr.Code,
+			"message":   publicErr.Message,
+			"retryable": publicErr.Retryable,
+		})
 		return
 	}
 }
