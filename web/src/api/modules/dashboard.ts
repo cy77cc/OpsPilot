@@ -41,6 +41,8 @@ export interface AIStatsSummary {
   sessionCount: number;
   tokenCount: number;
   avgDurationMs: number;
+  avgTokenPerInteraction: number;
+  avgTokenPerSession: number;
   successRate: number;
   previousChange?: string;
 }
@@ -201,6 +203,8 @@ const normalizeAIStats = (data: any): AIStatsSummary => ({
   sessionCount: Number(data?.sessionCount || 0),
   tokenCount: Number(data?.tokenCount || 0),
   avgDurationMs: Number(data?.avgDurationMs || 0),
+  avgTokenPerInteraction: Number(data?.avgTokenPerInteraction || 0),
+  avgTokenPerSession: Number(data?.avgTokenPerSession || 0),
   successRate: Number(data?.successRate || 0),
   previousChange: String(data?.previousChange || ''),
 });
