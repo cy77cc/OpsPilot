@@ -71,38 +71,54 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
       loading={loading}
     >
       {/* 统计指标 */}
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[16, 24]}>
+        <Col span={8}>
           <Statistic
-            title="会话数"
+            title="会话总数"
             value={stats.sessionCount}
             prefix={<MessageOutlined className="text-blue-500" />}
             valueStyle={{ fontSize: 20 }}
           />
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Statistic
-            title="Token 消耗"
+            title="Token 消耗 (总)"
             value={formatTokens(stats.tokenCount)}
             prefix={<ThunderboltOutlined className="text-orange-500" />}
             valueStyle={{ fontSize: 20 }}
           />
         </Col>
-        <Col span={6}>
-          <Statistic
-            title="平均响应"
-            value={formatDuration(stats.avgDurationMs)}
-            prefix={<ClockCircleOutlined className="text-purple-500" />}
-            valueStyle={{ fontSize: 20 }}
-          />
-        </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Statistic
             title="成功率"
             value={stats.successRate}
             suffix="%"
             prefix={<CheckCircleOutlined className="text-green-500" />}
             valueStyle={{ fontSize: 20, color: stats.successRate >= 95 ? '#22c55e' : stats.successRate >= 80 ? '#f59e0b' : '#ef4444' }}
+          />
+        </Col>
+        <Col span={8}>
+          <Statistic
+            title="Token (平均/对话)"
+            value={formatTokens(stats.avgTokenPerSession)}
+            prefix={<ThunderboltOutlined className="text-blue-400" />}
+            valueStyle={{ fontSize: 20 }}
+          />
+        </Col>
+        <Col span={8}>
+          <Statistic
+            title="Token (平均/请求)"
+            value={formatTokens(stats.avgTokenPerInteraction)}
+            prefix={<ThunderboltOutlined className="text-cyan-400" />}
+            valueStyle={{ fontSize: 20 }}
+          />
+        </Col>
+        <Col span={8}>
+          <Statistic
+            title="平均响应"
+            value={formatDuration(stats.avgDurationMs)}
+            prefix={<ClockCircleOutlined className="text-purple-500" />}
+            valueStyle={{ fontSize: 20 }}
           />
         </Col>
       </Row>
