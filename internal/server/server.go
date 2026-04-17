@@ -46,7 +46,7 @@ func Start(ctx context.Context) error {
 // 支持优雅关闭，超时时间为 10 秒。
 func startServer(ctx context.Context) {
 	svcCtx := svc.MustNewServiceContext()
-	r := NewRouter(svcCtx)
+	r := NewRouter(ctx, svcCtx)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", config.CFG.Server.Host, config.CFG.Server.Port),

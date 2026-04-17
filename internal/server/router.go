@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+
 	"github.com/cy77cc/OpsPilot/internal/bootstrap"
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -8,15 +10,15 @@ import (
 )
 
 // NewRouter constructs the shared HTTP router with middleware and modules.
-func NewRouter(appCtx *svc.ServiceContext) *gin.Engine {
-	return buildRouter(appCtx, bootstrap.RegisterModules)
+func NewRouter(ctx context.Context, appCtx *svc.ServiceContext) *gin.Engine {
+	return buildRouter(ctx, appCtx, bootstrap.RegisterModules)
 }
 
-func buildRouter(appCtx *svc.ServiceContext, registerModules func(*svc.ServiceContext, *gin.Engine)) *gin.Engine {
+func buildRouter(ctx context.Context, appCtx *svc.ServiceContext, registerModules func(context.Context, *svc.ServiceContext, *gin.Engine)) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.ContextMiddleware(), middleware.Cors(), middleware.Logger())
 
-	registerModules(appCtx, r)
+	registerModules(ctx, appCtx, r)
 	RegisterSwaggerRoutes(r)
 	RegisterWebStaticRoutes(r)
 

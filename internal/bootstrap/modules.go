@@ -7,6 +7,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
@@ -32,17 +33,27 @@ import (
 const aiBackgroundWorkerTick = 2 * time.Second
 
 // RegisterModules wires all HTTP modules into the shared router.
-func RegisterModules(appCtx *svc.ServiceContext, engine *gin.Engine) {
+func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gin.Engine) {
 	engine.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
 	if appCtx != nil && appCtx.DB != nil {
 		ai := ailogic.NewAILogic(appCtx)
-		go ailogic.NewApprovalWorker(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
-		go ailogic.NewApprovalExpirer(ai).RunLoop(context.Background(), aiBackgroundWorkerTick)
+		approvalWorker := ailogic.NewApprovalWorker(ai)
+		expirer := ailogic.NewApprovalExpirer(ai)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			approvalWorker.RunOnce(runCtx)
+		}, aiBackgroundWorkerTick).Start(ctx)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			expirer.RunOnce(runCtx)
+		}, aiBackgroundWorkerTick).Start(ctx)
 	}
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
