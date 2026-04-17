@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
 )
 
 type stubChatUseCase struct {
@@ -65,5 +66,46 @@ func TestChatHandlerSurfacesUseCaseErrors(t *testing.T) {
 	err := h.Handle(context.Background(), &ChatRequest{Message: "hello"}, nil)
 	if err == nil || err.Error() != "boom" {
 		t.Fatalf("expected error to be returned, got %v", err)
+	}
+}
+
+func TestChatHandlerNormalizesRuntimeContextMessages(t *testing.T) {
+	stub := &stubChatUseCase{}
+	h := NewChatCommandHandler(stub)
+
+	req := &ChatRequest{
+		Message: "hello",
+		Context: map[string]any{
+			"messages": []any{
+				map[string]any{"role": "system", "content": "pinned-1", "pinned": true},
+				map[string]any{"role": "user", "content": "h1"},
+				map[string]any{"role": "assistant", "content": "h2"},
+				map[string]any{"role": "user", "content": "recent-1"},
+				map[string]any{"role": "assistant", "content": "recent-2"},
+			},
+		},
+	}
+
+	if err := h.Handle(context.Background(), req, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ctxMap := stub.chatInput.Context
+	if _, ok := ctxMap["context_budget"].(runtimecontext.Budget); !ok {
+		t.Fatalf("expected context budget to be attached, got %#v", ctxMap["context_budget"])
+	}
+
+	messages, ok := ctxMap["messages"].([]runtimecontext.Message)
+	if !ok {
+		t.Fatalf("expected normalized runtime messages, got %#v", ctxMap["messages"])
+	}
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 normalized messages, got %d", len(messages))
+	}
+	if messages[0].Content != "pinned-1" {
+		t.Fatalf("expected pinned message preserved, got %#v", messages)
+	}
+	if messages[4].Content != "recent-2" {
+		t.Fatalf("expected tail message preserved, got %#v", messages)
 	}
 }
