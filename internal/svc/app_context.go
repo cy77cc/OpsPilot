@@ -31,9 +31,10 @@ type ServiceContext struct {
 // MustNewServiceContext 创建服务上下文，如果失败则 panic。
 func MustNewServiceContext() *ServiceContext {
 	ctx := context.Background()
-	initAIRuntime(ctx)
 
 	db := storage.MustNewDB()
+	initAIRuntime(ctx, db)
+
 	rdb := storage.MustNewRdb()
 	l1 := expirable.NewLRU[string, any](5_000, nil, 24*time.Hour)
 

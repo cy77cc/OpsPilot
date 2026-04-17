@@ -10,15 +10,21 @@ import (
 	"github.com/coze-dev/cozeloop-go"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/metrics"
 	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
+	"gorm.io/gorm"
 )
 
-func initAIRuntime(ctx context.Context) {
+func initAIRuntime(ctx context.Context, db *gorm.DB) {
 	if config.IsDevelopment() {
 		if err := devops.Init(ctx); err != nil {
 			logger.L().Warn("Failed to initialize devops", logger.Error(err))
 		}
 		initCozeloopCallback(ctx)
+	}
+
+	if db != nil {
+		initAIMetricsCallback(db)
 	}
 
 	if err := aiclient.CheckModelHealth(ctx); err != nil {
@@ -50,4 +56,12 @@ func initCozeloopCallback(ctx context.Context) {
 
 	logger.L().Info("CozeLoop callback initialized",
 		logger.String("workspace_id", workspaceID))
+}
+
+// initAIMetricsCallback 初始化 AI 助手指标捕获回调。
+func initAIMetricsCallback(db *gorm.DB) {
+	handler := metrics.NewMetricsHandler(db)
+	callbacks.AppendGlobalHandlers(handler.Build())
+
+	logger.L().Info("AI metrics callback initialized")
 }
