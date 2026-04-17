@@ -8,8 +8,9 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
 	aicommand "github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
-	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
+	aichatservice "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
+	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
@@ -33,6 +34,13 @@ import (
 )
 
 const aiBackgroundWorkerTick = 2 * time.Second
+
+func registerAIChatRoute(v1 *gin.RouterGroup, appCtx *svc.ServiceContext) {
+	chatCommandHandler := aicommand.NewChatCommandHandler(aichatservice.NewService(appCtx))
+	chatHTTPHandler := aihttp.NewChatHandler(chatCommandHandler)
+	aiGroup := v1.Group("/ai", middleware.JWTAuth())
+	aiGroup.POST("/chat", chatHTTPHandler.HandleChat)
+}
 
 // RegisterModules wires all HTTP modules into the shared router.
 func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gin.Engine) {
@@ -63,10 +71,7 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 			}
 		}, aiBackgroundWorkerTick).Start(ctx)
 	}
-	chatCommandHandler := aicommand.NewChatCommandHandler()
-	chatHTTPHandler := aihttp.NewChatHandler(chatCommandHandler)
-	aiGroup := v1.Group("/ai", middleware.JWTAuth())
-	aiGroup.POST("/chat", chatHTTPHandler.HandleChat)
+	registerAIChatRoute(v1, appCtx)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

@@ -31,7 +31,6 @@ func TestRegisterAIHandlers_RegistersAllRoutes(t *testing.T) {
 	}
 
 	expected := []string{
-		"POST /api/v1/ai/chat",
 		"GET /api/v1/ai/sessions",
 		"POST /api/v1/ai/sessions",
 		"GET /api/v1/ai/sessions/:id",
@@ -584,7 +583,6 @@ func registerAIHandlersForTest(v1 *gin.RouterGroup) {
 	h := newAIHandlerTestHarness(nil)
 	g := v1.Group("/ai")
 	{
-		g.POST("/chat", h.Chat)
 		g.GET("/sessions", h.ListSessions)
 		g.POST("/sessions", h.CreateSession)
 		g.GET("/sessions/:id", h.GetSession)
