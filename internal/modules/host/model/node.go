@@ -42,8 +42,8 @@ type Node struct {
 	Role                 string     `gorm:"column:role;type:varchar(32)" json:"role"`                                                                    // 角色: master/worker
 	ClusterID            uint       `gorm:"column:cluster_id" json:"cluster_id"`                                                                         // 所属集群 ID
 	Source               string     `gorm:"column:source;type:varchar(32);default:manual_ssh" json:"source"`                                             // 来源: manual_ssh/imported/cloud
-	Provider             *string    `gorm:"column:provider;type:varchar(32);uniqueIndex:idx_provider_instance" json:"provider"`                          // 云厂商: aliyun/aws/tencent
-	ProviderID           *string    `gorm:"column:provider_instance_id;type:varchar(128);uniqueIndex:idx_provider_instance" json:"provider_instance_id"` // 云厂商实例 ID
+	Provider             *string    `gorm:"column:provider;type:varchar(32);uniqueIndex:idx_provider_instance,where:provider IS NOT NULL AND provider != ''" json:"provider"`                          // 云厂商: aliyun/aws/tencent
+	ProviderID           *string    `gorm:"column:provider_instance_id;type:varchar(128);uniqueIndex:idx_provider_instance,where:provider IS NOT NULL AND provider != ''" json:"provider_instance_id"` // 云厂商实例 ID
 	Region               string     `gorm:"column:region;type:varchar(64)" json:"region"`                                                                // 区域
 	ParentHostID         *NodeID    `gorm:"column:parent_host_id" json:"parent_host_id"`                                                                 // 父主机 ID (虚拟机场景)
 	HealthState          string     `gorm:"column:health_state;type:varchar(32);default:unknown" json:"health_state"`                                    // 健康状态: healthy/unhealthy/unknown
