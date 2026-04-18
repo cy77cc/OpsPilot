@@ -300,6 +300,66 @@ func TestAlertHealWorker_ExecutorWaitingApprovalDoesNotConsumeRetryBudget(t *tes
 	}
 }
 
+func TestAlertHealWorker_RetryBackoffStartsAfterExecutionFinishes(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
+	base := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
+	clock := newTestAlertHealClock(base)
+
+	if err := db.Create(&model.AIAlertIngestEvent{
+		ID:          "evt-backoff",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-backoff",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-backoff:firing",
+		Title:       "retry after finish",
+		ReceivedAt:  base,
+	}).Error; err != nil {
+		t.Fatalf("seed ingest event: %v", err)
+	}
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:         "job-backoff",
+		EventID:    "evt-backoff",
+		Scene:      "alert_self_heal",
+		Status:     "pending",
+		RetryCount: 0,
+		MaxRetry:   3,
+	}).Error; err != nil {
+		t.Fatalf("seed heal job: %v", err)
+	}
+
+	svc := ailogicalertheal.NewService(aidaoalertheal.NewDAO(db))
+	executor := &clockAdvancingAlertHealExecutor{
+		clock:   clock,
+		nextNow: base.Add(10 * time.Second),
+		err:     errors.New("boom-late"),
+	}
+	worker := NewAlertHealWorker(
+		svc,
+		executor,
+		WithAlertHealWorkerClock(clock.Now),
+		WithAlertHealWorkerBaseBackoff(5*time.Second),
+		WithAlertHealWorkerMaxBackoff(5*time.Second),
+	)
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected worker to claim job")
+	}
+
+	var saved model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-backoff").Take(&saved).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	expectedNextRetry := base.Add(15 * time.Second)
+	if saved.NextRetryAt == nil || !saved.NextRetryAt.Equal(expectedNextRetry) {
+		t.Fatalf("expected next_retry_at=%s, got %#v", expectedNextRetry, saved.NextRetryAt)
+	}
+}
+
 func TestAlertHealWorker_HeartbeatPreventsStaleReclaimDuringLongExecution(t *testing.T) {
 	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
 	if err := db.Exec("PRAGMA busy_timeout = 2000").Error; err != nil {
@@ -417,6 +477,19 @@ func (s *stubAlertHealExecutor) Execute(_ context.Context, _ *model.AIAlertHealJ
 		return nil, err
 	}
 	return &ailogicalertheal.ExecutionResult{RunID: s.resultRunID}, nil
+}
+
+type clockAdvancingAlertHealExecutor struct {
+	clock   *testAlertHealClock
+	nextNow time.Time
+	err     error
+}
+
+func (e *clockAdvancingAlertHealExecutor) Execute(_ context.Context, _ *model.AIAlertHealJob) (*ailogicalertheal.ExecutionResult, error) {
+	if e.clock != nil {
+		e.clock.Set(e.nextNow)
+	}
+	return nil, e.err
 }
 
 type blockingAlertHealExecutor struct {

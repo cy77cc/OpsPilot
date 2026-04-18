@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Empty, Space, Tag, Typography, message } from 'antd';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Alert, Button, Card, Descriptions, Empty, Space, Table, Tag, Typography, message } from 'antd';
+import { Link, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert as MonitorAlert } from '../../api/modules/monitoring';
-import type { AlertHealJob } from '../../api/modules/aiAlertHeal';
+import type { AlertHealApprovalTask, AlertHealJob } from '../../api/modules/aiAlertHeal';
 import { normalizeHealStatus } from './monitorAlertHealStatus';
 
-const retryBlockedStatuses = new Set(['analyzing', 'auto_fixing', 'waiting_approval']);
+const retryBlockedStatuses = new Set(['pending', 'analyzing', 'auto_fixing', 'waiting_approval']);
 
 function pickLatestJob(jobs: AlertHealJob[]): AlertHealJob | undefined {
   if (!jobs.length) {
@@ -17,12 +17,14 @@ function pickLatestJob(jobs: AlertHealJob[]): AlertHealJob | undefined {
 
 const AlertDetailPage: React.FC = () => {
   const { alertId = '' } = useParams<{ alertId: string }>();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
+  const [showApprovals, setShowApprovals] = useState(false);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
   const [alertItem, setAlertItem] = useState<MonitorAlert | null>(null);
   const [latestJob, setLatestJob] = useState<AlertHealJob | null>(null);
+  const [approvals, setApprovals] = useState<AlertHealApprovalTask[]>([]);
 
   const load = async () => {
     if (!alertId) {
@@ -46,6 +48,36 @@ const AlertDetailPage: React.FC = () => {
   }, [alertId]);
 
   const retryDisabled = !latestJob || (alertItem?.status === 'resolved') || retryBlockedStatuses.has(latestJob.status);
+
+  const loadApprovals = async () => {
+    if (!latestJob || latestJob.status !== 'waiting_approval') {
+      setApprovals([]);
+      return;
+    }
+    setApprovalsLoading(true);
+    try {
+      const response = await Api.aiAlertHeal.listGlobalPendingApprovals(1, 20);
+      const list = response.data?.list || [];
+      if (!latestJob.latest_run_id) {
+        setApprovals(list);
+        return;
+      }
+      setApprovals(list.filter((item) => item.run_id === latestJob.latest_run_id));
+    } catch (error: any) {
+      message.error(error?.message || '加载审批任务失败');
+    } finally {
+      setApprovalsLoading(false);
+    }
+  };
+
+  const onToggleApprovals = async () => {
+    if (showApprovals) {
+      setShowApprovals(false);
+      return;
+    }
+    setShowApprovals(true);
+    await loadApprovals();
+  };
 
   const onRetry = async () => {
     if (!latestJob || retryDisabled) {
@@ -80,7 +112,7 @@ const AlertDetailPage: React.FC = () => {
               手动重试
             </Button>
             {latestJob?.status === 'waiting_approval' ? (
-              <Button onClick={() => navigate('/ai/approvals/pending?scope=global')}>查看审批</Button>
+              <Button onClick={() => void onToggleApprovals()}>查看审批</Button>
             ) : null}
             <Button onClick={() => setShowTrace((prev) => !prev)}>查看执行轨迹</Button>
           </Space>
@@ -110,6 +142,30 @@ const AlertDetailPage: React.FC = () => {
           <Empty description="未找到告警" />
         )}
       </Card>
+
+      {showApprovals ? (
+        <Card title="待审批任务" loading={approvalsLoading}>
+          {approvals.length > 0 ? (
+            <Table<AlertHealApprovalTask>
+              rowKey="approval_id"
+              pagination={false}
+              dataSource={approvals}
+              columns={[
+                { title: '审批ID', dataIndex: 'approval_id' },
+                { title: '工具', dataIndex: 'tool_name', render: (value: string) => value || '-' },
+                { title: '状态', dataIndex: 'status', render: (value: string) => value || '-' },
+                {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  render: (value?: string) => (value ? new Date(value).toLocaleString() : '-'),
+                },
+              ]}
+            />
+          ) : (
+            <Empty description="暂无匹配审批任务" />
+          )}
+        </Card>
+      ) : null}
 
       {showTrace ? (
         <Card title="执行轨迹">

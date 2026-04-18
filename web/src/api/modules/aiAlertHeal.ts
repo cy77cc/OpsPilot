@@ -13,6 +13,14 @@ export interface AlertHealJob {
   updated_at: string;
 }
 
+export interface AlertHealApprovalTask {
+  approval_id: string;
+  run_id: string;
+  tool_name: string;
+  status: string;
+  created_at?: string;
+}
+
 export const aiAlertHealApi = {
   listByAlert(alertId: string): Promise<ApiResponse<{ list: AlertHealJob[]; total: number }>> {
     return apiService.get<{ list: AlertHealJob[]; total: number }>('/ai/alert-heal/jobs', {
@@ -25,8 +33,8 @@ export const aiAlertHealApi = {
   retryJob(jobId: string): Promise<ApiResponse<unknown>> {
     return apiService.post(`/ai/alert-heal/jobs/${jobId}/retry`, {});
   },
-  listGlobalPendingApprovals(page = 1, pageSize = 20): Promise<ApiResponse<{ list: unknown[]; total: number }>> {
-    return apiService.get<{ list: unknown[]; total: number }>('/ai/approvals/pending/global', {
+  listGlobalPendingApprovals(page = 1, pageSize = 20): Promise<ApiResponse<{ list: AlertHealApprovalTask[]; total: number }>> {
+    return apiService.get<{ list: AlertHealApprovalTask[]; total: number }>('/ai/approvals/pending/global', {
       params: { page, page_size: pageSize },
     });
   },

@@ -135,7 +135,7 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 		return true, w.svc.MarkWaitingApproval(ctx, job.ID, "", lastError, true)
 	}
 
-	nextRetryAt := now.Add(w.retryBackoff(job.RetryCount))
+	nextRetryAt := w.now().UTC().Add(w.retryBackoff(job.RetryCount))
 	return true, w.svc.MarkRetryWait(ctx, job.ID, lastError, nextRetryAt)
 }
 
