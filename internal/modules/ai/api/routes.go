@@ -27,6 +27,7 @@ import (
 //   - GET /ai/run-contents/:id - 获取运行内容
 //   - GET /ai/diagnosis/:reportId - 获取诊断报告
 //   - GET /ai/approvals/pending - 列出待审批任务
+//   - GET /ai/approvals/pending/global - 列出全局待审批任务（需 ai:approval:read）
 //   - GET /ai/approvals/:id - 获取审批详情
 //   - POST /ai/approvals/:id/submit - 提交审批结果
 //   - POST /ai/approvals/:id/retry-resume - 重新入队可重试恢复
@@ -48,6 +49,7 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 审批相关 (Human-in-the-Loop)
 		g.GET("/approvals/pending", approvalHandler.ListPendingApprovals)
+		g.GET("/approvals/pending/global", approvalHandler.ListPendingApprovalsGlobal)
 		g.GET("/approvals/:id", approvalHandler.GetApproval)
 		g.POST("/approvals/:id/submit", approvalHandler.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", approvalHandler.RetryResumeApproval)

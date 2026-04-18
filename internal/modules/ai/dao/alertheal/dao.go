@@ -220,6 +220,15 @@ func (d *DAO) MarkRetryWait(ctx context.Context, jobID, lastError string, nextRe
 	})
 }
 
+func (d *DAO) RenewAutoFixingLease(ctx context.Context, jobID string, now time.Time) error {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return d.updateAutoFixingJob(ctx, jobID, map[string]any{
+		"updated_at": now.UTC(),
+	})
+}
+
 func (d *DAO) updateAutoFixingJob(ctx context.Context, jobID string, updates map[string]any) error {
 	if d == nil || d.db == nil {
 		return errors.New("alertheal dao not initialized")

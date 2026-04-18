@@ -19,8 +19,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	"github.com/cy77cc/OpsPilot/internal/svc"
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -728,6 +728,8 @@ func adminPermissionSet() []string {
 		"monitoring:read", "monitoring:write", "monitoring:*",
 		"config:read", "config:write", "config:*",
 		"rbac:read", "rbac:write", "rbac:*",
+		"ai:approval:read", "ai:approval:write",
+		"ai:alert:read", "ai:alert:write",
 		"automation:*",
 		"cicd:*",
 		"cmdb:*",

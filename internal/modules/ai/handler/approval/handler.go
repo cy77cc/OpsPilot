@@ -4,6 +4,7 @@ package approvalhandler
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
@@ -142,9 +143,49 @@ func (h *HTTPHandler) ListPendingApprovals(c *gin.Context) {
 	httpx.OK(c, result)
 }
 
+func (h *HTTPHandler) ListPendingApprovalsGlobal(c *gin.Context) {
+	if h == nil || h.svc == nil || h.svc.DB() == nil {
+		httpx.ServerErr(c, errors.New("approval service not initialized"))
+		return
+	}
+	if !httpx.Authorize(c, h.svc.DB(), "ai:approval:read", "ai:approval:*") {
+		return
+	}
+
+	page, err := parsePositiveQueryInt(c.Query("page"), 1)
+	if err != nil {
+		httpx.BadRequest(c, "page must be a positive integer")
+		return
+	}
+	pageSize, err := parsePositiveQueryInt(c.Query("page_size"), 50)
+	if err != nil {
+		httpx.BadRequest(c, "page_size must be a positive integer")
+		return
+	}
+
+	result, err := h.svc.ListPendingApprovalsGlobal(c.Request.Context(), page, pageSize)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, result)
+}
+
 func (h *HTTPHandler) HealthCheck() error {
 	if h == nil || h.svc == nil {
 		return fmt.Errorf("approval service not initialized")
 	}
 	return nil
+}
+
+func parsePositiveQueryInt(raw string, fallback int) (int, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("invalid positive integer: %q", raw)
+	}
+	return parsed, nil
 }

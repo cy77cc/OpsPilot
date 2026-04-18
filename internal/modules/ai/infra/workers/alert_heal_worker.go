@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	ailogicalertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/alertheal"
@@ -12,6 +13,7 @@ import (
 const (
 	defaultAlertHealBaseBackoff = 5 * time.Second
 	defaultAlertHealMaxBackoff  = time.Minute
+	defaultAlertHealLeaseBeat   = 30 * time.Second
 )
 
 type alertHealService interface {
@@ -20,6 +22,7 @@ type alertHealService interface {
 	MarkSucceeded(ctx context.Context, jobID, runID string) error
 	MarkWaitingApproval(ctx context.Context, jobID, runID, lastError string, consumeRetry bool) error
 	MarkRetryWait(ctx context.Context, jobID, lastError string, nextRetryAt time.Time) error
+	RenewAutoFixingLease(ctx context.Context, jobID string, now time.Time) error
 }
 
 type AlertHealWorker struct {
@@ -28,6 +31,7 @@ type AlertHealWorker struct {
 	now         func() time.Time
 	baseBackoff time.Duration
 	maxBackoff  time.Duration
+	leaseBeat   time.Duration
 }
 
 type AlertHealWorkerOption func(*AlertHealWorker)
@@ -56,6 +60,14 @@ func WithAlertHealWorkerMaxBackoff(d time.Duration) AlertHealWorkerOption {
 	}
 }
 
+func WithAlertHealWorkerLeaseHeartbeat(d time.Duration) AlertHealWorkerOption {
+	return func(w *AlertHealWorker) {
+		if d > 0 {
+			w.leaseBeat = d
+		}
+	}
+}
+
 func NewAlertHealWorker(svc alertHealService, executor ailogicalertheal.Executor, opts ...AlertHealWorkerOption) *AlertHealWorker {
 	worker := &AlertHealWorker{
 		svc:         svc,
@@ -63,6 +75,7 @@ func NewAlertHealWorker(svc alertHealService, executor ailogicalertheal.Executor
 		now:         time.Now,
 		baseBackoff: defaultAlertHealBaseBackoff,
 		maxBackoff:  defaultAlertHealMaxBackoff,
+		leaseBeat:   defaultAlertHealLeaseBeat,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -94,7 +107,7 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	result, execErr := w.executor.Execute(ctx, job)
+	result, execErr := w.executeWithLeaseHeartbeat(ctx, job)
 	if execErr == nil {
 		runID := ""
 		if result != nil {
@@ -117,6 +130,36 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 
 	nextRetryAt := now.Add(w.retryBackoff(job.RetryCount))
 	return true, w.svc.MarkRetryWait(ctx, job.ID, lastError, nextRetryAt)
+}
+
+func (w *AlertHealWorker) executeWithLeaseHeartbeat(ctx context.Context, job *model.AIAlertHealJob) (*ailogicalertheal.ExecutionResult, error) {
+	if w.leaseBeat <= 0 || w.svc == nil || job == nil || strings.TrimSpace(job.ID) == "" {
+		return w.executor.Execute(ctx, job)
+	}
+
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(w.leaseBeat)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				_ = w.svc.RenewAutoFixingLease(heartbeatCtx, job.ID, w.now().UTC())
+			}
+		}
+	}()
+
+	result, execErr := w.executor.Execute(ctx, job)
+	cancel()
+	wg.Wait()
+	return result, execErr
 }
 
 func (w *AlertHealWorker) retryBackoff(retryCount int) time.Duration {

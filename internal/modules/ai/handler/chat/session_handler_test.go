@@ -40,6 +40,7 @@ func TestRegisterAIHandlers_RegistersAllRoutes(t *testing.T) {
 		"GET /api/v1/ai/run-contents/:id",
 		"GET /api/v1/ai/diagnosis/:reportId",
 		"GET /api/v1/ai/approvals/pending",
+		"GET /api/v1/ai/approvals/pending/global",
 		"GET /api/v1/ai/approvals/:id",
 		"POST /api/v1/ai/approvals/:id/submit",
 	}
@@ -592,6 +593,7 @@ func registerAIHandlersForTest(v1 *gin.RouterGroup) {
 		g.GET("/run-contents/:id", h.GetRunContent)
 		g.GET("/diagnosis/:reportId", h.GetDiagnosisReport)
 		g.GET("/approvals/pending", h.ListPendingApprovals)
+		g.GET("/approvals/pending/global", h.ListPendingApprovalsGlobal)
 		g.GET("/approvals/:id", h.GetApproval)
 		g.POST("/approvals/:id/submit", h.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", h.RetryResumeApproval)

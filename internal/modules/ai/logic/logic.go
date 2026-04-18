@@ -239,6 +239,13 @@ func (l *Logic) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai.A
 	return l.ApprovalDAO.ListPendingByUserID(ctx, userID, 50)
 }
 
+func (l *Logic) ListPendingApprovalsGlobal(ctx context.Context, page, pageSize int) ([]ai.AIApprovalTask, error) {
+	if l.ApprovalDAO == nil {
+		return []ai.AIApprovalTask{}, nil
+	}
+	return l.ApprovalDAO.ListPendingPage(ctx, page, pageSize)
+}
+
 // ── Worker / Expirer 工厂 ────────────────────────────────────
 
 func ApprovalDecidedEventTypes() []string { return approval.ApprovalDecidedEventTypes() }

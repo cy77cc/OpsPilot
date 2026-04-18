@@ -29,10 +29,15 @@ func (h *aiHandlerTestHarness) RetryResumeApproval(c *gin.Context) {
 	h.approval.RetryResumeApproval(c)
 }
 
+func (h *aiHandlerTestHarness) ListPendingApprovalsGlobal(c *gin.Context) {
+	h.approval.ListPendingApprovalsGlobal(c)
+}
+
 func registerAIHandlersForTest(v1 *gin.RouterGroup) {
 	h := newAIHandlerTestHarness(nil)
 	g := v1.Group("/ai")
 	{
+		g.GET("/approvals/pending/global", h.ListPendingApprovalsGlobal)
 		g.POST("/approvals/:id/submit", h.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", h.RetryResumeApproval)
 	}

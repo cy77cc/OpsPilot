@@ -2,11 +2,13 @@ package alertheal
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	"gorm.io/gorm"
 )
 
 func TestDAO_UpsertIngestEvent_DeduplicatesByDedupeKey(t *testing.T) {
@@ -105,5 +107,57 @@ func TestDAO_UpsertIngestEvents_RollsBackOnDBError(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected zero rows after transactional rollback, got %d", count)
+	}
+}
+
+func TestDAO_RenewAutoFixingLease_TouchesUpdatedAt(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertHealJob{})
+	dao := NewDAO(db)
+	ctx := context.Background()
+
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:      "job-lease",
+		EventID: "evt-lease",
+		Scene:   "alert_self_heal",
+		Status:  "auto_fixing",
+	}).Error; err != nil {
+		t.Fatalf("seed auto_fixing job: %v", err)
+	}
+	before := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
+	if err := db.Model(&model.AIAlertHealJob{}).Where("id = ?", "job-lease").UpdateColumn("updated_at", before).Error; err != nil {
+		t.Fatalf("set initial updated_at: %v", err)
+	}
+
+	renewAt := before.Add(90 * time.Second)
+	if err := dao.RenewAutoFixingLease(ctx, "job-lease", renewAt); err != nil {
+		t.Fatalf("renew lease: %v", err)
+	}
+
+	var saved model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-lease").Take(&saved).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if !saved.UpdatedAt.Equal(renewAt) {
+		t.Fatalf("expected updated_at=%s, got %s", renewAt.UTC(), saved.UpdatedAt.UTC())
+	}
+}
+
+func TestDAO_RenewAutoFixingLease_RequiresAutoFixingState(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertHealJob{})
+	dao := NewDAO(db)
+	ctx := context.Background()
+
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:      "job-pending",
+		EventID: "evt-pending",
+		Scene:   "alert_self_heal",
+		Status:  "pending",
+	}).Error; err != nil {
+		t.Fatalf("seed pending job: %v", err)
+	}
+
+	err := dao.RenewAutoFixingLease(ctx, "job-pending", time.Date(2026, 4, 18, 10, 5, 0, 0, time.UTC))
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected record not found for non-auto-fixing state, got %v", err)
 	}
 }

@@ -72,6 +72,10 @@ func (h *aiHandlerTestHarness) ListPendingApprovals(c *gin.Context) {
 	h.approval.ListPendingApprovals(c)
 }
 
+func (h *aiHandlerTestHarness) ListPendingApprovalsGlobal(c *gin.Context) {
+	h.approval.ListPendingApprovalsGlobal(c)
+}
+
 func (h *aiHandlerTestHarness) GetApproval(c *gin.Context) {
 	h.approval.GetApproval(c)
 }

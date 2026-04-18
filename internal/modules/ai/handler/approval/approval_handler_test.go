@@ -34,6 +34,9 @@ func TestSubmitApprovalRouteContract(t *testing.T) {
 	if !seen[http.MethodPost+" /api/v1/ai/approvals/:id/submit"] {
 		t.Fatalf("expected submit route to be registered")
 	}
+	if !seen[http.MethodGet+" /api/v1/ai/approvals/pending/global"] {
+		t.Fatalf("expected pending global route to be registered")
+	}
 	if seen[http.MethodPost+" /api/v1/ai/approvals/:id/confirm"] {
 		t.Fatalf("legacy confirm route must not be registered")
 	}

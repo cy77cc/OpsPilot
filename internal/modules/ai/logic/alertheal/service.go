@@ -33,6 +33,7 @@ type healJobDAO interface {
 	MarkSucceeded(ctx context.Context, jobID, runID string) error
 	MarkWaitingApproval(ctx context.Context, jobID, runID, lastError string, consumeRetry bool) error
 	MarkRetryWait(ctx context.Context, jobID, lastError string, nextRetryAt time.Time) error
+	RenewAutoFixingLease(ctx context.Context, jobID string, now time.Time) error
 }
 
 type ExecutionResult struct {
@@ -203,6 +204,16 @@ func (s *Service) MarkRetryWait(ctx context.Context, jobID, lastError string, ne
 		nextRetryAt = s.now().UTC()
 	}
 	return s.jobDAO.MarkRetryWait(ctx, strings.TrimSpace(jobID), strings.TrimSpace(lastError), nextRetryAt.UTC())
+}
+
+func (s *Service) RenewAutoFixingLease(ctx context.Context, jobID string, now time.Time) error {
+	if s == nil || s.jobDAO == nil {
+		return ErrServiceNotInitialized
+	}
+	if now.IsZero() {
+		now = s.now().UTC()
+	}
+	return s.jobDAO.RenewAutoFixingLease(ctx, strings.TrimSpace(jobID), now.UTC())
 }
 
 func defaultString(v, fallback string) string {
