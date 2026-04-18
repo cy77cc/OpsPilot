@@ -91,18 +91,24 @@ func TestPendingApprovalsGlobal_ReturnsPendingAcrossUsers(t *testing.T) {
 		t.Fatalf("expected success code %d, got %d body=%s", xcode.Success, resp.Code, recorder.Body.String())
 	}
 
-	var tasks []ai.AIApprovalTask
-	if err := json.Unmarshal(resp.Data, &tasks); err != nil {
-		t.Fatalf("decode data as approval tasks: %v payload=%s", err, string(resp.Data))
+	var payload struct {
+		List  []ai.AIApprovalTask `json:"list"`
+		Total int64               `json:"total"`
 	}
-	if len(tasks) != 2 {
-		t.Fatalf("expected two pending approvals, got %d", len(tasks))
+	if err := json.Unmarshal(resp.Data, &payload); err != nil {
+		t.Fatalf("decode data as paged approvals: %v payload=%s", err, string(resp.Data))
 	}
-	if tasks[0].ApprovalID != "approval-u1-pending" {
-		t.Fatalf("expected newest pending task first, got %q", tasks[0].ApprovalID)
+	if payload.Total != 2 {
+		t.Fatalf("expected total=2 pending approvals, got %d", payload.Total)
 	}
-	if tasks[1].ApprovalID != "approval-u2-pending" {
-		t.Fatalf("expected second pending task, got %q", tasks[1].ApprovalID)
+	if len(payload.List) != 2 {
+		t.Fatalf("expected two pending approvals, got %d", len(payload.List))
+	}
+	if payload.List[0].ApprovalID != "approval-u1-pending" {
+		t.Fatalf("expected newest pending task first, got %q", payload.List[0].ApprovalID)
+	}
+	if payload.List[1].ApprovalID != "approval-u2-pending" {
+		t.Fatalf("expected second pending task, got %q", payload.List[1].ApprovalID)
 	}
 }
 

@@ -201,12 +201,12 @@ func (h *HTTPHandler) ListPendingApprovalsGlobal(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.ListPendingApprovalsGlobal(c.Request.Context(), page, pageSize)
+	result, total, err := h.svc.ListPendingApprovalsGlobal(c.Request.Context(), page, pageSize)
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
 	}
-	httpx.OK(c, result)
+	httpx.OK(c, gin.H{"list": result, "total": total})
 }
 
 func (h *HTTPHandler) HealthCheck() error {

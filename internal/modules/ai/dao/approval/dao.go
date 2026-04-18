@@ -173,7 +173,7 @@ func (d *AIApprovalTaskDAO) ListPending(ctx context.Context, limit int) ([]model
 }
 
 // ListPendingPage paginates pending approval tasks globally across all users.
-func (d *AIApprovalTaskDAO) ListPendingPage(ctx context.Context, page, pageSize int) ([]model.AIApprovalTask, error) {
+func (d *AIApprovalTaskDAO) ListPendingPage(ctx context.Context, page, pageSize int) ([]model.AIApprovalTask, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -185,14 +185,19 @@ func (d *AIApprovalTaskDAO) ListPendingPage(ctx context.Context, page, pageSize 
 	}
 
 	var tasks []model.AIApprovalTask
-	err := d.db.WithContext(ctx).
-		Where("status = ?", "pending").
+	query := d.db.WithContext(ctx).Model(&model.AIApprovalTask{}).Where("status = ?", "pending")
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.
 		Order("created_at DESC").
 		Order("id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&tasks).Error
-	return tasks, err
+	return tasks, total, err
 }
 
 // MarkExpired 标记已过期的审批任务。

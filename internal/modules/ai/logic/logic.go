@@ -239,9 +239,9 @@ func (l *Logic) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai.A
 	return l.ApprovalDAO.ListPendingByUserID(ctx, userID, 50)
 }
 
-func (l *Logic) ListPendingApprovalsGlobal(ctx context.Context, page, pageSize int) ([]ai.AIApprovalTask, error) {
+func (l *Logic) ListPendingApprovalsGlobal(ctx context.Context, page, pageSize int) ([]ai.AIApprovalTask, int64, error) {
 	if l.ApprovalDAO == nil {
-		return []ai.AIApprovalTask{}, nil
+		return []ai.AIApprovalTask{}, 0, nil
 	}
 	return l.ApprovalDAO.ListPendingPage(ctx, page, pageSize)
 }

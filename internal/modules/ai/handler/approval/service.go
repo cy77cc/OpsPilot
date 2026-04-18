@@ -54,6 +54,6 @@ func (s *Service) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai
 	return s.logic.ListPendingApprovals(ctx, userID)
 }
 
-func (s *Service) ListPendingApprovalsGlobal(ctx context.Context, page, pageSize int) ([]ai.AIApprovalTask, error) {
+func (s *Service) ListPendingApprovalsGlobal(ctx context.Context, page, pageSize int) ([]ai.AIApprovalTask, int64, error) {
 	return s.logic.ListPendingApprovalsGlobal(ctx, page, pageSize)
 }
