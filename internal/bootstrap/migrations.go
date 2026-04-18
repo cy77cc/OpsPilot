@@ -74,5 +74,55 @@ func ensureAIAlertHealJobEventIndex(db *gorm.DB) error {
 	if db.Migrator().HasIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id") {
 		return nil
 	}
-	return db.Migrator().CreateIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id")
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		if tx.Migrator().HasIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id") {
+			return nil
+		}
+		if err := dedupeAIAlertHealJobsByEventID(tx); err != nil {
+			return err
+		}
+		return tx.Migrator().CreateIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id")
+	})
+}
+
+func dedupeAIAlertHealJobsByEventID(db *gorm.DB) error {
+	type duplicateEvent struct {
+		EventID string `gorm:"column:event_id"`
+	}
+
+	var duplicates []duplicateEvent
+	if err := db.Table("ai_alert_heal_jobs").
+		Select("event_id").
+		Group("event_id").
+		Having("COUNT(*) > 1").
+		Order("event_id ASC").
+		Find(&duplicates).Error; err != nil {
+		return err
+	}
+
+	for _, duplicate := range duplicates {
+		var keepID string
+		if err := db.Table("ai_alert_heal_jobs").
+			Select("id").
+			Where("event_id = ?", duplicate.EventID).
+			Order("created_at ASC").
+			Order("id ASC").
+			Limit(1).
+			Scan(&keepID).Error; err != nil {
+			return err
+		}
+		if keepID == "" {
+			continue
+		}
+		if err := db.Exec(
+			"DELETE FROM ai_alert_heal_jobs WHERE event_id = ? AND id <> ?",
+			duplicate.EventID,
+			keepID,
+		).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
