@@ -79,6 +79,9 @@ func normalizeAlertmanager(raw []byte, compactRaw string) ([]NormalizedAlert, er
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, ErrInvalidPayload
 	}
+	if len(payload.Alerts) == 0 {
+		return nil, ErrInvalidPayload
+	}
 
 	out := make([]NormalizedAlert, 0, len(payload.Alerts))
 	for _, alert := range payload.Alerts {
@@ -123,6 +126,9 @@ func normalizeUnified(raw []byte, compactRaw string) ([]NormalizedAlert, error) 
 		} `json:"alerts"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, ErrInvalidPayload
+	}
+	if len(payload.Alerts) == 0 {
 		return nil, ErrInvalidPayload
 	}
 

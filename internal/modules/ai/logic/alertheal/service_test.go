@@ -64,3 +64,41 @@ func TestIngestService_DeduplicatesBySourceFingerprintStatus(t *testing.T) {
 		t.Fatalf("expected exactly one deduped row, got %d", count)
 	}
 }
+
+func TestIngestService_EmptyAlertsReturnsInvalidPayload(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
+	dao := aidaoalertheal.NewDAO(db)
+	svc := NewService(dao)
+
+	_, err := svc.Ingest(context.Background(), "alertmanager", []byte(`{"alerts":[]}`))
+	if err == nil {
+		t.Fatal("expected ErrInvalidPayload, got nil")
+	}
+	if err != ErrInvalidPayload {
+		t.Fatalf("expected ErrInvalidPayload, got %v", err)
+	}
+}
+
+func TestIngestService_MixedInvalidBatchDoesNotPartiallyPersist(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
+	dao := aidaoalertheal.NewDAO(db)
+	svc := NewService(dao)
+
+	raw := []byte(`{"alerts":[{"status":"firing","fingerprint":"fp-a","labels":{"alertname":"CPU"}},{"status":"firing","fingerprint":"  ","labels":{"alertname":"MEM"}}]}`)
+
+	_, err := svc.Ingest(context.Background(), "alertmanager", raw)
+	if err == nil {
+		t.Fatal("expected ErrInvalidPayload, got nil")
+	}
+	if err != ErrInvalidPayload {
+		t.Fatalf("expected ErrInvalidPayload, got %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&model.AIAlertIngestEvent{}).Count(&count).Error; err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected zero rows persisted on invalid batch, got %d", count)
+	}
+}

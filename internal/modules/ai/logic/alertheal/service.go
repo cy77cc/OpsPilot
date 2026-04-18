@@ -41,9 +41,12 @@ func (s *Service) Ingest(ctx context.Context, protocol string, raw []byte) ([]mo
 	if err != nil {
 		return nil, err
 	}
+	if len(normalized) == 0 {
+		return nil, ErrInvalidPayload
+	}
 
-	out := make([]model.AIAlertIngestEvent, 0, len(normalized))
 	receivedAt := s.now().UTC()
+	rows := make([]*model.AIAlertIngestEvent, 0, len(normalized))
 	for _, item := range normalized {
 		fingerprint := strings.TrimSpace(item.Fingerprint)
 		if fingerprint == "" {
@@ -63,7 +66,7 @@ func (s *Service) Ingest(ctx context.Context, protocol string, raw []byte) ([]mo
 			proto = normalizeProtocol(protocol)
 		}
 
-		row := &model.AIAlertIngestEvent{
+		rows = append(rows, &model.AIAlertIngestEvent{
 			ID:              s.newID(),
 			Source:          source,
 			Protocol:        proto,
@@ -79,8 +82,11 @@ func (s *Service) Ingest(ctx context.Context, protocol string, raw []byte) ([]mo
 			StartsAt:        item.StartsAt,
 			EndsAt:          item.EndsAt,
 			ReceivedAt:      receivedAt,
-		}
+		})
+	}
 
+	out := make([]model.AIAlertIngestEvent, 0, len(rows))
+	for _, row := range rows {
 		saved, err := s.dao.UpsertIngestEvent(ctx, row)
 		if err != nil {
 			return nil, err
