@@ -7,13 +7,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
-	"github.com/cy77cc/OpsPilot/internal/core/httpx"
-	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	alertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/alertheal"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/gin-gonic/gin"
 )
@@ -25,7 +25,7 @@ type AlertWebhookIngestor interface {
 }
 
 type AlertWebhookEnqueuer interface {
-	Enqueue(ctx context.Context, event model.AIAlertIngestEvent) (string, error)
+	EnqueueBatch(ctx context.Context, events []model.AIAlertIngestEvent) (string, error)
 }
 
 type AlertWebhookHandler struct {
@@ -38,65 +38,67 @@ func NewAlertWebhookHandler(ingestor AlertWebhookIngestor, enqueuer AlertWebhook
 }
 
 func (h *AlertWebhookHandler) Handle(c *gin.Context) {
+	secret := strings.TrimSpace(config.CFG.AI.AlertWebhookSecret)
+	if !isValidAlertWebhookSecret(secret) {
+		writeWebhookError(c, http.StatusInternalServerError, "webhook secret is not configured")
+		return
+	}
+
 	signature := strings.TrimSpace(c.GetHeader("X-OpsPilot-Signature"))
 	if signature == "" {
-		httpx.Fail(c, xcode.Unauthorized, "missing webhook signature")
+		writeWebhookError(c, http.StatusUnauthorized, "missing webhook signature")
 		return
 	}
 
 	body, err := readAlertWebhookPayload(c.Request.Body)
 	if err != nil {
 		if err == errAlertWebhookPayloadTooLarge {
-			httpx.Fail(c, xcode.ParamError, "webhook payload too large")
+			writeWebhookError(c, http.StatusBadRequest, "webhook payload too large")
 			return
 		}
-		httpx.ServerErr(c, err)
+		writeWebhookError(c, http.StatusInternalServerError, "failed to read webhook payload")
 		return
 	}
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
 
-	if !verifyAlertWebhookSignature(config.CFG.AI.AlertWebhookSecret, signature, body) {
-		httpx.Fail(c, xcode.Unauthorized, "invalid webhook signature")
+	if !verifyAlertWebhookSignature(secret, signature, body) {
+		writeWebhookError(c, http.StatusUnauthorized, "invalid webhook signature")
 		return
 	}
 
 	if h == nil || h.ingestor == nil || h.enqueuer == nil {
-		httpx.ServerErr(c, xcode.NewErrCodeMsg(xcode.ServerError, "alert webhook handler not initialized"))
+		writeWebhookError(c, http.StatusInternalServerError, "webhook handler not initialized")
 		return
 	}
 
 	events, err := h.ingestor.Ingest(c.Request.Context(), detectAlertWebhookProtocol(body), body)
 	if err != nil {
-		httpx.BadRequest(c, err.Error())
+		if errors.Is(err, alertheal.ErrInvalidPayload) {
+			writeWebhookError(c, http.StatusBadRequest, "invalid webhook payload")
+			return
+		}
+		writeWebhookError(c, http.StatusInternalServerError, "failed to ingest webhook payload")
 		return
 	}
 	if len(events) == 0 {
-		httpx.BadRequest(c, "invalid webhook payload")
+		writeWebhookError(c, http.StatusBadRequest, "invalid webhook payload")
 		return
 	}
 
-	var firstEventID string
-	var firstJobID string
-	for i, event := range events {
-		jobID, enqueueErr := h.enqueuer.Enqueue(c.Request.Context(), event)
-		if enqueueErr != nil {
-			httpx.ServerErr(c, enqueueErr)
-			return
-		}
-		if i == 0 {
-			firstEventID = event.ID
-			firstJobID = jobID
-		}
+	firstJobID, enqueueErr := h.enqueuer.EnqueueBatch(c.Request.Context(), events)
+	if enqueueErr != nil {
+		writeWebhookError(c, http.StatusInternalServerError, "failed to enqueue alert heal jobs")
+		return
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"accepted": true,
-		"event_id": firstEventID,
+		"event_id": events[0].ID,
 		"job_id":   firstJobID,
 	})
 }
 
-var errAlertWebhookPayloadTooLarge = xcode.NewErrCodeMsg(xcode.ParamError, "webhook payload too large")
+var errAlertWebhookPayloadTooLarge = errors.New("webhook payload too large")
 
 func readAlertWebhookPayload(body io.Reader) ([]byte, error) {
 	limited := &io.LimitedReader{R: body, N: maxAlertWebhookPayloadBytes + 1}
@@ -111,11 +113,6 @@ func readAlertWebhookPayload(body io.Reader) ([]byte, error) {
 }
 
 func verifyAlertWebhookSignature(secret, signature string, body []byte) bool {
-	secret = strings.TrimSpace(secret)
-	if secret == "" {
-		return false
-	}
-
 	expected := signAlertWebhookBody(secret, body)
 	actual, err := decodeAlertWebhookSignature(signature)
 	if err != nil {
@@ -149,4 +146,19 @@ func detectAlertWebhookProtocol(raw []byte) string {
 		return "opspilot.alert.v1"
 	}
 	return "alertmanager"
+}
+
+func writeWebhookError(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{"error": message})
+}
+
+func isValidAlertWebhookSecret(secret string) bool {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return false
+	}
+	if strings.HasPrefix(secret, "${") && strings.HasSuffix(secret, "}") {
+		return false
+	}
+	return true
 }
