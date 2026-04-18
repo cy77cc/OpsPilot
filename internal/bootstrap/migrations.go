@@ -6,6 +6,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	"github.com/cy77cc/OpsPilot/internal/core/storage/migration"
+	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"gorm.io/gorm"
 )
 
@@ -19,6 +20,9 @@ func RunBootstrapMigrations() error {
 
 	if err := migration.RunMigrations(db); err != nil {
 		return fmt.Errorf("run migrations failed: %w", err)
+	}
+	if err := ensureAIAlertHealJobEventIndex(db); err != nil {
+		return fmt.Errorf("ensure ai alert heal job event index failed: %w", err)
 	}
 
 	if config.CFG.App.AutoMigrate {
@@ -58,4 +62,17 @@ func fixHostUniqueIndex(db *gorm.DB) error {
 		ON nodes(provider, provider_instance_id) 
 		WHERE provider IS NOT NULL AND provider != ''
 	`).Error
+}
+
+func ensureAIAlertHealJobEventIndex(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	if !db.Migrator().HasTable(&aimodel.AIAlertHealJob{}) {
+		return nil
+	}
+	if db.Migrator().HasIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id") {
+		return nil
+	}
+	return db.Migrator().CreateIndex(&aimodel.AIAlertHealJob{}, "uk_ai_alert_heal_jobs_event_id")
 }
