@@ -195,13 +195,17 @@ func (d *DAO) MarkSucceeded(ctx context.Context, jobID, runID string) error {
 	})
 }
 
-func (d *DAO) MarkWaitingApproval(ctx context.Context, jobID, lastError string) error {
-	return d.updateAutoFixingJob(ctx, jobID, map[string]any{
+func (d *DAO) MarkWaitingApproval(ctx context.Context, jobID, runID, lastError string, consumeRetry bool) error {
+	updates := map[string]any{
 		"status":        "waiting_approval",
+		"latest_run_id": strings.TrimSpace(runID),
 		"last_error":    strings.TrimSpace(lastError),
 		"next_retry_at": nil,
-		"retry_count":   gorm.Expr("retry_count + ?", 1),
-	})
+	}
+	if consumeRetry {
+		updates["retry_count"] = gorm.Expr("retry_count + ?", 1)
+	}
+	return d.updateAutoFixingJob(ctx, jobID, updates)
 }
 
 func (d *DAO) MarkRetryWait(ctx context.Context, jobID, lastError string, nextRetryAt time.Time) error {

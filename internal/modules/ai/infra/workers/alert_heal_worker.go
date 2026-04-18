@@ -18,7 +18,7 @@ type alertHealService interface {
 	ClaimRunnableJob(ctx context.Context, now time.Time) (*model.AIAlertHealJob, error)
 	CancelIfResolved(ctx context.Context, job *model.AIAlertHealJob) (bool, error)
 	MarkSucceeded(ctx context.Context, jobID, runID string) error
-	MarkWaitingApproval(ctx context.Context, jobID, lastError string) error
+	MarkWaitingApproval(ctx context.Context, jobID, runID, lastError string, consumeRetry bool) error
 	MarkRetryWait(ctx context.Context, jobID, lastError string, nextRetryAt time.Time) error
 }
 
@@ -100,6 +100,9 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 		if result != nil {
 			runID = strings.TrimSpace(result.RunID)
 		}
+		if result != nil && result.WaitingApproval {
+			return true, w.svc.MarkWaitingApproval(ctx, job.ID, runID, "", false)
+		}
 		return true, w.svc.MarkSucceeded(ctx, job.ID, runID)
 	}
 
@@ -109,7 +112,7 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 		maxRetry = 1
 	}
 	if job.RetryCount+1 >= maxRetry {
-		return true, w.svc.MarkWaitingApproval(ctx, job.ID, lastError)
+		return true, w.svc.MarkWaitingApproval(ctx, job.ID, "", lastError, true)
 	}
 
 	nextRetryAt := now.Add(w.retryBackoff(job.RetryCount))

@@ -8,6 +8,7 @@ import (
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao"
 	aidaoalertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/alertheal"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 func TestNormalizePayload_SupportsAlertmanagerAndUnified(t *testing.T) {
@@ -140,5 +141,34 @@ func TestIngestService_DBErrorRollsBackWholeBatch(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected zero rows persisted when db error happens mid-batch, got %d", count)
+	}
+}
+
+func TestNewExecutor_ReturnsNilWhenRuntimeUnavailable(t *testing.T) {
+	if got := NewExecutor(nil); got != nil {
+		t.Fatalf("expected nil executor for nil service context, got %#v", got)
+	}
+	if got := NewExecutor(&svc.ServiceContext{}); got != nil {
+		t.Fatalf("expected nil executor for missing db/runtime, got %#v", got)
+	}
+}
+
+func TestAlertHealExecutionIDs_DeterministicAndAttemptScoped(t *testing.T) {
+	sessionA1 := alertHealSessionID("job-1")
+	sessionA2 := alertHealSessionID("job-1")
+	if sessionA1 == "" || sessionA2 == "" {
+		t.Fatalf("expected non-empty session ids, got %q %q", sessionA1, sessionA2)
+	}
+	if sessionA1 != sessionA2 {
+		t.Fatalf("expected deterministic session id, got %q and %q", sessionA1, sessionA2)
+	}
+
+	reqA1 := alertHealClientRequestID("job-1", 1)
+	reqA2 := alertHealClientRequestID("job-1", 2)
+	if reqA1 == reqA2 {
+		t.Fatalf("expected different request ids for different attempts, got %q", reqA1)
+	}
+	if !strings.Contains(reqA2, "a2") {
+		t.Fatalf("expected attempt marker in request id, got %q", reqA2)
 	}
 }

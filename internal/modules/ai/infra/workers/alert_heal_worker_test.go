@@ -214,14 +214,84 @@ func TestAlertHealWorker_ReclaimsStaleAutoFixingJob(t *testing.T) {
 	}
 }
 
+func TestAlertHealWorker_ExecutorWaitingApprovalDoesNotConsumeRetryBudget(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
+	now := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
+
+	if err := db.Create(&model.AIAlertIngestEvent{
+		ID:          "evt-approval",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-approval",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-approval:firing",
+		Title:       "Needs approval",
+		ReceivedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed ingest event: %v", err)
+	}
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:         "job-approval",
+		EventID:    "evt-approval",
+		Scene:      "alert_self_heal",
+		Status:     "pending",
+		RetryCount: 1,
+		MaxRetry:   3,
+	}).Error; err != nil {
+		t.Fatalf("seed heal job: %v", err)
+	}
+
+	svc := ailogicalertheal.NewService(aidaoalertheal.NewDAO(db))
+	executor := &stubAlertHealExecutor{
+		results: []*ailogicalertheal.ExecutionResult{{
+			RunID:           "run-approval-1",
+			RunStatus:       "waiting_approval",
+			WaitingApproval: true,
+		}},
+	}
+	worker := NewAlertHealWorker(
+		svc,
+		executor,
+		WithAlertHealWorkerClock(func() time.Time { return now }),
+	)
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected worker to claim pending job")
+	}
+
+	var saved model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-approval").Take(&saved).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if saved.Status != "waiting_approval" {
+		t.Fatalf("expected status waiting_approval, got %q", saved.Status)
+	}
+	if saved.RetryCount != 1 {
+		t.Fatalf("expected retry_count unchanged at 1, got %d", saved.RetryCount)
+	}
+	if saved.LatestRunID != "run-approval-1" {
+		t.Fatalf("expected latest_run_id run-approval-1, got %q", saved.LatestRunID)
+	}
+}
+
 type stubAlertHealExecutor struct {
 	errs        []error
 	resultRunID string
+	results     []*ailogicalertheal.ExecutionResult
 	calls       int
 }
 
 func (s *stubAlertHealExecutor) Execute(_ context.Context, _ *model.AIAlertHealJob) (*ailogicalertheal.ExecutionResult, error) {
 	s.calls++
+	if len(s.results) > 0 {
+		result := s.results[0]
+		s.results = s.results[1:]
+		return result, nil
+	}
 	if len(s.errs) > 0 {
 		err := s.errs[0]
 		s.errs = s.errs[1:]
