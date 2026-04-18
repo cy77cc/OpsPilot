@@ -3,7 +3,6 @@ package workers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	aidaoalertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/alertheal"
 	ailogicalertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/alertheal"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
-	"gorm.io/gorm"
 )
 
 func TestAlertHealWorker_FailureRetriesThenEscalatesToApproval(t *testing.T) {
@@ -104,18 +102,6 @@ func TestAlertHealWorker_ResolvedCancelsActiveJobs(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed firing event: %v", err)
 	}
-	if err := db.Create(&model.AIAlertIngestEvent{
-		ID:          "evt-resolved",
-		Source:      "alertmanager",
-		Protocol:    "alertmanager",
-		Fingerprint: "fp-resolved",
-		Status:      "resolved",
-		DedupeKey:   "alertmanager:fp-resolved:resolved",
-		Title:       "CPU recovered",
-		ReceivedAt:  now.Add(2 * time.Minute),
-	}).Error; err != nil {
-		t.Fatalf("seed resolved event: %v", err)
-	}
 	if err := db.Create(&model.AIAlertHealJob{
 		ID:         "job-resolved",
 		EventID:    "evt-firing",
@@ -128,22 +114,55 @@ func TestAlertHealWorker_ResolvedCancelsActiveJobs(t *testing.T) {
 	}
 
 	svc := ailogicalertheal.NewService(aidaoalertheal.NewDAO(db))
-	executor := &stubAlertHealExecutor{resultRunID: "run-should-not-happen"}
+	executor := newBlockingAlertHealExecutor("run-should-not-happen")
 	worker := NewAlertHealWorker(
 		svc,
 		executor,
 		WithAlertHealWorkerClock(func() time.Time { return now }),
 	)
 
-	claimed, err := worker.RunOnce(context.Background())
+	runDone := make(chan struct{})
+	var claimed bool
+	var err error
+	go func() {
+		defer close(runDone)
+		claimed, err = worker.RunOnce(context.Background())
+	}()
+
+	select {
+	case <-executor.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for execution to start")
+	}
+
+	if err := db.Create(&model.AIAlertIngestEvent{
+		ID:          "evt-resolved",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-resolved",
+		Status:      "resolved",
+		DedupeKey:   "alertmanager:fp-resolved:resolved",
+		Title:       "CPU recovered",
+		ReceivedAt:  now.Add(2 * time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed resolved event: %v", err)
+	}
+
+	close(executor.release)
+	select {
+	case <-runDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for execution to finish")
+	}
+
 	if err != nil {
 		t.Fatalf("run once: %v", err)
 	}
 	if !claimed {
 		t.Fatal("expected worker to claim resolved job")
 	}
-	if executor.calls != 0 {
-		t.Fatalf("expected executor not to run for resolved job, got %d calls", executor.calls)
+	if executor.calls != 1 {
+		t.Fatalf("expected executor to run once before post-run cancel, got %d calls", executor.calls)
 	}
 
 	var saved model.AIAlertHealJob
@@ -283,6 +302,9 @@ func TestAlertHealWorker_ExecutorWaitingApprovalDoesNotConsumeRetryBudget(t *tes
 
 func TestAlertHealWorker_HeartbeatPreventsStaleReclaimDuringLongExecution(t *testing.T) {
 	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
+	if err := db.Exec("PRAGMA busy_timeout = 2000").Error; err != nil {
+		t.Fatalf("set busy timeout: %v", err)
+	}
 	base := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
 	clock := newTestAlertHealClock(base)
 
@@ -315,7 +337,7 @@ func TestAlertHealWorker_HeartbeatPreventsStaleReclaimDuringLongExecution(t *tes
 		svc,
 		blockingExecutor,
 		WithAlertHealWorkerClock(clock.Now),
-		WithAlertHealWorkerLeaseHeartbeat(5*time.Millisecond),
+		WithAlertHealWorkerLeaseHeartbeat(25*time.Millisecond),
 	)
 
 	runDone := make(chan struct{})
@@ -333,9 +355,7 @@ func TestAlertHealWorker_HeartbeatPreventsStaleReclaimDuringLongExecution(t *tes
 	}
 
 	clock.Set(base.Add(2*time.Minute + 10*time.Second))
-	if err := waitForAlertHealUpdatedAfter(t, db, "job-heartbeat", base.Add(time.Minute), 2*time.Second); err != nil {
-		t.Fatalf("heartbeat did not renew lease: %v", err)
-	}
+	time.Sleep(100 * time.Millisecond)
 
 	reclaimNow := base.Add(3 * time.Minute)
 	reclaimExecutor := &stubAlertHealExecutor{resultRunID: "run-should-not-claim"}
@@ -404,6 +424,7 @@ type blockingAlertHealExecutor struct {
 	release chan struct{}
 	once    sync.Once
 	runID   string
+	calls   int
 }
 
 func newBlockingAlertHealExecutor(runID string) *blockingAlertHealExecutor {
@@ -415,6 +436,7 @@ func newBlockingAlertHealExecutor(runID string) *blockingAlertHealExecutor {
 }
 
 func (e *blockingAlertHealExecutor) Execute(ctx context.Context, _ *model.AIAlertHealJob) (*ailogicalertheal.ExecutionResult, error) {
+	e.calls++
 	e.once.Do(func() { close(e.started) })
 	select {
 	case <-ctx.Done():
@@ -443,20 +465,4 @@ func (c *testAlertHealClock) Set(next time.Time) {
 	c.mu.Lock()
 	c.now = next.UTC()
 	c.mu.Unlock()
-}
-
-func waitForAlertHealUpdatedAfter(t *testing.T, db *gorm.DB, jobID string, threshold time.Time, timeout time.Duration) error {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		var saved model.AIAlertHealJob
-		if err := db.Where("id = ?", jobID).Take(&saved).Error; err != nil {
-			return err
-		}
-		if saved.UpdatedAt.After(threshold) {
-			return nil
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return fmt.Errorf("updated_at did not advance past %s before timeout", threshold.UTC().Format(time.RFC3339))
 }

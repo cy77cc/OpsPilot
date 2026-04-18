@@ -108,6 +108,13 @@ func (w *AlertHealWorker) RunOnce(ctx context.Context) (bool, error) {
 	}
 
 	result, execErr := w.executeWithLeaseHeartbeat(ctx, job)
+	resolved, resolvedErr := w.svc.CancelIfResolved(ctx, job)
+	if resolvedErr != nil {
+		return true, resolvedErr
+	}
+	if resolved {
+		return true, nil
+	}
 	if execErr == nil {
 		runID := ""
 		if result != nil {
