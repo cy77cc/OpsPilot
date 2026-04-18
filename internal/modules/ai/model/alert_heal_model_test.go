@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,12 @@ func TestAIAlertIngestEvent_DedupeKeyUnique(t *testing.T) {
 
 	duplicate := first
 	duplicate.ID = "evt-2"
-	if err := db.Create(&duplicate).Error; err == nil {
+	err = db.Create(&duplicate).Error
+	if err == nil {
 		t.Fatal("expected unique dedupe_key violation, got nil")
+	}
+	lowerErr := strings.ToLower(err.Error())
+	if !strings.Contains(lowerErr, "unique") && !strings.Contains(lowerErr, "constraint") {
+		t.Fatalf("expected unique-constraint violation, got: %v", err)
 	}
 }
