@@ -26,7 +26,7 @@ func (AIAlertIngestEvent) TableName() string { return "ai_alert_ingest_events" }
 
 type AIAlertHealJob struct {
 	ID          string     `gorm:"column:id;type:varchar(64);primaryKey"`
-	EventID     string     `gorm:"column:event_id;type:varchar(64);not null;index:idx_ai_alert_heal_jobs_event_id"`
+	EventID     string     `gorm:"column:event_id;type:varchar(64);not null;uniqueIndex:uk_ai_alert_heal_jobs_event_id"`
 	Scene       string     `gorm:"column:scene;type:varchar(32);not null"`
 	Status      string     `gorm:"column:status;type:varchar(32);not null;index:idx_ai_alert_heal_jobs_queue,priority:1"`
 	Decision    string     `gorm:"column:decision;type:varchar(32);not null;default:''"`

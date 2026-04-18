@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type alertHealJobEnqueuer struct {
@@ -35,27 +36,25 @@ func (e *alertHealJobEnqueuer) EnqueueBatch(ctx context.Context, events []model.
 				return errors.New("empty ingest event id")
 			}
 
-			var existing model.AIAlertHealJob
-			if qErr := tx.Where("event_id = ?", eventID).Order("created_at ASC, id ASC").Take(&existing).Error; qErr == nil {
-				if i == 0 {
-					firstJobID = existing.ID
-				}
-				continue
-			} else if !errors.Is(qErr, gorm.ErrRecordNotFound) {
-				return qErr
-			}
-
 			row := &model.AIAlertHealJob{
 				ID:      uuid.NewString(),
 				EventID: eventID,
 				Scene:   "alert_self_heal",
 				Status:  "pending",
 			}
-			if cErr := tx.Create(row).Error; cErr != nil {
+			if cErr := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "event_id"}},
+				DoNothing: true,
+			}).Create(row).Error; cErr != nil {
 				return cErr
 			}
+
+			var saved model.AIAlertHealJob
+			if qErr := tx.Where("event_id = ?", eventID).Take(&saved).Error; qErr != nil {
+				return qErr
+			}
 			if i == 0 {
-				firstJobID = row.ID
+				firstJobID = saved.ID
 			}
 		}
 		return nil

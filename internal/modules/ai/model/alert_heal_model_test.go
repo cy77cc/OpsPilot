@@ -46,3 +46,28 @@ func TestAIAlertIngestEvent_DedupeKeyUnique(t *testing.T) {
 		t.Fatalf("expected duplicate-key semantics for dedupe_key, got: %v", err)
 	}
 }
+
+func TestAIAlertHealJob_EventIDUnique(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:ai-alert-heal-job-unique?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&AIAlertHealJob{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	first := AIAlertHealJob{ID: "job-1", EventID: "evt-1", Scene: "alert_self_heal", Status: "pending"}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+
+	dup := AIAlertHealJob{ID: "job-2", EventID: "evt-1", Scene: "alert_self_heal", Status: "pending"}
+	err = db.Create(&dup).Error
+	if err == nil {
+		t.Fatal("expected unique event_id violation, got nil")
+	}
+	lowerErr := strings.ToLower(err.Error())
+	if !strings.Contains(lowerErr, "unique") {
+		t.Fatalf("expected duplicate-key semantics (unique), got: %v", err)
+	}
+}
