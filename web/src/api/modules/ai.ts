@@ -4,12 +4,14 @@ export * from '../../features/ai/api/sessionApi';
 export * from '../../features/ai/api/runApi';
 export * from '../../features/ai/api/approvalApi';
 export * from '../../features/ai/api/adminModelApi';
+export * from '../../features/ai/api/stubApi';
 
 import { chatApi } from '../../features/ai/api/chatApi';
 import { sessionApi } from '../../features/ai/api/sessionApi';
 import { runApi } from '../../features/ai/api/runApi';
 import { approvalApi } from '../../features/ai/api/approvalApi';
 import { adminModelApi } from '../../features/ai/api/adminModelApi';
+import { stubApi } from '../../features/ai/api/stubApi';
 
 export const aiApi = {
   ...chatApi,
@@ -17,4 +19,5 @@ export const aiApi = {
   ...runApi,
   ...approvalApi,
   ...adminModelApi,
+  ...stubApi,
 };

@@ -57,6 +57,7 @@ func (d *LLMProviderDAO) GetDefault(ctx context.Context) (*model.AILLMProvider, 
 	var provider model.AILLMProvider
 	err := d.db.WithContext(ctx).
 		Where("is_default = ? AND is_enabled = ? AND deleted_at IS NULL", true, true).
+		Order("sort_order DESC, id ASC").
 		First(&provider).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil

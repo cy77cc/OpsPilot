@@ -358,6 +358,8 @@ export interface A2UIUnknownStreamEvent {
   payload: unknown;
   eventId?: string;
   runId?: string | number;
+  userId?: string | number;
+  tenantId?: string;
 }
 
 export interface A2UIStreamHandlers {
@@ -470,6 +472,12 @@ function buildUnknownStreamEvent(eventType: string, payload: unknown, eventId?: 
     ...(readStreamEventTag(payload, ['run_id', 'runId']) !== undefined
       ? { runId: readStreamEventTag(payload, ['run_id', 'runId']) }
       : {}),
+    ...(readStreamEventTag(payload, ['user_id', 'userId']) !== undefined
+      ? { userId: readStreamEventTag(payload, ['user_id', 'userId']) }
+      : {}),
+    ...(readStreamEventTag(payload, ['tenant_id', 'tenantId']) !== undefined
+      ? { tenantId: String(readStreamEventTag(payload, ['tenant_id', 'tenantId'])) }
+      : {}),
   };
 }
 
@@ -495,7 +503,7 @@ export function dispatchAIStreamEvent(segment: string, handlers: A2UIStreamHandl
   else if (eventType === 'tool_approval') handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);
   else if (eventType === 'tool_result') handlers.onToolResult?.(payload as A2UIToolResultEvent);
   else if (eventType === 'delegation_node') handlers.onDelegationNode?.(payload as A2UIDelegationNodeEvent);
-  else if (eventType === 'ops.plan.updated') handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);
+  else if (eventType === 'ops.plan.updated' || eventType === 'ops_plan_updated') handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);
   else if (eventType === 'ai.run.resuming') handlers.onRunResuming?.(payload as A2UIRunResumingEvent);
   else if (eventType === 'ai.run.resumed') handlers.onRunResumed?.(payload as A2UIRunResumedEvent);
   else if (eventType === 'ai.run.resume_failed') handlers.onRunResumeFailed?.(payload as A2UIRunResumeFailedEvent);

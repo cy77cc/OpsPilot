@@ -20,9 +20,12 @@ func (f *openaiFactory) Create(ctx context.Context, p *model.AILLMProvider, opts
 		return nil, fmt.Errorf("llm provider is nil")
 	}
 
+	temp := float32(p.Temperature)
 	return openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		BaseURL: p.BaseURL,
-		Model:   p.Model,
-		Timeout: opts.Timeout,
+		APIKey:      p.APIKey,
+		BaseURL:     p.BaseURL,
+		Model:       p.Model,
+		Temperature: &temp,
+		Timeout:     opts.Timeout,
 	})
 }

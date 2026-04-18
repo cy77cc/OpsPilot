@@ -1,3 +1,6 @@
+import type { PendingRunMetadata } from '../../features/ai/state/pendingRunStore';
+export type { PendingRunMetadata };
+
 export interface SceneContext {
   route?: string;
   resourceType?: string;
@@ -46,25 +49,6 @@ export type AssistantReplyApprovalState =
   | 'approved'
   | 'rejected'
   | 'refresh-needed';
-
-export type PendingRunStatus =
-  | 'waiting_approval'
-  | 'resuming'
-  | 'running'
-  | 'resume_failed_retryable';
-
-export interface PendingRunMetadata {
-  runId: string;
-  sessionId?: string;
-  clientRequestId?: string;
-  latestEventId?: string;
-  approvalId?: string;
-  approvalCallId?: string;
-  status: PendingRunStatus;
-  resumable: boolean;
-  messageId?: string;
-  updatedAt?: string;
-}
 
 // 瘦身后的 executor block（减少内存占用，只保留懒加载必须字段）
 export interface SlimExecutorBlock {

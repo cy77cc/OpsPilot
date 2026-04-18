@@ -75,11 +75,11 @@ export const adminModelApi = {
     return apiService.put(`/admin/ai/models/${id}`, payload);
   },
 
-  async setAdminDefaultModel(id: number): Promise<ApiResponse<null>> {
+  async setAdminDefaultModel(id: number): Promise<ApiResponse<AILLMProvider>> {
     return apiService.put(`/admin/ai/models/${id}/default`);
   },
 
-  async deleteAdminModel(id: number): Promise<ApiResponse<null>> {
+  async deleteAdminModel(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {
     return apiService.delete(`/admin/ai/models/${id}`);
   },
 

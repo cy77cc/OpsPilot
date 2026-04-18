@@ -45,7 +45,7 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 		normalizedScene = defaultScene
 	}
 
-	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
+	chatModel, err := aiclient.GetDefaultChatModel(ctx, nil, aiclient.ChatModelConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
@@ -106,7 +106,7 @@ func createNamedSceneAgent(
 		return nil, fmt.Errorf("service context not found")
 	}
 
-	chatModel, err := aiclient.NewChatModel(ctx, aiclient.ChatModelConfig{})
+	chatModel, err := aiclient.GetDefaultChatModel(ctx, nil, aiclient.ChatModelConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}

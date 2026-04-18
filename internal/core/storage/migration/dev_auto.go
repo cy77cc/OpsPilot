@@ -1,8 +1,8 @@
 package migration
 
 import (
-	applicationmodel "github.com/cy77cc/OpsPilot/internal/modules/application/model"
 	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	applicationmodel "github.com/cy77cc/OpsPilot/internal/modules/application/model"
 	automationmodel "github.com/cy77cc/OpsPilot/internal/modules/automation/model"
 	cicdmodel "github.com/cy77cc/OpsPilot/internal/modules/cicd/model"
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
@@ -12,6 +12,7 @@ import (
 	governancemodel "github.com/cy77cc/OpsPilot/internal/modules/governance/model"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	jobsmodel "github.com/cy77cc/OpsPilot/internal/modules/jobs/model"
+	llmprovidermodel "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	notificationmodel "github.com/cy77cc/OpsPilot/internal/modules/notification/model"
 	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
@@ -111,6 +112,7 @@ func RunDevAutoMigrate(db *gorm.DB) error {
 		&aimodel.AIToolRiskPolicy{},
 		&aimodel.AIApprovalTask{},
 		&aimodel.AIApprovalOutboxEvent{},
+		&llmprovidermodel.AILLMProvider{},
 		&hostmodel.AIHostExecutionRecord{},
 		&clustermodel.AdmissionPolicy{},
 		&clustermodel.AdmissionExemption{},

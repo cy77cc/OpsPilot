@@ -258,6 +258,185 @@ func TestLLMProviderHandler_ImportSuccessMatchesFrontendContract(t *testing.T) {
 	}
 }
 
+func TestLLMProviderHandler_UpdateModel_PartialPayloadKeepsExistingFlags(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	if err := db.Create(&llmmodel.AILLMProvider{
+		ID:          1,
+		Name:        "Qwen Prod",
+		Provider:    "qwen",
+		Model:       "qwen-max",
+		BaseURL:     "https://example.com",
+		APIKey:      "cipher",
+		Temperature: 0.8,
+		Thinking:    true,
+		IsDefault:   true,
+		IsEnabled:   true,
+		SortOrder:   10,
+	}).Error; err != nil {
+		t.Fatalf("seed provider: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/ai/models/1", bytes.NewBufferString(`{"name":"Qwen Prod v2"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.UpdateModel(c)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if resp.Code != int(xcode.Success) {
+		t.Fatalf("expected success code %d, got %d", xcode.Success, resp.Code)
+	}
+
+	var row llmmodel.AILLMProvider
+	if err := db.First(&row, 1).Error; err != nil {
+		t.Fatalf("reload provider: %v", err)
+	}
+	if row.Name != "Qwen Prod v2" {
+		t.Fatalf("expected updated name, got %q", row.Name)
+	}
+	if !row.IsDefault || !row.IsEnabled || !row.Thinking {
+		t.Fatalf("expected existing boolean flags unchanged, got default=%v enabled=%v thinking=%v", row.IsDefault, row.IsEnabled, row.Thinking)
+	}
+	if row.Temperature != 0.8 {
+		t.Fatalf("expected temperature unchanged to 0.8, got %v", row.Temperature)
+	}
+}
+
+func TestLLMProviderHandler_DeleteModel_RejectsDefaultModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	if err := db.Create(&llmmodel.AILLMProvider{
+		ID:        1,
+		Name:      "Default",
+		Provider:  "qwen",
+		Model:     "qwen-max",
+		BaseURL:   "https://example.com",
+		APIKey:    "cipher",
+		IsDefault: true,
+		IsEnabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed provider: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/admin/ai/models/1", nil)
+
+	h.DeleteModel(c)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode delete response: %v", err)
+	}
+	if resp.Code != int(xcode.LLMProviderInUse) {
+		t.Fatalf("expected code %d, got %d", xcode.LLMProviderInUse, resp.Code)
+	}
+
+	var count int64
+	if err := db.Model(&llmmodel.AILLMProvider{}).Where("id = ? AND deleted_at IS NULL", 1).Count(&count).Error; err != nil {
+		t.Fatalf("count provider: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected default model to remain, got count=%d", count)
+	}
+}
+
+func TestLLMProviderHandler_ImportReplaceAll_ReplacesExistingRows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	if err := db.Create(&llmmodel.AILLMProvider{
+		ID:       1,
+		Name:     "Old",
+		Provider: "ark",
+		Model:    "doubao",
+		BaseURL:  "https://old.example.com",
+		APIKey:   "cipher",
+	}).Error; err != nil {
+		t.Fatalf("seed old provider: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/ai/models/import", bytes.NewBufferString(`{"replace_all":true,"providers":[{"name":"New","provider":"qwen","model":"qwen-max","base_url":"https://new.example.com","api_key":"sk-test"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.ImportModels(c)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode import response: %v", err)
+	}
+	if resp.Code != int(xcode.Success) {
+		t.Fatalf("expected success code %d, got %d", xcode.Success, resp.Code)
+	}
+
+	var rows []llmmodel.AILLMProvider
+	if err := db.Where("deleted_at IS NULL").Order("id ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("list providers: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Name != "New" {
+		t.Fatalf("expected only imported provider to remain, got %#v", rows)
+	}
+}
+
+func TestLLMProviderHandler_ImportModels_TransactionalRollbackOnError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setHandlerTestEncryptionKey(t)
+	db := newLLMProviderHandlerTestDB(t)
+	h := llmapi.NewHTTPHandlerWithDB(db)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("uid", uint64(100))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/ai/models/import", bytes.NewBufferString(`{"replace_all":false,"providers":[{"name":"Qwen-A","provider":"qwen","model":"qwen-max","base_url":"https://example.com","api_key":"sk-1"},{"name":"Qwen-B","provider":"qwen","model":"qwen-max","base_url":"https://example.com","api_key":"sk-2"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.ImportModels(c)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode import response: %v", err)
+	}
+	if resp.Code != int(xcode.ServerError) {
+		t.Fatalf("expected server error code %d, got %d", xcode.ServerError, resp.Code)
+	}
+
+	var count int64
+	if err := db.Model(&llmmodel.AILLMProvider{}).Where("deleted_at IS NULL").Count(&count).Error; err != nil {
+		t.Fatalf("count providers: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected rollback to keep provider table empty, got %d rows", count)
+	}
+}
+
 func newLLMProviderHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
