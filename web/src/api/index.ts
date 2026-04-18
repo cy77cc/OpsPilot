@@ -97,6 +97,8 @@ export * from './modules/dashboard';
 import { dashboardApi } from './modules/dashboard';
 export * from './modules/cluster.phase3';
 import { clusterPhase3Api } from './modules/cluster.phase3';
+export * from './modules/aiAlertHeal';
+import { aiAlertHealApi } from './modules/aiAlertHeal';
 
 // 统一导出所有API
 export const Api = {
@@ -124,6 +126,7 @@ export const Api = {
   aiops: aiopsApi,
   dashboard: dashboardApi,
   phase3: clusterPhase3Api,
+  aiAlertHeal: aiAlertHealApi,
 };
 
 export default Api;
