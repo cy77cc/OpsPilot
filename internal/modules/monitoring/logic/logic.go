@@ -119,7 +119,92 @@ func (l *Logic) ListAlerts(ctx context.Context, severity, status string, alertID
 	if err := q.Order("id DESC").Offset(offset).Limit(pageSize).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := l.enrichAlertHealSummary(ctx, rows); err != nil {
+		return nil, 0, err
+	}
 	return rows, total, nil
+}
+
+type alertHealSummaryRow struct {
+	Fingerprint string    `gorm:"column:fingerprint"`
+	JobID       string    `gorm:"column:job_id"`
+	Status      string    `gorm:"column:status"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
+	LatestRunID string    `gorm:"column:latest_run_id"`
+}
+
+func (l *Logic) enrichAlertHealSummary(ctx context.Context, alerts []model.AlertEvent) error {
+	if l == nil || l.svcCtx == nil || l.svcCtx.DB == nil || len(alerts) == 0 {
+		return nil
+	}
+
+	byFingerprint := make(map[string][]int, len(alerts))
+	fingerprints := make([]string, 0, len(alerts))
+	for i := range alerts {
+		fingerprint := alertFingerprintFromSource(alerts[i].Source)
+		if fingerprint == "" {
+			continue
+		}
+		if _, exists := byFingerprint[fingerprint]; !exists {
+			fingerprints = append(fingerprints, fingerprint)
+		}
+		byFingerprint[fingerprint] = append(byFingerprint[fingerprint], i)
+	}
+	if len(fingerprints) == 0 {
+		return nil
+	}
+
+	rows := make([]alertHealSummaryRow, 0, len(fingerprints))
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Table("ai_alert_heal_jobs AS jobs").
+		Select("events.fingerprint, jobs.id AS job_id, jobs.status, jobs.updated_at, jobs.latest_run_id").
+		Joins("JOIN ai_alert_ingest_events AS events ON events.id = jobs.event_id").
+		Where("events.fingerprint IN ?", fingerprints).
+		Order("events.fingerprint ASC").
+		Order("jobs.updated_at DESC").
+		Order("jobs.id DESC").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+
+	latestByFingerprint := make(map[string]alertHealSummaryRow, len(fingerprints))
+	for _, row := range rows {
+		if _, exists := latestByFingerprint[row.Fingerprint]; exists {
+			continue
+		}
+		latestByFingerprint[row.Fingerprint] = row
+	}
+
+	for fingerprint, indexes := range byFingerprint {
+		summary, ok := latestByFingerprint[fingerprint]
+		if !ok {
+			continue
+		}
+		for _, idx := range indexes {
+			updatedAt := summary.UpdatedAt
+			alerts[idx].LatestHealJobID = summary.JobID
+			alerts[idx].LatestHealStatus = summary.Status
+			alerts[idx].LatestHealUpdatedAt = &updatedAt
+			alerts[idx].LatestHealRunID = summary.LatestRunID
+		}
+	}
+	return nil
+}
+
+func alertFingerprintFromSource(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return ""
+	}
+	const prefix = "alertmanager/"
+	if !strings.HasPrefix(source, prefix) {
+		return ""
+	}
+	fingerprint := strings.TrimSpace(strings.TrimPrefix(source, prefix))
+	if fingerprint == "" || fingerprint == "unknown" {
+		return ""
+	}
+	return fingerprint
 }
 
 // ListRules 查询告警规则列表。

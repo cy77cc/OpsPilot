@@ -63,6 +63,11 @@ type AlertEvent struct {
 	ResolvedAt  *time.Time `gorm:"column:resolved_at" json:"resolved_at,omitempty"`                     // 恢复时间
 	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime;index" json:"created_at"`            // 创建时间
 	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                  // 更新时间
+
+	LatestHealJobID     string     `gorm:"-" json:"latest_heal_job_id,omitempty"`     // 最近自愈任务 ID
+	LatestHealStatus    string     `gorm:"-" json:"latest_heal_status,omitempty"`     // 最近自愈状态
+	LatestHealUpdatedAt *time.Time `gorm:"-" json:"latest_heal_updated_at,omitempty"` // 最近自愈更新时间
+	LatestHealRunID     string     `gorm:"-" json:"latest_heal_run_id,omitempty"`     // 最近自愈 Run ID
 }
 
 // TableName 返回 AlertEvent 的数据库表名。

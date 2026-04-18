@@ -9,6 +9,10 @@ export interface Alert {
   source: string;
   status: string;
   createdAt: string;
+  latestHealJobId?: string;
+  latestHealStatus?: string;
+  latestHealUpdatedAt?: string;
+  latestHealRunId?: string;
 }
 
 // 告警规则数据结构
@@ -119,6 +123,10 @@ export const monitoringApi = {
       source: item.metric || item.source || '',
       status: item.status,
       createdAt: item.created_at || item.createdAt,
+      latestHealJobId: item.latest_heal_job_id || item.latestHealJobId || '',
+      latestHealStatus: item.latest_heal_status || item.latestHealStatus || '',
+      latestHealUpdatedAt: item.latest_heal_updated_at || item.latestHealUpdatedAt || '',
+      latestHealRunId: item.latest_heal_run_id || item.latestHealRunId || '',
     }));
     return {
       ...response,

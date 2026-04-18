@@ -5,12 +5,7 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert } from '../../api/modules/monitoring';
-import type { AlertHealJob } from '../../api/modules/aiAlertHeal';
 import { normalizeHealStatus } from './monitorAlertHealStatus';
-
-interface AlertRow extends Alert {
-  latestJob?: AlertHealJob;
-}
 
 const severityColor: Record<string, string> = {
   critical: 'error',
@@ -18,16 +13,9 @@ const severityColor: Record<string, string> = {
   info: 'blue',
 };
 
-function pickLatestJob(jobs: AlertHealJob[]): AlertHealJob | undefined {
-  if (!jobs.length) {
-    return undefined;
-  }
-  return [...jobs].sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())[0];
-}
-
 const AlertsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<AlertRow[]>([]);
+  const [rows, setRows] = useState<Alert[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -36,21 +24,7 @@ const AlertsPage: React.FC = () => {
     setLoading(true);
     try {
       const alertRes = await Api.monitoring.getAlertList({ page: nextPage, pageSize: nextPageSize });
-      const list = alertRes.data?.list || [];
-      const healEntries = await Promise.all(
-        list.map(async (alert) => {
-          const jobsRes = await Api.aiAlertHeal.listByAlert(alert.id);
-          const latestJob = pickLatestJob(jobsRes.data?.list || []);
-          return [alert.id, latestJob] as const;
-        }),
-      );
-      const latestJobMap = new Map(healEntries);
-      setRows(
-        list.map((alert) => ({
-          ...alert,
-          latestJob: latestJobMap.get(alert.id),
-        })),
-      );
+      setRows(alertRes.data?.list || []);
       setTotal(alertRes.data?.total || 0);
       setPage(nextPage);
       setPageSize(nextPageSize);
@@ -80,7 +54,7 @@ const AlertsPage: React.FC = () => {
         </Space>
       }
     >
-      <Table<AlertRow>
+      <Table<Alert>
         rowKey="id"
         loading={loading}
         dataSource={rows}
@@ -110,7 +84,7 @@ const AlertsPage: React.FC = () => {
             title: '处理状态',
             key: 'processingStatus',
             render: (_value: unknown, record) => {
-              const normalized = normalizeHealStatus(record.latestJob?.status || '');
+              const normalized = normalizeHealStatus(record.latestHealStatus || '');
               return <Tag color={normalized.processingColor}>{normalized.processing}</Tag>;
             },
           },
@@ -118,7 +92,7 @@ const AlertsPage: React.FC = () => {
             title: '自愈状态',
             key: 'healStatus',
             render: (_value: unknown, record) => {
-              const normalized = normalizeHealStatus(record.latestJob?.status || '');
+              const normalized = normalizeHealStatus(record.latestHealStatus || '');
               return <Tag color={normalized.healingColor}>{normalized.healing}</Tag>;
             },
           },
@@ -126,7 +100,7 @@ const AlertsPage: React.FC = () => {
             title: '最近处理',
             key: 'latestProcessedAt',
             render: (_value: unknown, record) => {
-              const latest = record.latestJob?.updated_at || record.createdAt;
+              const latest = record.latestHealUpdatedAt || record.createdAt;
               return latest ? new Date(latest).toLocaleString() : '-';
             },
           },
