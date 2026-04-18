@@ -39,7 +39,10 @@ func TestAIAlertIngestEvent_DedupeKeyUnique(t *testing.T) {
 		t.Fatal("expected unique dedupe_key violation, got nil")
 	}
 	lowerErr := strings.ToLower(err.Error())
-	if !strings.Contains(lowerErr, "unique") && !strings.Contains(lowerErr, "constraint") {
-		t.Fatalf("expected unique-constraint violation, got: %v", err)
+	if !strings.Contains(lowerErr, "unique") {
+		t.Fatalf("expected duplicate-key semantics (unique), got: %v", err)
+	}
+	if !(strings.Contains(lowerErr, "dedupe_key") || strings.Contains(lowerErr, "duplicate")) {
+		t.Fatalf("expected duplicate-key semantics for dedupe_key, got: %v", err)
 	}
 }

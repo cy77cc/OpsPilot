@@ -14,7 +14,7 @@ type AIAlertIngestEvent struct {
 	Target          string     `gorm:"column:target;type:varchar(255);not null;default:''"`
 	LabelsJSON      string     `gorm:"column:labels_json;type:text;not null;default:'{}'"`
 	AnnotationsJSON string     `gorm:"column:annotations_json;type:text;not null;default:'{}'"`
-	RawPayloadJSON  string     `gorm:"column:raw_payload_json;type:longtext;not null"`
+	RawPayloadJSON  string     `gorm:"column:raw_payload_json;type:text;not null"`
 	StartsAt        *time.Time `gorm:"column:starts_at"`
 	EndsAt          *time.Time `gorm:"column:ends_at"`
 	ReceivedAt      time.Time  `gorm:"column:received_at;not null;index:idx_ai_alert_ingest_received"`
@@ -43,8 +43,8 @@ func (AIAlertHealJob) TableName() string { return "ai_alert_heal_jobs" }
 
 type AIAlertHealAttempt struct {
 	ID           uint64    `gorm:"column:id;primaryKey;autoIncrement"`
-	JobID        string    `gorm:"column:job_id;type:varchar(64);not null;index:idx_ai_alert_heal_attempt_job,priority:1"`
-	AttemptNo    int       `gorm:"column:attempt_no;not null;index:idx_ai_alert_heal_attempt_job,priority:2"`
+	JobID        string    `gorm:"column:job_id;type:varchar(64);not null;index:idx_ai_alert_heal_attempt_job,priority:1;uniqueIndex:uk_ai_alert_heal_attempt_job_no,priority:1"`
+	AttemptNo    int       `gorm:"column:attempt_no;not null;index:idx_ai_alert_heal_attempt_job,priority:2;uniqueIndex:uk_ai_alert_heal_attempt_job_no,priority:2"`
 	RunID        string    `gorm:"column:run_id;type:varchar(64);not null;default:''"`
 	Outcome      string    `gorm:"column:outcome;type:varchar(32);not null"`
 	ErrorMessage string    `gorm:"column:error_message;type:text;not null;default:''"`
