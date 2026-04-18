@@ -16,6 +16,25 @@ type DAO struct {
 	db *gorm.DB
 }
 
+type AlertHealJobView struct {
+	ID               string    `gorm:"column:id" json:"id"`
+	EventID          string    `gorm:"column:event_id" json:"event_id"`
+	Scene            string    `gorm:"column:scene" json:"scene"`
+	Status           string    `gorm:"column:status" json:"status"`
+	Decision         string    `gorm:"column:decision" json:"decision"`
+	RetryCount       int       `gorm:"column:retry_count" json:"retry_count"`
+	MaxRetry         int       `gorm:"column:max_retry" json:"max_retry"`
+	LastError        string    `gorm:"column:last_error" json:"last_error"`
+	LatestRunID      string    `gorm:"column:latest_run_id" json:"latest_run_id"`
+	CreatedAt        time.Time `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt        time.Time `gorm:"column:updated_at" json:"updated_at"`
+	EventStatus      string    `gorm:"column:event_status" json:"event_status"`
+	EventTitle       string    `gorm:"column:event_title" json:"event_title"`
+	EventTarget      string    `gorm:"column:event_target" json:"event_target"`
+	EventFingerprint string    `gorm:"column:event_fingerprint" json:"event_fingerprint"`
+	EventReceivedAt  time.Time `gorm:"column:event_received_at" json:"event_received_at"`
+}
+
 const defaultAutoFixingLease = 2 * time.Minute
 
 func NewDAO(db *gorm.DB) *DAO {
@@ -248,4 +267,127 @@ func (d *DAO) updateAutoFixingJob(ctx context.Context, jobID string, updates map
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+func (d *DAO) ListJobViewsByFingerprint(ctx context.Context, fingerprint string) ([]AlertHealJobView, error) {
+	if d == nil || d.db == nil {
+		return nil, errors.New("alertheal dao not initialized")
+	}
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return []AlertHealJobView{}, nil
+	}
+
+	rows := make([]AlertHealJobView, 0)
+	if err := d.jobViewsQuery(ctx).
+		Where("events.fingerprint = ?", fingerprint).
+		Order("jobs.created_at DESC").
+		Order("jobs.id DESC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (d *DAO) GetJobView(ctx context.Context, jobID string) (*AlertHealJobView, error) {
+	if d == nil || d.db == nil {
+		return nil, errors.New("alertheal dao not initialized")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var row AlertHealJobView
+	if err := d.jobViewsQuery(ctx).Where("jobs.id = ?", jobID).Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (d *DAO) RetryJob(ctx context.Context, jobID string, now time.Time) (*AlertHealJobView, error) {
+	if d == nil || d.db == nil {
+		return nil, errors.New("alertheal dao not initialized")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row AlertHealJobView
+		if err := jobViewsQuery(tx).Where("jobs.id = ?", jobID).Take(&row).Error; err != nil {
+			return err
+		}
+		if row.EventStatus == "resolved" {
+			return gorm.ErrInvalidData
+		}
+		if isActiveAlertHealStatus(row.Status) {
+			return gorm.ErrInvalidData
+		}
+
+		var resolvedCount int64
+		if err := tx.Model(&model.AIAlertIngestEvent{}).
+			Where(
+				"fingerprint = ? AND status = ? AND (received_at > ? OR (received_at = ? AND id <> ?))",
+				row.EventFingerprint,
+				"resolved",
+				row.EventReceivedAt,
+				row.EventReceivedAt,
+				row.EventID,
+			).
+			Count(&resolvedCount).Error; err != nil {
+			return err
+		}
+		if resolvedCount > 0 {
+			return gorm.ErrInvalidData
+		}
+
+		result := tx.Model(&model.AIAlertHealJob{}).
+			Where("id = ? AND status NOT IN ?", jobID, []string{"pending", "auto_fixing", "waiting_approval"}).
+			Updates(map[string]any{
+				"status":        "pending",
+				"decision":      "",
+				"retry_count":   0,
+				"next_retry_at": nil,
+				"last_error":    "",
+				"updated_at":    now.UTC(),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrInvalidData
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d.GetJobView(ctx, jobID)
+}
+
+func (d *DAO) jobViewsQuery(ctx context.Context) *gorm.DB {
+	return jobViewsQuery(d.db.WithContext(ctx))
+}
+
+func jobViewsQuery(db *gorm.DB) *gorm.DB {
+	return db.Table("ai_alert_heal_jobs AS jobs").
+		Select(
+			"jobs.id, jobs.event_id, jobs.scene, jobs.status, jobs.decision, jobs.retry_count, jobs.max_retry, jobs.last_error, jobs.latest_run_id, jobs.created_at, jobs.updated_at, " +
+				"events.status AS event_status, events.title AS event_title, events.target AS event_target, events.fingerprint AS event_fingerprint, events.received_at AS event_received_at",
+		).
+		Joins("JOIN ai_alert_ingest_events AS events ON events.id = jobs.event_id")
+}
+
+func isActiveAlertHealStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "pending", "auto_fixing", "waiting_approval":
+		return true
+	default:
+		return false
+	}
 }

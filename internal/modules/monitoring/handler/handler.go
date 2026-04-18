@@ -190,6 +190,7 @@ func (h *Handler) ListAlerts(c *gin.Context) {
 		c.Request.Context(),
 		strings.TrimSpace(c.Query("severity")),
 		strings.TrimSpace(c.Query("status")),
+		httpx.UintFromQuery(c, "alert_id"),
 		intFromQuery(c, "page", 1),
 		intFromQuery(c, "page_size", 20),
 	)

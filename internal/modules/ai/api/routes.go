@@ -7,6 +7,7 @@ package api
 
 import (
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
+	aialertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/alertheal"
 	aiapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aiapprovalhandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/approval"
 	aichat "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
@@ -35,6 +36,7 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	chatService := aichat.NewService(svcCtx)
 	queryHandler := aihttp.NewChatQueryHandler(chatService)
 	approvalHandler := aiapprovalhandler.NewHTTPHandler(aiapproval.NewService(svcCtx))
+	alertHealHandler := aialertheal.NewHTTPHandler(aialertheal.NewService(svcCtx))
 
 	g := v1.Group("/ai", middleware.JWTAuth())
 	{
@@ -53,5 +55,8 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/approvals/:id", approvalHandler.GetApproval)
 		g.POST("/approvals/:id/submit", approvalHandler.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", approvalHandler.RetryResumeApproval)
+		g.GET("/alert-heal/jobs", alertHealHandler.ListJobsByAlert)
+		g.GET("/alert-heal/jobs/:id", alertHealHandler.GetJob)
+		g.POST("/alert-heal/jobs/:id/retry", alertHealHandler.RetryJob)
 	}
 }

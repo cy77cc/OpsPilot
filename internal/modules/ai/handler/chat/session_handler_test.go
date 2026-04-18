@@ -43,6 +43,9 @@ func TestRegisterAIHandlers_RegistersAllRoutes(t *testing.T) {
 		"GET /api/v1/ai/approvals/pending/global",
 		"GET /api/v1/ai/approvals/:id",
 		"POST /api/v1/ai/approvals/:id/submit",
+		"GET /api/v1/ai/alert-heal/jobs",
+		"GET /api/v1/ai/alert-heal/jobs/:id",
+		"POST /api/v1/ai/alert-heal/jobs/:id/retry",
 	}
 
 	for _, e := range expected {
@@ -597,5 +600,8 @@ func registerAIHandlersForTest(v1 *gin.RouterGroup) {
 		g.GET("/approvals/:id", h.GetApproval)
 		g.POST("/approvals/:id/submit", h.SubmitApproval)
 		g.POST("/approvals/:id/retry-resume", h.RetryResumeApproval)
+		g.GET("/alert-heal/jobs", func(c *gin.Context) {})
+		g.GET("/alert-heal/jobs/:id", func(c *gin.Context) {})
+		g.POST("/alert-heal/jobs/:id/retry", func(c *gin.Context) {})
 	}
 }

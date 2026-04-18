@@ -18,8 +18,8 @@ import (
 
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	model "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -99,8 +99,11 @@ func NewLogic(svcCtx *svc.ServiceContext) *Logic {
 //   - pageSize: 每页数量
 //
 // 返回: 告警事件列表、总数和可能的错误
-func (l *Logic) ListAlerts(ctx context.Context, severity, status string, page, pageSize int) ([]model.AlertEvent, int64, error) {
+func (l *Logic) ListAlerts(ctx context.Context, severity, status string, alertID uint, page, pageSize int) ([]model.AlertEvent, int64, error) {
 	q := l.svcCtx.DB.WithContext(ctx).Model(&model.AlertEvent{})
+	if alertID > 0 {
+		q = q.Where("id = ?", alertID)
+	}
 	if severity != "" {
 		q = q.Where("severity = ?", severity)
 	}
