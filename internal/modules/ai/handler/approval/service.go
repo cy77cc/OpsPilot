@@ -46,6 +46,10 @@ func (s *Service) GetApproval(ctx context.Context, approvalID string, userID uin
 	return s.logic.GetApproval(ctx, approvalID, userID)
 }
 
+func (s *Service) GetApprovalGlobal(ctx context.Context, approvalID string) (*ai.AIApprovalTask, error) {
+	return s.logic.GetApprovalGlobal(ctx, approvalID)
+}
+
 func (s *Service) ListPendingApprovals(ctx context.Context, userID uint64) ([]ai.AIApprovalTask, error) {
 	return s.logic.ListPendingApprovals(ctx, userID)
 }

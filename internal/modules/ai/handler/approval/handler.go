@@ -11,6 +11,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,6 +37,20 @@ func (h *HTTPHandler) SubmitApproval(c *gin.Context) {
 	}
 
 	userID := httpx.UIDFromCtx(c)
+	task, err := h.svc.GetApprovalGlobal(c.Request.Context(), approvalID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	if task == nil {
+		httpx.NotFound(c, "approval not found")
+		return
+	}
+	if task.UserID == 0 && !hasGlobalApprovalPermission(h, userID, "ai:approval:write", "ai:approval:*") {
+		httpx.Fail(c, xcode.Forbidden, "")
+		return
+	}
+
 	reqCtx := c.Request.Context()
 	if idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idempotencyKey != "" {
 		reqCtx = logic.WithApprovalSubmitIdempotencyKey(reqCtx, idempotencyKey)
@@ -85,10 +100,25 @@ func (h *HTTPHandler) RetryResumeApproval(c *gin.Context) {
 		return
 	}
 
+	userID := httpx.UIDFromCtx(c)
+	task, err := h.svc.GetApprovalGlobal(c.Request.Context(), approvalID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	if task == nil {
+		httpx.NotFound(c, "approval not found")
+		return
+	}
+	if task.UserID == 0 && !hasGlobalApprovalPermission(h, userID, "ai:approval:write", "ai:approval:*") {
+		httpx.Fail(c, xcode.Forbidden, "")
+		return
+	}
+
 	result, err := h.svc.RetryResumeApproval(c.Request.Context(), logic.RetryResumeApprovalInput{
 		ApprovalID: approvalID,
 		TriggerID:  req.TriggerID,
-		UserID:     httpx.UIDFromCtx(c),
+		UserID:     userID,
 	})
 	if err != nil {
 		var notFoundErr *logic.ApprovalNotFoundError
@@ -118,7 +148,15 @@ func (h *HTTPHandler) GetApproval(c *gin.Context) {
 	}
 
 	userID := httpx.UIDFromCtx(c)
-	result, err := h.svc.GetApproval(c.Request.Context(), approvalID, userID)
+	var (
+		result *ai.AIApprovalTask
+		err    error
+	)
+	if hasGlobalApprovalPermission(h, userID, "ai:approval:read", "ai:approval:*") {
+		result, err = h.svc.GetApprovalGlobal(c.Request.Context(), approvalID)
+	} else {
+		result, err = h.svc.GetApproval(c.Request.Context(), approvalID, userID)
+	}
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -188,4 +226,11 @@ func parsePositiveQueryInt(raw string, fallback int) (int, error) {
 		return 0, fmt.Errorf("invalid positive integer: %q", raw)
 	}
 	return parsed, nil
+}
+
+func hasGlobalApprovalPermission(h *HTTPHandler, userID uint64, codes ...string) bool {
+	if h == nil || h.svc == nil || h.svc.DB() == nil || userID == 0 {
+		return false
+	}
+	return httpx.HasAnyPermission(h.svc.DB(), userID, codes...)
 }

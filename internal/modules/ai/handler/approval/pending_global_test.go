@@ -1,6 +1,7 @@
 package approvalhandler_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -102,6 +103,85 @@ func TestPendingApprovalsGlobal_ReturnsPendingAcrossUsers(t *testing.T) {
 	}
 	if tasks[1].ApprovalID != "approval-u2-pending" {
 		t.Fatalf("expected second pending task, got %q", tasks[1].ApprovalID)
+	}
+}
+
+func TestPendingApprovalsGlobal_GetApprovalDetailWithPermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newPendingApprovalsGlobalTestDB(t)
+	viewer := seedPendingApprovalsGlobalUser(t, db, "viewer03")
+	grantPendingApprovalsGlobalPermission(t, db, viewer.ID, "ai:approval:read")
+	seedPendingApprovalTask(t, db, pendingApprovalTaskSeed{
+		approvalID: "approval-detail",
+		userID:     0,
+		status:     "pending",
+		createdAt:  time.Date(2026, 4, 18, 12, 10, 0, 0, time.UTC),
+	})
+
+	router := newPendingApprovalsGlobalRouter(t, db, uint64(viewer.ID))
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ai/approvals/approval-detail", nil)
+	router.ServeHTTP(recorder, req)
+
+	resp := decodeApprovalSubmitResponse(t, recorder)
+	if resp.Code != uint32(xcode.Success) {
+		t.Fatalf("expected success code %d, got %d body=%s", xcode.Success, resp.Code, recorder.Body.String())
+	}
+	var task ai.AIApprovalTask
+	if err := json.Unmarshal(resp.Data, &task); err != nil {
+		t.Fatalf("decode approval detail: %v payload=%s", err, string(resp.Data))
+	}
+	if task.ApprovalID != "approval-detail" {
+		t.Fatalf("expected approval-detail, got %q", task.ApprovalID)
+	}
+}
+
+func TestPendingApprovalsGlobal_SubmitApprovalForSystemTaskRequiresWritePermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newPendingApprovalsGlobalTestDB(t)
+	viewer := seedPendingApprovalsGlobalUser(t, db, "viewer04")
+	seedPendingApprovalTask(t, db, pendingApprovalTaskSeed{
+		approvalID: "approval-submit",
+		userID:     0,
+		status:     "pending",
+		createdAt:  time.Date(2026, 4, 18, 12, 20, 0, 0, time.UTC),
+	})
+
+	router := newPendingApprovalsGlobalRouter(t, db, uint64(viewer.ID))
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/approvals/approval-submit/submit", bytes.NewReader([]byte(`{"approved":true}`)))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	resp := decodeApprovalSubmitResponse(t, recorder)
+	if resp.Code != uint32(xcode.Forbidden) {
+		t.Fatalf("expected forbidden code %d, got %d body=%s", xcode.Forbidden, resp.Code, recorder.Body.String())
+	}
+}
+
+func TestPendingApprovalsGlobal_RetryResumeForSystemTaskRequiresWritePermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newPendingApprovalsGlobalTestDB(t)
+	viewer := seedPendingApprovalsGlobalUser(t, db, "viewer05")
+	seedPendingApprovalTask(t, db, pendingApprovalTaskSeed{
+		approvalID: "approval-retry",
+		userID:     0,
+		status:     "approved",
+		createdAt:  time.Date(2026, 4, 18, 12, 30, 0, 0, time.UTC),
+	})
+
+	router := newPendingApprovalsGlobalRouter(t, db, uint64(viewer.ID))
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/approvals/approval-retry/retry-resume", bytes.NewReader([]byte(`{"trigger_id":"retry-1"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+
+	resp := decodeApprovalSubmitResponse(t, recorder)
+	if resp.Code != uint32(xcode.Forbidden) {
+		t.Fatalf("expected forbidden code %d, got %d body=%s", xcode.Forbidden, resp.Code, recorder.Body.String())
 	}
 }
 
@@ -218,5 +298,8 @@ func newPendingApprovalsGlobalRouter(t *testing.T, db *gorm.DB, userID uint64) *
 	})
 	h := approvalhandler.NewHTTPHandler(approvalhandler.NewService(&svc.ServiceContext{DB: db}))
 	router.GET("/ai/approvals/pending/global", h.ListPendingApprovalsGlobal)
+	router.GET("/ai/approvals/:id", h.GetApproval)
+	router.POST("/ai/approvals/:id/submit", h.SubmitApproval)
+	router.POST("/ai/approvals/:id/retry-resume", h.RetryResumeApproval)
 	return router
 }

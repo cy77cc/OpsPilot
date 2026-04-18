@@ -127,3 +127,108 @@ func TestAlertHealJobEnqueuer_ConcurrentDuplicateEnqueueKeepsSingleRow(t *testin
 		t.Fatalf("expected exactly one job row for concurrent duplicate event, got %d", count)
 	}
 }
+
+func TestAlertHealJobEnqueuer_ResolvedEventCancelsWaitingApprovalRun(t *testing.T) {
+	db := aidao.NewTestDB(t,
+		&model.AIAlertIngestEvent{},
+		&model.AIAlertHealJob{},
+		&model.AIRun{},
+		&model.AIApprovalTask{},
+	)
+	enqueuer := &alertHealJobEnqueuer{svcCtx: &svc.ServiceContext{DB: db}}
+	now := time.Date(2026, 4, 18, 13, 0, 0, 0, time.UTC)
+
+	firing := model.AIAlertIngestEvent{
+		ID:          "evt-firing",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-approval",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-approval:firing",
+		Title:       "CPU high",
+		ReceivedAt:  now,
+	}
+	resolved := model.AIAlertIngestEvent{
+		ID:          "evt-resolved",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-approval",
+		Status:      "resolved",
+		DedupeKey:   "alertmanager:fp-approval:resolved",
+		Title:       "CPU recovered",
+		ReceivedAt:  now.Add(time.Minute),
+	}
+	if err := db.Create(&firing).Error; err != nil {
+		t.Fatalf("seed firing event: %v", err)
+	}
+	if err := db.Create(&resolved).Error; err != nil {
+		t.Fatalf("seed resolved event: %v", err)
+	}
+	if err := db.Create(&model.AIRun{
+		ID:                 "run-1",
+		SessionID:          "sess-1",
+		ClientRequestID:    "req-1",
+		UserMessageID:      "msg-user-1",
+		AssistantMessageID: "msg-assistant-1",
+		Status:             "waiting_approval",
+		TraceJSON:          `{}`,
+	}).Error; err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	if err := db.Create(&model.AIApprovalTask{
+		ApprovalID:     "approval-1",
+		CheckpointID:   "checkpoint-1",
+		SessionID:      "sess-1",
+		RunID:          "run-1",
+		UserID:         0,
+		ToolName:       "exec_command",
+		ToolCallID:     "tool-call-1",
+		ArgumentsJSON:  `{"cmd":"date"}`,
+		PreviewJSON:    `{}`,
+		Status:         "pending",
+		TimeoutSeconds: 300,
+	}).Error; err != nil {
+		t.Fatalf("seed approval task: %v", err)
+	}
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:          "job-1",
+		EventID:     firing.ID,
+		Scene:       "alert_self_heal",
+		Status:      "waiting_approval",
+		LatestRunID: "run-1",
+	}).Error; err != nil {
+		t.Fatalf("seed alert-heal job: %v", err)
+	}
+
+	jobID, err := enqueuer.EnqueueBatch(context.Background(), []model.AIAlertIngestEvent{resolved})
+	if err != nil {
+		t.Fatalf("enqueue resolved event: %v", err)
+	}
+	if jobID == "" {
+		t.Fatal("expected resolved event to return a job id")
+	}
+
+	var savedJob model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-1").Take(&savedJob).Error; err != nil {
+		t.Fatalf("reload alert-heal job: %v", err)
+	}
+	if savedJob.Status != "canceled_resolved" {
+		t.Fatalf("expected alert-heal job canceled_resolved, got %q", savedJob.Status)
+	}
+
+	var savedRun model.AIRun
+	if err := db.Where("id = ?", "run-1").Take(&savedRun).Error; err != nil {
+		t.Fatalf("reload run: %v", err)
+	}
+	if savedRun.Status != "cancelled" {
+		t.Fatalf("expected run cancelled, got %q", savedRun.Status)
+	}
+
+	var savedApproval model.AIApprovalTask
+	if err := db.Where("approval_id = ?", "approval-1").Take(&savedApproval).Error; err != nil {
+		t.Fatalf("reload approval task: %v", err)
+	}
+	if savedApproval.Status != "expired" {
+		t.Fatalf("expected approval task expired, got %q", savedApproval.Status)
+	}
+}
