@@ -71,6 +71,7 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 			}
 		}, aiBackgroundWorkerTick).Start(ctx)
 	}
+	aiapi.RegisterAIWebhookHandlers(v1, appCtx)
 	registerAIChatRoute(v1, appCtx)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)

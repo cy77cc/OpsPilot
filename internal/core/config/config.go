@@ -161,8 +161,9 @@ type LLM struct {
 
 // AI 包含 AI 功能开关配置。
 type AI struct {
-	UseMultiDomainArch    bool `mapstructure:"use_multi_domain_arch"`    // 是否使用多领域架构
-	UseTurnBlockStreaming bool `mapstructure:"use_turn_block_streaming"` // 是否启用 turn/block 流式体验
+	UseMultiDomainArch    bool   `mapstructure:"use_multi_domain_arch"`    // 是否使用多领域架构
+	UseTurnBlockStreaming bool   `mapstructure:"use_turn_block_streaming"` // 是否启用 turn/block 流式体验
+	AlertWebhookSecret    string `mapstructure:"alert_webhook_secret"`     // AI 告警 Webhook 签名密钥
 }
 
 // Postgres 包含 PostgreSQL 数据库连接配置。

@@ -144,6 +144,7 @@ llm:
 
 ai:
   use_multi_domain_arch: false
+  alert_webhook_secret: ${AI_ALERT_WEBHOOK_SECRET}
 
 embedder:
   enable: true
