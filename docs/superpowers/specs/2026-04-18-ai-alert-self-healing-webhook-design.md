@@ -197,7 +197,7 @@ Response:
 
 - `GET /api/v1/ai/alert-heal/jobs`
 - `GET /api/v1/ai/alert-heal/jobs/:id`
-- `POST /api/v1/ai/alert-heal/jobs/:id/retry` (optional in phase 1)
+- `POST /api/v1/ai/alert-heal/jobs/:id/retry` (required in phase 1)
 
 Auth:
 
@@ -301,3 +301,150 @@ Acceptance criteria:
 2. Resolved behavior: cancel/close only, no compensating action.
 3. Risk policy source: reuse existing AI approval/risk policy system.
 4. Scope: includes host-side operations in phase 1 under guarded policy.
+
+## 15. Frontend Design (Alert-Centric)
+
+This section defines the UI model after visual validation: alert remains the primary object, and AI healing is a processing track under that alert.
+
+### 15.1 Information Architecture
+
+1. Keep the existing observability menu entry (`/monitor`); do not add a new top-level "AI self-healing" menu.
+2. Use alert list as the main entry (`/monitor/alerts`).
+3. Add an alert detail sub-page (`/monitor/alerts/:alertId`) where AI healing lifecycle is shown in full context.
+4. Add a quick link from alert list row to detail page.
+
+### 15.2 Route and Page Structure
+
+Target route shape:
+
+- `GET /monitor/alerts` -> alert list page (main).
+- `GET /monitor/alerts/:alertId` -> alert detail page with AI healing panel.
+
+Implementation note:
+
+- Current `MonitorPage` can be split into focused pages incrementally.
+- Phase 1 should prioritize `alerts` and `alert detail` flows first; rule/channel tabs can remain unchanged temporarily.
+
+### 15.3 Alert List UX
+
+Add two columns:
+
+1. `处理状态` (primary process state).
+2. `自愈状态` (AI/manual handling result state).
+
+List features:
+
+1. Filter by `自愈状态`.
+2. Quick toggle: "仅看 AI 介入告警".
+3. Keep existing severity/status filtering behavior.
+
+### 15.4 Alert Detail UX
+
+Detail page sections:
+
+1. Alert basic info card:
+   - title, severity, source, firing/resolved status, first trigger time, latest update.
+2. AI healing card:
+   - current healing state badge.
+   - decision summary and risk level.
+   - last execution result and retry count.
+   - action buttons.
+3. Attempt timeline:
+   - each attempt start/end/result/error.
+4. Approval linkage:
+   - show approval id and direct jump when in approval-required status.
+
+### 15.5 Action Rules
+
+Buttons:
+
+1. `手动重试`:
+   - enabled only for failed terminal states and unresolved alerts.
+2. `查看审批`:
+   - visible when state is approval-related.
+3. `查看执行轨迹`:
+   - always available when attempts exist.
+
+Disable rules:
+
+1. Disable retry while `auto_fixing` or `analyzing`.
+2. Disable retry when alert becomes `resolved`.
+3. Prevent duplicate trigger clicks (frontend optimistic lock + backend idempotency).
+
+### 15.6 Display Vocabulary
+
+Use a two-level status model.
+
+Primary status (`处理状态`):
+
+- `待处理`
+- `处理中`
+- `待人工`
+- `已处理`
+
+Secondary status (`自愈状态`):
+
+- `AI自愈成功`
+- `AI修复失败`
+- `转人工审批`
+- `AI判定无需处理`
+- `告警恢复已取消`
+- `自动修复中`
+
+Design rule:
+
+- Primary badge sits near alert title.
+- Secondary tag shows AI/manual path outcome.
+
+### 15.7 Frontend API Integration
+
+Frontend modules to add:
+
+- `web/src/api/modules/aiAlertHeal.ts` (or equivalent in `web/src/features/ai/api/` if feature-localized):
+  - list jobs by alert.
+  - get job detail by id.
+  - trigger manual retry.
+  - get global approvals (when authorized).
+
+Backend endpoints consumed:
+
+- `/api/v1/ai/alert-heal/jobs`
+- `/api/v1/ai/alert-heal/jobs/:id`
+- `/api/v1/ai/alert-heal/jobs/:id/retry`
+- `/api/v1/ai/approvals/pending/global`
+
+### 15.8 Permissions in UI
+
+Frontend permission gates:
+
+1. read pages: `ai:alert:read` (or compatible fallback permission).
+2. retry action: `ai:alert:write`.
+3. global approval list/link: `ai:approval:read`.
+
+When permission is missing:
+
+- show status read-only.
+- hide action buttons and approval navigation.
+
+### 15.9 Frontend State and Refresh
+
+1. Alert list remains source-of-truth for alert-level status.
+2. Detail page polls healing job state at a short interval while in active states.
+3. When state reaches terminal (`succeeded`, `no_action`, `canceled_resolved`, `failed_manual`), downgrade polling frequency or stop.
+4. Keep reconciling with backend to avoid stale optimistic UI.
+
+### 15.10 Frontend Test Plan
+
+Unit/component tests:
+
+1. status badge/tag mapping and vocabulary consistency.
+2. retry button enable/disable matrix.
+3. approval link visibility by status and permission.
+4. list filter behavior for AI-related states.
+
+Integration/e2e tests:
+
+1. click alert row -> open detail -> see AI healing panel.
+2. failed alert allows retry and shows pending/processing transition.
+3. approval-required state navigates to approval detail/pool.
+4. resolved alert disables retry and shows canceled status.
