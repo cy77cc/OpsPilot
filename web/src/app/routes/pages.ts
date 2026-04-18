@@ -37,6 +37,8 @@ export const DeploymentAuditLogsPage = lazy(() => import('../../pages/Deployment
 export const PolicyManagementPage = lazy(() => import('../../pages/Deployment/Observability/PolicyManagementPage'));
 export const AIOpsInsightsPage = lazy(() => import('../../pages/Deployment/Observability/AIOpsInsightsPage'));
 export const MonitorPage = lazy(() => import('../../pages/Monitor/MonitorPage'));
+export const AlertsPage = lazy(() => import('../../pages/Monitor/AlertsPage'));
+export const AlertDetailPage = lazy(() => import('../../pages/Monitor/AlertDetailPage'));
 export const ToolsPage = lazy(() => import('../../pages/Tools/ToolsPage'));
 export const SettingsPage = lazy(() => import('../../pages/Settings/SettingsPage'));
 export const AIModelSettingsPage = lazy(() => import('../../pages/Settings/AIModelSettingsPage'));

@@ -8,6 +8,8 @@ import {
   PolicyManagementPage,
   AIOpsInsightsPage,
   MonitorPage,
+  AlertsPage,
+  AlertDetailPage,
 } from './pages';
 
 export function renderObservabilityRoutes(withAuth: WithAuth) {
@@ -20,9 +22,10 @@ export function renderObservabilityRoutes(withAuth: WithAuth) {
     <Route path="/deployment/observability/aiops" element={withAuth('monitoring', 'read', <AIOpsInsightsPage />)} />
     <Route path="/monitor" element={withAuth('monitoring', 'read', <MonitorPage />)} />
     <Route path="/monitor/dashboard" element={withAuth('monitoring', 'read', <MonitorPage />)} />
-    <Route path="/monitor/alerts" element={withAuth('monitoring', 'read', <MonitorPage />)} />
+    <Route path="/monitor/alerts" element={withAuth('monitoring', 'read', <AlertsPage />)} />
+    <Route path="/monitor/alerts/:alertId" element={withAuth('monitoring', 'read', <AlertDetailPage />)} />
     <Route path="/monitor/rules" element={withAuth('monitoring', 'read', <MonitorPage />)} />
-    <Route path="/monitoring/alerts" element={withAuth('monitoring', 'read', <MonitorPage />)} />
+    <Route path="/monitoring/alerts" element={withAuth('monitoring', 'read', <AlertsPage />)} />
   </>
   );
 }

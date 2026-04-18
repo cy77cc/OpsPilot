@@ -55,6 +55,7 @@ export interface AlertListParams {
   pageSize?: number;
   severity?: string;
   status?: string;
+  alertId?: string;
 }
 
 // 告警规则列表请求参数
@@ -106,6 +107,7 @@ export const monitoringApi = {
         page_size: params?.pageSize,
         severity: params?.severity,
         status: params?.status,
+        alert_id: params?.alertId,
       },
     });
     const raw = Array.isArray(response.data) ? response.data : (response.data as any)?.list || [];
