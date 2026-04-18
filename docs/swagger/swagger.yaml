@@ -3090,6 +3090,198 @@ paths:
       summary: AI 聊天
       tags:
       - AI 助手
+  /ai/alert-heal/jobs:
+    get:
+      consumes:
+      - application/json
+      description: 按监控告警 ID 查询关联的 AI 自愈任务列表
+      parameters:
+      - description: Bearer Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: 监控告警 ID
+        in: query
+        name: alert_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.Response'
+      summary: 获取告警自愈任务列表
+      tags:
+      - AI 助手
+  /ai/alert-heal/jobs/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定 AI 自愈任务及其关联事件信息
+      parameters:
+      - description: Bearer Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: 自愈任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.Response'
+      summary: 获取告警自愈任务详情
+      tags:
+      - AI 助手
+  /ai/alert-heal/jobs/{id}/retry:
+    post:
+      consumes:
+      - application/json
+      description: 将终态 AI 自愈任务重新置为待执行
+      parameters:
+      - description: Bearer Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: 自愈任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.Response'
+      summary: 手动重试告警自愈任务
+      tags:
+      - AI 助手
+  /ai/alerts/webhook:
+    post:
+      consumes:
+      - application/json
+      description: 接收外部告警 webhook，归一化入库后异步创建 AI 自愈任务
+      parameters:
+      - description: HMAC SHA256 签名
+        in: header
+        name: X-OpsPilot-Signature
+        required: true
+        type: string
+      - description: 告警 webhook 载荷
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            type: object
+      summary: 接收 AI 告警自愈 Webhook
+      tags:
+      - AI 助手
+  /ai/approvals/pending/global:
+    get:
+      consumes:
+      - application/json
+      description: 分页列出所有系统范围内待处理的 AI 审批任务
+      parameters:
+      - description: Bearer Token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 50
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.Response'
+      summary: 获取全局待审批任务
+      tags:
+      - AI 助手
   /ai/diagnosis/{reportId}:
     get:
       consumes:
@@ -3762,6 +3954,10 @@ paths:
         in: query
         name: status
         type: string
+      - description: 告警 ID
+        in: query
+        name: alert_id
+        type: integer
       - default: 1
         description: 页码
         in: query
