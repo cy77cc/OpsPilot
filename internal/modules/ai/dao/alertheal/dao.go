@@ -16,6 +16,8 @@ type DAO struct {
 	db *gorm.DB
 }
 
+const defaultAutoFixingLease = 2 * time.Minute
+
 func NewDAO(db *gorm.DB) *DAO {
 	return &DAO{db: db}
 }
@@ -71,6 +73,7 @@ func (d *DAO) ClaimRunnableJob(ctx context.Context, now time.Time) (*model.AIAle
 		return nil, errors.New("alertheal dao not initialized")
 	}
 	now = now.UTC()
+	staleBefore := now.Add(-defaultAutoFixingLease)
 
 	for {
 		var claimed *model.AIAlertHealJob
@@ -78,8 +81,8 @@ func (d *DAO) ClaimRunnableJob(ctx context.Context, now time.Time) (*model.AIAle
 		err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var candidate model.AIAlertHealJob
 			if err := tx.Where(
-				"(status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?)",
-				"pending", "retry_wait", now,
+				"(status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?) OR (status = ? AND updated_at <= ?)",
+				"pending", "retry_wait", now, "auto_fixing", staleBefore,
 			).Order("next_retry_at ASC").Order("created_at ASC").Order("id ASC").Take(&candidate).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil
@@ -90,12 +93,13 @@ func (d *DAO) ClaimRunnableJob(ctx context.Context, now time.Time) (*model.AIAle
 
 			result := tx.Model(&model.AIAlertHealJob{}).
 				Where(
-					"id = ? AND ((status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?))",
-					candidate.ID, "pending", "retry_wait", now,
+					"id = ? AND ((status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?) OR (status = ? AND updated_at <= ?))",
+					candidate.ID, "pending", "retry_wait", now, "auto_fixing", staleBefore,
 				).
 				Updates(map[string]any{
 					"status":        "auto_fixing",
 					"next_retry_at": nil,
+					"updated_at":    now,
 				})
 			if result.Error != nil {
 				return result.Error
@@ -150,7 +154,19 @@ func (d *DAO) CancelIfResolved(ctx context.Context, jobID string) (bool, error) 
 			}
 			return err
 		}
-		if !strings.EqualFold(strings.TrimSpace(event.Status), "resolved") {
+		shouldCancel := strings.EqualFold(strings.TrimSpace(event.Status), "resolved")
+		if !shouldCancel {
+			var resolvedCount int64
+			if err := tx.Model(&model.AIAlertIngestEvent{}).
+				Where(
+					"source = ? AND fingerprint = ? AND status = ? AND (updated_at > ? OR (updated_at = ? AND id <> ?))",
+					event.Source, event.Fingerprint, "resolved", event.UpdatedAt, event.UpdatedAt, event.ID,
+				).Count(&resolvedCount).Error; err != nil {
+				return err
+			}
+			shouldCancel = resolvedCount > 0
+		}
+		if !shouldCancel {
 			return nil
 		}
 

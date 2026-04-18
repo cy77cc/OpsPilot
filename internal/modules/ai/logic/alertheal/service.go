@@ -14,8 +14,6 @@ import (
 
 var ErrInvalidPayload = errors.New("invalid alert payload")
 var ErrServiceNotInitialized = errors.New("alertheal service not initialized")
-var ErrExecutorNotInitialized = errors.New("alertheal executor not initialized")
-var ErrExecutorNotImplemented = errors.New("alertheal executor is not implemented")
 
 type ingestEventDAO interface {
 	UpsertIngestEvents(ctx context.Context, rows []*model.AIAlertIngestEvent) ([]model.AIAlertIngestEvent, error)
@@ -64,19 +62,13 @@ func NewServiceFromAppContext(appCtx *svc.ServiceContext) *Service {
 	return NewService(aidaoalertheal.NewDAO(appCtx.DB))
 }
 
-type defaultExecutor struct {
-	svcCtx *svc.ServiceContext
-}
-
 func NewExecutor(appCtx *svc.ServiceContext) Executor {
-	return &defaultExecutor{svcCtx: appCtx}
-}
-
-func (e *defaultExecutor) Execute(_ context.Context, _ *model.AIAlertHealJob) (*ExecutionResult, error) {
-	if e == nil || e.svcCtx == nil || e.svcCtx.DB == nil {
-		return nil, ErrExecutorNotInitialized
+	if appCtx == nil || appCtx.DB == nil {
+		return nil
 	}
-	return nil, ErrExecutorNotImplemented
+	// No concrete alert-heal executor is wired yet.
+	// Bootstrap must skip starting the worker when executor is nil.
+	return nil
 }
 
 // Ingest 执行 payload 归一化并按 dedupe_key 幂等写入。

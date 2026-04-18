@@ -90,6 +90,18 @@ func TestAlertHealWorker_ResolvedCancelsActiveJobs(t *testing.T) {
 	now := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
 
 	if err := db.Create(&model.AIAlertIngestEvent{
+		ID:          "evt-firing",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-resolved",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-resolved:firing",
+		Title:       "CPU high",
+		ReceivedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed firing event: %v", err)
+	}
+	if err := db.Create(&model.AIAlertIngestEvent{
 		ID:          "evt-resolved",
 		Source:      "alertmanager",
 		Protocol:    "alertmanager",
@@ -97,13 +109,13 @@ func TestAlertHealWorker_ResolvedCancelsActiveJobs(t *testing.T) {
 		Status:      "resolved",
 		DedupeKey:   "alertmanager:fp-resolved:resolved",
 		Title:       "CPU recovered",
-		ReceivedAt:  now,
+		ReceivedAt:  now.Add(2 * time.Minute),
 	}).Error; err != nil {
 		t.Fatalf("seed resolved event: %v", err)
 	}
 	if err := db.Create(&model.AIAlertHealJob{
 		ID:         "job-resolved",
-		EventID:    "evt-resolved",
+		EventID:    "evt-firing",
 		Scene:      "alert_self_heal",
 		Status:     "pending",
 		RetryCount: 0,
@@ -137,6 +149,68 @@ func TestAlertHealWorker_ResolvedCancelsActiveJobs(t *testing.T) {
 	}
 	if saved.Status != "canceled_resolved" {
 		t.Fatalf("expected status canceled_resolved, got %q", saved.Status)
+	}
+}
+
+func TestAlertHealWorker_ReclaimsStaleAutoFixingJob(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
+	now := time.Date(2026, 4, 18, 10, 0, 0, 0, time.UTC)
+
+	if err := db.Create(&model.AIAlertIngestEvent{
+		ID:          "evt-stale",
+		Source:      "alertmanager",
+		Protocol:    "alertmanager",
+		Fingerprint: "fp-stale",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-stale:firing",
+		Title:       "Disk high",
+		ReceivedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed ingest event: %v", err)
+	}
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:         "job-stale",
+		EventID:    "evt-stale",
+		Scene:      "alert_self_heal",
+		Status:     "auto_fixing",
+		RetryCount: 1,
+		MaxRetry:   3,
+	}).Error; err != nil {
+		t.Fatalf("seed stale job: %v", err)
+	}
+	staleAt := now.Add(-10 * time.Minute)
+	if err := db.Model(&model.AIAlertHealJob{}).Where("id = ?", "job-stale").UpdateColumn("updated_at", staleAt).Error; err != nil {
+		t.Fatalf("mark stale updated_at: %v", err)
+	}
+
+	svc := ailogicalertheal.NewService(aidaoalertheal.NewDAO(db))
+	executor := &stubAlertHealExecutor{resultRunID: "run-stale-1"}
+	worker := NewAlertHealWorker(
+		svc,
+		executor,
+		WithAlertHealWorkerClock(func() time.Time { return now }),
+	)
+
+	claimed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected stale auto_fixing job to be reclaimed")
+	}
+	if executor.calls != 1 {
+		t.Fatalf("expected executor to run once, got %d", executor.calls)
+	}
+
+	var saved model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-stale").Take(&saved).Error; err != nil {
+		t.Fatalf("reload stale job: %v", err)
+	}
+	if saved.Status != "succeeded" {
+		t.Fatalf("expected status succeeded, got %q", saved.Status)
+	}
+	if saved.LatestRunID != "run-stale-1" {
+		t.Fatalf("expected latest_run_id run-stale-1, got %q", saved.LatestRunID)
 	}
 }
 

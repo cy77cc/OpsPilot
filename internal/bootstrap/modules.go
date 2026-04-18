@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -55,34 +56,23 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		ai := ailogic.NewAILogic(appCtx)
 		approvalWorker := ailogic.NewApprovalWorker(ai)
 		expirer := ailogic.NewApprovalExpirer(ai)
-		alertHealWorker := workers.NewAlertHealWorker(
-			aialertheal.NewServiceFromAppContext(appCtx),
-			aialertheal.NewExecutor(appCtx),
-		)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			for runCtx.Err() == nil {
-				claimed, _ := approvalWorker.RunOnce(runCtx)
-				if !claimed {
-					return
-				}
-			}
+			runUntilIdle(runCtx, "ai-approval-worker", approvalWorker.RunOnce)
 		}, aiBackgroundWorkerTick).Start(ctx)
 		_ = workers.NewRunner(func(runCtx context.Context) {
-			for runCtx.Err() == nil {
-				claimed, _ := expirer.RunOnce(runCtx)
-				if !claimed {
-					return
-				}
-			}
+			runUntilIdle(runCtx, "ai-approval-expirer", expirer.RunOnce)
 		}, aiBackgroundWorkerTick).Start(ctx)
-		_ = workers.NewRunner(func(runCtx context.Context) {
-			for runCtx.Err() == nil {
-				claimed, _ := alertHealWorker.RunOnce(runCtx)
-				if !claimed {
-					return
-				}
-			}
-		}, aiBackgroundWorkerTick).Start(ctx)
+		if alertExecutor := aialertheal.NewExecutor(appCtx); alertExecutor != nil {
+			alertHealWorker := workers.NewAlertHealWorker(
+				aialertheal.NewServiceFromAppContext(appCtx),
+				alertExecutor,
+			)
+			_ = workers.NewRunner(func(runCtx context.Context) {
+				runUntilIdle(runCtx, "ai-alert-heal-worker", alertHealWorker.RunOnce)
+			}, aiBackgroundWorkerTick).Start(ctx)
+		} else {
+			log.Printf("bootstrap: ai-alert-heal-worker disabled: no executor configured")
+		}
 	}
 	aiapi.RegisterAIWebhookHandlers(v1, appCtx)
 	registerAIChatRoute(v1, appCtx)
@@ -105,4 +95,17 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 
 	ws := engine.Group("/ws", middleware.JWTAuth())
 	ws.GET("/notifications", websocket.HandleWebSocket)
+}
+
+func runUntilIdle(ctx context.Context, workerName string, runOnce func(context.Context) (bool, error)) {
+	for ctx.Err() == nil {
+		claimed, err := runOnce(ctx)
+		if err != nil {
+			log.Printf("bootstrap: %s run once failed: %v", workerName, err)
+			return
+		}
+		if !claimed {
+			return
+		}
+	}
 }
