@@ -3,6 +3,7 @@ package approval
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -131,6 +132,18 @@ func (d *AIApprovalTaskDAO) AcquireOrStealLease(ctx context.Context, approvalID 
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
+}
+
+// UpdateResumeTarget binds the checkpoint root-cause interrupt ID used for ResumeWithParams.
+func (d *AIApprovalTaskDAO) UpdateResumeTarget(ctx context.Context, approvalID, resumeTargetID string) error {
+	resumeTargetID = strings.TrimSpace(resumeTargetID)
+	if strings.TrimSpace(approvalID) == "" || resumeTargetID == "" {
+		return nil
+	}
+	return d.db.WithContext(ctx).
+		Model(&model.AIApprovalTask{}).
+		Where("approval_id = ?", approvalID).
+		Update("resume_target_id", resumeTargetID).Error
 }
 
 // ListPendingByUserID 列出用户的待处理审批任务。

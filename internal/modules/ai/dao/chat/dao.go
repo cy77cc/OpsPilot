@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/dao/sequenceguard"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
@@ -191,9 +192,33 @@ func (d *AIChatDAO) DeleteSession(ctx context.Context, sessionID string, userID 
 //
 // 自动分配 session_id_num 并更新会话的 updated_at。
 func (d *AIChatDAO) CreateMessage(ctx context.Context, message *model.AIChatMessage) error {
-	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return d.createMessage(ctx, tx, message)
-	})
+	unlock := sequenceguard.LockKey(message.SessionID)
+	defer unlock()
+
+	requestedSeq := 0
+	if message != nil {
+		requestedSeq = message.SessionIDNum
+	}
+	var lastErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		if message != nil && requestedSeq <= 0 {
+			message.SessionIDNum = 0
+		}
+		err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return d.createMessage(ctx, tx, message)
+		})
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !isRetryableChatMessageWriteError(err) || attempt == 19 {
+			return err
+		}
+		if waitErr := waitForChatRetry(ctx, attempt); waitErr != nil {
+			return waitErr
+		}
+	}
+	return lastErr
 }
 
 // createMessage 内部方法：创建消息并更新会话时间。
@@ -223,6 +248,36 @@ func (d *AIChatDAO) createMessage(ctx context.Context, tx *gorm.DB, message *mod
 		Where("id = ?", message.SessionID).
 		Update("updated_at", time.Now()).
 		Error
+}
+
+func isRetryableChatMessageWriteError(err error) bool {
+	if err == nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(normalized, "database table is locked"),
+		strings.Contains(normalized, "database is locked"),
+		strings.Contains(normalized, "uk_ai_chat_messages_session_seq"),
+		strings.Contains(normalized, "ai_chat_messages.session_id, ai_chat_messages.session_id_num"),
+		strings.Contains(normalized, "duplicate entry") && strings.Contains(normalized, "uk_ai_chat_messages_session_seq"),
+		strings.Contains(normalized, "duplicate key value") && strings.Contains(normalized, "uk_ai_chat_messages_session_seq"):
+		return true
+	default:
+		return false
+	}
+}
+
+func waitForChatRetry(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt+1) * 20 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // UpdateMessage 更新消息。

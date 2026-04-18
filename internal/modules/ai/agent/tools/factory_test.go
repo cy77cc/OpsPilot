@@ -8,8 +8,6 @@ import (
 )
 
 func TestBuildToolsForSceneWithMode_ReadOnlySpecialistsExcludeWriteTools(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name         string
 		scene        string
@@ -48,6 +46,39 @@ func TestBuildToolsForSceneWithMode_ReadOnlySpecialistsExcludeWriteTools(t *test
 				}
 			}
 		})
+	}
+}
+
+func TestBuildToolsForSceneWithMode_RecoversFromBuilderPanic(t *testing.T) {
+	originalHostReadonly := buildHostReadonlyTools
+	buildHostReadonlyTools = func(context.Context) []tool.InvokableTool {
+		panic("boom")
+	}
+	t.Cleanup(func() {
+		buildHostReadonlyTools = originalHostReadonly
+	})
+
+	tools := BuildToolsForSceneWithMode(context.Background(), "host", true)
+	if len(tools) != 0 {
+		t.Fatalf("expected host builder panic to degrade to empty tool set, got %d tools", len(tools))
+	}
+}
+
+func TestBuildToolsForSceneWithMode_DefaultSceneSkipsOnlyPanickingBuilder(t *testing.T) {
+	originalHostReadonly := buildHostReadonlyTools
+	buildHostReadonlyTools = func(context.Context) []tool.InvokableTool {
+		panic("boom")
+	}
+	t.Cleanup(func() {
+		buildHostReadonlyTools = originalHostReadonly
+	})
+
+	names := baseToolNames(t, BuildToolsForSceneWithMode(context.Background(), "unknown", false))
+	if containsToolName(names, "host_list_inventory") {
+		t.Fatalf("did not expect panicking host tool set to survive, got %v", names)
+	}
+	if !containsToolName(names, "service_get_detail") {
+		t.Fatalf("expected non-panicking default builders to remain available, got %v", names)
 	}
 }
 

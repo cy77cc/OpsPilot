@@ -128,6 +128,49 @@ func TestApprovalOutboxEnqueueDuplicateAfterDoneKeepsDoneStatus(t *testing.T) {
 	}
 }
 
+func TestApprovalOutboxEnqueueDuplicateRunSequenceReallocates(t *testing.T) {
+	db := newApprovalOutboxTestDB(t)
+	dao := NewAIApprovalOutboxDAO(db)
+	ctx := context.Background()
+
+	first := &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-seq-1",
+		EventType:   "ai.run.resuming",
+		RunID:       "run-seq",
+		SessionID:   "session-seq",
+		PayloadJSON: `{"status":"resuming"}`,
+		Status:      "pending",
+		Sequence:    1,
+	}
+	if err := dao.EnqueueOrTouch(ctx, first); err != nil {
+		t.Fatalf("enqueue first event: %v", err)
+	}
+
+	second := &model.AIApprovalOutboxEvent{
+		ApprovalID:  "approval-seq-2",
+		EventType:   "ai.run.completed",
+		RunID:       "run-seq",
+		SessionID:   "session-seq",
+		PayloadJSON: `{"status":"completed"}`,
+		Status:      "pending",
+		Sequence:    1,
+	}
+	if err := dao.EnqueueOrTouch(ctx, second); err != nil {
+		t.Fatalf("expected duplicate run sequence to be reallocated, got %v", err)
+	}
+
+	var rows []model.AIApprovalOutboxEvent
+	if err := db.Where("run_id = ?", "run-seq").Order("sequence asc").Find(&rows).Error; err != nil {
+		t.Fatalf("load outbox rows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].Sequence != 1 || rows[1].Sequence != 2 {
+		t.Fatalf("expected unique reallocated sequences, got %#v", rows)
+	}
+}
+
 func TestApprovalOutboxClaimPendingDoesNotReturnStaleCandidate(t *testing.T) {
 	db := newApprovalOutboxTestDB(t)
 	dao := NewAIApprovalOutboxDAO(db)

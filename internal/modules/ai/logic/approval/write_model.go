@@ -203,6 +203,74 @@ func (m *WriteModel) RetryResumeApproval(ctx context.Context, input RetryResumeA
 	return result, nil
 }
 
+// ExpireApproval atomically marks a pending approval expired, updates the run state,
+// and emits an approval-expired lifecycle event.
+func (m *WriteModel) ExpireApproval(ctx context.Context, approvalID string) (bool, error) {
+	if m == nil || m.db == nil {
+		return false, fmt.Errorf("approval write model not initialized")
+	}
+	if strings.TrimSpace(approvalID) == "" {
+		return false, fmt.Errorf("approval_id is required")
+	}
+
+	expired := false
+	err := m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		approvalDAO := aidaoapproval.NewAIApprovalTaskDAO(tx)
+		runDAO := aidao.NewAIRunDAO(tx)
+		outboxDAO := aidaoapproval.NewAIApprovalOutboxDAO(tx)
+
+		task, err := approvalDAO.GetByApprovalID(ctx, approvalID)
+		if err != nil {
+			return fmt.Errorf("load approval task: %w", err)
+		}
+		if task == nil {
+			return &ApprovalNotFoundError{ApprovalID: approvalID}
+		}
+		if task.Status != "pending" {
+			return nil
+		}
+
+		now := time.Now().UTC()
+		result := tx.WithContext(ctx).Model(&ai.AIApprovalTask{}).
+			Where("approval_id = ? AND status = ?", approvalID, "pending").
+			Updates(map[string]any{
+				"status":     "expired",
+				"updated_at": now,
+			})
+		if result.Error != nil {
+			return fmt.Errorf("mark approval expired: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+
+		task, err = approvalDAO.GetByApprovalID(ctx, approvalID)
+		if err != nil {
+			return fmt.Errorf("reload expired approval task: %w", err)
+		}
+		if task == nil {
+			return &ApprovalNotFoundError{ApprovalID: approvalID}
+		}
+
+		if err := runDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{
+			Status:       "expired",
+			ErrorMessage: "approval expired",
+		}); err != nil {
+			return fmt.Errorf("update expired run status: %w", err)
+		}
+
+		if err := m.writeEvent(ctx, tx, outboxDAO, task, event.ApprovalEventTypeExpired, TaskStatusExpiredPayload(task)); err != nil {
+			return err
+		}
+		expired = true
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return expired, nil
+}
+
 // EmitRunResuming 发布运行恢复中事件。
 func (m *WriteModel) EmitRunResuming(ctx context.Context, approvalID string) error {
 	return m.emitLifecycle(ctx, approvalID, event.RunEventTypeResuming, "resuming")

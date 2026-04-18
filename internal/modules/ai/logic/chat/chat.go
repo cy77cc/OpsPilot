@@ -20,6 +20,7 @@ import (
 	kubernetesspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/kubernetes"
 	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
 	isolationworker "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/workers/isolation"
+	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
@@ -1086,6 +1087,9 @@ func ConsumeProjectedEvents(ctx context.Context, l *Logic, runID, sessionID stri
 		return update, err
 	}
 	for _, projected := range events {
+		if err := persistApprovalResumeTarget(ctx, l, projected); err != nil {
+			return update, err
+		}
 		eid, err := AppendRunEventWithID(ctx, l, runID, sessionID, seq, projected.Event, projected.Data)
 		if err != nil {
 			return update, err
@@ -1102,6 +1106,22 @@ func ConsumeProjectedEvents(ctx context.Context, l *Logic, runID, sessionID stri
 		return update, err
 	}
 	return update, nil
+}
+
+func persistApprovalResumeTarget(ctx context.Context, l *Logic, event airuntime.PublicStreamEvent) error {
+	if l == nil || l.SvcCtx == nil || l.SvcCtx.DB == nil || event.Event != "tool_approval" {
+		return nil
+	}
+	data, _ := event.Data.(map[string]any)
+	if data == nil {
+		return nil
+	}
+	approvalID := strings.TrimSpace(stream.StringValue(data, "approval_id"))
+	targetID := strings.TrimSpace(stream.StringValue(data, "target_id"))
+	if approvalID == "" || targetID == "" {
+		return nil
+	}
+	return aidaoapproval.NewAIApprovalTaskDAO(l.SvcCtx.DB).UpdateResumeTarget(ctx, approvalID, targetID)
 }
 
 func assistantStatusFromRunStatus(status string) string {

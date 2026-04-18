@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestChatHandler_PassesClientRequestIDIntoLogic(t *testing.T) {
 	}
 	h.logic.AIRouter = agent
 
-	recorder := httptest.NewRecorder()
+	recorder := newLockedResponseRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(100))
 	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hi","client_request_id":"req-1"}`))
@@ -54,7 +55,7 @@ func TestChatHandler_ReturnsSSEContentType(t *testing.T) {
 	db := newAIHandlerTestDB(t)
 	h := newAIHandlerTestHarness(db)
 
-	recorder := httptest.NewRecorder()
+	recorder := newLockedResponseRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(101))
 	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"test message"}`))
@@ -73,7 +74,7 @@ func TestChatHandler_EmitsMetaEvent(t *testing.T) {
 	db := newAIHandlerTestDB(t)
 	h := newAIHandlerTestHarness(db)
 
-	recorder := httptest.NewRecorder()
+	recorder := newLockedResponseRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(102))
 	c.Request = httptest.NewRequest(http.MethodPost, "/chat", bytes.NewBufferString(`{"message":"hello"}`))
@@ -964,7 +965,7 @@ func TestChatHandler_ReconnectReplaysOnlyEventsAfterLastEventID(t *testing.T) {
 		}
 	}
 
-	recorder := httptest.NewRecorder()
+	recorder := newLockedResponseRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Set("uid", uint64(109))
 	reqCtx, cancel := context.WithCancel(context.Background())
@@ -981,13 +982,13 @@ func TestChatHandler_ReconnectReplaysOnlyEventsAfterLastEventID(t *testing.T) {
 	waitFor := func(deadline time.Duration, cond func(string) bool) string {
 		timeout := time.Now().Add(deadline)
 		for time.Now().Before(timeout) {
-			raw := recorder.Body.String()
+			raw := recorder.BodyString()
 			if cond(raw) {
 				return raw
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		return recorder.Body.String()
+		return recorder.BodyString()
 	}
 
 	raw := waitFor(250*time.Millisecond, func(body string) bool {
@@ -999,7 +1000,7 @@ func TestChatHandler_ReconnectReplaysOnlyEventsAfterLastEventID(t *testing.T) {
 
 	select {
 	case <-streamDone:
-		t.Fatalf("expected reconnect stream to remain open for new events, got %q", recorder.Body.String())
+		t.Fatalf("expected reconnect stream to remain open for new events, got %q", recorder.BodyString())
 	default:
 	}
 
@@ -1030,6 +1031,33 @@ func TestChatHandler_ReconnectReplaysOnlyEventsAfterLastEventID(t *testing.T) {
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("expected reconnect stream goroutine to exit after request cancellation")
 	}
+}
+
+type lockedResponseRecorder struct {
+	*httptest.ResponseRecorder
+	mu sync.Mutex
+}
+
+func newLockedResponseRecorder() *lockedResponseRecorder {
+	return &lockedResponseRecorder{ResponseRecorder: httptest.NewRecorder()}
+}
+
+func (r *lockedResponseRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Write(p)
+}
+
+func (r *lockedResponseRecorder) WriteString(s string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.WriteString(s)
+}
+
+func (r *lockedResponseRecorder) BodyString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Body.String()
 }
 
 func TestChatHandler_UsesLastEventIDHeaderBeforeQueryAndBody(t *testing.T) {

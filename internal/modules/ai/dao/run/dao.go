@@ -16,6 +16,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/dao/sequenceguard"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
@@ -226,70 +227,83 @@ func (d *AIRunDAO) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([
 
 // createRunShell 内部方法：创建运行外壳（Run + 用户消息 + 助手消息）。
 func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestID string, build func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage)) (*model.AIRun, error) {
+	unlock := sequenceguard.LockKey(sessionID)
+	defer unlock()
+
 	var createdRun *model.AIRun
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		run, userMessage, assistantMessage := build()
-		if run == nil || userMessage == nil || assistantMessage == nil {
-			return fmt.Errorf("build callback must return run and message shells")
-		}
+	var lastErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			run, userMessage, assistantMessage := build()
+			if run == nil || userMessage == nil || assistantMessage == nil {
+				return fmt.Errorf("build callback must return run and message shells")
+			}
 
-		run.SessionID = sessionID
-		if strings.TrimSpace(clientRequestID) == "" {
-			run.ClientRequestID = ""
-		}
-		normalizeRunClientRequestID(run, clientRequestID)
+			run.SessionID = sessionID
+			if strings.TrimSpace(clientRequestID) == "" {
+				run.ClientRequestID = ""
+			}
+			normalizeRunClientRequestID(run, clientRequestID)
 
-		userMessage.SessionID = sessionID
-		assistantMessage.SessionID = sessionID
-		if strings.TrimSpace(run.UserMessageID) == "" || strings.TrimSpace(run.AssistantMessageID) == "" {
-			return fmt.Errorf("run message ids are required")
-		}
-		if userMessage.ID != run.UserMessageID {
-			userMessage.ID = run.UserMessageID
-		}
-		if assistantMessage.ID != run.AssistantMessageID {
-			assistantMessage.ID = run.AssistantMessageID
-		}
+			userMessage.SessionID = sessionID
+			assistantMessage.SessionID = sessionID
+			if strings.TrimSpace(run.UserMessageID) == "" || strings.TrimSpace(run.AssistantMessageID) == "" {
+				return fmt.Errorf("run message ids are required")
+			}
+			if userMessage.ID != run.UserMessageID {
+				userMessage.ID = run.UserMessageID
+			}
+			if assistantMessage.ID != run.AssistantMessageID {
+				assistantMessage.ID = run.AssistantMessageID
+			}
 
-		if err := tx.WithContext(ctx).Create(run).Error; err != nil {
-			return err
-		}
+			if err := tx.WithContext(ctx).Create(run).Error; err != nil {
+				return err
+			}
 
-		// 创建用户消息和助手消息
-		// 注意：这里需要手动设置 session_id_num，因为无法调用 chat 包的私有方法
-		for _, msg := range []*model.AIChatMessage{userMessage, assistantMessage} {
-			if msg.SessionIDNum <= 0 {
-				var last model.AIChatMessage
-				err := tx.WithContext(ctx).
-					Where("session_id = ?", msg.SessionID).
-					Order("session_id_num DESC").
-					First(&last).Error
-				switch err {
-				case nil:
-					msg.SessionIDNum = last.SessionIDNum + 1
-				case gorm.ErrRecordNotFound:
-					msg.SessionIDNum = 1
-				default:
+			// 创建用户消息和助手消息
+			// 注意：这里需要手动设置 session_id_num，因为无法调用 chat 包的私有方法
+			for _, msg := range []*model.AIChatMessage{userMessage, assistantMessage} {
+				if msg.SessionIDNum <= 0 {
+					var last model.AIChatMessage
+					err := tx.WithContext(ctx).
+						Where("session_id = ?", msg.SessionID).
+						Order("session_id_num DESC").
+						First(&last).Error
+					switch err {
+					case nil:
+						msg.SessionIDNum = last.SessionIDNum + 1
+					case gorm.ErrRecordNotFound:
+						msg.SessionIDNum = 1
+					default:
+						return err
+					}
+				}
+				if err := tx.WithContext(ctx).Create(msg).Error; err != nil {
 					return err
 				}
 			}
-			if err := tx.WithContext(ctx).Create(msg).Error; err != nil {
-				return err
-			}
+
+			createdRun = run
+
+			// 更新会话的 updated_at
+			return tx.WithContext(ctx).Model(&model.AIChatSession{}).
+				Where("id = ?", sessionID).
+				Update("updated_at", time.Now()).
+				Error
+		})
+		if err == nil {
+			return createdRun, nil
 		}
-
-		createdRun = run
-
-		// 更新会话的 updated_at
-		return tx.WithContext(ctx).Model(&model.AIChatSession{}).
-			Where("id = ?", sessionID).
-			Update("updated_at", time.Now()).
-			Error
-	})
-	if err != nil {
-		return nil, err
+		lastErr = err
+		if !isRetryableRunShellWriteError(err) || attempt == 19 {
+			return nil, err
+		}
+		if waitErr := waitForRunShellRetry(ctx, attempt); waitErr != nil {
+			return nil, waitErr
+		}
 	}
-	return createdRun, nil
+	return nil, lastErr
 }
 
 // findByClientRequestIDWithRetry 带重试的查找。
@@ -333,6 +347,36 @@ func normalizeRunClientRequestID(run *model.AIRun, clientRequestID string) {
 		normalizedClientRequestID = strings.TrimSpace(run.ID)
 	}
 	run.ClientRequestID = normalizedClientRequestID
+}
+
+func isRetryableRunShellWriteError(err error) bool {
+	if err == nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(normalized, "database table is locked"),
+		strings.Contains(normalized, "database is locked"),
+		strings.Contains(normalized, "uk_ai_chat_messages_session_seq"),
+		strings.Contains(normalized, "ai_chat_messages.session_id, ai_chat_messages.session_id_num"),
+		strings.Contains(normalized, "duplicate entry") && strings.Contains(normalized, "uk_ai_chat_messages_session_seq"),
+		strings.Contains(normalized, "duplicate key value") && strings.Contains(normalized, "uk_ai_chat_messages_session_seq"):
+		return true
+	default:
+		return false
+	}
+}
+
+func waitForRunShellRetry(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt+1) * 20 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // isDuplicateKeyError 判断是否为重复键错误。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,6 +104,71 @@ func TestCreateMessage_TouchesSessionUpdatedAt(t *testing.T) {
 	}
 	if !refreshed.UpdatedAt.After(before) {
 		t.Fatalf("expected updated_at to advance, before=%s after=%s", before, refreshed.UpdatedAt)
+	}
+}
+
+func TestCreateMessage_ConcurrentRequestsAllocateUniqueSequence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=10000", t.Name())), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AIChatSession{}, &model.AIChatMessage{}); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+
+	dao := NewAIChatDAO(db)
+	ctx := context.Background()
+	session := &model.AIChatSession{
+		ID:     "session-concurrent",
+		UserID: 7,
+		Scene:  "ai",
+		Title:  "concurrent",
+	}
+	if err := dao.CreateSession(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	const attempts = 6
+	start := make(chan struct{})
+	errs := make(chan error, attempts)
+	var wg sync.WaitGroup
+
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			errs <- dao.CreateMessage(ctx, &model.AIChatMessage{
+				ID:        fmt.Sprintf("msg-concurrent-%d", i),
+				SessionID: session.ID,
+				Role:      "user",
+				Content:   fmt.Sprintf("message-%d", i),
+				Status:    "done",
+			})
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected concurrent create to succeed, got %v", err)
+		}
+	}
+
+	messages, err := dao.ListMessagesBySession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(messages) != attempts {
+		t.Fatalf("expected %d messages, got %d", attempts, len(messages))
+	}
+	for i, message := range messages {
+		if message.SessionIDNum != i+1 {
+			t.Fatalf("expected contiguous session_id_num, got %#v", messages)
+		}
 	}
 }
 

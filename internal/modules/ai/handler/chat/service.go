@@ -2,6 +2,7 @@ package chathandler
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -16,6 +17,8 @@ import (
 type Service struct {
 	logic *logic.Logic
 }
+
+var errChatServiceNotInitialized = fmt.Errorf("ai chat service not initialized")
 
 func LegacyRoutingEnabled() bool {
 	return false
@@ -42,28 +45,43 @@ func NewServiceWithDB(db *gorm.DB, agentRouter adk.ResumableAgent) *Service {
 
 func (s *Service) Chat(ctx context.Context, input logic.ChatInput, emit logic.EventEmitter) error {
 	if s == nil || s.logic == nil {
-		return nil
+		return errChatServiceNotInitialized
 	}
 	return s.logic.Chat(ctx, input, emit)
 }
 
 func (s *Service) CreateSession(ctx context.Context, userID uint64, title, scene string) (*ai.AIChatSession, error) {
+	if s == nil || s.logic == nil {
+		return nil, errChatServiceNotInitialized
+	}
 	return s.logic.CreateSession(ctx, userID, title, scene)
 }
 
 func (s *Service) ListSessions(ctx context.Context, userID uint64, scene string) ([]logic.SessionSummary, error) {
+	if s == nil || s.logic == nil {
+		return nil, errChatServiceNotInitialized
+	}
 	return s.logic.ListSessions(ctx, userID, scene)
 }
 
 func (s *Service) GetSession(ctx context.Context, userID uint64, scene, sessionID string) (*ai.AIChatSession, []ai.AIChatMessage, error) {
+	if s == nil || s.logic == nil {
+		return nil, nil, errChatServiceNotInitialized
+	}
 	return s.logic.GetSession(ctx, userID, scene, sessionID)
 }
 
 func (s *Service) DeleteSession(ctx context.Context, userID uint64, sessionID string) (bool, error) {
+	if s == nil || s.logic == nil {
+		return false, errChatServiceNotInitialized
+	}
 	return s.logic.DeleteSession(ctx, userID, sessionID)
 }
 
 func (s *Service) GetRun(ctx context.Context, userID uint64, runID string) (*ai.AIRun, *ai.AIDiagnosisReport, error) {
+	if s == nil || s.logic == nil {
+		return nil, nil, errChatServiceNotInitialized
+	}
 	return s.logic.GetRun(ctx, userID, runID)
 }
 
@@ -75,14 +93,23 @@ func (s *Service) BuildResumableCredentials(ctx context.Context, run *ai.AIRun) 
 }
 
 func (s *Service) GetRunProjectionPayload(ctx context.Context, userID uint64, runID string, query logic.RunProjectionQuery) (any, error) {
+	if s == nil || s.logic == nil {
+		return nil, errChatServiceNotInitialized
+	}
 	return s.logic.GetRunProjectionPayload(ctx, userID, runID, query)
 }
 
 func (s *Service) GetRunContent(ctx context.Context, userID uint64, contentID string) (*ai.AIRunContent, error) {
+	if s == nil || s.logic == nil {
+		return nil, errChatServiceNotInitialized
+	}
 	return s.logic.GetRunContent(ctx, userID, contentID)
 }
 
 func (s *Service) GetDiagnosisReport(ctx context.Context, userID uint64, reportID string) (*ai.AIDiagnosisReport, error) {
+	if s == nil || s.logic == nil {
+		return nil, errChatServiceNotInitialized
+	}
 	return s.logic.GetDiagnosisReport(ctx, userID, reportID)
 }
 

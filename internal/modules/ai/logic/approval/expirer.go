@@ -82,14 +82,10 @@ func (e *Expirer) expireTask(ctx context.Context, snapshot *ai.AIApprovalTask, n
 	if snapshot == nil {
 		return nil
 	}
-	result := e.logic.SvcCtx.DB.WithContext(ctx).Model(&ai.AIApprovalTask{}).
-		Where("approval_id = ? AND status = ?", snapshot.ApprovalID, "pending").
-		Updates(map[string]any{"status": "expired", "updated_at": now})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
+	_ = now
+	if e == nil || e.logic == nil || e.logic.SvcCtx == nil || e.logic.SvcCtx.DB == nil {
 		return nil
 	}
-	return nil
+	_, err := NewWriteModel(e.logic.SvcCtx.DB).ExpireApproval(ctx, snapshot.ApprovalID)
+	return err
 }

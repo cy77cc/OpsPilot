@@ -3,11 +3,13 @@ package approval
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/dao/sequenceguard"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
 
@@ -53,49 +55,70 @@ func (d *AIApprovalOutboxDAO) NextSequence(ctx context.Context, runID string) (i
 //
 // 返回: 错误信息
 func (d *AIApprovalOutboxDAO) EnqueueOrTouch(ctx context.Context, event *model.AIApprovalOutboxEvent) error {
-	now := time.Now()
-	return d.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "approval_id"}, {Name: "event_type"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"run_id": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE run_id END",
-					"pending",
-					event.RunID,
-				),
-				"session_id": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE session_id END",
-					"pending",
-					event.SessionID,
-				),
-				"tool_call_id": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE tool_call_id END",
-					"pending",
-					event.ToolCallID,
-				),
-				"payload_json": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE payload_json END",
-					"pending",
-					event.PayloadJSON,
-				),
-				"status": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE status END",
-					"pending",
-					event.Status,
-				),
-				"next_retry_at": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE next_retry_at END",
-					"pending",
-					event.NextRetryAt,
-				),
-				"updated_at": gorm.Expr(
-					"CASE WHEN status = ? THEN ? ELSE updated_at END",
-					"pending",
-					now,
-				),
-			}),
-		}).
-		Create(event).Error
+	if event == nil {
+		return nil
+	}
+	unlock := sequenceguard.LockKey(event.RunID)
+	defer unlock()
+
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		now := time.Now()
+		err := d.db.WithContext(ctx).
+			Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "approval_id"}, {Name: "event_type"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"run_id": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE run_id END",
+						"pending",
+						event.RunID,
+					),
+					"session_id": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE session_id END",
+						"pending",
+						event.SessionID,
+					),
+					"tool_call_id": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE tool_call_id END",
+						"pending",
+						event.ToolCallID,
+					),
+					"payload_json": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE payload_json END",
+						"pending",
+						event.PayloadJSON,
+					),
+					"status": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE status END",
+						"pending",
+						event.Status,
+					),
+					"next_retry_at": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE next_retry_at END",
+						"pending",
+						event.NextRetryAt,
+					),
+					"updated_at": gorm.Expr(
+						"CASE WHEN status = ? THEN ? ELSE updated_at END",
+						"pending",
+						now,
+					),
+				}),
+			}).
+			Create(event).Error
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !isRetryableOutboxSequenceError(err) || attempt == 4 {
+			return err
+		}
+		event.Sequence = 0
+		if waitErr := waitForOutboxRetry(ctx, attempt); waitErr != nil {
+			return waitErr
+		}
+	}
+	return lastErr
 }
 
 // ClaimPending 声明一个待处理的 Outbox 事件。
@@ -216,4 +239,34 @@ func (d *AIApprovalOutboxDAO) MarkRetry(ctx context.Context, id uint64, nextRetr
 			"next_retry_at": &nextRetryAt,
 			"updated_at":    now,
 		}).Error
+}
+
+func isRetryableOutboxSequenceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(normalized, "uk_ai_approval_outbox_events_run_seq"),
+		strings.Contains(normalized, "ai_approval_outbox_events.run_id, ai_approval_outbox_events.sequence"),
+		strings.Contains(normalized, "database table is locked"),
+		strings.Contains(normalized, "database is locked"),
+		strings.Contains(normalized, "duplicate entry") && strings.Contains(normalized, "uk_ai_approval_outbox_events_run_seq"),
+		strings.Contains(normalized, "duplicate key value") && strings.Contains(normalized, "uk_ai_approval_outbox_events_run_seq"):
+		return true
+	default:
+		return false
+	}
+}
+
+func waitForOutboxRetry(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt+1) * 10 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

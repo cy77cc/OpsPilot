@@ -77,3 +77,18 @@ func TestMetricsHandler(t *testing.T) {
 	assert.Equal(t, int64(20), usageLog.CompletionTokens)
 	assert.Equal(t, int64(30), usageLog.TotalTokens)
 }
+
+func TestMetricsHandler_NoDBIsNoOp(t *testing.T) {
+	handler := NewMetricsHandler(nil)
+	ctx := runtimectx.WithAIMetadata(context.Background(), runtimectx.AIMetadata{
+		SessionID: uuid.NewString(),
+		RunID:     uuid.NewString(),
+		Scene:     "test",
+		UserID:    1,
+	})
+
+	ctx = handler.OnStartFn(ctx, &callbacks.RunInfo{Name: "test_model"}, nil)
+	_ = handler.OnEndFn(ctx, &callbacks.RunInfo{Name: "test_model"}, &einomodel.CallbackOutput{})
+	_ = handler.OnErrorFn(ctx, &callbacks.RunInfo{Name: "test_model"}, assert.AnError)
+	time.Sleep(20 * time.Millisecond)
+}

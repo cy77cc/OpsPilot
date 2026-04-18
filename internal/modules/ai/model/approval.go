@@ -33,6 +33,7 @@ type AIApprovalTask struct {
 	UserID           uint64         `gorm:"column:user_id;not null;default:0;index" json:"user_id"`
 	ToolName         string         `gorm:"column:tool_name;type:varchar(64);not null" json:"tool_name"`
 	ToolCallID       string         `gorm:"column:tool_call_id;type:varchar(64);not null" json:"tool_call_id"`
+	ResumeTargetID   string         `gorm:"column:resume_target_id;type:varchar(128);not null;default:''" json:"resume_target_id"`
 	ArgumentsJSON    string         `gorm:"column:arguments_json;type:text;not null" json:"arguments_json"`
 	PreviewJSON      string         `gorm:"column:preview_json;type:text;not null" json:"preview_json"`
 	Status           string         `gorm:"column:status;type:varchar(16);not null;default:'pending';index" json:"status"`

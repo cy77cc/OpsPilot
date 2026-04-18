@@ -3,10 +3,14 @@ package approval
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	sharedapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
@@ -213,7 +217,7 @@ func (w *Worker) claimOutboxEvent(ctx context.Context) (*ai.AIApprovalOutboxEven
 				decisionTypes, "pending", now, "processing", staleBefore,
 			).Order("next_retry_at ASC").Order("created_at ASC").Order("id ASC")
 			if err := query.First(&candidate).Error; err != nil {
-				if err.Error() == "record not found" {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil
 				}
 				return err
@@ -292,25 +296,58 @@ func (w *Worker) retryBackoff(retryCount int) time.Duration {
 }
 
 func (w *Worker) expireAndFinalize(ctx context.Context, task *ai.AIApprovalTask, now time.Time) error {
-	_ = w.logic.SvcCtx.DB.WithContext(ctx).Model(&ai.AIApprovalTask{}).
-		Where("approval_id = ? AND status = ?", task.ApprovalID, "pending").
-		Updates(map[string]any{"status": "expired", "updated_at": now})
-	task, _ = w.logic.ApprovalDAO.GetByApprovalID(ctx, task.ApprovalID)
-	return w.finalize(ctx, task, "cancelled", "approval expired")
+	_ = now
+	if w == nil || w.logic == nil || w.logic.SvcCtx == nil || w.logic.SvcCtx.DB == nil {
+		return fmt.Errorf("approval worker not initialized")
+	}
+	_, err := NewWriteModel(w.logic.SvcCtx.DB).ExpireApproval(ctx, task.ApprovalID)
+	return err
 }
 
 func (w *Worker) finalize(ctx context.Context, task *ai.AIApprovalTask, runStatus, errMsg string) error {
 	if task == nil || w.logic.RunDAO == nil {
-		return nil
+		return fmt.Errorf("run finalizer not initialized")
 	}
-	_ = w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{Status: runStatus, ErrorMessage: errMsg})
-	return nil
+	return w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{Status: runStatus, ErrorMessage: errMsg})
 }
 
 func (w *Worker) resumeApproved(ctx context.Context, task *ai.AIApprovalTask) error {
-	if w.logic.AIRouter == nil || w.logic.CheckpointStore == nil {
+	if task == nil {
+		return fmt.Errorf("approval task is nil")
+	}
+	if strings.TrimSpace(task.ResumeTargetID) == "" {
+		return &ApprovalConflictError{ApprovalID: task.ApprovalID, Message: "approval resume target is missing"}
+	}
+	if w.resume == nil {
+		return fmt.Errorf("approval resume handler not configured")
+	}
+	_, err := w.resume(ctx, task, buildResumeParams(task))
+	return err
+}
+
+func buildResumeParams(task *ai.AIApprovalTask) *adk.ResumeParams {
+	if task == nil || strings.TrimSpace(task.ResumeTargetID) == "" {
 		return nil
 	}
-	// Minimal resume: update run status and let the caller handle the rest
-	return w.logic.RunDAO.UpdateRunStatus(ctx, task.RunID, aidao.AIRunStatusUpdate{Status: "resuming"})
+
+	result := &sharedapproval.ApprovalResult{
+		Approved: true,
+		Comment:  task.Comment,
+	}
+	if task.ApprovedBy != 0 {
+		result.ApprovedBy = strconv.FormatUint(task.ApprovedBy, 10)
+	}
+	if task.DecidedAt != nil {
+		approvedAt := task.DecidedAt.UTC()
+		result.ApprovedAt = &approvedAt
+	}
+	if reason := strings.TrimSpace(task.DisapproveReason); reason != "" {
+		result.DisapproveReason = &reason
+	}
+
+	return &adk.ResumeParams{
+		Targets: map[string]any{
+			task.ResumeTargetID: result,
+		},
+	}
 }

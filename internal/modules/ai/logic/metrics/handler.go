@@ -18,12 +18,31 @@ type startTimeKey struct{}
 
 // MetricsHandler 捕获 AI 模型的指标。
 type MetricsHandler struct {
-	db *gorm.DB
+	db        *gorm.DB
+	persistCh chan metricsPersistRequest
 }
+
+type metricsPersistRequest struct {
+	span     *aimodel.AITraceSpan
+	usageLog *aimodel.AIUsageLog
+}
+
+const (
+	defaultMetricsPersistQueueSize = 256
+	defaultMetricsPersistWorkers   = 2
+)
 
 // NewMetricsHandler 创建一个新的 MetricsHandler 实例。
 func NewMetricsHandler(db *gorm.DB) *MetricsHandler {
-	return &MetricsHandler{db: db}
+	h := &MetricsHandler{db: db}
+	if db == nil {
+		return h
+	}
+	h.persistCh = make(chan metricsPersistRequest, defaultMetricsPersistQueueSize)
+	for i := 0; i < defaultMetricsPersistWorkers; i++ {
+		go h.runPersistWorker()
+	}
+	return h
 }
 
 // OnStartFn 记录 AI 交互的开始。
@@ -72,17 +91,16 @@ func (h *MetricsHandler) OnEndFn(ctx context.Context, info *callbacks.RunInfo, o
 		usageLog.TotalTokens = int64(mo.TokenUsage.TotalTokens)
 	}
 
-	// 异步持久化以避免阻塞主链路
-	go func() {
-		_ = h.db.Create(span).Error
-		_ = h.db.Create(usageLog).Error
-	}()
+	h.enqueuePersist(span, usageLog)
 
 	return ctx
 }
 
 // OnEndWithStreamOutputFn 记录流式 AI 交互的结束和指标。
 func (h *MetricsHandler) OnEndWithStreamOutputFn(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
+	if output == nil {
+		return ctx
+	}
 	// 必须异步读取私有流副本，否则会阻塞主输出流
 	go func() {
 		defer output.Close()
@@ -133,10 +151,7 @@ func (h *MetricsHandler) OnErrorFn(ctx context.Context, info *callbacks.RunInfo,
 		Status:    "error",
 	}
 
-	go func() {
-		_ = h.db.Create(span).Error
-		_ = h.db.Create(usageLog).Error
-	}()
+	h.enqueuePersist(span, usageLog)
 
 	return ctx
 }
@@ -149,4 +164,37 @@ func (h *MetricsHandler) Build() callbacks.Handler {
 		OnEndWithStreamOutputFn(h.OnEndWithStreamOutputFn).
 		OnErrorFn(h.OnErrorFn).
 		Build()
+}
+
+func (h *MetricsHandler) enqueuePersist(span *aimodel.AITraceSpan, usageLog *aimodel.AIUsageLog) {
+	if h == nil || h.db == nil {
+		return
+	}
+	if h.persistCh == nil {
+		h.persist(span, usageLog)
+		return
+	}
+	select {
+	case h.persistCh <- metricsPersistRequest{span: span, usageLog: usageLog}:
+	default:
+		// Drop overloaded metrics rather than blocking the main request path.
+	}
+}
+
+func (h *MetricsHandler) runPersistWorker() {
+	for req := range h.persistCh {
+		h.persist(req.span, req.usageLog)
+	}
+}
+
+func (h *MetricsHandler) persist(span *aimodel.AITraceSpan, usageLog *aimodel.AIUsageLog) {
+	if h == nil || h.db == nil {
+		return
+	}
+	if span != nil {
+		_ = h.db.Create(span).Error
+	}
+	if usageLog != nil {
+		_ = h.db.Create(usageLog).Error
+	}
 }

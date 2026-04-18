@@ -247,6 +247,17 @@ func CanResumeSameRunStatus(status string) bool {
 }
 
 func NewApprovalWorker(l *Logic, opts ...ApprovalWorkerOption) *ApprovalWorker {
+	if l != nil {
+		opts = append([]ApprovalWorkerOption{
+			approval.WithWorkerResume(func(ctx context.Context, task *ai.AIApprovalTask, params *adk.ResumeParams) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+				l.ensureChatLogic()
+				if l.chatLogic == nil {
+					return nil, fmt.Errorf("chat resume logic not initialized")
+				}
+				return chat.ResumeApprovedTask(ctx, l.chatLogic, task, params)
+			}),
+		}, opts...)
+	}
 	return approval.NewWorker(&approval.Logic{
 		SvcCtx: l.svcCtx, ChatDAO: l.ChatDAO, RunDAO: l.RunDAO,
 		RunEventDAO: l.RunEventDAO, ApprovalDAO: l.ApprovalDAO,
