@@ -13,7 +13,7 @@ import (
 var ErrInvalidPayload = errors.New("invalid alert payload")
 
 type ingestEventDAO interface {
-	UpsertIngestEvent(ctx context.Context, row *model.AIAlertIngestEvent) (*model.AIAlertIngestEvent, error)
+	UpsertIngestEvents(ctx context.Context, rows []*model.AIAlertIngestEvent) ([]model.AIAlertIngestEvent, error)
 }
 
 // Service 提供告警摄取逻辑。
@@ -85,18 +85,10 @@ func (s *Service) Ingest(ctx context.Context, protocol string, raw []byte) ([]mo
 		})
 	}
 
-	out := make([]model.AIAlertIngestEvent, 0, len(rows))
-	for _, row := range rows {
-		saved, err := s.dao.UpsertIngestEvent(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-		if saved == nil {
-			saved = row
-		}
-		out = append(out, *saved)
+	out, err := s.dao.UpsertIngestEvents(ctx, rows)
+	if err != nil {
+		return nil, err
 	}
-
 	return out, nil
 }
 

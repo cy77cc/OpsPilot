@@ -2,6 +2,7 @@ package alertheal
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao"
@@ -79,6 +80,20 @@ func TestIngestService_EmptyAlertsReturnsInvalidPayload(t *testing.T) {
 	}
 }
 
+func TestIngestService_EmptyUnifiedAlertsReturnsInvalidPayload(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
+	dao := aidaoalertheal.NewDAO(db)
+	svc := NewService(dao)
+
+	_, err := svc.Ingest(context.Background(), "opspilot.alert.v1", []byte(`{"kind":"opspilot.alert.v1","alerts":[]}`))
+	if err == nil {
+		t.Fatal("expected ErrInvalidPayload, got nil")
+	}
+	if err != ErrInvalidPayload {
+		t.Fatalf("expected ErrInvalidPayload, got %v", err)
+	}
+}
+
 func TestIngestService_MixedInvalidBatchDoesNotPartiallyPersist(t *testing.T) {
 	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
 	dao := aidaoalertheal.NewDAO(db)
@@ -100,5 +115,30 @@ func TestIngestService_MixedInvalidBatchDoesNotPartiallyPersist(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected zero rows persisted on invalid batch, got %d", count)
+	}
+}
+
+func TestIngestService_DBErrorRollsBackWholeBatch(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
+	dao := aidaoalertheal.NewDAO(db)
+	svc := NewService(dao)
+	svc.newID = func() string { return "dup-id" }
+
+	raw := []byte(`{"alerts":[{"status":"firing","fingerprint":"fp-a","labels":{"alertname":"CPU"}},{"status":"firing","fingerprint":"fp-b","labels":{"alertname":"MEM"}}]}`)
+
+	_, err := svc.Ingest(context.Background(), "alertmanager", raw)
+	if err == nil {
+		t.Fatal("expected db error, got nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unique") {
+		t.Fatalf("expected unique constraint error, got %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&model.AIAlertIngestEvent{}).Count(&count).Error; err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected zero rows persisted when db error happens mid-batch, got %d", count)
 	}
 }
