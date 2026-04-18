@@ -12,6 +12,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
 	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
+	aialertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/alertheal"
 	appapi "github.com/cy77cc/OpsPilot/internal/modules/application/api"
 	automationapi "github.com/cy77cc/OpsPilot/internal/modules/automation/api"
 	cicdapi "github.com/cy77cc/OpsPilot/internal/modules/cicd/api"
@@ -54,6 +55,10 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		ai := ailogic.NewAILogic(appCtx)
 		approvalWorker := ailogic.NewApprovalWorker(ai)
 		expirer := ailogic.NewApprovalExpirer(ai)
+		alertHealWorker := workers.NewAlertHealWorker(
+			aialertheal.NewServiceFromAppContext(appCtx),
+			aialertheal.NewExecutor(appCtx),
+		)
 		_ = workers.NewRunner(func(runCtx context.Context) {
 			for runCtx.Err() == nil {
 				claimed, _ := approvalWorker.RunOnce(runCtx)
@@ -65,6 +70,14 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		_ = workers.NewRunner(func(runCtx context.Context) {
 			for runCtx.Err() == nil {
 				claimed, _ := expirer.RunOnce(runCtx)
+				if !claimed {
+					return
+				}
+			}
+		}, aiBackgroundWorkerTick).Start(ctx)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			for runCtx.Err() == nil {
+				claimed, _ := alertHealWorker.RunOnce(runCtx)
 				if !claimed {
 					return
 				}

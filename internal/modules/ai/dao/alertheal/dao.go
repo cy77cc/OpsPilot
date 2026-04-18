@@ -2,6 +2,9 @@ package alertheal
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"gorm.io/gorm"
@@ -61,4 +64,159 @@ func upsertIngestEventWithDB(db *gorm.DB, row *model.AIAlertIngestEvent) (*model
 		return nil, err
 	}
 	return &saved, nil
+}
+
+func (d *DAO) ClaimRunnableJob(ctx context.Context, now time.Time) (*model.AIAlertHealJob, error) {
+	if d == nil || d.db == nil {
+		return nil, errors.New("alertheal dao not initialized")
+	}
+	now = now.UTC()
+
+	for {
+		var claimed *model.AIAlertHealJob
+		hadCandidate := false
+		err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var candidate model.AIAlertHealJob
+			if err := tx.Where(
+				"(status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?)",
+				"pending", "retry_wait", now,
+			).Order("next_retry_at ASC").Order("created_at ASC").Order("id ASC").Take(&candidate).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil
+				}
+				return err
+			}
+			hadCandidate = true
+
+			result := tx.Model(&model.AIAlertHealJob{}).
+				Where(
+					"id = ? AND ((status = ?) OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?))",
+					candidate.ID, "pending", "retry_wait", now,
+				).
+				Updates(map[string]any{
+					"status":        "auto_fixing",
+					"next_retry_at": nil,
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return nil
+			}
+
+			candidate.Status = "auto_fixing"
+			candidate.NextRetryAt = nil
+			claimed = &candidate
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		if claimed != nil {
+			return claimed, nil
+		}
+		if !hadCandidate {
+			return nil, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func (d *DAO) CancelIfResolved(ctx context.Context, jobID string) (bool, error) {
+	if d == nil || d.db == nil {
+		return false, errors.New("alertheal dao not initialized")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return false, errors.New("empty alert heal job id")
+	}
+
+	var canceled bool
+	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var job model.AIAlertHealJob
+		if err := tx.Where("id = ?", jobID).Take(&job).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		var event model.AIAlertIngestEvent
+		if err := tx.Where("id = ?", job.EventID).Take(&event).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		if !strings.EqualFold(strings.TrimSpace(event.Status), "resolved") {
+			return nil
+		}
+
+		result := tx.Model(&model.AIAlertHealJob{}).
+			Where("id = ? AND status NOT IN ?", jobID, []string{"succeeded", "canceled_resolved", "no_action", "failed_manual"}).
+			Updates(map[string]any{
+				"status":        "canceled_resolved",
+				"next_retry_at": nil,
+				"last_error":    "",
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		canceled = result.RowsAffected > 0
+		return nil
+	})
+	return canceled, err
+}
+
+func (d *DAO) MarkSucceeded(ctx context.Context, jobID, runID string) error {
+	return d.updateAutoFixingJob(ctx, jobID, map[string]any{
+		"status":        "succeeded",
+		"latest_run_id": strings.TrimSpace(runID),
+		"last_error":    "",
+		"next_retry_at": nil,
+	})
+}
+
+func (d *DAO) MarkWaitingApproval(ctx context.Context, jobID, lastError string) error {
+	return d.updateAutoFixingJob(ctx, jobID, map[string]any{
+		"status":        "waiting_approval",
+		"last_error":    strings.TrimSpace(lastError),
+		"next_retry_at": nil,
+		"retry_count":   gorm.Expr("retry_count + ?", 1),
+	})
+}
+
+func (d *DAO) MarkRetryWait(ctx context.Context, jobID, lastError string, nextRetryAt time.Time) error {
+	if nextRetryAt.IsZero() {
+		nextRetryAt = time.Now().UTC()
+	}
+	return d.updateAutoFixingJob(ctx, jobID, map[string]any{
+		"status":        "retry_wait",
+		"last_error":    strings.TrimSpace(lastError),
+		"next_retry_at": nextRetryAt.UTC(),
+		"retry_count":   gorm.Expr("retry_count + ?", 1),
+	})
+}
+
+func (d *DAO) updateAutoFixingJob(ctx context.Context, jobID string, updates map[string]any) error {
+	if d == nil || d.db == nil {
+		return errors.New("alertheal dao not initialized")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return errors.New("empty alert heal job id")
+	}
+
+	result := d.db.WithContext(ctx).Model(&model.AIAlertHealJob{}).
+		Where("id = ? AND status = ?", jobID, "auto_fixing").
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
