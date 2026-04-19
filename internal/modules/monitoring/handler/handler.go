@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/cy77cc/OpsPilot/api/monitoring/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
@@ -534,14 +535,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
-	var req struct {
-		Name       string `json:"name" binding:"required"`
-		Type       string `json:"type"`
-		Provider   string `json:"provider"`
-		Target     string `json:"target"`
-		ConfigJSON string `json:"config_json"`
-		Enabled    *bool  `json:"enabled"`
-	}
+	var req v1.CreateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -552,6 +546,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 		Provider:   strings.TrimSpace(req.Provider),
 		Target:     strings.TrimSpace(req.Target),
 		ConfigJSON: strings.TrimSpace(req.ConfigJSON),
+		ProjectID:  req.ProjectID,
 		Enabled:    req.Enabled == nil || *req.Enabled,
 	})
 	if err != nil {
@@ -581,14 +576,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
-	var req struct {
-		Name       string  `json:"name"`
-		Type       string  `json:"type"`
-		Provider   string  `json:"provider"`
-		Target     string  `json:"target"`
-		ConfigJSON *string `json:"config_json"`
-		Enabled    *bool   `json:"enabled"`
-	}
+	var req v1.UpdateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -609,6 +597,9 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	if req.ConfigJSON != nil {
 		payload["config_json"] = strings.TrimSpace(*req.ConfigJSON)
 	}
+	if req.ProjectID != nil {
+		payload["project_id"] = *req.ProjectID
+	}
 	if req.Enabled != nil {
 		payload["enabled"] = *req.Enabled
 	}
@@ -618,6 +609,41 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, item)
+}
+
+// TestChannel 测试通知渠道。
+//
+// @Summary 测试通知渠道
+// @Description 发送一次测试通知，验证渠道配置是否可用
+// @Tags 监控告警
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param request body v1.TestChannelRequest true "测试通知渠道参数"
+// @Success 200 {object} httpx.Response{data=map[string]interface{}}
+// @Failure 400 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /alert-channels/test [post]
+func (h *Handler) TestChannel(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req v1.TestChannelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	if err := h.logic.TestChannel(
+		c.Request.Context(),
+		strings.TrimSpace(req.Provider),
+		strings.TrimSpace(req.Target),
+		strings.TrimSpace(req.ConfigJSON),
+	); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"status": "sent"})
 }
 
 // ListDeliveries 获取告警投递记录列表。

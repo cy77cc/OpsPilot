@@ -55,6 +55,7 @@ func RegisterMonitoringHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext)
 		g.GET("/alert-channels", h.ListChannels)
 		g.POST("/alert-channels", h.CreateChannel)
 		g.PUT("/alert-channels/:id", h.UpdateChannel)
+		g.POST("/alert-channels/test", h.TestChannel)
 		g.GET("/alert-deliveries", h.ListDeliveries)
 	}
 }

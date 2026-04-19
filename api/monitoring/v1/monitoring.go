@@ -34,6 +34,7 @@ type CreateChannelRequest struct {
 	Provider   string `json:"provider"`
 	Target     string `json:"target"`
 	ConfigJSON string `json:"config_json"`
+	ProjectID  *uint  `json:"project_id"`
 	Enabled    *bool  `json:"enabled"`
 }
 
@@ -44,7 +45,15 @@ type UpdateChannelRequest struct {
 	Provider   string  `json:"provider"`
 	Target     string  `json:"target"`
 	ConfigJSON *string `json:"config_json"`
+	ProjectID  *uint   `json:"project_id"`
 	Enabled    *bool   `json:"enabled"`
+}
+
+// TestChannelRequest is the request body for testing a notification channel.
+type TestChannelRequest struct {
+	Provider   string `json:"provider" binding:"required"`
+	Target     string `json:"target"`
+	ConfigJSON string `json:"config_json"`
 }
 
 // MetricQuery holds parameters for querying metric time-series data.

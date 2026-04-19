@@ -597,6 +597,54 @@ func (l *Logic) ListChannels(ctx context.Context) ([]model.AlertNotificationChan
 	return rows, err
 }
 
+// TestChannel 测试通知渠道配置。
+//
+// 根据 provider/channel type 发送一次测试消息，验证配置可用性。
+func (l *Logic) TestChannel(ctx context.Context, provider, target, configJSON string) error {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		provider = "log"
+	}
+	channel := model.AlertNotificationChannel{
+		Name:       "test-channel",
+		Type:       provider,
+		Provider:   provider,
+		Target:     strings.TrimSpace(target),
+		ConfigJSON: strings.TrimSpace(configJSON),
+		Enabled:    true,
+	}
+	alert := model.AlertEvent{
+		Title:    "OpsPilot test alert",
+		Message:  "This is a test notification from OpsPilot monitoring",
+		Severity: "warning",
+		Metric:   "test_metric",
+		Status:   "firing",
+	}
+
+	// Prefer provider-registry path (dingtalk/wecom/email/sms/log), fallback to notifier path (webhook/log).
+	if p, ok := notifhandler.NewDefaultProviderRegistry().Get(provider); ok {
+		return p.Send(ctx, &alert, channel)
+	}
+
+	notifier, err := buildNotifier(provider)
+	if err != nil {
+		return err
+	}
+	result := notifier.Send(ctx, channel, NotificationPayload{
+		Title:    alert.Title,
+		Message:  alert.Message,
+		Severity: alert.Severity,
+		Metric:   alert.Metric,
+	})
+	if strings.EqualFold(strings.TrimSpace(result.Status), "failed") {
+		if strings.TrimSpace(result.Error) != "" {
+			return fmt.Errorf("%s", strings.TrimSpace(result.Error))
+		}
+		return fmt.Errorf("test notification failed")
+	}
+	return nil
+}
+
 // CreateChannel 创建通知渠道。
 //
 // 验证渠道类型和名称后持久化到数据库。
