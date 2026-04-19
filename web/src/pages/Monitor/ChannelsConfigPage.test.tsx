@@ -81,6 +81,18 @@ describe('ChannelsConfigPage', () => {
     });
   });
 
+  it('reloads channel list with project scope after switching scope', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.listAlertChannels).toHaveBeenCalledWith({ projectId: '42' });
+    });
+  });
+
   it('shows error when test-send API fails', async () => {
     mockApi.monitoring.testAlertChannel.mockRejectedValueOnce(new Error('send failed'));
     render(<ChannelsConfigPage />);

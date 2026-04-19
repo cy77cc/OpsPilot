@@ -60,6 +60,7 @@ const RulesConfigPage: React.FC = () => {
   const [editingBindingChannelId, setEditingBindingChannelId] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
   const mountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
   const bindingLoadSeqRef = useRef(0);
   const activeBindingRuleIdRef = useRef<string | null>(null);
   const bindingOpenRef = useRef(false);
@@ -73,11 +74,13 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const load = async (showError = true): Promise<boolean> => {
+    const seq = loadSeqRef.current + 1;
+    loadSeqRef.current = seq;
     setLoading(true);
     try {
       const res = await Api.monitoring.getEffectiveRules({ projectId: currentProjectId, page: 1, pageSize: 50 });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current) return false;
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setRows(
         list.map((item: any) => ({
           id: String(item.id),
@@ -91,12 +94,13 @@ const RulesConfigPage: React.FC = () => {
       );
       return true;
     } catch {
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       if (showError) {
         message.error('规则列表加载失败');
       }
       return false;
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && seq === loadSeqRef.current) {
         setLoading(false);
       }
     }
@@ -105,12 +109,15 @@ const RulesConfigPage: React.FC = () => {
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      loadSeqRef.current += 1;
     };
   }, []);
 
   useEffect(() => {
     if (scope.scope === 'project' && !currentProjectId) {
+      loadSeqRef.current += 1;
       setRows([]);
+      setLoading(false);
       return;
     }
     void load();

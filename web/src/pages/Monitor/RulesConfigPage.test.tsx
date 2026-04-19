@@ -70,6 +70,52 @@ describe('RulesConfigPage', () => {
     });
   });
 
+  it('keeps latest scope rows when an older request resolves late', async () => {
+    const createDeferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => {
+        resolve = res;
+      });
+      return { promise, resolve };
+    };
+    const globalRequest = createDeferred<any>();
+    const projectRequest = createDeferred<any>();
+    mockApi.monitoring.getEffectiveRules.mockReset();
+    mockApi.monitoring.getEffectiveRules.mockImplementation((params?: { projectId?: string }) => {
+      if (params?.projectId === '42') {
+        return projectRequest.promise;
+      }
+      return globalRequest.promise;
+    });
+
+    render(<RulesConfigPage />);
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+    await waitFor(() => {
+      expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledTimes(2);
+    });
+
+    projectRequest.resolve({
+      data: {
+        list: [{ id: 2, name: 'Project Rule', severity: 'warning', threshold: 80, scope: 'project', inherit_key: 'project-rule' }],
+        total: 1,
+      },
+    });
+    expect(await screen.findByText('Project Rule')).toBeInTheDocument();
+
+    globalRequest.resolve({
+      data: {
+        list: [{ id: 1, name: 'Global Rule', severity: 'warning', threshold: 90, scope: 'global', inherit_key: 'global-rule' }],
+        total: 1,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Global Rule')).not.toBeInTheDocument();
+      expect(screen.getByText('Project Rule')).toBeInTheDocument();
+    });
+  });
+
   it('creates a rule and reloads list', async () => {
     render(<RulesConfigPage />);
     await screen.findByText('CPU High');

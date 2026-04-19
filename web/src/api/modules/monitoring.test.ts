@@ -57,6 +57,19 @@ describe('monitoringApi config endpoints', () => {
     expect(deleteMock).toHaveBeenCalledWith('/alert-channels/1001');
   });
 
+  it('calls alert channels list endpoint with scope params', async () => {
+    const getMock = vi.spyOn(apiService, 'get').mockResolvedValue({
+      success: true,
+      data: { list: [], total: 0 },
+    } as any);
+
+    await monitoringApi.listAlertChannels({ projectId: '42' });
+
+    expect(getMock).toHaveBeenCalledWith('/alert-channels', {
+      params: { project_id: 42 },
+    });
+  });
+
   it('calls create severity route endpoint with mapped payload', async () => {
     const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
       success: true,

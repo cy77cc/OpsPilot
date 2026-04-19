@@ -239,8 +239,12 @@ export const monitoringApi = {
   async disableAlertRule(id: string): Promise<ApiResponse<any>> {
     return apiService.post(`/alert-rules/${encodeURIComponent(id)}/disable`);
   },
-  async listAlertChannels(): Promise<ApiResponse<PaginatedResponse<AlertChannel>>> {
-    const response = await apiService.get<any>('/alert-channels');
+  async listAlertChannels(params?: { projectId?: string }): Promise<ApiResponse<PaginatedResponse<AlertChannel>>> {
+    const response = await apiService.get<any>('/alert-channels', {
+      params: {
+        project_id: toPositiveIntOrUndefined(params?.projectId),
+      },
+    });
     const raw = Array.isArray(response.data) ? response.data : (response.data as any)?.list || [];
     return {
       ...response,

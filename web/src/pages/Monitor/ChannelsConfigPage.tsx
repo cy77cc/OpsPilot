@@ -61,7 +61,7 @@ const ChannelsConfigPage: React.FC = () => {
     loadSeqRef.current = seq;
     setLoading(true);
     try {
-      const res = await Api.monitoring.listAlertChannels();
+      const res = await Api.monitoring.listAlertChannels({ projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
       if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setRows(
@@ -86,12 +86,21 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   useEffect(() => {
-    void loadChannels();
     return () => {
       mountedRef.current = false;
       loadSeqRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    if (scope.scope === 'project' && !currentProjectId) {
+      loadSeqRef.current += 1;
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+    void loadChannels();
+  }, [scope.scope, currentProjectId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
