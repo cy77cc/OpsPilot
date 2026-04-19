@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -246,6 +247,47 @@ func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input S
 	return &row, nil
 }
 
+func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority int, enabled bool) (*model.AlertRuleChannelBinding, error) {
+	if ruleID == 0 || channelID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	row := model.AlertRuleChannelBinding{}
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Select("id").Where("id = ?", ruleID).Take(&model.AlertRule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Select("id").Where("id = ?", channelID).Take(&model.AlertNotificationChannel{}).Error; err != nil {
+			return err
+		}
+
+		existing, err := findScopedBinding(tx, projectID, ruleID, channelID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if existing != nil {
+			row = *existing
+			return nil
+		}
+
+		row = model.AlertRuleChannelBinding{
+			RuleID:    ruleID,
+			ChannelID: channelID,
+			Priority:  normalizeBindingPriority(priority),
+			Enabled:   enabled,
+		}
+		if projectID > 0 {
+			pid := projectID
+			row.ProjectID = &pid
+		}
+		return tx.Create(&row).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
 	scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, input)
 	if err != nil {
@@ -282,6 +324,37 @@ func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint
 		fetch = fetch.Where("project_id IS NULL")
 	}
 	if err := fetch.Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) UpdateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority int, enabled bool) (*model.AlertRuleChannelBinding, error) {
+	if ruleID == 0 || channelID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var row model.AlertRuleChannelBinding
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		existing, err := findScopedBinding(tx, projectID, ruleID, channelID)
+		if err != nil {
+			return err
+		}
+
+		updates := map[string]any{
+			"priority": normalizeBindingPriority(priority),
+			"enabled":  enabled,
+		}
+		result := tx.Model(&model.AlertRuleChannelBinding{}).Where("id = ?", existing.ID).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Where("id = ?", existing.ID).Take(&row).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &row, nil
@@ -334,6 +407,33 @@ func (l *Logic) DeleteRuleChannelBinding(ctx context.Context, projectID, ruleID,
 		}
 		return nil
 	})
+}
+
+func findScopedBinding(tx *gorm.DB, projectID, ruleID, channelID uint) (*model.AlertRuleChannelBinding, error) {
+	q := tx.Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+
+	ids := make([]uint, 0, 2)
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if len(ids) > 1 {
+		return nil, fmt.Errorf("multiple bindings matched scoped write: rule_id=%d channel_id=%d project_id=%d", ruleID, channelID, projectID)
+	}
+
+	var row model.AlertRuleChannelBinding
+	if err := tx.Where("id = ?", ids[0]).Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
 }
 
 func parseChannelIDs(raw string) []uint {
@@ -427,4 +527,11 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 		channelIDs = append(channelIDs, channelID)
 	}
 	return scope, severity, channelIDs, nil
+}
+
+func normalizeBindingPriority(priority int) int {
+	if priority > 0 {
+		return priority
+	}
+	return 100
 }

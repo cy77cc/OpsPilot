@@ -15,7 +15,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +31,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const maxWebhookPayloadBytes = 1 << 20 // 1 MiB
@@ -394,6 +397,23 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	httpx.OK(c, rule)
 }
 
+// DeleteRule 删除告警规则。
+func (h *Handler) DeleteRule(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	ruleID := httpx.UintFromParam(c, "id")
+	err := h.logic.DeleteRule(c.Request.Context(), ruleID)
+	if h.handleDeleteError(c, err) {
+		return
+	}
+	if _, err := h.ruleSync.SyncRules(c.Request.Context()); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"deleted": true})
+}
+
 // GetRuleChannels 获取规则绑定的通知渠道。
 func (h *Handler) GetRuleChannels(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
@@ -439,6 +459,102 @@ func (h *Handler) UpdateRuleChannels(c *gin.Context) {
 	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
 }
 
+// CreateRuleChannelBinding 创建单条规则-渠道绑定。
+func (h *Handler) CreateRuleChannelBinding(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	ruleID := httpx.UintFromParam(c, "id")
+	var req v1.RuleChannelBindingCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	row, err := h.logic.CreateRuleChannelBinding(
+		c.Request.Context(),
+		projectID,
+		ruleID,
+		req.ChannelID,
+		positiveOr(req.Priority, 100),
+		enabled,
+	)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, row)
+}
+
+// UpdateRuleChannelBinding 更新单条规则-渠道绑定。
+func (h *Handler) UpdateRuleChannelBinding(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	ruleID := httpx.UintFromParam(c, "id")
+	channelID := httpx.UintFromParam(c, "channel_id")
+	var req v1.RuleChannelBindingUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	row, err := h.logic.UpdateRuleChannelBinding(
+		c.Request.Context(),
+		projectID,
+		ruleID,
+		channelID,
+		positiveOr(req.Priority, 100),
+		enabled,
+	)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return
+	}
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, row)
+}
+
+// DeleteRuleChannelBinding 删除单条规则-渠道绑定。
+func (h *Handler) DeleteRuleChannelBinding(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	projectID := httpx.UintFromQuery(c, "project_id")
+	err := h.logic.DeleteRuleChannelBinding(
+		c.Request.Context(),
+		projectID,
+		httpx.UintFromParam(c, "id"),
+		httpx.UintFromParam(c, "channel_id"),
+	)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return
+	}
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"deleted": true})
+}
+
 // GetSeverityRoutes 获取严重级别路由配置。
 func (h *Handler) GetSeverityRoutes(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
@@ -451,6 +567,33 @@ func (h *Handler) GetSeverityRoutes(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// CreateSeverityRoute 创建单条严重级别路由。
+func (h *Handler) CreateSeverityRoute(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req v1.SeverityRouteUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	item, err := h.logic.CreateSeverityRoute(c.Request.Context(), projectID, monitoringlogic.SeverityRouteInput{
+		Scope:      strings.TrimSpace(req.Scope),
+		Severity:   strings.TrimSpace(req.Severity),
+		ChannelIDs: req.ChannelIDs,
+		Enabled:    req.Enabled == nil || *req.Enabled,
+	})
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, item)
 }
 
 // UpdateSeverityRoutes 更新严重级别路由配置。
@@ -498,6 +641,59 @@ func (h *Handler) UpdateSeverityRoutes(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// UpdateSeverityRouteByID 更新单条严重级别路由。
+func (h *Handler) UpdateSeverityRouteByID(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req v1.SeverityRouteUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	item, err := h.logic.UpdateSeverityRoute(
+		c.Request.Context(),
+		httpx.UintFromParam(c, "id"),
+		projectID,
+		monitoringlogic.SeverityRouteInput{
+			Scope:      strings.TrimSpace(req.Scope),
+			Severity:   strings.TrimSpace(req.Severity),
+			ChannelIDs: req.ChannelIDs,
+			Enabled:    req.Enabled == nil || *req.Enabled,
+		},
+	)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return
+	}
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, item)
+}
+
+// DeleteSeverityRoute 删除单条严重级别路由。
+func (h *Handler) DeleteSeverityRoute(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	err := h.logic.DeleteSeverityRoute(c.Request.Context(), httpx.UintFromParam(c, "id"), httpx.UintFromQuery(c, "project_id"))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return
+	}
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"deleted": true})
 }
 
 // EnableRule 启用告警规则。
@@ -755,6 +951,17 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	httpx.OK(c, item)
 }
 
+// DeleteChannel 删除通知渠道。
+func (h *Handler) DeleteChannel(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	if h.handleDeleteError(c, h.logic.DeleteChannel(c.Request.Context(), httpx.UintFromParam(c, "id"))) {
+		return
+	}
+	httpx.OK(c, gin.H{"deleted": true})
+}
+
 // TestChannel 测试通知渠道。
 //
 // @Summary 测试通知渠道
@@ -882,4 +1089,31 @@ func positiveOr(v, d int) int {
 		return v
 	}
 	return d
+}
+
+func (h *Handler) handleDeleteError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var conflict *monitoringlogic.DeleteConflictError
+	if errors.As(err, &conflict) {
+		c.JSON(http.StatusOK, gin.H{
+			"code": http.StatusConflict,
+			"msg":  "resource has references",
+			"data": gin.H{
+				"resource": conflict.Resource,
+				"blockers": conflict.Blockers,
+			},
+		})
+		return true
+	}
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return true
+	}
+
+	httpx.ServerErr(c, err)
+	return true
 }

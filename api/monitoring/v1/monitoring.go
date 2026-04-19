@@ -56,6 +56,30 @@ type TestChannelRequest struct {
 	ConfigJSON string `json:"config_json"`
 }
 
+// SeverityRouteUpsertRequest is the request body for creating or updating a severity route.
+type SeverityRouteUpsertRequest struct {
+	ProjectID  *uint  `json:"project_id"`
+	Scope      string `json:"scope"`
+	Severity   string `json:"severity" binding:"required"`
+	ChannelIDs []uint `json:"channel_ids"`
+	Enabled    *bool  `json:"enabled"`
+}
+
+// RuleChannelBindingCreateRequest is the request body for creating a rule-channel binding.
+type RuleChannelBindingCreateRequest struct {
+	ProjectID *uint `json:"project_id"`
+	ChannelID uint  `json:"channel_id" binding:"required"`
+	Priority  int   `json:"priority"`
+	Enabled   *bool `json:"enabled"`
+}
+
+// RuleChannelBindingUpdateRequest is the request body for updating a rule-channel binding.
+type RuleChannelBindingUpdateRequest struct {
+	ProjectID *uint `json:"project_id"`
+	Priority  int   `json:"priority"`
+	Enabled   *bool `json:"enabled"`
+}
+
 // MetricQuery holds parameters for querying metric time-series data.
 type MetricQuery struct {
 	Metric         string
