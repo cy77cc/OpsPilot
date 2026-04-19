@@ -178,6 +178,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	env := setupMonitoringConfigTestEnv(t)
 	seedMonitoringWriteUser(t, env.db, 1001)
 	projectID := uint(42)
+	createProjectID := uint(77)
 	if err := env.db.Create(&monitoringmodel.AlertRule{
 		ID: 7, Name: "cpu", Metric: "cpu_usage", Operator: "gt", Threshold: 80, Severity: "warning", Enabled: true, State: "enabled",
 	}).Error; err != nil {
@@ -185,6 +186,17 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	}
 	if err := env.db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
 		t.Fatalf("seed channel: %v", err)
+	}
+	if err := env.db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1002, Name: "slack", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
+		t.Fatalf("seed create channel: %v", err)
+	}
+	if err := env.db.Create(&monitoringmodel.AlertRuleChannelBinding{
+		RuleID:    7,
+		ChannelID: 1001,
+		Priority:  1,
+		Enabled:   true,
+	}).Error; err != nil {
+		t.Fatalf("seed global binding: %v", err)
 	}
 	if err := env.db.Create(&monitoringmodel.AlertRuleChannelBinding{
 		RuleID:    7,
@@ -197,7 +209,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	}
 
 	t.Run("POST /api/v1/alert-rules/:id/channels", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1001,"project_id":42,"priority":2,"enabled":true}`))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1002,"project_id":77,"priority":2,"enabled":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
@@ -206,6 +218,16 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
 		assertMonitoringSuccessCode(t, w.Body.Bytes(), "create rule-channel binding")
+
+		var created int64
+		if err := env.db.Model(&monitoringmodel.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1002, createProjectID).
+			Count(&created).Error; err != nil {
+			t.Fatalf("count created binding: %v", err)
+		}
+		if created != 1 {
+			t.Fatalf("expected created binding to exist, got count=%d", created)
+		}
 	})
 
 	t.Run("PUT /api/v1/alert-rules/:id/channels/:channel_id", func(t *testing.T) {
@@ -229,6 +251,26 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 			t.Fatalf("delete expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
 		assertMonitoringSuccessCode(t, w.Body.Bytes(), "delete rule-channel binding")
+
+		var projectScoped int64
+		if err := env.db.Model(&monitoringmodel.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1001, projectID).
+			Count(&projectScoped).Error; err != nil {
+			t.Fatalf("count project-scoped binding after delete: %v", err)
+		}
+		if projectScoped != 0 {
+			t.Fatalf("expected project-scoped binding to be deleted, got count=%d", projectScoped)
+		}
+
+		var globalScoped int64
+		if err := env.db.Model(&monitoringmodel.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ? AND project_id IS NULL", 7, 1001).
+			Count(&globalScoped).Error; err != nil {
+			t.Fatalf("count global binding after scoped delete: %v", err)
+		}
+		if globalScoped != 1 {
+			t.Fatalf("expected global binding to remain after scoped delete, got count=%d", globalScoped)
+		}
 	})
 }
 
