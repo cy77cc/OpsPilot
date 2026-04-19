@@ -34,4 +34,135 @@ describe('monitoringApi config endpoints', () => {
       config_json: '{}',
     });
   });
+
+  it('calls delete alert rule endpoint', async () => {
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({
+      success: true,
+      data: { deleted: true },
+    } as any);
+
+    await monitoringApi.deleteAlertRule('7');
+
+    expect(deleteMock).toHaveBeenCalledWith('/alert-rules/7');
+  });
+
+  it('calls delete alert channel endpoint', async () => {
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({
+      success: true,
+      data: { deleted: true },
+    } as any);
+
+    await monitoringApi.deleteAlertChannel('1001');
+
+    expect(deleteMock).toHaveBeenCalledWith('/alert-channels/1001');
+  });
+
+  it('calls create severity route endpoint with mapped payload', async () => {
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: { id: 31 },
+    } as any);
+
+    await monitoringApi.createSeverityRoute({
+      projectId: '42',
+      scope: 'project',
+      severity: 'critical',
+      channelIds: ['1001', 'bad', '0', '-1', '1002'],
+      enabled: false,
+    });
+
+    expect(postMock).toHaveBeenCalledWith('/alert-routing/severity', {
+      project_id: 42,
+      scope: 'project',
+      severity: 'critical',
+      channel_ids: [1001, 1002],
+      enabled: false,
+    });
+  });
+
+  it('calls update severity route by id endpoint with mapped payload', async () => {
+    const putMock = vi.spyOn(apiService, 'put').mockResolvedValue({
+      success: true,
+      data: { id: 31 },
+    } as any);
+
+    await monitoringApi.updateSeverityRouteByID('31', {
+      severity: 'warning',
+      channelIds: ['1001'],
+    });
+
+    expect(putMock).toHaveBeenCalledWith('/alert-routing/severity/31', {
+      project_id: undefined,
+      scope: undefined,
+      severity: 'warning',
+      channel_ids: [1001],
+      enabled: true,
+    });
+  });
+
+  it('calls delete severity route endpoint with project scope params', async () => {
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({
+      success: true,
+      data: { deleted: true },
+    } as any);
+
+    await monitoringApi.deleteSeverityRoute('31', '42');
+
+    expect(deleteMock).toHaveBeenCalledWith('/alert-routing/severity/31', {
+      params: { project_id: '42' },
+    });
+  });
+
+  it('calls create rule-channel binding endpoint with mapped payload', async () => {
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as any);
+
+    await monitoringApi.createRuleChannelBinding('7', {
+      projectId: '42',
+      channelId: '1001',
+      priority: 2,
+      enabled: false,
+    });
+
+    expect(postMock).toHaveBeenCalledWith('/alert-rules/7/channels', {
+      project_id: 42,
+      channel_id: 1001,
+      priority: 2,
+      enabled: false,
+    });
+  });
+
+  it('calls update rule-channel binding endpoint with project scope payload', async () => {
+    const putMock = vi.spyOn(apiService, 'put').mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as any);
+
+    await monitoringApi.updateRuleChannelBinding('7', '1001', {
+      projectId: '42',
+      priority: 3,
+      enabled: true,
+    });
+
+    expect(putMock).toHaveBeenCalledWith('/alert-rules/7/channels/1001', {
+      project_id: 42,
+      priority: 3,
+      enabled: true,
+    });
+  });
+
+  it('calls delete rule-channel binding endpoint with project scope params', async () => {
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({
+      success: true,
+      data: { deleted: true },
+    } as any);
+
+    await monitoringApi.deleteRuleChannelBinding('7', '1001', '42');
+
+    expect(deleteMock).toHaveBeenCalledWith('/alert-rules/7/channels/1001', {
+      params: { project_id: '42' },
+    });
+  });
 });

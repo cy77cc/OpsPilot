@@ -224,6 +224,9 @@ export const monitoringApi = {
   async updateAlertRule(id: string, payload: { name?: string; operator?: string; threshold?: number; severity?: string; enabled?: boolean }): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-rules/${encodeURIComponent(id)}`, payload);
   },
+  async deleteAlertRule(id: string): Promise<ApiResponse<any>> {
+    return apiService.delete(`/alert-rules/${encodeURIComponent(id)}`);
+  },
   async enableAlertRule(id: string): Promise<ApiResponse<any>> {
     return apiService.post(`/alert-rules/${encodeURIComponent(id)}/enable`);
   },
@@ -261,6 +264,9 @@ export const monitoringApi = {
       project_id: payload.projectId,
     });
   },
+  async deleteAlertChannel(id: string): Promise<ApiResponse<any>> {
+    return apiService.delete(`/alert-channels/${encodeURIComponent(id)}`);
+  },
   async testAlertChannel(payload: { provider: string; target?: string; configJson?: string }): Promise<ApiResponse<any>> {
     return apiService.post('/alert-channels/test', {
       provider: payload.provider,
@@ -290,6 +296,49 @@ export const monitoringApi = {
   },
   async updateSeverityRoutes(payload: any): Promise<ApiResponse<any>> {
     return apiService.put('/alert-routing/severity', payload);
+  },
+  async createSeverityRoute(payload: { projectId?: string; scope?: string; severity: string; channelIds: string[]; enabled?: boolean }): Promise<ApiResponse<any>> {
+    return apiService.post('/alert-routing/severity', {
+      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      scope: payload.scope,
+      severity: payload.severity,
+      channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      enabled: payload.enabled ?? true,
+    });
+  },
+  async updateSeverityRouteByID(id: string, payload: { projectId?: string; scope?: string; severity: string; channelIds: string[]; enabled?: boolean }): Promise<ApiResponse<any>> {
+    return apiService.put(`/alert-routing/severity/${encodeURIComponent(id)}`, {
+      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      scope: payload.scope,
+      severity: payload.severity,
+      channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      enabled: payload.enabled ?? true,
+    });
+  },
+  async deleteSeverityRoute(id: string, projectId?: string): Promise<ApiResponse<any>> {
+    return apiService.delete(`/alert-routing/severity/${encodeURIComponent(id)}`, {
+      params: { project_id: projectId },
+    });
+  },
+  async createRuleChannelBinding(ruleId: string, payload: { projectId?: string; channelId: string; priority?: number; enabled?: boolean }): Promise<ApiResponse<any>> {
+    return apiService.post(`/alert-rules/${encodeURIComponent(ruleId)}/channels`, {
+      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      channel_id: Number(payload.channelId),
+      priority: payload.priority,
+      enabled: payload.enabled ?? true,
+    });
+  },
+  async updateRuleChannelBinding(ruleId: string, channelId: string, payload: { projectId?: string; priority?: number; enabled?: boolean }): Promise<ApiResponse<any>> {
+    return apiService.put(`/alert-rules/${encodeURIComponent(ruleId)}/channels/${encodeURIComponent(channelId)}`, {
+      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      priority: payload.priority,
+      enabled: payload.enabled,
+    });
+  },
+  async deleteRuleChannelBinding(ruleId: string, channelId: string, projectId?: string): Promise<ApiResponse<any>> {
+    return apiService.delete(`/alert-rules/${encodeURIComponent(ruleId)}/channels/${encodeURIComponent(channelId)}`, {
+      params: { project_id: projectId },
+    });
   },
   async listAlertDeliveries(params?: { alertId?: string; channelType?: string; status?: string; page?: number; pageSize?: number }): Promise<ApiResponse<PaginatedResponse<AlertDelivery>>> {
     const response = await apiService.get<any>('/alert-deliveries', {
