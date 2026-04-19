@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,39 +24,62 @@ import (
 	"gorm.io/gorm"
 )
 
+type monitoringConfigTestEnv struct {
+	db     *gorm.DB
+	router *gin.Engine
+}
+
+var (
+	monitoringConfigEnvOnce sync.Once
+	monitoringConfigEnv     *monitoringConfigTestEnv
+	monitoringConfigEnvErr  error
+
+	monitoringConfigOldJWTSecret      string
+	monitoringConfigOldJWTIssuer      string
+	monitoringConfigOldPrometheusAddr string
+	monitoringConfigOldRulesFile      string
+	monitoringConfigOldJWTExpire      time.Duration
+	monitoringConfigTempDir           string
+	monitoringConfigConfigured        bool
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	restoreMonitoringConfigTestGlobals()
+	os.Exit(code)
+}
+
 func TestChannelTestEndpoint_Returns200ForValidPayload(t *testing.T) {
-	db := setupMonitoringConfigDB(t, "channel-test-endpoint")
-	seedMonitoringWriteUser(t, db, 1001)
-	r := setupMonitoringConfigRouter(t, db)
+	env := setupMonitoringConfigTestEnv(t)
+	seedMonitoringWriteUser(t, env.db, 1001)
 
 	body := `{"provider":"webhook","target":"https://example.com/hook","config_json":"{}"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-channels/test", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	env.router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 
 func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
-	db := setupMonitoringConfigDB(t, "delete-rule-endpoint-conflict")
-	seedMonitoringWriteUser(t, db, 1001)
-	if err := db.Create(&monitoringmodel.AlertRule{
+	env := setupMonitoringConfigTestEnv(t)
+	seedMonitoringWriteUser(t, env.db, 1001)
+	if err := env.db.Create(&monitoringmodel.AlertRule{
 		ID: 7, Name: "cpu", Metric: "cpu_usage", Operator: "gt", Threshold: 80, Severity: "warning", Enabled: true, State: "enabled",
 	}).Error; err != nil {
 		t.Fatalf("seed alert rule: %v", err)
 	}
-	if err := db.Create(&monitoringmodel.AlertRuleChannelBinding{RuleID: 7, ChannelID: 1001, Priority: 1, Enabled: true}).Error; err != nil {
+	if err := env.db.Create(&monitoringmodel.AlertRuleChannelBinding{RuleID: 7, ChannelID: 1001, Priority: 1, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed binding: %v", err)
 	}
-	r := setupMonitoringConfigRouter(t, db)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7", nil)
 	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	env.router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -71,7 +96,7 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
 	}
-	// Contract for this change set: delete dependency conflicts return business code 409 with blockers in data.
+	// Task 3 plan/design contract: delete dependency conflicts use the response envelope with business code 409 plus blockers in data.
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("expected response code field 409, got %d body=%s", resp.Code, w.Body.String())
 	}
@@ -81,14 +106,13 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 }
 
 func TestDeleteChannelEndpoint_Returns404WhenMissing(t *testing.T) {
-	db := setupMonitoringConfigDB(t, "delete-channel-endpoint-missing")
-	seedMonitoringWriteUser(t, db, 1001)
-	r := setupMonitoringConfigRouter(t, db)
+	env := setupMonitoringConfigTestEnv(t)
+	seedMonitoringWriteUser(t, env.db, 1001)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-channels/9999", nil)
 	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	env.router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -105,22 +129,21 @@ func TestDeleteChannelEndpoint_Returns404WhenMissing(t *testing.T) {
 }
 
 func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
-	db := setupMonitoringConfigDB(t, "severity-route-single-crud")
-	seedMonitoringWriteUser(t, db, 1001)
-	if err := db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
+	env := setupMonitoringConfigTestEnv(t)
+	seedMonitoringWriteUser(t, env.db, 1001)
+	if err := env.db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
 		t.Fatalf("seed channel: %v", err)
 	}
-	if err := db.Create(&monitoringmodel.AlertSeverityRoute{ID: 31, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true}).Error; err != nil {
+	if err := env.db.Create(&monitoringmodel.AlertSeverityRoute{ID: 31, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed severity route: %v", err)
 	}
-	r := setupMonitoringConfigRouter(t, db)
 
 	t.Run("POST /api/v1/alert-routing/severity", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-routing/severity", strings.NewReader(`{"scope":"global","severity":"critical","channel_ids":[1001],"enabled":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -132,7 +155,7 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("update expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -143,7 +166,7 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-routing/severity/31", nil)
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("delete expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -152,18 +175,18 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 }
 
 func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
-	db := setupMonitoringConfigDB(t, "rule-channel-binding-single-crud")
-	seedMonitoringWriteUser(t, db, 1001)
+	env := setupMonitoringConfigTestEnv(t)
+	seedMonitoringWriteUser(t, env.db, 1001)
 	projectID := uint(42)
-	if err := db.Create(&monitoringmodel.AlertRule{
+	if err := env.db.Create(&monitoringmodel.AlertRule{
 		ID: 7, Name: "cpu", Metric: "cpu_usage", Operator: "gt", Threshold: 80, Severity: "warning", Enabled: true, State: "enabled",
 	}).Error; err != nil {
 		t.Fatalf("seed alert rule: %v", err)
 	}
-	if err := db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
+	if err := env.db.Create(&monitoringmodel.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
 		t.Fatalf("seed channel: %v", err)
 	}
-	if err := db.Create(&monitoringmodel.AlertRuleChannelBinding{
+	if err := env.db.Create(&monitoringmodel.AlertRuleChannelBinding{
 		RuleID:    7,
 		ChannelID: 1001,
 		ProjectID: &projectID,
@@ -172,14 +195,13 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed scoped binding: %v", err)
 	}
-	r := setupMonitoringConfigRouter(t, db)
 
 	t.Run("POST /api/v1/alert-rules/:id/channels", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1001,"project_id":42,"priority":2,"enabled":true}`))
 		req.Header.Set("Content-Type", "application/json")
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -191,7 +213,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("update expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -202,7 +224,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7/channels/1001?project_id=42", nil)
 		authorizeMonitoringRequest(t, req, 1001)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		env.router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("delete expected 200, got %d body=%s", w.Code, w.Body.String())
 		}
@@ -210,12 +232,29 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	})
 }
 
-func setupMonitoringConfigDB(t *testing.T, dbName string) *gorm.DB {
+func setupMonitoringConfigTestEnv(t *testing.T) *monitoringConfigTestEnv {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file:"+dbName+"?mode=memory&cache=shared"), &gorm.Config{})
+	monitoringConfigEnvOnce.Do(func() {
+		monitoringConfigEnvErr = initMonitoringConfigTestEnv()
+	})
+	if monitoringConfigEnvErr != nil {
+		t.Fatalf("init monitoring config test env: %v", monitoringConfigEnvErr)
+	}
+	resetMonitoringConfigTables(t, monitoringConfigEnv.db)
+	return monitoringConfigEnv
+}
+
+func initMonitoringConfigTestEnv() error {
+	gin.SetMode(gin.TestMode)
+
+	if err := configureMonitoringConfigTestGlobals(); err != nil {
+		return err
+	}
+
+	db, err := gorm.Open(sqlite.Open("file:monitoring-handler-config-shared?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
+		return err
 	}
 	if err := db.AutoMigrate(
 		&usermodel.User{},
@@ -228,56 +267,83 @@ func setupMonitoringConfigDB(t *testing.T, dbName string) *gorm.DB {
 		&monitoringmodel.AlertRuleChannelBinding{},
 		&monitoringmodel.AlertSeverityRoute{},
 	); err != nil {
-		t.Fatalf("auto migrate: %v", err)
+		return err
 	}
-	return db
-}
-
-func setupMonitoringConfigRouter(t *testing.T, db *gorm.DB) *gin.Engine {
-	t.Helper()
-
-	configureJWTForMonitoringHandlerTests(t)
-	configurePrometheusForMonitoringHandlerTests(t)
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
 	monitoringapi.RegisterMonitoringHandlers(v1, &svc.ServiceContext{DB: db})
-	return r
+
+	monitoringConfigEnv = &monitoringConfigTestEnv{
+		db:     db,
+		router: r,
+	}
+	return nil
 }
 
-func configurePrometheusForMonitoringHandlerTests(t *testing.T) {
-	t.Helper()
+func configureMonitoringConfigTestGlobals() error {
+	monitoringConfigOldJWTSecret = config.CFG.JWT.Secret
+	monitoringConfigOldJWTIssuer = config.CFG.JWT.Issuer
+	monitoringConfigOldJWTExpire = config.CFG.JWT.Expire
+	monitoringConfigOldPrometheusAddr = config.CFG.Prometheus.Address
+	monitoringConfigOldRulesFile = os.Getenv("PROMETHEUS_ALERTING_RULES_FILE")
 
-	reloadStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(reloadStub.Close)
-
-	oldAddress := config.CFG.Prometheus.Address
-	config.CFG.Prometheus.Address = reloadStub.URL
-	t.Cleanup(func() {
-		config.CFG.Prometheus.Address = oldAddress
-	})
-
-	t.Setenv("PROMETHEUS_ALERTING_RULES_FILE", filepath.Join(t.TempDir(), "alerting_rules.yml"))
-}
-
-func configureJWTForMonitoringHandlerTests(t *testing.T) {
-	t.Helper()
-
-	oldSecret := config.CFG.JWT.Secret
-	oldIssuer := config.CFG.JWT.Issuer
-	oldExpire := config.CFG.JWT.Expire
+	monitoringConfigTempDir, monitoringConfigEnvErr = os.MkdirTemp("", "monitoring-handler-config-test-*")
+	if monitoringConfigEnvErr != nil {
+		return monitoringConfigEnvErr
+	}
 
 	config.CFG.JWT.Secret = "monitoring-handler-config-test-secret"
 	config.CFG.JWT.Issuer = "monitoring-handler-config-test"
 	config.CFG.JWT.Expire = time.Hour
+	config.CFG.Prometheus.Address = "http://127.0.0.1:1"
+	if err := os.Setenv("PROMETHEUS_ALERTING_RULES_FILE", filepath.Join(monitoringConfigTempDir, "alerting_rules.yml")); err != nil {
+		return err
+	}
 
-	t.Cleanup(func() {
-		config.CFG.JWT.Secret = oldSecret
-		config.CFG.JWT.Issuer = oldIssuer
-		config.CFG.JWT.Expire = oldExpire
-	})
+	monitoringConfigConfigured = true
+	return nil
+}
+
+func restoreMonitoringConfigTestGlobals() {
+	if !monitoringConfigConfigured {
+		return
+	}
+
+	config.CFG.JWT.Secret = monitoringConfigOldJWTSecret
+	config.CFG.JWT.Issuer = monitoringConfigOldJWTIssuer
+	config.CFG.JWT.Expire = monitoringConfigOldJWTExpire
+	config.CFG.Prometheus.Address = monitoringConfigOldPrometheusAddr
+
+	if monitoringConfigOldRulesFile == "" {
+		_ = os.Unsetenv("PROMETHEUS_ALERTING_RULES_FILE")
+	} else {
+		_ = os.Setenv("PROMETHEUS_ALERTING_RULES_FILE", monitoringConfigOldRulesFile)
+	}
+	if monitoringConfigTempDir != "" {
+		_ = os.RemoveAll(monitoringConfigTempDir)
+	}
+}
+
+func resetMonitoringConfigTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	cleanup := db.Session(&gorm.Session{AllowGlobalUpdate: true})
+	for _, row := range []any{
+		&usermodel.UserRole{},
+		&usermodel.RolePermission{},
+		&usermodel.Permission{},
+		&usermodel.Role{},
+		&usermodel.User{},
+		&monitoringmodel.AlertRuleChannelBinding{},
+		&monitoringmodel.AlertSeverityRoute{},
+		&monitoringmodel.AlertNotificationChannel{},
+		&monitoringmodel.AlertRule{},
+	} {
+		if err := cleanup.Delete(row).Error; err != nil {
+			t.Fatalf("reset table for %T: %v", row, err)
+		}
+	}
 }
 
 func authorizeMonitoringRequest(t *testing.T, req *http.Request, uid uint) {
