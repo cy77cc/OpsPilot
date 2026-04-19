@@ -120,11 +120,11 @@ security:
 
 notification:
   smtp:
-    host: ${SMTP_HOST}
-    port: ${SMTP_PORT}
-    username: ${SMTP_USERNAME}
-    password: ${SMTP_PASSWORD}
-    from: ${SMTP_FROM}
+    host: ${NOTIFICATION_MTP_HOST}
+    port: ${NOTIFICATION_SMTP_PORT}
+    username: ${NOTIFICATION_SMTP_USERNAME}
+    password: ${NOTIFICATION_SMTP_PASSWORD}
+    from: ${NOTIFICATION_SMTP_FROM}
     use_tls: true
     starttls: true
     timeout: 5s
