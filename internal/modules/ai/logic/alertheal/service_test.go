@@ -67,6 +67,30 @@ func TestIngestService_DeduplicatesBySourceFingerprintStatus(t *testing.T) {
 	}
 }
 
+func TestIngest_DedupeIgnoresReceiverNameChanges(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
+	svc := NewService(aidaoalertheal.NewDAO(db))
+
+	rawA := []byte(`{"receiver":"am-a","alerts":[{"status":"firing","fingerprint":"fp-x","labels":{"alertname":"CPU"}}]}`)
+	rawB := []byte(`{"receiver":"am-b","alerts":[{"status":"firing","fingerprint":"fp-x","labels":{"alertname":"CPU"}}]}`)
+	if _, err := svc.Ingest(context.Background(), "alertmanager", rawA); err != nil {
+		t.Fatalf("ingest receiver am-a: %v", err)
+	}
+	if _, err := svc.Ingest(context.Background(), "alertmanager", rawB); err != nil {
+		t.Fatalf("ingest receiver am-b: %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&model.AIAlertIngestEvent{}).
+		Where("fingerprint = ? AND status = ?", "fp-x", "firing").
+		Count(&count).Error; err != nil {
+		t.Fatalf("count deduped rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one deduped firing row, got %d", count)
+	}
+}
+
 func TestIngestService_EmptyAlertsReturnsInvalidPayload(t *testing.T) {
 	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{})
 	dao := aidaoalertheal.NewDAO(db)

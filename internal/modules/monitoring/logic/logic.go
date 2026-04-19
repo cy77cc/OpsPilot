@@ -159,7 +159,7 @@ func (l *Logic) enrichAlertHealSummary(ctx context.Context, alerts []model.Alert
 		Table("ai_alert_heal_jobs AS jobs").
 		Select("events.fingerprint, jobs.id AS job_id, jobs.status, jobs.updated_at, jobs.latest_run_id").
 		Joins("JOIN ai_alert_ingest_events AS events ON events.id = jobs.event_id").
-		Where("events.fingerprint IN ?", fingerprints).
+		Where("events.protocol = ? AND events.fingerprint IN ?", "alertmanager", fingerprints).
 		Order("events.fingerprint ASC").
 		Order("jobs.updated_at DESC").
 		Order("jobs.id DESC").
@@ -205,6 +205,80 @@ func alertFingerprintFromSource(source string) string {
 		return ""
 	}
 	return fingerprint
+}
+
+// ListEffectiveRules 查询项目生效规则（全局规则 + 项目覆盖规则）。
+func (l *Logic) ListEffectiveRules(ctx context.Context, projectID uint, page, pageSize int) ([]model.AlertRule, int64, error) {
+	globals := make([]model.AlertRule, 0, 32)
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Where("project_id IS NULL").
+		Order("id ASC").
+		Find(&globals).Error; err != nil {
+		return nil, 0, err
+	}
+
+	overrides := make([]model.AlertRule, 0, 16)
+	if projectID > 0 {
+		if err := l.svcCtx.DB.WithContext(ctx).
+			Where("project_id = ?", projectID).
+			Order("id ASC").
+			Find(&overrides).Error; err != nil {
+			return nil, 0, err
+		}
+	}
+
+	merged := mergeRules(globals, overrides)
+	total := int64(len(merged))
+	start, end := paginateRange(page, pageSize, len(merged))
+	if start >= len(merged) {
+		return []model.AlertRule{}, total, nil
+	}
+	return merged[start:end], total, nil
+}
+
+func mergeRules(globals, overrides []model.AlertRule) []model.AlertRule {
+	merged := make([]model.AlertRule, 0, len(globals)+len(overrides))
+	indexByKey := make(map[string]int, len(globals))
+
+	for _, rule := range globals {
+		key := effectiveRuleKey(rule)
+		indexByKey[key] = len(merged)
+		merged = append(merged, rule)
+	}
+
+	for _, rule := range overrides {
+		key := effectiveRuleKey(rule)
+		if idx, ok := indexByKey[key]; ok {
+			merged[idx] = rule
+			continue
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, rule)
+	}
+	return merged
+}
+
+func effectiveRuleKey(rule model.AlertRule) string {
+	inheritKey := strings.TrimSpace(rule.InheritKey)
+	if inheritKey != "" {
+		return "inherit:" + inheritKey
+	}
+	return fmt.Sprintf("id:%d", rule.ID)
+}
+
+func paginateRange(page, pageSize, total int) (start, end int) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	start = (page - 1) * pageSize
+	end = start + pageSize
+	if end > total {
+		end = total
+	}
+	return start, end
 }
 
 // ListRules 查询告警规则列表。
@@ -595,6 +669,54 @@ func (l *Logic) ListChannels(ctx context.Context) ([]model.AlertNotificationChan
 	rows := make([]model.AlertNotificationChannel, 0, 16)
 	err := l.svcCtx.DB.WithContext(ctx).Order("id ASC").Find(&rows).Error
 	return rows, err
+}
+
+// TestChannel 测试通知渠道配置。
+//
+// 根据 provider/channel type 发送一次测试消息，验证配置可用性。
+func (l *Logic) TestChannel(ctx context.Context, provider, target, configJSON string) error {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		provider = "log"
+	}
+	channel := model.AlertNotificationChannel{
+		Name:       "test-channel",
+		Type:       provider,
+		Provider:   provider,
+		Target:     strings.TrimSpace(target),
+		ConfigJSON: strings.TrimSpace(configJSON),
+		Enabled:    true,
+	}
+	alert := model.AlertEvent{
+		Title:    "OpsPilot test alert",
+		Message:  "This is a test notification from OpsPilot monitoring",
+		Severity: "warning",
+		Metric:   "test_metric",
+		Status:   "firing",
+	}
+
+	// Prefer provider-registry path (dingtalk/wecom/email/sms/log), fallback to notifier path (webhook/log).
+	if p, ok := notifhandler.NewDefaultProviderRegistry().Get(provider); ok {
+		return p.Send(ctx, &alert, channel)
+	}
+
+	notifier, err := buildNotifier(provider)
+	if err != nil {
+		return err
+	}
+	result := notifier.Send(ctx, channel, NotificationPayload{
+		Title:    alert.Title,
+		Message:  alert.Message,
+		Severity: alert.Severity,
+		Metric:   alert.Metric,
+	})
+	if strings.EqualFold(strings.TrimSpace(result.Status), "failed") {
+		if strings.TrimSpace(result.Error) != "" {
+			return fmt.Errorf("%s", strings.TrimSpace(result.Error))
+		}
+		return fmt.Errorf("test notification failed")
+	}
+	return nil
 }
 
 // CreateChannel 创建通知渠道。

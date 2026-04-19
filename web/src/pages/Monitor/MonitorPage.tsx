@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Col, Row, Statistic, Table, Tabs, Tag, Progress, Button, Space, message } from 'antd';
 import { AlertOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { Link } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert, AlertRule, MetricData, AlertChannel } from '../../api/modules/monitoring';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
@@ -69,6 +70,10 @@ const MonitorPage: React.FC = () => {
     <div className="space-y-4">
       <div className="flex justify-end">
         <Space>
+          <Button><Link to="/monitor/rules">规则配置</Link></Button>
+          <Button><Link to="/monitor/channels">渠道配置</Link></Button>
+          <Button><Link to="/monitor/routing">路由配置</Link></Button>
+          <Button><Link to="/monitor/deliveries">投递记录</Link></Button>
           <Button onClick={handleSyncRules}>同步规则</Button>
           <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
         </Space>

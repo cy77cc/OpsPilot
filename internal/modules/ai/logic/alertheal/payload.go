@@ -85,21 +85,25 @@ func normalizeAlertmanager(raw []byte, compactRaw string) ([]NormalizedAlert, er
 
 	out := make([]NormalizedAlert, 0, len(payload.Alerts))
 	for _, alert := range payload.Alerts {
-		source := strings.TrimSpace(payload.Receiver)
-		if source == "" {
-			source = protocolAlertmanager
+		source := protocolAlertmanager
+		labels := map[string]string{}
+		for k, v := range alert.Labels {
+			labels[k] = v
+		}
+		if receiver := strings.TrimSpace(payload.Receiver); receiver != "" {
+			labels["am_receiver"] = receiver
 		}
 
-		title := strings.TrimSpace(alert.Labels["alertname"])
+		title := strings.TrimSpace(labels["alertname"])
 		out = append(out, NormalizedAlert{
 			Source:          source,
 			Protocol:        protocolAlertmanager,
 			Fingerprint:     strings.TrimSpace(alert.Fingerprint),
 			Status:          strings.TrimSpace(alert.Status),
-			Severity:        strings.TrimSpace(alert.Labels["severity"]),
+			Severity:        strings.TrimSpace(labels["severity"]),
 			Title:           title,
-			Target:          firstNonEmpty(alert.Labels["instance"], alert.Labels["pod"], alert.Labels["node"]),
-			LabelsJSON:      mustJSON(alert.Labels, "{}"),
+			Target:          firstNonEmpty(labels["instance"], labels["pod"], labels["node"]),
+			LabelsJSON:      mustJSON(labels, "{}"),
 			AnnotationsJSON: mustJSON(alert.Annotations, "{}"),
 			RawPayloadJSON:  compactRaw,
 			StartsAt:        alert.StartsAt,

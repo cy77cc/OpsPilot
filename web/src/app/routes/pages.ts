@@ -39,6 +39,10 @@ export const AIOpsInsightsPage = lazy(() => import('../../pages/Deployment/Obser
 export const MonitorPage = lazy(() => import('../../pages/Monitor/MonitorPage'));
 export const AlertsPage = lazy(() => import('../../pages/Monitor/AlertsPage'));
 export const AlertDetailPage = lazy(() => import('../../pages/Monitor/AlertDetailPage'));
+export const RulesConfigPage = lazy(() => import('../../pages/Monitor/RulesConfigPage'));
+export const ChannelsConfigPage = lazy(() => import('../../pages/Monitor/ChannelsConfigPage'));
+export const RoutingConfigPage = lazy(() => import('../../pages/Monitor/RoutingConfigPage'));
+export const DeliveriesPage = lazy(() => import('../../pages/Monitor/DeliveriesPage'));
 export const ToolsPage = lazy(() => import('../../pages/Tools/ToolsPage'));
 export const SettingsPage = lazy(() => import('../../pages/Settings/SettingsPage'));
 export const AIModelSettingsPage = lazy(() => import('../../pages/Settings/AIModelSettingsPage'));

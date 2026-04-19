@@ -16,25 +16,26 @@ import (
 //
 // 包含所有模块的配置，通过 mapstructure 标签映射配置文件。
 type Config struct {
-	App        App        `mapstructure:"app"`        // 应用基本配置
-	Server     Server     `mapstructure:"server"`     // HTTP 服务器配置
-	Log        Log        `mapstructure:"log"`        // 日志配置
-	MySQL      MySQL      `mapstructure:"mysql"`      // MySQL 数据库配置
-	Postgres   Postgres   `mapstructure:"postgres"`   // PostgreSQL 数据库配置
-	SQLite     SQLite     `mapstructure:"sqlite"`     // SQLite 数据库配置
-	Redis      Redis      `mapstructure:"redis"`      // Redis 缓存配置
-	JWT        JWT        `mapstructure:"jwt"`        // JWT 认证配置
-	Cors       Cors       `mapstructure:"cors"`       // CORS 跨域配置
-	RateLimit  RateLimit  `mapstructure:"rate_limit"` // 限流配置
-	Pprof      Pprof      `mapstructure:"pprof"`      // pprof 性能分析配置
-	Metrics    Metrics    `mapstructure:"metrics"`    // 指标暴露配置
-	Security   Security   `mapstructure:"security"`   // 安全配置
-	LLM        LLM        `mapstructure:"llm"`        // 大语言模型配置
-	AI         AI         `mapstructure:"ai"`         // AI 功能配置
-	Embedder   Embedder   `mapstructure:"embedder"`   // 向量嵌入模型配置
-	Milvus     Milvus     `mapstructure:"milvus"`     // Milvus 向量数据库配置
-	Prometheus Prometheus `mapstructure:"prometheus"` // Prometheus 监控配置
-	Swagger    Swagger    `mapstructure:"swagger"`    // Swagger API 文档配置
+	App          App          `mapstructure:"app"`          // 应用基本配置
+	Server       Server       `mapstructure:"server"`       // HTTP 服务器配置
+	Log          Log          `mapstructure:"log"`          // 日志配置
+	MySQL        MySQL        `mapstructure:"mysql"`        // MySQL 数据库配置
+	Postgres     Postgres     `mapstructure:"postgres"`     // PostgreSQL 数据库配置
+	SQLite       SQLite       `mapstructure:"sqlite"`       // SQLite 数据库配置
+	Redis        Redis        `mapstructure:"redis"`        // Redis 缓存配置
+	JWT          JWT          `mapstructure:"jwt"`          // JWT 认证配置
+	Cors         Cors         `mapstructure:"cors"`         // CORS 跨域配置
+	RateLimit    RateLimit    `mapstructure:"rate_limit"`   // 限流配置
+	Pprof        Pprof        `mapstructure:"pprof"`        // pprof 性能分析配置
+	Metrics      Metrics      `mapstructure:"metrics"`      // 指标暴露配置
+	Security     Security     `mapstructure:"security"`     // 安全配置
+	Notification Notification `mapstructure:"notification"` // 通知配置
+	LLM          LLM          `mapstructure:"llm"`          // 大语言模型配置
+	AI           AI           `mapstructure:"ai"`           // AI 功能配置
+	Embedder     Embedder     `mapstructure:"embedder"`     // 向量嵌入模型配置
+	Milvus       Milvus       `mapstructure:"milvus"`       // Milvus 向量数据库配置
+	Prometheus   Prometheus   `mapstructure:"prometheus"`   // Prometheus 监控配置
+	Swagger      Swagger      `mapstructure:"swagger"`      // Swagger API 文档配置
 }
 
 // App 包含应用程序基本配置。
@@ -147,6 +148,23 @@ type Security struct {
 	HideBanner            bool     `mapstructure:"hide_banner"`             // 是否隐藏启动横幅
 	EncryptionKey         string   `mapstructure:"encryption_key"`          // 数据加密密钥
 	WebSocketAllowOrigins []string `mapstructure:"websocket_allow_origins"` // WebSocket 允许的来源
+}
+
+// Notification 包含通知配置。
+type Notification struct {
+	SMTP SMTP `mapstructure:"smtp"` // SMTP 配置
+}
+
+// SMTP 包含 SMTP 邮件发送配置。
+type SMTP struct {
+	Host     string        `mapstructure:"host"`     // SMTP 主机
+	Port     int           `mapstructure:"port"`     // SMTP 端口
+	Username string        `mapstructure:"username"` // SMTP 用户名
+	Password string        `mapstructure:"password"` // SMTP 密码
+	From     string        `mapstructure:"from"`     // 发件人地址
+	UseTLS   bool          `mapstructure:"use_tls"`  // 是否使用 TLS
+	StartTLS bool          `mapstructure:"starttls"` // 是否启用 STARTTLS
+	Timeout  time.Duration `mapstructure:"timeout"`  // 超时时间
 }
 
 // LLM 包含大语言模型配置。

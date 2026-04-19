@@ -161,3 +161,66 @@ func TestDAO_RenewAutoFixingLease_RequiresAutoFixingState(t *testing.T) {
 		t.Fatalf("expected record not found for non-auto-fixing state, got %v", err)
 	}
 }
+
+func TestDAO_CancelIfResolved_CrossReceiverUsesProtocolAndFingerprint(t *testing.T) {
+	db := aidao.NewTestDB(t, &model.AIAlertIngestEvent{}, &model.AIAlertHealJob{})
+	dao := NewDAO(db)
+	ctx := context.Background()
+	now := time.Date(2026, 4, 19, 7, 0, 0, 0, time.UTC)
+
+	firingEvent := model.AIAlertIngestEvent{
+		ID:             "evt-firing",
+		Source:         "am-a",
+		Protocol:       "alertmanager",
+		Fingerprint:    "fp-1",
+		Status:         "firing",
+		DedupeKey:      "alertmanager:fp-1:firing",
+		Severity:       "warning",
+		Title:          "CPU",
+		RawPayloadJSON: `{}`,
+		ReceivedAt:     now,
+	}
+	if err := db.Create(&firingEvent).Error; err != nil {
+		t.Fatalf("seed firing event: %v", err)
+	}
+	if err := db.Create(&model.AIAlertHealJob{
+		ID:      "job-1",
+		EventID: firingEvent.ID,
+		Scene:   "alert_self_heal",
+		Status:  "pending",
+	}).Error; err != nil {
+		t.Fatalf("seed alert heal job: %v", err)
+	}
+
+	resolvedEvent := model.AIAlertIngestEvent{
+		ID:             "evt-resolved",
+		Source:         "am-b",
+		Protocol:       "alertmanager",
+		Fingerprint:    "fp-1",
+		Status:         "resolved",
+		DedupeKey:      "alertmanager:fp-1:resolved",
+		Severity:       "warning",
+		Title:          "CPU",
+		RawPayloadJSON: `{}`,
+		ReceivedAt:     now.Add(time.Minute),
+	}
+	if err := db.Create(&resolvedEvent).Error; err != nil {
+		t.Fatalf("seed resolved event: %v", err)
+	}
+
+	canceled, err := dao.CancelIfResolved(ctx, "job-1")
+	if err != nil {
+		t.Fatalf("cancel if resolved: %v", err)
+	}
+	if !canceled {
+		t.Fatal("expected job to be canceled by resolved event from different receiver")
+	}
+
+	var saved model.AIAlertHealJob
+	if err := db.Where("id = ?", "job-1").Take(&saved).Error; err != nil {
+		t.Fatalf("load updated job: %v", err)
+	}
+	if saved.Status != "canceled_resolved" {
+		t.Fatalf("expected canceled_resolved status, got %q", saved.Status)
+	}
+}

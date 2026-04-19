@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/cy77cc/OpsPilot/api/monitoring/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
@@ -41,6 +42,7 @@ type Handler struct {
 	svcCtx    *svc.ServiceContext    // 服务上下文
 	ruleSync  *RuleSyncService       // 规则同步服务
 	webhookGW *NotificationGateway   // 通知网关
+	aiFanout  AlertAIFanout          // AI 告警自愈扇出适配器
 }
 
 // NewHandler 创建监控服务处理器实例。
@@ -55,6 +57,7 @@ func NewHandler(svcCtx *svc.ServiceContext) *Handler {
 		svcCtx:    svcCtx,
 		ruleSync:  NewRuleSyncService(svcCtx.DB),
 		webhookGW: NewNotificationGateway(svcCtx),
+		aiFanout:  newAIAlertHealFanout(svcCtx),
 	}
 }
 
@@ -94,6 +97,9 @@ func (h *Handler) ReceiveWebhook(c *gin.Context) {
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
+	}
+	if h.aiFanout != nil {
+		_ = h.aiFanout.HandleAlertmanager(c.Request.Context(), req)
 	}
 	httpx.OK(c, gin.H{
 		"status":    "success",
@@ -227,6 +233,39 @@ func (h *Handler) ListRules(c *gin.Context) {
 	httpx.OK(c, gin.H{"list": rules, "total": total})
 }
 
+// ListEffectiveRules 获取项目生效告警规则列表。
+//
+// @Summary 获取生效告警规则列表
+// @Description 读取全局规则并合并项目覆盖规则，返回当前项目生效规则
+// @Tags 监控告警
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param project_id query int false "项目 ID"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(50)
+// @Success 200 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /alert-rules/effective [get]
+func (h *Handler) ListEffectiveRules(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	list, total, err := h.logic.ListEffectiveRules(
+		c.Request.Context(),
+		projectID,
+		intFromQuery(c, "page", 1),
+		intFromQuery(c, "page_size", 50),
+	)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": list, "total": total})
+}
+
 // CreateRule 创建告警规则。
 //
 // @Summary 创建告警规则
@@ -353,6 +392,112 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, rule)
+}
+
+// GetRuleChannels 获取规则绑定的通知渠道。
+func (h *Handler) GetRuleChannels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	ruleID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	rows, err := h.logic.ListRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// UpdateRuleChannels 更新规则绑定的通知渠道。
+func (h *Handler) UpdateRuleChannels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	ruleID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	var req struct {
+		ProjectID  *uint  `json:"project_id"`
+		ChannelIDs []uint `json:"channel_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	if err := h.logic.ReplaceRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID), req.ChannelIDs); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	rows, err := h.logic.ListRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// GetSeverityRoutes 获取严重级别路由配置。
+func (h *Handler) GetSeverityRoutes(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	rows, err := h.logic.ListSeverityRoutes(c.Request.Context(), projectID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// UpdateSeverityRoutes 更新严重级别路由配置。
+func (h *Handler) UpdateSeverityRoutes(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req struct {
+		ProjectID *uint `json:"project_id"`
+		Routes    []struct {
+			Scope      string `json:"scope"`
+			Severity   string `json:"severity"`
+			ChannelIDs []uint `json:"channel_ids"`
+			Enabled    *bool  `json:"enabled"`
+		} `json:"routes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	inputs := make([]monitoringlogic.SeverityRouteInput, 0, len(req.Routes))
+	for _, row := range req.Routes {
+		enabled := true
+		if row.Enabled != nil {
+			enabled = *row.Enabled
+		}
+		inputs = append(inputs, monitoringlogic.SeverityRouteInput{
+			Scope:      strings.TrimSpace(row.Scope),
+			Severity:   strings.TrimSpace(row.Severity),
+			ChannelIDs: row.ChannelIDs,
+			Enabled:    enabled,
+		})
+	}
+	if err := h.logic.ReplaceSeverityRoutes(c.Request.Context(), projectID, inputs); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	rows, err := h.logic.ListSeverityRoutes(c.Request.Context(), projectID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
 }
 
 // EnableRule 启用告警规则。
@@ -534,14 +679,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
 		return
 	}
-	var req struct {
-		Name       string `json:"name" binding:"required"`
-		Type       string `json:"type"`
-		Provider   string `json:"provider"`
-		Target     string `json:"target"`
-		ConfigJSON string `json:"config_json"`
-		Enabled    *bool  `json:"enabled"`
-	}
+	var req v1.CreateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -552,6 +690,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 		Provider:   strings.TrimSpace(req.Provider),
 		Target:     strings.TrimSpace(req.Target),
 		ConfigJSON: strings.TrimSpace(req.ConfigJSON),
+		ProjectID:  req.ProjectID,
 		Enabled:    req.Enabled == nil || *req.Enabled,
 	})
 	if err != nil {
@@ -581,14 +720,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		return
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
-	var req struct {
-		Name       string  `json:"name"`
-		Type       string  `json:"type"`
-		Provider   string  `json:"provider"`
-		Target     string  `json:"target"`
-		ConfigJSON *string `json:"config_json"`
-		Enabled    *bool   `json:"enabled"`
-	}
+	var req v1.UpdateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
@@ -609,6 +741,9 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	if req.ConfigJSON != nil {
 		payload["config_json"] = strings.TrimSpace(*req.ConfigJSON)
 	}
+	if req.ProjectID != nil {
+		payload["project_id"] = *req.ProjectID
+	}
 	if req.Enabled != nil {
 		payload["enabled"] = *req.Enabled
 	}
@@ -618,6 +753,41 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, item)
+}
+
+// TestChannel 测试通知渠道。
+//
+// @Summary 测试通知渠道
+// @Description 发送一次测试通知，验证渠道配置是否可用
+// @Tags 监控告警
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param request body v1.TestChannelRequest true "测试通知渠道参数"
+// @Success 200 {object} httpx.Response{data=map[string]interface{}}
+// @Failure 400 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /alert-channels/test [post]
+func (h *Handler) TestChannel(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req v1.TestChannelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	if err := h.logic.TestChannel(
+		c.Request.Context(),
+		strings.TrimSpace(req.Provider),
+		strings.TrimSpace(req.Target),
+		strings.TrimSpace(req.ConfigJSON),
+	); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"status": "sent"})
 }
 
 // ListDeliveries 获取告警投递记录列表。

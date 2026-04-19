@@ -70,6 +70,12 @@ export interface AlertRuleListParams {
   enabled?: boolean;
 }
 
+export interface EffectiveRuleListParams {
+  projectId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 // 监控指标请求参数
 export interface MetricParams {
   metric: string;
@@ -86,6 +92,7 @@ export interface AlertChannel {
   provider: string;
   target: string;
   enabled: boolean;
+  projectId?: string;
   configJson?: string;
 }
 
@@ -172,6 +179,15 @@ export const monitoringApi = {
       },
     };
   },
+  async getEffectiveRules(params?: EffectiveRuleListParams): Promise<ApiResponse<any>> {
+    return apiService.get('/alert-rules/effective', {
+      params: {
+        project_id: params?.projectId,
+        page: params?.page,
+        page_size: params?.pageSize,
+      },
+    });
+  },
 
   // 获取监控指标
   async getMetrics(params: MetricParams): Promise<ApiResponse<MetricQueryResult>> {
@@ -227,13 +243,14 @@ export const monitoringApi = {
           provider: item.provider || '',
           target: item.target || '',
           enabled: !!item.enabled,
+          projectId: item.project_id != null ? String(item.project_id) : undefined,
           configJson: item.config_json || '',
         })),
         total: (response.data as any)?.total || response.total || raw.length,
       },
     };
   },
-  async createAlertChannel(payload: { name: string; type?: string; provider?: string; target?: string; enabled?: boolean; configJson?: string }): Promise<ApiResponse<any>> {
+  async createAlertChannel(payload: { name: string; type?: string; provider?: string; target?: string; enabled?: boolean; configJson?: string; projectId?: string }): Promise<ApiResponse<any>> {
     return apiService.post('/alert-channels', {
       name: payload.name,
       type: payload.type,
@@ -241,7 +258,38 @@ export const monitoringApi = {
       target: payload.target,
       enabled: payload.enabled,
       config_json: payload.configJson,
+      project_id: payload.projectId,
     });
+  },
+  async testAlertChannel(payload: { provider: string; target?: string; configJson?: string }): Promise<ApiResponse<any>> {
+    return apiService.post('/alert-channels/test', {
+      provider: payload.provider,
+      target: payload.target,
+      config_json: payload.configJson,
+    });
+  },
+  async getRuleChannels(id: string, params?: { projectId?: string }): Promise<ApiResponse<any>> {
+    return apiService.get(`/alert-rules/${encodeURIComponent(id)}/channels`, {
+      params: {
+        project_id: params?.projectId,
+      },
+    });
+  },
+  async updateRuleChannels(id: string, channelIds: string[], projectId?: string): Promise<ApiResponse<any>> {
+    return apiService.put(`/alert-rules/${encodeURIComponent(id)}/channels`, {
+      channel_ids: channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      project_id: projectId ? Number(projectId) : undefined,
+    });
+  },
+  async getSeverityRoutes(params?: { projectId?: string }): Promise<ApiResponse<any>> {
+    return apiService.get('/alert-routing/severity', {
+      params: {
+        project_id: params?.projectId,
+      },
+    });
+  },
+  async updateSeverityRoutes(payload: any): Promise<ApiResponse<any>> {
+    return apiService.put('/alert-routing/severity', payload);
   },
   async listAlertDeliveries(params?: { alertId?: string; channelType?: string; status?: string; page?: number; pageSize?: number }): Promise<ApiResponse<PaginatedResponse<AlertDelivery>>> {
     const response = await apiService.get<any>('/alert-deliveries', {
