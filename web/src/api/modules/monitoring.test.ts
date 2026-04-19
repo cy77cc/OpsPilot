@@ -109,7 +109,20 @@ describe('monitoringApi config endpoints', () => {
     await monitoringApi.deleteSeverityRoute('31', '42');
 
     expect(deleteMock).toHaveBeenCalledWith('/alert-routing/severity/31', {
-      params: { project_id: '42' },
+      params: { project_id: 42 },
+    });
+  });
+
+  it('omits invalid project id from delete severity route params', async () => {
+    const deleteMock = vi.spyOn(apiService, 'delete').mockResolvedValue({
+      success: true,
+      data: { deleted: true },
+    } as any);
+
+    await monitoringApi.deleteSeverityRoute('31', 'bad');
+
+    expect(deleteMock).toHaveBeenCalledWith('/alert-routing/severity/31', {
+      params: { project_id: undefined },
     });
   });
 
@@ -131,6 +144,27 @@ describe('monitoringApi config endpoints', () => {
       channel_id: 1001,
       priority: 2,
       enabled: false,
+    });
+  });
+
+  it('omits invalid channel id in create rule-channel binding payload', async () => {
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as any);
+
+    await monitoringApi.createRuleChannelBinding('7', {
+      projectId: '42',
+      channelId: 'NaN',
+      priority: 2,
+      enabled: true,
+    });
+
+    expect(postMock).toHaveBeenCalledWith('/alert-rules/7/channels', {
+      project_id: 42,
+      channel_id: undefined,
+      priority: 2,
+      enabled: true,
     });
   });
 
@@ -162,7 +196,7 @@ describe('monitoringApi config endpoints', () => {
     await monitoringApi.deleteRuleChannelBinding('7', '1001', '42');
 
     expect(deleteMock).toHaveBeenCalledWith('/alert-rules/7/channels/1001', {
-      params: { project_id: '42' },
+      params: { project_id: 42 },
     });
   });
 });

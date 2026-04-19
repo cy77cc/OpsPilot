@@ -1,6 +1,12 @@
 import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
 
+const toPositiveIntOrUndefined = (value?: string): number | undefined => {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
+
 // 告警数据结构
 export interface Alert {
   id: string;
@@ -284,7 +290,7 @@ export const monitoringApi = {
   async updateRuleChannels(id: string, channelIds: string[], projectId?: string): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-rules/${encodeURIComponent(id)}/channels`, {
       channel_ids: channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
-      project_id: projectId ? Number(projectId) : undefined,
+      project_id: toPositiveIntOrUndefined(projectId),
     });
   },
   async getSeverityRoutes(params?: { projectId?: string }): Promise<ApiResponse<any>> {
@@ -299,7 +305,7 @@ export const monitoringApi = {
   },
   async createSeverityRoute(payload: { projectId?: string; scope?: string; severity: string; channelIds: string[]; enabled?: boolean }): Promise<ApiResponse<any>> {
     return apiService.post('/alert-routing/severity', {
-      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      project_id: toPositiveIntOrUndefined(payload.projectId),
       scope: payload.scope,
       severity: payload.severity,
       channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
@@ -308,7 +314,7 @@ export const monitoringApi = {
   },
   async updateSeverityRouteByID(id: string, payload: { projectId?: string; scope?: string; severity: string; channelIds: string[]; enabled?: boolean }): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-routing/severity/${encodeURIComponent(id)}`, {
-      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      project_id: toPositiveIntOrUndefined(payload.projectId),
       scope: payload.scope,
       severity: payload.severity,
       channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
@@ -317,27 +323,27 @@ export const monitoringApi = {
   },
   async deleteSeverityRoute(id: string, projectId?: string): Promise<ApiResponse<any>> {
     return apiService.delete(`/alert-routing/severity/${encodeURIComponent(id)}`, {
-      params: { project_id: projectId },
+      params: { project_id: toPositiveIntOrUndefined(projectId) },
     });
   },
   async createRuleChannelBinding(ruleId: string, payload: { projectId?: string; channelId: string; priority?: number; enabled?: boolean }): Promise<ApiResponse<any>> {
     return apiService.post(`/alert-rules/${encodeURIComponent(ruleId)}/channels`, {
-      project_id: payload.projectId ? Number(payload.projectId) : undefined,
-      channel_id: Number(payload.channelId),
+      project_id: toPositiveIntOrUndefined(payload.projectId),
+      channel_id: toPositiveIntOrUndefined(payload.channelId),
       priority: payload.priority,
       enabled: payload.enabled ?? true,
     });
   },
   async updateRuleChannelBinding(ruleId: string, channelId: string, payload: { projectId?: string; priority?: number; enabled?: boolean }): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-rules/${encodeURIComponent(ruleId)}/channels/${encodeURIComponent(channelId)}`, {
-      project_id: payload.projectId ? Number(payload.projectId) : undefined,
+      project_id: toPositiveIntOrUndefined(payload.projectId),
       priority: payload.priority,
       enabled: payload.enabled,
     });
   },
   async deleteRuleChannelBinding(ruleId: string, channelId: string, projectId?: string): Promise<ApiResponse<any>> {
     return apiService.delete(`/alert-rules/${encodeURIComponent(ruleId)}/channels/${encodeURIComponent(channelId)}`, {
-      params: { project_id: projectId },
+      params: { project_id: toPositiveIntOrUndefined(projectId) },
     });
   },
   async listAlertDeliveries(params?: { alertId?: string; channelType?: string; status?: string; page?: number; pageSize?: number }): Promise<ApiResponse<PaginatedResponse<AlertDelivery>>> {
