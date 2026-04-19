@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 
@@ -32,12 +32,17 @@ const ChannelsConfigPage: React.FC = () => {
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<ChannelRow | null>(null);
+  const mountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
 
   const loadChannels = async (showError = true): Promise<boolean> => {
+    const seq = loadSeqRef.current + 1;
+    loadSeqRef.current = seq;
     setLoading(true);
     try {
       const res = await Api.monitoring.listAlertChannels();
       const list = (res?.data as any)?.list || [];
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setRows(
         list.map((item: any) => ({
           id: String(item.id),
@@ -49,15 +54,22 @@ const ChannelsConfigPage: React.FC = () => {
       );
       return true;
     } catch {
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       if (showError) message.error('渠道列表加载失败');
       return false;
     } finally {
-      setLoading(false);
+      if (mountedRef.current && seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     void loadChannels();
+    return () => {
+      mountedRef.current = false;
+      loadSeqRef.current += 1;
+    };
   }, []);
 
   const handleTestSend = async () => {
@@ -66,6 +78,8 @@ const ChannelsConfigPage: React.FC = () => {
     try {
       await Api.monitoring.testAlertChannel(values);
       message.success('测试发送成功');
+    } catch {
+      message.error('测试发送失败');
     } finally {
       setSubmitting(false);
     }

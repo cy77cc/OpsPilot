@@ -111,4 +111,24 @@ describe('RoutingConfigPage', () => {
       expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('blocks project-scoped route delete when project id is missing', async () => {
+    mockApi.monitoring.getSeverityRoutes.mockResolvedValueOnce({
+      data: {
+        list: [{ id: 1, scope: 'project', severity: 'critical', channel_ids_json: '[1001]', enabled: true }],
+        total: 1,
+      },
+    });
+    render(<RoutingConfigPage />);
+    await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    const confirm = await screen.findByRole('tooltip', { name: /确定删除此路由/ });
+    fireEvent.click(within(confirm).getByRole('button', { name: /^(OK|确定)$/ }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('项目作用域操作需要先选择项目ID');
+      expect(mockApi.monitoring.deleteSeverityRoute).not.toHaveBeenCalled();
+    });
+  });
 });

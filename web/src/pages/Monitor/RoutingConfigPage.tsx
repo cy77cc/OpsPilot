@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 
@@ -26,6 +26,8 @@ const RoutingConfigPage: React.FC = () => {
   const [rows, setRows] = useState<RouteRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<RouteRow | null>(null);
+  const mountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
 
   const getProjectId = () => {
     if (typeof window === 'undefined') return undefined;
@@ -51,10 +53,13 @@ const RoutingConfigPage: React.FC = () => {
   const projectIdForScope = (scope: string): string | undefined => (scope === 'project' ? getProjectId() : undefined);
 
   const load = async (showError = true): Promise<boolean> => {
+    const seq = loadSeqRef.current + 1;
+    loadSeqRef.current = seq;
     setLoading(true);
     try {
       const res = await Api.monitoring.getSeverityRoutes();
       const list = (res?.data as any)?.list || [];
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setRows(
         list.map((item: any) => {
           const channelIds = normalizeChannelIds(item.channel_ids_json ?? item.channel_ids ?? []);
@@ -70,20 +75,31 @@ const RoutingConfigPage: React.FC = () => {
       );
       return true;
     } catch {
+      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       if (showError) message.error('路由列表加载失败');
       return false;
     } finally {
-      setLoading(false);
+      if (mountedRef.current && seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     void load();
+    return () => {
+      mountedRef.current = false;
+      loadSeqRef.current += 1;
+    };
   }, []);
 
   const handleCreate = async () => {
     try {
       const values = await createForm.validateFields();
+      if (values.scope === 'project' && !getProjectId()) {
+        message.error('项目作用域操作需要先选择项目ID');
+        return;
+      }
       setSubmitting(true);
       try {
         await Api.monitoring.createSeverityRoute({
@@ -122,6 +138,10 @@ const RoutingConfigPage: React.FC = () => {
     if (!editing) return;
     try {
       const values = await editForm.validateFields();
+      if (values.scope === 'project' && !getProjectId()) {
+        message.error('项目作用域操作需要先选择项目ID');
+        return;
+      }
       setSubmitting(true);
       try {
         await Api.monitoring.updateSeverityRouteByID(editing.id, {
@@ -146,6 +166,10 @@ const RoutingConfigPage: React.FC = () => {
   };
 
   const handleDelete = async (record: RouteRow) => {
+    if (record.scope === 'project' && !getProjectId()) {
+      message.error('项目作用域操作需要先选择项目ID');
+      return;
+    }
     setSubmitting(true);
     try {
       await Api.monitoring.deleteSeverityRoute(record.id, projectIdForScope(record.scope));

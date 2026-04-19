@@ -62,6 +62,18 @@ describe('ChannelsConfigPage', () => {
     });
   });
 
+  it('shows error when test-send API fails', async () => {
+    mockApi.monitoring.testAlertChannel.mockRejectedValueOnce(new Error('send failed'));
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(await screen.findByRole('button', { name: '测试发送' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('测试发送失败');
+    });
+  });
+
   it('creates a channel and reloads list', async () => {
     render(<ChannelsConfigPage />);
     await screen.findByText('Ops Webhook');
