@@ -178,8 +178,8 @@ func (d *DAO) CancelIfResolved(ctx context.Context, jobID string) (bool, error) 
 			var resolvedCount int64
 			if err := tx.Model(&model.AIAlertIngestEvent{}).
 				Where(
-					"source = ? AND fingerprint = ? AND status = ? AND (received_at > ? OR (received_at = ? AND id <> ?))",
-					event.Source, event.Fingerprint, "resolved", event.ReceivedAt, event.ReceivedAt, event.ID,
+					"protocol = ? AND fingerprint = ? AND status = ? AND (received_at > ? OR (received_at = ? AND id <> ?))",
+					event.Protocol, event.Fingerprint, "resolved", event.ReceivedAt, event.ReceivedAt, event.ID,
 				).Count(&resolvedCount).Error; err != nil {
 				return err
 			}
