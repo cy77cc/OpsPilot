@@ -13,11 +13,16 @@ OpsPilot 现有监控模块已经具备以下能力：
 
 当前目标是把“可看”升级为“可配置、可路由、可审计、可排障”。
 
+术语约定（避免歧义）：
+
+- 本文“告警规则”指 Prometheus 告警规则（PromQL/阈值规则），由平台配置并同步到 Prometheus。
+- Alertmanager（AM）在本方案中用于告警事件转发（webhook）与告警生命周期传递，不作为规则表达式存储中心。
+
 ## 2. 目标与范围
 
 ### 2.1 目标
 
-- 在系统内配置告警规则与通知渠道。
+- 在系统内配置 Prometheus 告警规则并同步到 Prometheus，同时配置平台通知渠道。
 - 支持混合路由：规则绑定优先，未绑定时按严重级别路由。
 - 支持全局 + 项目级配置，项目采用“继承全局 + 增量覆盖”。
 - 支持固定失败重试与完整投递记录。
@@ -37,6 +42,7 @@ OpsPilot 现有监控模块已经具备以下能力：
 - 首发不做短信通道。
 - 首发不做集群级作用域（仅全局 + 项目）。
 - 首发不把路由主逻辑外移到外部 Alertmanager 配置中心。
+- 首发不做 Alertmanager `route/receiver/inhibit` 配置下发（AM 配置管理不纳入本期）。
 
 ## 3. 方案比较
 
@@ -67,6 +73,12 @@ OpsPilot 现有监控模块已经具备以下能力：
 - `delivery_engine`：统一投递执行、重试、记录。
 - `channel_tester`：临时配置测试与已保存配置测试。
 - `notification_provider`：复用 `internal/modules/notification/handler/provider.go`，补齐 SMTP 邮件发送实现。
+
+告警处理链路分工：
+
+1. 平台规则配置 -> 同步生成 Prometheus 规则文件 -> 触发 Prometheus reload。  
+2. Prometheus 触发告警 -> Alertmanager 聚合与通知 -> 回调平台 `/alerts/receiver`。  
+3. 平台接收 AM 告警事件后，执行项目级路由决策、通知投递、重试与审计记录。
 
 ## 5. 数据模型设计
 
@@ -150,11 +162,13 @@ OpsPilot 现有监控模块已经具备以下能力：
 
 告警触发后的路由顺序：
 
-1. 定位告警所属项目上下文（如无法定位则视为全局）。
-2. 加载“有效规则”。
-3. 若规则存在显式渠道绑定，按绑定投递。
-4. 若无绑定，按严重级别路由投递（优先项目，回退全局）。
-5. 若仍为空，兜底到 `default-log`，避免静默丢失。
+0. 告警规则已由平台同步到 Prometheus（不在触发时临时生成）。  
+1. 平台接收 Alertmanager webhook 告警并落库。  
+2. 定位告警所属项目上下文（如无法定位则视为全局）。  
+3. 加载“有效规则”。  
+4. 若规则存在显式渠道绑定，按绑定投递。  
+5. 若无绑定，按严重级别路由投递（优先项目，回退全局）。  
+6. 若仍为空，兜底到 `default-log`，避免静默丢失。  
 
 重试策略（固定）：
 
@@ -228,6 +242,7 @@ notification:
 
 - `GET /alert-rules`：支持 `scope/project_id/mode` 过滤。
 - `POST /alert-rules`、`PUT /alert-rules/:id`：支持 `rule_mode`、`promql_expr`、`project_id`。
+- `POST /alerts/rules/sync`：将平台规则同步到 Prometheus（保留并增强现有能力）。
 - `GET /alert-rules/effective`：返回全局+项目合并后的有效规则。
 - `GET /alert-channels`、`POST /alert-channels`、`PUT /alert-channels/:id`：支持 `project_id` 与 provider 配置。
 - `POST /alert-channels/test`：支持临时配置测试与已保存配置测试。
