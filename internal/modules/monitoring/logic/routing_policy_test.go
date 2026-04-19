@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
@@ -10,6 +11,73 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestCreateRuleChannelBinding_ConcurrentScopedCallsCreateSingleRow(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:create-binding-concurrent?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("open sql db handle: %v", err)
+	}
+	// Keep sqlite test deterministic under concurrent goroutines.
+	sqlDB.SetMaxOpenConns(1)
+
+	if err := db.AutoMigrate(&model.AlertRule{}, &model.AlertNotificationChannel{}, &model.AlertRuleChannelBinding{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	if err := db.Create(&model.AlertRule{
+		ID: 7, Name: "cpu", Metric: "cpu_usage", Operator: "gt", Threshold: 80, Severity: "warning", Enabled: true, State: "enabled",
+	}).Error; err != nil {
+		t.Fatalf("seed alert rule: %v", err)
+	}
+	if err := db.Create(&model.AlertNotificationChannel{
+		ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed channel: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	projectID := uint(42)
+	const workers = 24
+
+	start := make(chan struct{})
+	errCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := l.CreateRuleChannelBinding(context.Background(), projectID, 7, 1001, nil, nil)
+			if err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	errs := make([]error, 0, workers)
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		t.Fatalf("expected no concurrent create errors, got %d first=%v", len(errs), errs[0])
+	}
+
+	var scopedCount int64
+	if err := db.Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1001, projectID).
+		Count(&scopedCount).Error; err != nil {
+		t.Fatalf("count scoped bindings: %v", err)
+	}
+	if scopedCount != 1 {
+		t.Fatalf("expected exactly one scoped binding, got %d", scopedCount)
+	}
+}
 
 func TestResolveChannels_BindingWinsSeverityFallback(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:routing-precedence?mode=memory&cache=shared"), &gorm.Config{})
