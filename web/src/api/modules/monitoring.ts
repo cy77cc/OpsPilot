@@ -267,7 +267,7 @@ export const monitoringApi = {
       target: payload.target,
       enabled: payload.enabled,
       config_json: payload.configJson,
-      project_id: payload.projectId,
+      project_id: toPositiveIntOrUndefined(payload.projectId),
     });
   },
   async deleteAlertChannel(id: string): Promise<ApiResponse<any>> {
@@ -308,7 +308,7 @@ export const monitoringApi = {
       project_id: toPositiveIntOrUndefined(payload.projectId),
       scope: payload.scope,
       severity: payload.severity,
-      channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      channel_ids: payload.channelIds.map((x) => toPositiveIntOrUndefined(x)).filter((x): x is number => x !== undefined),
       enabled: payload.enabled ?? true,
     });
   },
@@ -317,7 +317,7 @@ export const monitoringApi = {
       project_id: toPositiveIntOrUndefined(payload.projectId),
       scope: payload.scope,
       severity: payload.severity,
-      channel_ids: payload.channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      channel_ids: payload.channelIds.map((x) => toPositiveIntOrUndefined(x)).filter((x): x is number => x !== undefined),
       enabled: payload.enabled ?? true,
     });
   },

@@ -67,7 +67,7 @@ describe('monitoringApi config endpoints', () => {
       projectId: '42',
       scope: 'project',
       severity: 'critical',
-      channelIds: ['1001', 'bad', '0', '-1', '1002'],
+      channelIds: ['1001', '1.5', 'bad', '0', '-1', '1002'],
       enabled: false,
     });
 
@@ -77,6 +77,35 @@ describe('monitoringApi config endpoints', () => {
       severity: 'critical',
       channel_ids: [1001, 1002],
       enabled: false,
+    });
+  });
+
+  it('normalizes create alert channel project_id to positive integer', async () => {
+    const postMock = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: { id: 1 },
+    } as any);
+
+    await monitoringApi.createAlertChannel({ name: 'invalid-project', projectId: 'abc' });
+    await monitoringApi.createAlertChannel({ name: 'valid-project', projectId: '42' });
+
+    expect(postMock).toHaveBeenNthCalledWith(1, '/alert-channels', {
+      name: 'invalid-project',
+      type: undefined,
+      provider: undefined,
+      target: undefined,
+      enabled: undefined,
+      config_json: undefined,
+      project_id: undefined,
+    });
+    expect(postMock).toHaveBeenNthCalledWith(2, '/alert-channels', {
+      name: 'valid-project',
+      type: undefined,
+      provider: undefined,
+      target: undefined,
+      enabled: undefined,
+      config_json: undefined,
+      project_id: 42,
     });
   });
 
