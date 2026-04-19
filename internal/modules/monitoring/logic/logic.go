@@ -159,7 +159,7 @@ func (l *Logic) enrichAlertHealSummary(ctx context.Context, alerts []model.Alert
 		Table("ai_alert_heal_jobs AS jobs").
 		Select("events.fingerprint, jobs.id AS job_id, jobs.status, jobs.updated_at, jobs.latest_run_id").
 		Joins("JOIN ai_alert_ingest_events AS events ON events.id = jobs.event_id").
-		Where("events.fingerprint IN ?", fingerprints).
+		Where("events.protocol = ? AND events.fingerprint IN ?", "alertmanager", fingerprints).
 		Order("events.fingerprint ASC").
 		Order("jobs.updated_at DESC").
 		Order("jobs.id DESC").

@@ -138,3 +138,71 @@ func TestListAlerts_EnrichesLatestAlertHealSummary(t *testing.T) {
 		}
 	}
 }
+
+func TestListAlerts_HealSummaryDoesNotCrossProtocol(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:summary-protocol?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&monitoringmodel.AlertEvent{},
+		&aimodel.AIAlertIngestEvent{},
+		&aimodel.AIAlertHealJob{},
+	); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&monitoringmodel.AlertEvent{ID: 42, Source: "alertmanager/fp-1", Severity: "critical", Status: "firing", TriggeredAt: now}).Error; err != nil {
+		t.Fatalf("seed alert event: %v", err)
+	}
+	if err := db.Create(&aimodel.AIAlertIngestEvent{
+		ID:          "evt-am",
+		Protocol:    "alertmanager",
+		Source:      "alertmanager",
+		Fingerprint: "fp-1",
+		Status:      "firing",
+		DedupeKey:   "alertmanager:fp-1:firing",
+		Title:       "am",
+		ReceivedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed alertmanager ingest event: %v", err)
+	}
+	if err := db.Create(&aimodel.AIAlertIngestEvent{
+		ID:          "evt-u",
+		Protocol:    "opspilot.alert.v1",
+		Source:      "opspilot.alert.v1",
+		Fingerprint: "fp-1",
+		Status:      "firing",
+		DedupeKey:   "opspilot.alert.v1:fp-1:firing",
+		Title:       "u",
+		ReceivedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed unified ingest event: %v", err)
+	}
+	if err := db.Create(&aimodel.AIAlertHealJob{
+		ID:        "job-am",
+		EventID:   "evt-am",
+		Scene:     "alert_self_heal",
+		Status:    "succeeded",
+		UpdatedAt: now.Add(time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed alertmanager job: %v", err)
+	}
+	if err := db.Create(&aimodel.AIAlertHealJob{
+		ID:        "job-u",
+		EventID:   "evt-u",
+		Scene:     "alert_self_heal",
+		Status:    "failed_manual",
+		UpdatedAt: now.Add(2 * time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed unified job: %v", err)
+	}
+
+	rows, _, err := NewLogic(&svc.ServiceContext{DB: db}).ListAlerts(context.Background(), "", "", 42, 1, 20)
+	if err != nil {
+		t.Fatalf("list alerts: %v", err)
+	}
+	if len(rows) != 1 || rows[0].LatestHealJobID != "job-am" {
+		t.Fatalf("expected only alertmanager heal summary, got %#v", rows)
+	}
+}
