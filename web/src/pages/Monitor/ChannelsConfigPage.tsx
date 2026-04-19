@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 
 type ChannelTestForm = {
   provider: string;
@@ -23,6 +24,17 @@ type ChannelRow = {
   configJson?: string;
 };
 
+const readStoredProjectId = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const value = window.localStorage.getItem('projectId');
+  return value || undefined;
+};
+
+const normalizeProjectId = (value?: string): string | undefined => {
+  const trimmed = (value || '').trim();
+  return trimmed || undefined;
+};
+
 const ChannelsConfigPage: React.FC = () => {
   const [form] = Form.useForm<ChannelTestForm>();
   const [createForm] = Form.useForm<ChannelFormValues>();
@@ -32,8 +44,17 @@ const ChannelsConfigPage: React.FC = () => {
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<ChannelRow | null>(null);
+  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
+  const currentProjectId = scope.scope === 'project' ? normalizeProjectId(scope.projectId) : undefined;
+
+  const ensureProjectScopeReady = (): boolean => {
+    if (scope.scope !== 'project') return true;
+    if (currentProjectId) return true;
+    message.error('项目作用域操作需要先选择项目ID');
+    return false;
+  };
 
   const loadChannels = async (showError = true): Promise<boolean> => {
     const seq = loadSeqRef.current + 1;
@@ -72,6 +93,16 @@ const ChannelsConfigPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const projectId = normalizeProjectId(scope.projectId);
+    if (projectId) {
+      window.localStorage.setItem('projectId', projectId);
+    } else {
+      window.localStorage.removeItem('projectId');
+    }
+  }, [scope.projectId]);
+
   const handleTestSend = async () => {
     const values = await form.validateFields();
     setSubmitting(true);
@@ -86,6 +117,7 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   const handleCreate = async () => {
+    if (!ensureProjectScopeReady()) return;
     try {
       const values = await createForm.validateFields();
       setSubmitting(true);
@@ -95,6 +127,7 @@ const ChannelsConfigPage: React.FC = () => {
           provider: values.channelProvider,
           target: values.channelTarget,
           configJson: values.channelConfigJson,
+          projectId: currentProjectId,
         });
         message.success('渠道创建成功');
         setCreateOpen(false);
@@ -123,6 +156,7 @@ const ChannelsConfigPage: React.FC = () => {
 
   const handleUpdate = async () => {
     if (!editing) return;
+    if (!ensureProjectScopeReady()) return;
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
@@ -132,6 +166,7 @@ const ChannelsConfigPage: React.FC = () => {
           provider: values.channelProvider,
           target: values.channelTarget,
           configJson: values.channelConfigJson,
+          projectId: currentProjectId,
         });
         message.success('渠道更新成功');
         setEditing(null);
@@ -181,9 +216,12 @@ const ChannelsConfigPage: React.FC = () => {
       <Card
         title="通知渠道配置"
         extra={(
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            新增渠道
-          </Button>
+          <Space size={12}>
+            <ScopeSelector value={scope} onChange={setScope} />
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
+              新增渠道
+            </Button>
+          </Space>
         )}
       >
         <Table

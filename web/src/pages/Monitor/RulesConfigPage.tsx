@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 
 type EffectiveRuleRow = {
   id: string;
@@ -31,6 +32,17 @@ type RuleChannelBindingFormValues = {
   enabled: boolean;
 };
 
+const readStoredProjectId = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const value = window.localStorage.getItem('projectId');
+  return value || undefined;
+};
+
+const normalizeProjectId = (value?: string): string | undefined => {
+  const trimmed = (value || '').trim();
+  return trimmed || undefined;
+};
+
 const RulesConfigPage: React.FC = () => {
   const [createForm] = Form.useForm<RuleFormValues>();
   const [editForm] = Form.useForm<RuleFormValues>();
@@ -46,21 +58,24 @@ const RulesConfigPage: React.FC = () => {
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingSubmitting, setBindingSubmitting] = useState(false);
   const [editingBindingChannelId, setEditingBindingChannelId] = useState<string | null>(null);
+  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
   const mountedRef = useRef(true);
   const bindingLoadSeqRef = useRef(0);
   const activeBindingRuleIdRef = useRef<string | null>(null);
   const bindingOpenRef = useRef(false);
+  const currentProjectId = scope.scope === 'project' ? normalizeProjectId(scope.projectId) : undefined;
 
-  const getProjectId = (): string | undefined => {
-    if (typeof window === 'undefined') return undefined;
-    const value = window.localStorage.getItem('projectId');
-    return value || undefined;
+  const ensureProjectScopeReady = (): boolean => {
+    if (scope.scope !== 'project') return true;
+    if (currentProjectId) return true;
+    message.error('项目作用域操作需要先选择项目ID');
+    return false;
   };
 
   const load = async (showError = true): Promise<boolean> => {
     setLoading(true);
     try {
-      const res = await Api.monitoring.getEffectiveRules({ page: 1, pageSize: 50 });
+      const res = await Api.monitoring.getEffectiveRules({ projectId: currentProjectId, page: 1, pageSize: 50 });
       const list = (res?.data as any)?.list || [];
       if (!mountedRef.current) return false;
       setRows(
@@ -88,11 +103,28 @@ const RulesConfigPage: React.FC = () => {
   };
 
   useEffect(() => {
-    void load();
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (scope.scope === 'project' && !currentProjectId) {
+      setRows([]);
+      return;
+    }
+    void load();
+  }, [scope.scope, currentProjectId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const projectId = normalizeProjectId(scope.projectId);
+    if (projectId) {
+      window.localStorage.setItem('projectId', projectId);
+    } else {
+      window.localStorage.removeItem('projectId');
+    }
+  }, [scope.projectId]);
 
   const handleCreate = async () => {
     try {
@@ -179,11 +211,15 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const loadBindings = async (ruleId: string): Promise<boolean> => {
+    if (scope.scope === 'project' && !currentProjectId) {
+      setBindings([]);
+      return false;
+    }
     const seq = bindingLoadSeqRef.current + 1;
     bindingLoadSeqRef.current = seq;
     setBindingLoading(true);
     try {
-      const res = await Api.monitoring.getRuleChannels(ruleId, { projectId: getProjectId() });
+      const res = await Api.monitoring.getRuleChannels(ruleId, { projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
       if (!mountedRef.current || seq !== bindingLoadSeqRef.current || !bindingOpenRef.current || activeBindingRuleIdRef.current !== ruleId) return false;
       setBindings(
@@ -207,6 +243,7 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const openBindingDrawer = async (record: EffectiveRuleRow) => {
+    if (!ensureProjectScopeReady()) return;
     bindingOpenRef.current = true;
     activeBindingRuleIdRef.current = record.id;
     setBindingRule(record);
@@ -222,12 +259,13 @@ const RulesConfigPage: React.FC = () => {
 
   const handleCreateBinding = async () => {
     if (!bindingRule || bindingSubmitting) return;
+    if (!ensureProjectScopeReady()) return;
     try {
       const values = await bindingForm.validateFields();
       setBindingSubmitting(true);
       try {
         await Api.monitoring.createRuleChannelBinding(bindingRule.id, {
-          projectId: getProjectId(),
+          projectId: currentProjectId,
           channelId: values.channelId,
           priority: values.priority,
           enabled: values.enabled,
@@ -260,12 +298,13 @@ const RulesConfigPage: React.FC = () => {
 
   const handleUpdateBinding = async () => {
     if (!bindingRule || !editingBindingChannelId || bindingSubmitting) return;
+    if (!ensureProjectScopeReady()) return;
     try {
       const values = await bindingForm.validateFields();
       setBindingSubmitting(true);
       try {
         await Api.monitoring.updateRuleChannelBinding(bindingRule.id, editingBindingChannelId, {
-          projectId: getProjectId(),
+          projectId: currentProjectId,
           priority: values.priority,
           enabled: values.enabled,
         });
@@ -287,9 +326,10 @@ const RulesConfigPage: React.FC = () => {
 
   const handleDeleteBinding = async (channelId: string) => {
     if (!bindingRule || bindingSubmitting) return;
+    if (!ensureProjectScopeReady()) return;
     setBindingSubmitting(true);
     try {
-      await Api.monitoring.deleteRuleChannelBinding(bindingRule.id, channelId, getProjectId());
+      await Api.monitoring.deleteRuleChannelBinding(bindingRule.id, channelId, currentProjectId);
       message.success('绑定删除成功');
       setEditingBindingChannelId(null);
       bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
@@ -305,9 +345,12 @@ const RulesConfigPage: React.FC = () => {
     <Card
       title="规则配置"
       extra={(
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
-          新增规则
-        </Button>
+        <Space size={12}>
+          <ScopeSelector value={scope} onChange={setScope} />
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            新增规则
+          </Button>
+        </Space>
       )}
     >
       <Table

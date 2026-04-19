@@ -45,6 +45,18 @@ describe('RoutingConfigPage', () => {
     expect(screen.getByText('[1001]')).toBeInTheDocument();
   });
 
+  it('passes project scope to route list request after switching scope', async () => {
+    render(<RoutingConfigPage />);
+    await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledWith({ projectId: '42' });
+    });
+  });
+
   it('creates a route and reloads list with scope-aware payload', async () => {
     window.localStorage.setItem('projectId', '42');
     render(<RoutingConfigPage />);

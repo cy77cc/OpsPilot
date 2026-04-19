@@ -20,6 +20,7 @@ vi.mock('../../api', () => ({
 describe('ChannelsConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     vi.spyOn(Modal, 'error').mockImplementation(() => ({ destroy: vi.fn(), update: vi.fn() }) as any);
@@ -62,6 +63,24 @@ describe('ChannelsConfigPage', () => {
     });
   });
 
+  it('passes project scope to channel create request after switching scope', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '新增渠道' }));
+    const dialog = await screen.findByRole('dialog', { name: '新增渠道' });
+    fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: 'Ops Email' } });
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'email' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.createAlertChannel).toHaveBeenCalledWith(expect.objectContaining({ projectId: '42' }));
+    });
+  });
+
   it('shows error when test-send API fails', async () => {
     mockApi.monitoring.testAlertChannel.mockRejectedValueOnce(new Error('send failed'));
     render(<ChannelsConfigPage />);
@@ -92,6 +111,7 @@ describe('ChannelsConfigPage', () => {
         provider: 'email',
         target: 'ops@example.com',
         configJson: '{"from":"ops@example.com"}',
+        projectId: undefined,
       });
       expect(mockApi.monitoring.listAlertChannels).toHaveBeenCalledTimes(2);
     });
@@ -113,6 +133,7 @@ describe('ChannelsConfigPage', () => {
         provider: 'webhook',
         target: 'https://example.com/v2/hook',
         configJson: '{}',
+        projectId: undefined,
       });
       expect(mockApi.monitoring.listAlertChannels).toHaveBeenCalledTimes(2);
     });

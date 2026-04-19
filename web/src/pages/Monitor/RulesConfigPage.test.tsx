@@ -23,6 +23,7 @@ vi.mock('../../api', () => ({
 describe('RulesConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'warning').mockImplementation(() => undefined as any);
@@ -55,6 +56,18 @@ describe('RulesConfigPage', () => {
 
     expect(await screen.findByText('CPU High')).toBeInTheDocument();
     expect(screen.getByText('warning')).toBeInTheDocument();
+  });
+
+  it('passes project scope to effective-rules requests after switching scope', async () => {
+    render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledWith(expect.objectContaining({ projectId: '42' }));
+    });
   });
 
   it('creates a rule and reloads list', async () => {

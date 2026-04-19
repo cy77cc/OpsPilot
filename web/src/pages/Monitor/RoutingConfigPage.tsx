@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 
 type RouteRow = {
   id: string;
@@ -18,6 +19,17 @@ type RouteFormValues = {
   enabled: boolean;
 };
 
+const readStoredProjectId = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const value = window.localStorage.getItem('projectId');
+  return value || undefined;
+};
+
+const normalizeProjectId = (value?: string): string | undefined => {
+  const trimmed = (value || '').trim();
+  return trimmed || undefined;
+};
+
 const RoutingConfigPage: React.FC = () => {
   const [createForm] = Form.useForm<RouteFormValues>();
   const [editForm] = Form.useForm<RouteFormValues>();
@@ -26,14 +38,11 @@ const RoutingConfigPage: React.FC = () => {
   const [rows, setRows] = useState<RouteRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<RouteRow | null>(null);
+  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
-
-  const getProjectId = () => {
-    if (typeof window === 'undefined') return undefined;
-    const value = window.localStorage.getItem('projectId');
-    return value || undefined;
-  };
+  const normalizedProjectId = normalizeProjectId(scope.projectId);
+  const currentProjectId = scope.scope === 'project' ? normalizedProjectId : undefined;
 
   const parseChannelIDs = (raw: string): string[] => raw.split(',').map((x) => x.trim()).filter(Boolean);
 
@@ -50,14 +59,20 @@ const RoutingConfigPage: React.FC = () => {
     return [];
   };
 
-  const projectIdForScope = (scope: string): string | undefined => (scope === 'project' ? getProjectId() : undefined);
+  const projectIdForScope = (routeScope: string): string | undefined => (routeScope === 'project' ? normalizedProjectId : undefined);
+  const ensureProjectScopeReady = (routeScope: string): boolean => {
+    if (routeScope !== 'project') return true;
+    if (normalizedProjectId) return true;
+    message.error('项目作用域操作需要先选择项目ID');
+    return false;
+  };
 
   const load = async (showError = true): Promise<boolean> => {
     const seq = loadSeqRef.current + 1;
     loadSeqRef.current = seq;
     setLoading(true);
     try {
-      const res = await Api.monitoring.getSeverityRoutes();
+      const res = await Api.monitoring.getSeverityRoutes({ projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
       if (!mountedRef.current || seq !== loadSeqRef.current) return false;
       setRows(
@@ -86,18 +101,33 @@ const RoutingConfigPage: React.FC = () => {
   };
 
   useEffect(() => {
-    void load();
     return () => {
       mountedRef.current = false;
       loadSeqRef.current += 1;
     };
   }, []);
 
+  useEffect(() => {
+    if (scope.scope === 'project' && !currentProjectId) {
+      setRows([]);
+      return;
+    }
+    void load();
+  }, [scope.scope, currentProjectId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (normalizedProjectId) {
+      window.localStorage.setItem('projectId', normalizedProjectId);
+    } else {
+      window.localStorage.removeItem('projectId');
+    }
+  }, [normalizedProjectId]);
+
   const handleCreate = async () => {
     try {
       const values = await createForm.validateFields();
-      if (values.scope === 'project' && !getProjectId()) {
-        message.error('项目作用域操作需要先选择项目ID');
+      if (!ensureProjectScopeReady(values.scope)) {
         return;
       }
       setSubmitting(true);
@@ -138,8 +168,7 @@ const RoutingConfigPage: React.FC = () => {
     if (!editing) return;
     try {
       const values = await editForm.validateFields();
-      if (values.scope === 'project' && !getProjectId()) {
-        message.error('项目作用域操作需要先选择项目ID');
+      if (!ensureProjectScopeReady(values.scope)) {
         return;
       }
       setSubmitting(true);
@@ -166,8 +195,7 @@ const RoutingConfigPage: React.FC = () => {
   };
 
   const handleDelete = async (record: RouteRow) => {
-    if (record.scope === 'project' && !getProjectId()) {
-      message.error('项目作用域操作需要先选择项目ID');
+    if (!ensureProjectScopeReady(record.scope)) {
       return;
     }
     setSubmitting(true);
@@ -187,9 +215,12 @@ const RoutingConfigPage: React.FC = () => {
     <Card
       title="路由配置"
       extra={(
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
-          新增路由
-        </Button>
+        <Space size={12}>
+          <ScopeSelector value={scope} onChange={setScope} />
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            新增路由
+          </Button>
+        </Space>
       )}
     >
       <Table
