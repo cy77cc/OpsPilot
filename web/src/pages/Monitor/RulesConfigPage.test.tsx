@@ -182,15 +182,13 @@ describe('RulesConfigPage', () => {
     const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
     fireEvent.click(within(drawer).getByRole('button', { name: '编辑绑定' }));
     fireEvent.change(within(drawer).getByRole('spinbutton', { name: '优先级' }), { target: { value: '10' } });
-    fireEvent.mouseDown(within(drawer).getByLabelText('状态'));
-    fireEvent.click(await screen.findByText('禁用'));
     fireEvent.click(within(drawer).getByRole('button', { name: '更新绑定' }));
 
     await waitFor(() => {
       expect(mockApi.monitoring.updateRuleChannelBinding).toHaveBeenCalledWith('1', '1001', {
         projectId: undefined,
         priority: 10,
-        enabled: false,
+        enabled: true,
       });
       expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(2);
     });
@@ -203,10 +201,35 @@ describe('RulesConfigPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '渠道绑定' }));
     const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
     fireEvent.click(within(drawer).getByRole('button', { name: '删除绑定' }));
+    const confirm = await screen.findByRole('tooltip', { name: /确定删除此绑定/ });
+    fireEvent.click(within(confirm).getByRole('button', { name: /^(OK|确定)$/ }));
 
     await waitFor(() => {
       expect(mockApi.monitoring.deleteRuleChannelBinding).toHaveBeenCalledWith('1', '1001', undefined);
       expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('shows binding error and does not reload bindings when create binding fails', async () => {
+    mockApi.monitoring.createRuleChannelBinding.mockRejectedValueOnce(new Error('create binding failed'));
+    render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
+    fireEvent.click(screen.getByRole('button', { name: '渠道绑定' }));
+    const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
+    fireEvent.change(within(drawer).getByLabelText('渠道ID'), { target: { value: '1002' } });
+    fireEvent.change(within(drawer).getByRole('spinbutton', { name: '优先级' }), { target: { value: '5' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '新增绑定' }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.createRuleChannelBinding).toHaveBeenCalledWith('1', {
+        projectId: undefined,
+        channelId: '1002',
+        priority: 5,
+        enabled: true,
+      });
+      expect(message.error).toHaveBeenCalledWith('绑定创建失败');
+    });
+    expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(1);
   });
 });
