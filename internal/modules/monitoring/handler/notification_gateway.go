@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	monitoringlogic "github.com/cy77cc/OpsPilot/internal/modules/monitoring/logic"
 	model "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	notifhandler "github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -51,6 +52,7 @@ type AlertmanagerAlert struct {
 type NotificationGateway struct {
 	svcCtx    *svc.ServiceContext            // 服务上下文
 	providers *notifhandler.ProviderRegistry // 通知提供者注册表
+	logic     *monitoringlogic.Logic         // 监控逻辑层
 }
 
 // NewNotificationGateway 创建通知网关实例。
@@ -65,6 +67,7 @@ func NewNotificationGateway(svcCtx *svc.ServiceContext) *NotificationGateway {
 	return &NotificationGateway{
 		svcCtx:    svcCtx,
 		providers: notifhandler.NewDefaultProviderRegistry(),
+		logic:     monitoringlogic.NewLogic(svcCtx),
 	}
 }
 
@@ -197,9 +200,9 @@ func (g *NotificationGateway) upsertAlertEvent(ctx context.Context, alert Alertm
 //   - ctx: 上下文
 //   - alert: 告警事件
 func (g *NotificationGateway) dispatchAsync(ctx context.Context, alert model.AlertEvent) {
-	channels := make([]model.AlertNotificationChannel, 0, 16)
-	if err := g.svcCtx.DB.WithContext(ctx).Where("enabled = ?", true).Find(&channels).Error; err != nil {
-		logger.L().Warn("load alert channels failed", logger.Error(err))
+	channels, err := g.resolveChannels(ctx, alert)
+	if err != nil {
+		logger.L().Warn("resolve alert channels failed", logger.Error(err))
 		return
 	}
 	if len(channels) == 0 {
@@ -218,6 +221,11 @@ func (g *NotificationGateway) dispatchAsync(ctx context.Context, alert model.Ale
 	go func() {
 		wg.Wait()
 	}()
+}
+
+func (g *NotificationGateway) resolveChannels(ctx context.Context, alert model.AlertEvent) ([]model.AlertNotificationChannel, error) {
+	projectID := uint(0)
+	return g.logic.ResolveChannelsForAlert(ctx, projectID, alert.RuleID, alert.Severity)
 }
 
 // sendWithRetry 发送通知并支持重试。
