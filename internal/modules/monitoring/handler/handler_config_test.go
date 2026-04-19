@@ -1,14 +1,19 @@
-package handler
+package handler_test
 
 import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	monitoringapi "github.com/cy77cc/OpsPilot/internal/modules/monitoring/api"
 	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -20,11 +25,12 @@ import (
 func TestChannelTestEndpoint_Returns200ForValidPayload(t *testing.T) {
 	db := setupMonitoringConfigDB(t, "channel-test-endpoint")
 	seedMonitoringWriteUser(t, db, 1001)
-	r := setupMonitoringConfigRouter(db, 1001)
+	r := setupMonitoringConfigRouter(t, db)
 
 	body := `{"provider":"webhook","target":"https://example.com/hook","config_json":"{}"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-channels/test", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -43,9 +49,10 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 	if err := db.Create(&monitoringmodel.AlertRuleChannelBinding{RuleID: 7, ChannelID: 1001, Priority: 1, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed binding: %v", err)
 	}
-	r := setupMonitoringConfigRouter(db, 1001)
+	r := setupMonitoringConfigRouter(t, db)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7", nil)
+	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -64,7 +71,7 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
 	}
-	if resp.Code != 409 {
+	if resp.Code != http.StatusConflict {
 		t.Fatalf("expected response code field 409, got %d body=%s", resp.Code, w.Body.String())
 	}
 	if len(resp.Data.Blockers) == 0 {
@@ -75,9 +82,10 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 func TestDeleteChannelEndpoint_Returns404WhenMissing(t *testing.T) {
 	db := setupMonitoringConfigDB(t, "delete-channel-endpoint-missing")
 	seedMonitoringWriteUser(t, db, 1001)
-	r := setupMonitoringConfigRouter(db, 1001)
+	r := setupMonitoringConfigRouter(t, db)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-channels/9999", nil)
+	authorizeMonitoringRequest(t, req, 1001)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -90,7 +98,7 @@ func TestDeleteChannelEndpoint_Returns404WhenMissing(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
 	}
-	if resp.Code != 2005 {
+	if resp.Code != int(xcode.NotFound) {
 		t.Fatalf("expected not-found code field 2005, got %d body=%s", resp.Code, w.Body.String())
 	}
 }
@@ -104,10 +112,11 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 	if err := db.Create(&monitoringmodel.AlertSeverityRoute{ID: 31, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed severity route: %v", err)
 	}
-	r := setupMonitoringConfigRouter(db, 1001)
+	r := setupMonitoringConfigRouter(t, db)
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/alert-routing/severity", strings.NewReader(`{"scope":"global","severity":"critical","channel_ids":[1001],"enabled":true}`))
 	createReq.Header.Set("Content-Type", "application/json")
+	authorizeMonitoringRequest(t, createReq, 1001)
 	createW := httptest.NewRecorder()
 	r.ServeHTTP(createW, createReq)
 	if createW.Code != http.StatusOK {
@@ -117,6 +126,7 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/alert-routing/severity/31", strings.NewReader(`{"scope":"global","severity":"warning","channel_ids":[1001],"enabled":true}`))
 	updateReq.Header.Set("Content-Type", "application/json")
+	authorizeMonitoringRequest(t, updateReq, 1001)
 	updateW := httptest.NewRecorder()
 	r.ServeHTTP(updateW, updateReq)
 	if updateW.Code != http.StatusOK {
@@ -125,6 +135,7 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 	assertMonitoringSuccessCode(t, updateW.Body.Bytes(), "update severity route")
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-routing/severity/31", nil)
+	authorizeMonitoringRequest(t, deleteReq, 1001)
 	deleteW := httptest.NewRecorder()
 	r.ServeHTTP(deleteW, deleteReq)
 	if deleteW.Code != http.StatusOK {
@@ -154,10 +165,11 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed scoped binding: %v", err)
 	}
-	r := setupMonitoringConfigRouter(db, 1001)
+	r := setupMonitoringConfigRouter(t, db)
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1001,"project_id":42,"priority":2,"enabled":true}`))
 	createReq.Header.Set("Content-Type", "application/json")
+	authorizeMonitoringRequest(t, createReq, 1001)
 	createW := httptest.NewRecorder()
 	r.ServeHTTP(createW, createReq)
 	if createW.Code != http.StatusOK {
@@ -167,6 +179,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/alert-rules/7/channels/1001", strings.NewReader(`{"project_id":42,"priority":3,"enabled":true}`))
 	updateReq.Header.Set("Content-Type", "application/json")
+	authorizeMonitoringRequest(t, updateReq, 1001)
 	updateW := httptest.NewRecorder()
 	r.ServeHTTP(updateW, updateReq)
 	if updateW.Code != http.StatusOK {
@@ -175,6 +188,7 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	assertMonitoringSuccessCode(t, updateW.Body.Bytes(), "update rule-channel binding")
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7/channels/1001?project_id=42", nil)
+	authorizeMonitoringRequest(t, deleteReq, 1001)
 	deleteW := httptest.NewRecorder()
 	r.ServeHTTP(deleteW, deleteReq)
 	if deleteW.Code != http.StatusOK {
@@ -206,45 +220,61 @@ func setupMonitoringConfigDB(t *testing.T, dbName string) *gorm.DB {
 	return db
 }
 
-func setupMonitoringConfigRouter(db *gorm.DB, uid uint) *gin.Engine {
-	h := NewHandler(&svc.ServiceContext{DB: db})
+func setupMonitoringConfigRouter(t *testing.T, db *gorm.DB) *gin.Engine {
+	t.Helper()
+
+	configureJWTForMonitoringHandlerTests(t)
+	configurePrometheusForMonitoringHandlerTests(t)
+
 	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		c.Set("uid", uid)
-		c.Next()
-	})
-
-	// Existing endpoint in this test suite.
-	r.POST("/api/v1/alert-channels/test", h.TestChannel)
-
-	// New CRUD endpoints expected by this change set.
-	registerHandlerMethodIfExists(r, http.MethodDelete, "/api/v1/alert-rules/:id", h, "DeleteRule")
-	registerHandlerMethodIfExists(r, http.MethodDelete, "/api/v1/alert-channels/:id", h, "DeleteChannel")
-	registerHandlerMethodIfExists(r, http.MethodPost, "/api/v1/alert-routing/severity", h, "CreateSeverityRoute")
-	registerHandlerMethodIfExists(r, http.MethodPut, "/api/v1/alert-routing/severity/:id", h, "UpdateSeverityRouteByID")
-	registerHandlerMethodIfExists(r, http.MethodDelete, "/api/v1/alert-routing/severity/:id", h, "DeleteSeverityRoute")
-	registerHandlerMethodIfExists(r, http.MethodPost, "/api/v1/alert-rules/:id/channels", h, "CreateRuleChannelBinding")
-	registerHandlerMethodIfExists(r, http.MethodPut, "/api/v1/alert-rules/:id/channels/:channel_id", h, "UpdateRuleChannelBinding")
-	registerHandlerMethodIfExists(r, http.MethodDelete, "/api/v1/alert-rules/:id/channels/:channel_id", h, "DeleteRuleChannelBinding")
-
+	v1 := r.Group("/api/v1")
+	monitoringapi.RegisterMonitoringHandlers(v1, &svc.ServiceContext{DB: db})
 	return r
 }
 
-func registerHandlerMethodIfExists(r *gin.Engine, method, route string, h *Handler, methodName string) {
-	value := reflect.ValueOf(h).MethodByName(methodName)
-	if !value.IsValid() {
-		return
-	}
-	if value.Type().NumIn() != 1 || value.Type().In(0) != reflect.TypeOf(&gin.Context{}) {
-		return
-	}
-	if value.Type().NumOut() != 0 {
-		return
-	}
+func configurePrometheusForMonitoringHandlerTests(t *testing.T) {
+	t.Helper()
 
-	r.Handle(method, route, func(c *gin.Context) {
-		value.Call([]reflect.Value{reflect.ValueOf(c)})
+	reloadStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(reloadStub.Close)
+
+	oldAddress := config.CFG.Prometheus.Address
+	config.CFG.Prometheus.Address = reloadStub.URL
+	t.Cleanup(func() {
+		config.CFG.Prometheus.Address = oldAddress
 	})
+
+	t.Setenv("PROMETHEUS_ALERTING_RULES_FILE", filepath.Join(t.TempDir(), "alerting_rules.yml"))
+}
+
+func configureJWTForMonitoringHandlerTests(t *testing.T) {
+	t.Helper()
+
+	oldSecret := config.CFG.JWT.Secret
+	oldIssuer := config.CFG.JWT.Issuer
+	oldExpire := config.CFG.JWT.Expire
+
+	config.CFG.JWT.Secret = "monitoring-handler-config-test-secret"
+	config.CFG.JWT.Issuer = "monitoring-handler-config-test"
+	config.CFG.JWT.Expire = time.Hour
+
+	t.Cleanup(func() {
+		config.CFG.JWT.Secret = oldSecret
+		config.CFG.JWT.Issuer = oldIssuer
+		config.CFG.JWT.Expire = oldExpire
+	})
+}
+
+func authorizeMonitoringRequest(t *testing.T, req *http.Request, uid uint) {
+	t.Helper()
+
+	token, err := utils.GenToken(uid, false)
+	if err != nil {
+		t.Fatalf("generate access token: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 }
 
 func assertMonitoringSuccessCode(t *testing.T, body []byte, action string) {
@@ -256,7 +286,7 @@ func assertMonitoringSuccessCode(t *testing.T, body []byte, action string) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("%s unmarshal response: %v body=%s", action, err, string(body))
 	}
-	if resp.Code != 1000 {
+	if resp.Code != int(xcode.Success) {
 		t.Fatalf("%s expected response code field 1000, got %d body=%s", action, resp.Code, string(body))
 	}
 }
