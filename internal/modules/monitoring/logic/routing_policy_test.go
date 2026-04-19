@@ -123,3 +123,103 @@ func TestUpdateSeverityRoute_ReturnsNotFoundOnScopeMismatch(t *testing.T) {
 		t.Fatalf("expected route unchanged on scope mismatch, got %#v", row)
 	}
 }
+
+func TestCreateSeverityRoute_DefaultScopeAndNormalizedChannels(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:create-route-normalized?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertSeverityRoute{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	globalRow, err := l.CreateSeverityRoute(context.Background(), 0, SeverityRouteInput{
+		Scope:      "   ",
+		Severity:   " WARNING ",
+		ChannelIDs: []uint{0, 2, 2, 3, 0},
+		Enabled:    true,
+	})
+	if err != nil {
+		t.Fatalf("create global route: %v", err)
+	}
+	if globalRow.Scope != "global" || globalRow.Severity != "warning" || globalRow.ChannelIDsJSON != `[2,3]` {
+		t.Fatalf("unexpected normalized global route: %#v", globalRow)
+	}
+
+	projectRow, err := l.CreateSeverityRoute(context.Background(), 9, SeverityRouteInput{
+		Scope:      "",
+		Severity:   "critical",
+		ChannelIDs: []uint{0, 5, 5, 6},
+		Enabled:    true,
+	})
+	if err != nil {
+		t.Fatalf("create project route: %v", err)
+	}
+	if projectRow.Scope != "project" || projectRow.ProjectID == nil || *projectRow.ProjectID != 9 || projectRow.ChannelIDsJSON != `[5,6]` {
+		t.Fatalf("unexpected normalized project route: %#v", projectRow)
+	}
+}
+
+func TestUpdateSeverityRoute_RejectsBlankSeverityAndInvalidScope(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:update-route-validation?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertSeverityRoute{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	if err := db.Create(&model.AlertSeverityRoute{
+		ID: 301, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed route: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	if _, err := l.UpdateSeverityRoute(context.Background(), 301, 0, SeverityRouteInput{
+		Scope:      "global",
+		Severity:   "   ",
+		ChannelIDs: []uint{1},
+		Enabled:    true,
+	}); err == nil {
+		t.Fatalf("expected blank severity to be rejected")
+	}
+
+	if _, err := l.UpdateSeverityRoute(context.Background(), 301, 0, SeverityRouteInput{
+		Scope:      "cluster",
+		Severity:   "warning",
+		ChannelIDs: []uint{1},
+		Enabled:    true,
+	}); err == nil {
+		t.Fatalf("expected invalid scope to be rejected")
+	}
+}
+
+func TestUpdateSeverityRoute_NormalizesChannelIDs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:update-route-normalize-channels?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertSeverityRoute{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	if err := db.Create(&model.AlertSeverityRoute{
+		ID: 401, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1]`, Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed route: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	updated, err := l.UpdateSeverityRoute(context.Background(), 401, 0, SeverityRouteInput{
+		Scope:      " GLOBAL ",
+		Severity:   " CRITICAL ",
+		ChannelIDs: []uint{0, 8, 8, 7, 0},
+		Enabled:    false,
+	})
+	if err != nil {
+		t.Fatalf("update route normalize channels: %v", err)
+	}
+	if updated.Scope != "global" || updated.Severity != "critical" || updated.ChannelIDsJSON != `[8,7]` || updated.Enabled {
+		t.Fatalf("unexpected normalized update result: %#v", updated)
+	}
+}

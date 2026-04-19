@@ -195,34 +195,13 @@ func (l *Logic) ReplaceSeverityRoutes(ctx context.Context, projectID uint, route
 		}
 
 		for _, item := range routes {
-			severity := strings.ToLower(strings.TrimSpace(item.Severity))
-			if severity == "" {
-				continue
-			}
-			chIDs := make([]uint, 0, len(item.ChannelIDs))
-			seen := make(map[uint]struct{}, len(item.ChannelIDs))
-			for _, id := range item.ChannelIDs {
-				if id == 0 {
-					continue
-				}
-				if _, ok := seen[id]; ok {
-					continue
-				}
-				seen[id] = struct{}{}
-				chIDs = append(chIDs, id)
-			}
-			b, err := json.Marshal(chIDs)
+			scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, item)
 			if err != nil {
 				return err
 			}
-
-			scope := strings.ToLower(strings.TrimSpace(item.Scope))
-			if scope == "" {
-				if projectID > 0 {
-					scope = "project"
-				} else {
-					scope = "global"
-				}
+			b, err := json.Marshal(channelIDs)
+			if err != nil {
+				return err
 			}
 			row := model.AlertSeverityRoute{
 				Scope:          scope,
@@ -243,25 +222,23 @@ func (l *Logic) ReplaceSeverityRoutes(ctx context.Context, projectID uint, route
 }
 
 func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
-	b, err := json.Marshal(input.ChannelIDs)
+	scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, input)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(channelIDs)
 	if err != nil {
 		return nil, err
 	}
 	row := model.AlertSeverityRoute{
-		Scope:          strings.ToLower(strings.TrimSpace(input.Scope)),
-		Severity:       strings.ToLower(strings.TrimSpace(input.Severity)),
+		Scope:          scope,
+		Severity:       severity,
 		ChannelIDsJSON: string(b),
 		Enabled:        input.Enabled,
 	}
 	if projectID > 0 {
 		pid := projectID
 		row.ProjectID = &pid
-		if row.Scope == "" {
-			row.Scope = "project"
-		}
-	}
-	if row.Scope == "" {
-		row.Scope = "global"
 	}
 	if err := l.svcCtx.DB.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
@@ -270,7 +247,11 @@ func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input S
 }
 
 func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
-	b, err := json.Marshal(input.ChannelIDs)
+	scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, input)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(channelIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -281,8 +262,8 @@ func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint
 		q = q.Where("project_id IS NULL")
 	}
 	updates := map[string]any{
-		"scope":            strings.ToLower(strings.TrimSpace(input.Scope)),
-		"severity":         strings.ToLower(strings.TrimSpace(input.Severity)),
+		"scope":            scope,
+		"severity":         severity,
 		"channel_ids_json": string(b),
 		"enabled":          input.Enabled,
 	}
@@ -392,4 +373,36 @@ func validateRouteScope(scope string) error {
 	default:
 		return fmt.Errorf("invalid route scope: %s", scope)
 	}
+}
+
+func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (string, string, []uint, error) {
+	scope := strings.ToLower(strings.TrimSpace(input.Scope))
+	severity := strings.ToLower(strings.TrimSpace(input.Severity))
+	if severity == "" {
+		return "", "", nil, fmt.Errorf("severity is required")
+	}
+	if scope == "" {
+		if projectID > 0 {
+			scope = "project"
+		} else {
+			scope = "global"
+		}
+	}
+	if err := validateRouteScope(scope); err != nil {
+		return "", "", nil, err
+	}
+
+	channelIDs := make([]uint, 0, len(input.ChannelIDs))
+	seen := make(map[uint]struct{}, len(input.ChannelIDs))
+	for _, channelID := range input.ChannelIDs {
+		if channelID == 0 {
+			continue
+		}
+		if _, exists := seen[channelID]; exists {
+			continue
+		}
+		seen[channelID] = struct{}{}
+		channelIDs = append(channelIDs, channelID)
+	}
+	return scope, severity, channelIDs, nil
 }
