@@ -1076,66 +1076,68 @@ func (l *Logic) DeleteRule(ctx context.Context, id uint) error {
 	if id == 0 {
 		return gorm.ErrRecordNotFound
 	}
-	var row model.AlertRule
-	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
-		return err
-	}
-
-	var bindingCount int64
-	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&model.AlertRuleChannelBinding{}).
-		Where("rule_id = ?", id).
-		Count(&bindingCount).Error; err != nil {
-		return err
-	}
-	if bindingCount > 0 {
-		return &DeleteConflictError{
-			Resource: "alert_rule",
-			Blockers: []DeleteBlocker{{Type: "binding", Count: int(bindingCount)}},
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.AlertRule
+		if err := tx.Where("id = ?", id).Take(&row).Error; err != nil {
+			return err
 		}
-	}
-	return l.svcCtx.DB.WithContext(ctx).Delete(&model.AlertRule{}, id).Error
+
+		var bindingCount int64
+		if err := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("rule_id = ?", id).
+			Count(&bindingCount).Error; err != nil {
+			return err
+		}
+		if bindingCount > 0 {
+			return &DeleteConflictError{
+				Resource: "alert_rule",
+				Blockers: []DeleteBlocker{{Type: "binding", Count: int(bindingCount)}},
+			}
+		}
+		return tx.Delete(&model.AlertRule{}, id).Error
+	})
 }
 
 func (l *Logic) DeleteChannel(ctx context.Context, id uint) error {
 	if id == 0 {
 		return gorm.ErrRecordNotFound
 	}
-	var row model.AlertNotificationChannel
-	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
-		return err
-	}
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.AlertNotificationChannel
+		if err := tx.Where("id = ?", id).Take(&row).Error; err != nil {
+			return err
+		}
 
-	var bindingCount int64
-	if err := l.svcCtx.DB.WithContext(ctx).
-		Model(&model.AlertRuleChannelBinding{}).
-		Where("channel_id = ?", id).
-		Count(&bindingCount).Error; err != nil {
-		return err
-	}
+		var bindingCount int64
+		if err := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("channel_id = ?", id).
+			Count(&bindingCount).Error; err != nil {
+			return err
+		}
 
-	routes := make([]model.AlertSeverityRoute, 0, 16)
-	if err := l.svcCtx.DB.WithContext(ctx).Find(&routes).Error; err != nil {
-		return err
-	}
-	routeRefs := 0
-	for _, route := range routes {
-		for _, channelID := range parseChannelIDs(route.ChannelIDsJSON) {
-			if channelID == id {
-				routeRefs++
-				break
+		routes := make([]model.AlertSeverityRoute, 0, 16)
+		if err := tx.Find(&routes).Error; err != nil {
+			return err
+		}
+		routeRefs := 0
+		for _, route := range routes {
+			for _, channelID := range parseChannelIDs(route.ChannelIDsJSON) {
+				if channelID == id {
+					routeRefs++
+					break
+				}
 			}
 		}
-	}
-	if bindingCount > 0 || routeRefs > 0 {
-		blockers := make([]DeleteBlocker, 0, 2)
-		if bindingCount > 0 {
-			blockers = append(blockers, DeleteBlocker{Type: "binding", Count: int(bindingCount)})
+		if bindingCount > 0 || routeRefs > 0 {
+			blockers := make([]DeleteBlocker, 0, 2)
+			if bindingCount > 0 {
+				blockers = append(blockers, DeleteBlocker{Type: "binding", Count: int(bindingCount)})
+			}
+			if routeRefs > 0 {
+				blockers = append(blockers, DeleteBlocker{Type: "severity_route", Count: routeRefs})
+			}
+			return &DeleteConflictError{Resource: "alert_channel", Blockers: blockers}
 		}
-		if routeRefs > 0 {
-			blockers = append(blockers, DeleteBlocker{Type: "severity_route", Count: routeRefs})
-		}
-		return &DeleteConflictError{Resource: "alert_channel", Blockers: blockers}
-	}
-	return l.svcCtx.DB.WithContext(ctx).Delete(&model.AlertNotificationChannel{}, id).Error
+		return tx.Delete(&model.AlertNotificationChannel{}, id).Error
+	})
 }

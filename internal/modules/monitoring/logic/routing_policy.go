@@ -286,11 +286,21 @@ func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint
 		"channel_ids_json": string(b),
 		"enabled":          input.Enabled,
 	}
-	if err := q.Updates(updates).Error; err != nil {
-		return nil, err
+	result := q.Updates(updates)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	var row model.AlertSeverityRoute
-	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
+	fetch := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id)
+	if projectID > 0 {
+		fetch = fetch.Where("project_id = ?", projectID)
+	} else {
+		fetch = fetch.Where("project_id IS NULL")
+	}
+	if err := fetch.Take(&row).Error; err != nil {
 		return nil, err
 	}
 	return &row, nil
