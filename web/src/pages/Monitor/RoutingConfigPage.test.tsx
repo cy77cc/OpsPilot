@@ -1,10 +1,14 @@
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { message } from 'antd';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RoutingConfigPage from './RoutingConfigPage';
 
 const mockApi = vi.hoisted(() => ({
   monitoring: {
     getSeverityRoutes: vi.fn(),
+    createSeverityRoute: vi.fn(),
+    updateSeverityRouteByID: vi.fn(),
+    deleteSeverityRoute: vi.fn(),
   },
 }));
 
@@ -15,12 +19,23 @@ vi.mock('../../api', () => ({
 describe('RoutingConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
+    vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     mockApi.monitoring.getSeverityRoutes.mockResolvedValue({
       data: {
         list: [{ id: 1, scope: 'global', severity: 'critical', channel_ids_json: '[1001]', enabled: true }],
         total: 1,
       },
     });
+    mockApi.monitoring.createSeverityRoute.mockResolvedValue({ data: { id: 2 } });
+    mockApi.monitoring.updateSeverityRouteByID.mockResolvedValue({ data: { id: 1 } });
+    mockApi.monitoring.deleteSeverityRoute.mockResolvedValue({ data: { deleted: true } });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
   });
 
   it('renders severity routes', async () => {
@@ -28,5 +43,72 @@ describe('RoutingConfigPage', () => {
 
     expect(await screen.findByText('critical')).toBeInTheDocument();
     expect(screen.getByText('[1001]')).toBeInTheDocument();
+  });
+
+  it('creates a route and reloads list with scope-aware payload', async () => {
+    window.localStorage.setItem('projectId', '42');
+    render(<RoutingConfigPage />);
+    await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('button', { name: '新增路由' }));
+    const dialog = await screen.findByRole('dialog', { name: '新增路由' });
+    fireEvent.change(within(dialog).getByLabelText('作用域'), { target: { value: 'project' } });
+    fireEvent.change(within(dialog).getByLabelText('级别'), { target: { value: 'warning' } });
+    fireEvent.change(within(dialog).getByLabelText('渠道ID'), { target: { value: '1001,1002' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.createSeverityRoute).toHaveBeenCalledWith({
+        projectId: '42',
+        scope: 'project',
+        severity: 'warning',
+        channelIds: ['1001', '1002'],
+        enabled: true,
+      });
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('updates a route and reloads list with mapped payload', async () => {
+    render(<RoutingConfigPage />);
+    await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑路由' });
+    fireEvent.change(within(dialog).getByLabelText('级别'), { target: { value: 'info' } });
+    fireEvent.change(within(dialog).getByLabelText('渠道ID'), { target: { value: '1003' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.updateSeverityRouteByID).toHaveBeenCalledWith('1', {
+        projectId: undefined,
+        scope: 'global',
+        severity: 'info',
+        channelIds: ['1003'],
+        enabled: true,
+      });
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('deletes a route and reloads list with scope-aware params', async () => {
+    window.localStorage.setItem('projectId', '42');
+    mockApi.monitoring.getSeverityRoutes.mockResolvedValueOnce({
+      data: {
+        list: [{ id: 1, scope: 'project', severity: 'critical', channel_ids_json: '[1001]', enabled: true }],
+        total: 1,
+      },
+    });
+    render(<RoutingConfigPage />);
+    await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    const confirm = await screen.findByRole('tooltip', { name: /确定删除此路由/ });
+    fireEvent.click(within(confirm).getByRole('button', { name: /^(OK|确定)$/ }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.deleteSeverityRoute).toHaveBeenCalledWith('1', '42');
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(2);
+    });
   });
 });

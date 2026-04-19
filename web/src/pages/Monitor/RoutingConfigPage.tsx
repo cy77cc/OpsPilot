@@ -1,48 +1,173 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table } from 'antd';
+import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 
 type RouteRow = {
   id: string;
   scope: string;
   severity: string;
-  channel_ids_json?: string;
+  channelIds: string[];
+  channel_ids_json: string;
+  enabled: boolean;
+};
+
+type RouteFormValues = {
+  scope: string;
+  severity: string;
+  channelIDs: string;
   enabled: boolean;
 };
 
 const RoutingConfigPage: React.FC = () => {
+  const [createForm] = Form.useForm<RouteFormValues>();
+  const [editForm] = Form.useForm<RouteFormValues>();
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [rows, setRows] = useState<RouteRow[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<RouteRow | null>(null);
+
+  const getProjectId = () => {
+    if (typeof window === 'undefined') return undefined;
+    const value = window.localStorage.getItem('projectId');
+    return value || undefined;
+  };
+
+  const parseChannelIDs = (raw: string): string[] => raw.split(',').map((x) => x.trim()).filter(Boolean);
+
+  const normalizeChannelIds = (value: unknown): string[] => {
+    if (Array.isArray(value)) return value.map((x) => String(x)).filter(Boolean);
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed.map((x) => String(x)).filter(Boolean);
+      } catch {
+        return parseChannelIDs(value);
+      }
+    }
+    return [];
+  };
+
+  const projectIdForScope = (scope: string): string | undefined => (scope === 'project' ? getProjectId() : undefined);
+
+  const load = async (showError = true): Promise<boolean> => {
+    setLoading(true);
+    try {
+      const res = await Api.monitoring.getSeverityRoutes();
+      const list = (res?.data as any)?.list || [];
+      setRows(
+        list.map((item: any) => {
+          const channelIds = normalizeChannelIds(item.channel_ids_json ?? item.channel_ids ?? []);
+          return {
+            id: String(item.id),
+            scope: item.scope || 'global',
+            severity: item.severity || '',
+            channelIds,
+            channel_ids_json: typeof item.channel_ids_json === 'string' ? item.channel_ids_json : JSON.stringify(channelIds),
+            enabled: item.enabled !== false,
+          };
+        }),
+      );
+      return true;
+    } catch {
+      if (showError) message.error('路由列表加载失败');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await Api.monitoring.getSeverityRoutes();
-        const list = (res?.data as any)?.list || [];
-        if (!mounted) return;
-        setRows(
-          list.map((item: any) => ({
-            id: String(item.id),
-            scope: item.scope || '',
-            severity: item.severity || '',
-            channel_ids_json: item.channel_ids_json || '[]',
-            enabled: !!item.enabled,
-          })),
-        );
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      mounted = false;
-    };
+    void load();
   }, []);
 
+  const handleCreate = async () => {
+    try {
+      const values = await createForm.validateFields();
+      setSubmitting(true);
+      try {
+        await Api.monitoring.createSeverityRoute({
+          projectId: projectIdForScope(values.scope),
+          scope: values.scope,
+          severity: values.severity,
+          channelIds: parseChannelIDs(values.channelIDs),
+          enabled: values.enabled,
+        });
+        message.success('路由创建成功');
+        setCreateOpen(false);
+        createForm.resetFields();
+        const refreshed = await load(false);
+        if (!refreshed) message.warning('路由创建成功，但列表刷新失败');
+      } catch {
+        message.error('路由创建失败');
+      } finally {
+        setSubmitting(false);
+      }
+    } catch {
+      // form validation errors handled by antd
+    }
+  };
+
+  const handleOpenEdit = (record: RouteRow) => {
+    setEditing(record);
+    editForm.setFieldsValue({
+      scope: record.scope || 'global',
+      severity: record.severity || '',
+      channelIDs: record.channelIds.join(','),
+      enabled: record.enabled,
+    });
+  };
+
+  const handleUpdate = async () => {
+    if (!editing) return;
+    try {
+      const values = await editForm.validateFields();
+      setSubmitting(true);
+      try {
+        await Api.monitoring.updateSeverityRouteByID(editing.id, {
+          projectId: projectIdForScope(values.scope),
+          scope: values.scope,
+          severity: values.severity,
+          channelIds: parseChannelIDs(values.channelIDs),
+          enabled: values.enabled,
+        });
+        message.success('路由更新成功');
+        setEditing(null);
+        const refreshed = await load(false);
+        if (!refreshed) message.warning('路由更新成功，但列表刷新失败');
+      } catch {
+        message.error('路由更新失败');
+      } finally {
+        setSubmitting(false);
+      }
+    } catch {
+      // form validation errors handled by antd
+    }
+  };
+
+  const handleDelete = async (record: RouteRow) => {
+    setSubmitting(true);
+    try {
+      await Api.monitoring.deleteSeverityRoute(record.id, projectIdForScope(record.scope));
+      message.success('路由删除成功');
+      const refreshed = await load(false);
+      if (!refreshed) message.warning('路由删除成功，但列表刷新失败');
+    } catch {
+      message.error('路由删除失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <Card title="路由配置">
+    <Card
+      title="路由配置"
+      extra={(
+        <Button type="primary" onClick={() => setCreateOpen(true)}>
+          新增路由
+        </Button>
+      )}
+    >
       <Table
         rowKey="id"
         loading={loading}
@@ -51,10 +176,106 @@ const RoutingConfigPage: React.FC = () => {
         columns={[
           { title: '作用域', dataIndex: 'scope' },
           { title: '级别', dataIndex: 'severity' },
-          { title: '渠道', dataIndex: 'channel_ids_json', render: (v: string | undefined) => v || '[]' },
+          { title: '渠道', dataIndex: 'channel_ids_json', render: (v: string) => v || '[]' },
           { title: '启用', dataIndex: 'enabled', render: (v: boolean) => (v ? '是' : '否') },
+          {
+            title: '操作',
+            key: 'actions',
+            render: (_value: unknown, record: RouteRow) => (
+              <Space>
+                <Button type="link" onClick={() => handleOpenEdit(record)}>
+                  编辑
+                </Button>
+                <Popconfirm title="确定删除此路由？" onConfirm={() => handleDelete(record)}>
+                  <Button type="link" danger>
+                    删除
+                  </Button>
+                </Popconfirm>
+              </Space>
+            ),
+          },
         ]}
       />
+      <Modal
+        title="新增路由"
+        open={createOpen}
+        okText="保存"
+        confirmLoading={submitting}
+        onOk={() => void handleCreate()}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+      >
+        <Form
+          form={createForm}
+          layout="vertical"
+          initialValues={{
+            scope: 'global',
+            severity: '',
+            channelIDs: '',
+            enabled: true,
+          }}
+        >
+          <Form.Item label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
+            <Input placeholder="critical/warning/info" />
+          </Form.Item>
+          <Form.Item label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
+            <Input placeholder="渠道ID，逗号分隔" />
+          </Form.Item>
+          <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
+            <Select
+              options={[
+                { label: '启用', value: true },
+                { label: '禁用', value: false },
+              ]}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="编辑路由"
+        open={!!editing}
+        okText="保存"
+        confirmLoading={submitting}
+        onOk={() => void handleUpdate()}
+        onCancel={() => {
+          setEditing(null);
+          editForm.resetFields();
+        }}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          initialValues={{
+            scope: 'global',
+            severity: '',
+            channelIDs: '',
+            enabled: true,
+          }}
+        >
+          <Form.Item label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
+            <Input placeholder="critical/warning/info" />
+          </Form.Item>
+          <Form.Item label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
+            <Input placeholder="渠道ID，逗号分隔" />
+          </Form.Item>
+          <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
+            <Select
+              options={[
+                { label: '启用', value: true },
+                { label: '禁用', value: false },
+              ]}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Card>
   );
 };
