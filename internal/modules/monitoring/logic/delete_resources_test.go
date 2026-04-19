@@ -73,10 +73,29 @@ func TestDeleteSeverityRoute_DeletesExactRow(t *testing.T) {
 	if err := db.Create(&model.AlertSeverityRoute{ID: 31, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed route: %v", err)
 	}
+	if err := db.Create(&model.AlertSeverityRoute{ID: 32, Scope: "global", Severity: "critical", ChannelIDsJSON: `[2002]`, Enabled: true}).Error; err != nil {
+		t.Fatalf("seed sibling route: %v", err)
+	}
 
 	l := NewLogic(&svc.ServiceContext{DB: db})
 	if err := l.DeleteSeverityRoute(context.Background(), 31, 0); err != nil {
 		t.Fatalf("delete severity route: %v", err)
+	}
+
+	var deleted int64
+	if err := db.Model(&model.AlertSeverityRoute{}).Where("id = ?", 31).Count(&deleted).Error; err != nil {
+		t.Fatalf("count deleted route: %v", err)
+	}
+	if deleted != 0 {
+		t.Fatalf("expected route 31 to be deleted, got count=%d", deleted)
+	}
+
+	var sibling int64
+	if err := db.Model(&model.AlertSeverityRoute{}).Where("id = ?", 32).Count(&sibling).Error; err != nil {
+		t.Fatalf("count sibling route: %v", err)
+	}
+	if sibling != 1 {
+		t.Fatalf("expected sibling route 32 to remain, got count=%d", sibling)
 	}
 }
 
@@ -109,5 +128,15 @@ func TestDeleteRuleChannelBinding_RespectsProjectScope(t *testing.T) {
 	}
 	if remain != 1 {
 		t.Fatalf("expected global binding to remain, got %d", remain)
+	}
+
+	var projectRemain int64
+	if err := db.Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1001, 42).
+		Count(&projectRemain).Error; err != nil {
+		t.Fatalf("count project binding: %v", err)
+	}
+	if projectRemain != 0 {
+		t.Fatalf("expected project binding to be deleted, got %d", projectRemain)
 	}
 }
