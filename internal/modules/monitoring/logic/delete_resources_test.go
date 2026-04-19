@@ -159,3 +159,58 @@ func TestDeleteRuleChannelBinding_RespectsProjectScope(t *testing.T) {
 		t.Fatalf("expected project binding to be deleted, got %d", projectRemain)
 	}
 }
+
+func TestDeleteRuleChannelBinding_ReturnsNotFoundWhenNoScopedMatch(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:delete-binding-not-found?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertRuleChannelBinding{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	projectID := uint(42)
+	if err := db.Create(&model.AlertRuleChannelBinding{RuleID: 7, ChannelID: 1001, ProjectID: &projectID, Enabled: true, Priority: 1}).Error; err != nil {
+		t.Fatalf("seed project binding: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	err = l.DeleteRuleChannelBinding(context.Background(), 0, 7, 1001)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected gorm.ErrRecordNotFound, got %v", err)
+	}
+}
+
+func TestDeleteRuleChannelBinding_RejectsMultiMatchDelete(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:delete-binding-multi-match?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertRuleChannelBinding{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	if err := db.Create(&model.AlertRuleChannelBinding{RuleID: 8, ChannelID: 2002, Enabled: true, Priority: 1}).Error; err != nil {
+		t.Fatalf("seed binding 1: %v", err)
+	}
+	if err := db.Create(&model.AlertRuleChannelBinding{RuleID: 8, ChannelID: 2002, Enabled: true, Priority: 2}).Error; err != nil {
+		t.Fatalf("seed binding 2: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	err = l.DeleteRuleChannelBinding(context.Background(), 0, 8, 2002)
+	if err == nil {
+		t.Fatalf("expected multi-match delete to return explicit error")
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected explicit multi-match error, got not found")
+	}
+
+	var remain int64
+	if err := db.Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ? AND project_id IS NULL", 8, 2002).
+		Count(&remain).Error; err != nil {
+		t.Fatalf("count remaining bindings: %v", err)
+	}
+	if remain != 2 {
+		t.Fatalf("expected both bindings to remain after multi-match guard, got %d", remain)
+	}
+}

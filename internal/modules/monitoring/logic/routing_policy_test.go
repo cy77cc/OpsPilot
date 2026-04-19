@@ -193,6 +193,35 @@ func TestUpdateSeverityRoute_RejectsBlankSeverityAndInvalidScope(t *testing.T) {
 	}); err == nil {
 		t.Fatalf("expected invalid scope to be rejected")
 	}
+
+	if _, err := l.UpdateSeverityRoute(context.Background(), 301, 0, SeverityRouteInput{
+		Scope:      "global",
+		Severity:   "urgent",
+		ChannelIDs: []uint{1},
+		Enabled:    true,
+	}); err == nil {
+		t.Fatalf("expected invalid severity to be rejected")
+	}
+}
+
+func TestCreateSeverityRoute_RejectsProjectScopeWithoutProjectID(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:create-route-project-scope-without-project-id?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.AlertSeverityRoute{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	l := NewLogic(&svc.ServiceContext{DB: db})
+	if _, err := l.CreateSeverityRoute(context.Background(), 0, SeverityRouteInput{
+		Scope:      "project",
+		Severity:   "warning",
+		ChannelIDs: []uint{1},
+		Enabled:    true,
+	}); err == nil {
+		t.Fatalf("expected project scope without projectID to be rejected")
+	}
 }
 
 func TestUpdateSeverityRoute_NormalizesChannelIDs(t *testing.T) {

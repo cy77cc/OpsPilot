@@ -305,21 +305,35 @@ func (l *Logic) DeleteSeverityRoute(ctx context.Context, id uint, projectID uint
 }
 
 func (l *Logic) DeleteRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint) error {
-	q := l.svcCtx.DB.WithContext(ctx).Model(&model.AlertRuleChannelBinding{}).
-		Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
-	if projectID > 0 {
-		q = q.Where("project_id = ?", projectID)
-	} else {
-		q = q.Where("project_id IS NULL")
-	}
-	result := q.Delete(&model.AlertRuleChannelBinding{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		q := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
+		if projectID > 0 {
+			q = q.Where("project_id = ?", projectID)
+		} else {
+			q = q.Where("project_id IS NULL")
+		}
+
+		ids := make([]uint, 0, 2)
+		if err := q.Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if len(ids) > 1 {
+			return fmt.Errorf("multiple bindings matched scoped delete: rule_id=%d channel_id=%d project_id=%d", ruleID, channelID, projectID)
+		}
+
+		result := tx.Delete(&model.AlertRuleChannelBinding{}, ids[0])
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
 }
 
 func parseChannelIDs(raw string) []uint {
@@ -381,6 +395,11 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 	if severity == "" {
 		return "", "", nil, fmt.Errorf("severity is required")
 	}
+	switch severity {
+	case "critical", "warning", "info":
+	default:
+		return "", "", nil, fmt.Errorf("invalid route severity: %s", severity)
+	}
 	if scope == "" {
 		if projectID > 0 {
 			scope = "project"
@@ -390,6 +409,9 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 	}
 	if err := validateRouteScope(scope); err != nil {
 		return "", "", nil, err
+	}
+	if scope == "project" && projectID == 0 {
+		return "", "", nil, fmt.Errorf("project scope requires project id")
 	}
 
 	channelIDs := make([]uint, 0, len(input.ChannelIDs))
