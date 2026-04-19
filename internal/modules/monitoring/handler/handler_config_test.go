@@ -71,6 +71,7 @@ func TestDeleteRuleEndpoint_ReturnsConflictWithBlockers(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
 	}
+	// Contract for this change set: delete dependency conflicts return business code 409 with blockers in data.
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("expected response code field 409, got %d body=%s", resp.Code, w.Body.String())
 	}
@@ -114,34 +115,40 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 	}
 	r := setupMonitoringConfigRouter(t, db)
 
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/alert-routing/severity", strings.NewReader(`{"scope":"global","severity":"critical","channel_ids":[1001],"enabled":true}`))
-	createReq.Header.Set("Content-Type", "application/json")
-	authorizeMonitoringRequest(t, createReq, 1001)
-	createW := httptest.NewRecorder()
-	r.ServeHTTP(createW, createReq)
-	if createW.Code != http.StatusOK {
-		t.Fatalf("create expected 200, got %d body=%s", createW.Code, createW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, createW.Body.Bytes(), "create severity route")
+	t.Run("POST /api/v1/alert-routing/severity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-routing/severity", strings.NewReader(`{"scope":"global","severity":"critical","channel_ids":[1001],"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "create severity route")
+	})
 
-	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/alert-routing/severity/31", strings.NewReader(`{"scope":"global","severity":"warning","channel_ids":[1001],"enabled":true}`))
-	updateReq.Header.Set("Content-Type", "application/json")
-	authorizeMonitoringRequest(t, updateReq, 1001)
-	updateW := httptest.NewRecorder()
-	r.ServeHTTP(updateW, updateReq)
-	if updateW.Code != http.StatusOK {
-		t.Fatalf("update expected 200, got %d body=%s", updateW.Code, updateW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, updateW.Body.Bytes(), "update severity route")
+	t.Run("PUT /api/v1/alert-routing/severity/:id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/alert-routing/severity/31", strings.NewReader(`{"scope":"global","severity":"warning","channel_ids":[1001],"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("update expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "update severity route")
+	})
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-routing/severity/31", nil)
-	authorizeMonitoringRequest(t, deleteReq, 1001)
-	deleteW := httptest.NewRecorder()
-	r.ServeHTTP(deleteW, deleteReq)
-	if deleteW.Code != http.StatusOK {
-		t.Fatalf("delete expected 200, got %d body=%s", deleteW.Code, deleteW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, deleteW.Body.Bytes(), "delete severity route")
+	t.Run("DELETE /api/v1/alert-routing/severity/:id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-routing/severity/31", nil)
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("delete expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "delete severity route")
+	})
 }
 
 func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
@@ -167,34 +174,40 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 	}
 	r := setupMonitoringConfigRouter(t, db)
 
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1001,"project_id":42,"priority":2,"enabled":true}`))
-	createReq.Header.Set("Content-Type", "application/json")
-	authorizeMonitoringRequest(t, createReq, 1001)
-	createW := httptest.NewRecorder()
-	r.ServeHTTP(createW, createReq)
-	if createW.Code != http.StatusOK {
-		t.Fatalf("create expected 200, got %d body=%s", createW.Code, createW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, createW.Body.Bytes(), "create rule-channel binding")
+	t.Run("POST /api/v1/alert-rules/:id/channels", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":1001,"project_id":42,"priority":2,"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "create rule-channel binding")
+	})
 
-	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/alert-rules/7/channels/1001", strings.NewReader(`{"project_id":42,"priority":3,"enabled":true}`))
-	updateReq.Header.Set("Content-Type", "application/json")
-	authorizeMonitoringRequest(t, updateReq, 1001)
-	updateW := httptest.NewRecorder()
-	r.ServeHTTP(updateW, updateReq)
-	if updateW.Code != http.StatusOK {
-		t.Fatalf("update expected 200, got %d body=%s", updateW.Code, updateW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, updateW.Body.Bytes(), "update rule-channel binding")
+	t.Run("PUT /api/v1/alert-rules/:id/channels/:channel_id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/alert-rules/7/channels/1001", strings.NewReader(`{"project_id":42,"priority":3,"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("update expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "update rule-channel binding")
+	})
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7/channels/1001?project_id=42", nil)
-	authorizeMonitoringRequest(t, deleteReq, 1001)
-	deleteW := httptest.NewRecorder()
-	r.ServeHTTP(deleteW, deleteReq)
-	if deleteW.Code != http.StatusOK {
-		t.Fatalf("delete expected 200, got %d body=%s", deleteW.Code, deleteW.Body.String())
-	}
-	assertMonitoringSuccessCode(t, deleteW.Body.Bytes(), "delete rule-channel binding")
+	t.Run("DELETE /api/v1/alert-rules/:id/channels/:channel_id", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/alert-rules/7/channels/1001?project_id=42", nil)
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("delete expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "delete rule-channel binding")
+	})
 }
 
 func setupMonitoringConfigDB(t *testing.T, dbName string) *gorm.DB {
