@@ -109,7 +109,9 @@ const RoutingConfigPage: React.FC = () => {
 
   useEffect(() => {
     if (scope.scope === 'project' && !currentProjectId) {
+      loadSeqRef.current += 1;
       setRows([]);
+      setLoading(false);
       return;
     }
     void load();

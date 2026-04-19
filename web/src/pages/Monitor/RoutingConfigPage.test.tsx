@@ -57,6 +57,42 @@ describe('RoutingConfigPage', () => {
     });
   });
 
+  it('does not allow late response to overwrite rows after switching to project scope without project id', async () => {
+    const createDeferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => {
+        resolve = res;
+      });
+      return { promise, resolve };
+    };
+    const pendingGlobalLoad = createDeferred<any>();
+    mockApi.monitoring.getSeverityRoutes.mockReset();
+    mockApi.monitoring.getSeverityRoutes.mockImplementation(() => pendingGlobalLoad.promise);
+
+    render(<RoutingConfigPage />);
+    await waitFor(() => {
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    expect(screen.queryByText('Late Global Route')).not.toBeInTheDocument();
+
+    pendingGlobalLoad.resolve({
+      data: {
+        list: [{ id: 99, scope: 'global', severity: 'Late Global Route', channel_ids_json: '[1001]', enabled: true }],
+        total: 1,
+      },
+    });
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(screen.queryByText('Late Global Route')).not.toBeInTheDocument();
+  });
+
   it('creates a route and reloads list with scope-aware payload', async () => {
     window.localStorage.setItem('projectId', '42');
     render(<RoutingConfigPage />);
