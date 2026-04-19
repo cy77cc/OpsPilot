@@ -125,7 +125,21 @@ describe('monitoringApi config endpoints', () => {
       scope: undefined,
       severity: 'warning',
       channel_ids: [1001],
-      enabled: true,
+      enabled: undefined,
+    });
+  });
+
+  it('drops non-integer channel ids in update rule channels payload', async () => {
+    const putMock = vi.spyOn(apiService, 'put').mockResolvedValue({
+      success: true,
+      data: { ok: true },
+    } as any);
+
+    await monitoringApi.updateRuleChannels('7', ['1001', '1.5', 'bad', '0', '-2']);
+
+    expect(putMock).toHaveBeenCalledWith('/alert-rules/7/channels', {
+      channel_ids: [1001],
+      project_id: undefined,
     });
   });
 

@@ -289,7 +289,7 @@ export const monitoringApi = {
   },
   async updateRuleChannels(id: string, channelIds: string[], projectId?: string): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-rules/${encodeURIComponent(id)}/channels`, {
-      channel_ids: channelIds.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0),
+      channel_ids: channelIds.map((x) => toPositiveIntOrUndefined(x)).filter((x): x is number => x !== undefined),
       project_id: toPositiveIntOrUndefined(projectId),
     });
   },
@@ -318,7 +318,7 @@ export const monitoringApi = {
       scope: payload.scope,
       severity: payload.severity,
       channel_ids: payload.channelIds.map((x) => toPositiveIntOrUndefined(x)).filter((x): x is number => x !== undefined),
-      enabled: payload.enabled ?? true,
+      enabled: payload.enabled,
     });
   },
   async deleteSeverityRoute(id: string, projectId?: string): Promise<ApiResponse<any>> {
