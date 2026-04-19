@@ -389,6 +389,112 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	httpx.OK(c, rule)
 }
 
+// GetRuleChannels 获取规则绑定的通知渠道。
+func (h *Handler) GetRuleChannels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	ruleID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	rows, err := h.logic.ListRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// UpdateRuleChannels 更新规则绑定的通知渠道。
+func (h *Handler) UpdateRuleChannels(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	ruleID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	var req struct {
+		ProjectID  *uint  `json:"project_id"`
+		ChannelIDs []uint `json:"channel_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	if err := h.logic.ReplaceRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID), req.ChannelIDs); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	rows, err := h.logic.ListRuleChannelBindings(c.Request.Context(), projectID, uint(ruleID))
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// GetSeverityRoutes 获取严重级别路由配置。
+func (h *Handler) GetSeverityRoutes(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	rows, err := h.logic.ListSeverityRoutes(c.Request.Context(), projectID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
+// UpdateSeverityRoutes 更新严重级别路由配置。
+func (h *Handler) UpdateSeverityRoutes(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:write") {
+		return
+	}
+	var req struct {
+		ProjectID *uint `json:"project_id"`
+		Routes    []struct {
+			Scope      string `json:"scope"`
+			Severity   string `json:"severity"`
+			ChannelIDs []uint `json:"channel_ids"`
+			Enabled    *bool  `json:"enabled"`
+		} `json:"routes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	projectID := uint(0)
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	inputs := make([]monitoringlogic.SeverityRouteInput, 0, len(req.Routes))
+	for _, row := range req.Routes {
+		enabled := true
+		if row.Enabled != nil {
+			enabled = *row.Enabled
+		}
+		inputs = append(inputs, monitoringlogic.SeverityRouteInput{
+			Scope:      strings.TrimSpace(row.Scope),
+			Severity:   strings.TrimSpace(row.Severity),
+			ChannelIDs: row.ChannelIDs,
+			Enabled:    enabled,
+		})
+	}
+	if err := h.logic.ReplaceSeverityRoutes(c.Request.Context(), projectID, inputs); err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	rows, err := h.logic.ListSeverityRoutes(c.Request.Context(), projectID)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": rows, "total": len(rows)})
+}
+
 // EnableRule 启用告警规则。
 //
 // @Summary 启用告警规则
