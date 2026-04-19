@@ -474,18 +474,18 @@ func (h *Handler) CreateRuleChannelBinding(c *gin.Context) {
 	if req.ProjectID != nil {
 		projectID = *req.ProjectID
 	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
 	row, err := h.logic.CreateRuleChannelBinding(
 		c.Request.Context(),
 		projectID,
 		ruleID,
 		req.ChannelID,
-		positiveOr(req.Priority, 100),
-		enabled,
+		req.Priority,
+		req.Enabled,
 	)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		httpx.NotFound(c, "")
+		return
+	}
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -509,17 +509,13 @@ func (h *Handler) UpdateRuleChannelBinding(c *gin.Context) {
 	if req.ProjectID != nil {
 		projectID = *req.ProjectID
 	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
 	row, err := h.logic.UpdateRuleChannelBinding(
 		c.Request.Context(),
 		projectID,
 		ruleID,
 		channelID,
-		positiveOr(req.Priority, 100),
-		enabled,
+		req.Priority,
+		req.Enabled,
 	)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		httpx.NotFound(c, "")
@@ -589,6 +585,10 @@ func (h *Handler) CreateSeverityRoute(c *gin.Context) {
 		ChannelIDs: req.ChannelIDs,
 		Enabled:    req.Enabled == nil || *req.Enabled,
 	})
+	if errors.Is(err, monitoringlogic.ErrInvalidRouteInput) {
+		httpx.BadRequest(c, err.Error())
+		return
+	}
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -632,6 +632,10 @@ func (h *Handler) UpdateSeverityRoutes(c *gin.Context) {
 		})
 	}
 	if err := h.logic.ReplaceSeverityRoutes(c.Request.Context(), projectID, inputs); err != nil {
+		if errors.Is(err, monitoringlogic.ErrInvalidRouteInput) {
+			httpx.BadRequest(c, err.Error())
+			return
+		}
 		httpx.ServerErr(c, err)
 		return
 	}
@@ -670,6 +674,10 @@ func (h *Handler) UpdateSeverityRouteByID(c *gin.Context) {
 	)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		httpx.NotFound(c, "")
+		return
+	}
+	if errors.Is(err, monitoringlogic.ErrInvalidRouteInput) {
+		httpx.BadRequest(c, err.Error())
 		return
 	}
 	if err != nil {

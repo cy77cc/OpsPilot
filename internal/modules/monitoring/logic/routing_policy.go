@@ -11,6 +11,20 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrInvalidRouteInput = errors.New("invalid route input")
+
+type InvalidRouteInputError struct {
+	msg string
+}
+
+func (e *InvalidRouteInputError) Error() string {
+	return e.msg
+}
+
+func (e *InvalidRouteInputError) Is(target error) bool {
+	return target == ErrInvalidRouteInput
+}
+
 // SeverityRouteInput 定义严重级别路由写入参数。
 type SeverityRouteInput struct {
 	Scope      string
@@ -247,7 +261,7 @@ func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input S
 	return &row, nil
 }
 
-func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority int, enabled bool) (*model.AlertRuleChannelBinding, error) {
+func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority *int, enabled *bool) (*model.AlertRuleChannelBinding, error) {
 	if ruleID == 0 || channelID == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -274,7 +288,7 @@ func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID,
 			RuleID:    ruleID,
 			ChannelID: channelID,
 			Priority:  normalizeBindingPriority(priority),
-			Enabled:   enabled,
+			Enabled:   normalizeBindingEnabled(enabled, true),
 		}
 		if projectID > 0 {
 			pid := projectID
@@ -329,7 +343,7 @@ func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint
 	return &row, nil
 }
 
-func (l *Logic) UpdateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority int, enabled bool) (*model.AlertRuleChannelBinding, error) {
+func (l *Logic) UpdateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority *int, enabled *bool) (*model.AlertRuleChannelBinding, error) {
 	if ruleID == 0 || channelID == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -341,9 +355,16 @@ func (l *Logic) UpdateRuleChannelBinding(ctx context.Context, projectID, ruleID,
 			return err
 		}
 
-		updates := map[string]any{
-			"priority": normalizeBindingPriority(priority),
-			"enabled":  enabled,
+		updates := map[string]any{}
+		if priority != nil {
+			updates["priority"] = normalizeBindingPriority(priority)
+		}
+		if enabled != nil {
+			updates["enabled"] = *enabled
+		}
+		if len(updates) == 0 {
+			row = *existing
+			return nil
 		}
 		result := tx.Model(&model.AlertRuleChannelBinding{}).Where("id = ?", existing.ID).Updates(updates)
 		if result.Error != nil {
@@ -485,7 +506,7 @@ func validateRouteScope(scope string) error {
 	case "", "global", "project":
 		return nil
 	default:
-		return fmt.Errorf("invalid route scope: %s", scope)
+		return invalidRouteInputf("invalid route scope: %s", scope)
 	}
 }
 
@@ -493,12 +514,12 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 	scope := strings.ToLower(strings.TrimSpace(input.Scope))
 	severity := strings.ToLower(strings.TrimSpace(input.Severity))
 	if severity == "" {
-		return "", "", nil, fmt.Errorf("severity is required")
+		return "", "", nil, invalidRouteInputf("severity is required")
 	}
 	switch severity {
 	case "critical", "warning", "info":
 	default:
-		return "", "", nil, fmt.Errorf("invalid route severity: %s", severity)
+		return "", "", nil, invalidRouteInputf("invalid route severity: %s", severity)
 	}
 	if scope == "" {
 		if projectID > 0 {
@@ -511,7 +532,7 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 		return "", "", nil, err
 	}
 	if scope == "project" && projectID == 0 {
-		return "", "", nil, fmt.Errorf("project scope requires project id")
+		return "", "", nil, invalidRouteInputf("project scope requires project id")
 	}
 
 	channelIDs := make([]uint, 0, len(input.ChannelIDs))
@@ -529,9 +550,20 @@ func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (stri
 	return scope, severity, channelIDs, nil
 }
 
-func normalizeBindingPriority(priority int) int {
-	if priority > 0 {
-		return priority
+func normalizeBindingPriority(priority *int) int {
+	if priority != nil && *priority > 0 {
+		return *priority
 	}
 	return 100
+}
+
+func normalizeBindingEnabled(enabled *bool, def bool) bool {
+	if enabled != nil {
+		return *enabled
+	}
+	return def
+}
+
+func invalidRouteInputf(format string, args ...any) error {
+	return &InvalidRouteInputError{msg: fmt.Sprintf(format, args...)}
 }

@@ -172,6 +172,31 @@ func TestSeverityRouteSingleCRUDEndpoints(t *testing.T) {
 		}
 		assertMonitoringSuccessCode(t, w.Body.Bytes(), "delete severity route")
 	})
+
+	t.Run("invalid severity input returns param error", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-routing/severity", strings.NewReader(`{"scope":"global","severity":"urgent","channel_ids":[1001],"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+
+		var resp struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
+		}
+		if resp.Code != int(xcode.ParamError) {
+			t.Fatalf("expected param-error code field 2000, got %d body=%s", resp.Code, w.Body.String())
+		}
+		if resp.Msg == "" {
+			t.Fatalf("expected validation message, got body=%s", w.Body.String())
+		}
+	})
 }
 
 func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
@@ -270,6 +295,71 @@ func TestRuleChannelBindingSingleCRUDEndpoints(t *testing.T) {
 		}
 		if globalScoped != 1 {
 			t.Fatalf("expected global binding to remain after scoped delete, got count=%d", globalScoped)
+		}
+	})
+
+	t.Run("partial update preserves omitted fields", func(t *testing.T) {
+		projectScopedID := uint(84)
+		if err := env.db.Create(&monitoringmodel.AlertNotificationChannel{
+			ID: 1003, Name: "teams", Type: "webhook", Provider: "webhook", Enabled: true,
+		}).Error; err != nil {
+			t.Fatalf("seed partial-update channel: %v", err)
+		}
+		if err := env.db.Create(&monitoringmodel.AlertRuleChannelBinding{
+			RuleID:    7,
+			ChannelID: 1003,
+			ProjectID: &projectScopedID,
+			Priority:  7,
+			Enabled:   false,
+		}).Error; err != nil {
+			t.Fatalf("seed partial-update binding: %v", err)
+		}
+		if err := env.db.Model(&monitoringmodel.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1003, projectScopedID).
+			Updates(map[string]any{"enabled": false, "priority": 7}).Error; err != nil {
+			t.Fatalf("normalize seeded partial-update binding state: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/alert-rules/7/channels/1003", strings.NewReader(`{"project_id":84}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("update expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+		assertMonitoringSuccessCode(t, w.Body.Bytes(), "partial update rule-channel binding")
+
+		var row monitoringmodel.AlertRuleChannelBinding
+		if err := env.db.Where("rule_id = ? AND channel_id = ? AND project_id = ?", 7, 1003, projectScopedID).Take(&row).Error; err != nil {
+			t.Fatalf("reload binding after partial update: %v", err)
+		}
+		if row.Priority != 7 {
+			t.Fatalf("expected priority to remain 7, got %d", row.Priority)
+		}
+		if row.Enabled {
+			t.Fatalf("expected enabled to remain false after omitted-field update")
+		}
+	})
+
+	t.Run("invalid binding reference returns not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/alert-rules/7/channels", strings.NewReader(`{"channel_id":9999}`))
+		req.Header.Set("Content-Type", "application/json")
+		authorizeMonitoringRequest(t, req, 1001)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+
+		var resp struct {
+			Code int `json:"code"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
+		}
+		if resp.Code != int(xcode.NotFound) {
+			t.Fatalf("expected not-found code field 2005, got %d body=%s", resp.Code, w.Body.String())
 		}
 	})
 }

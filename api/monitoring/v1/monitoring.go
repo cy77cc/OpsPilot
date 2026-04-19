@@ -69,14 +69,14 @@ type SeverityRouteUpsertRequest struct {
 type RuleChannelBindingCreateRequest struct {
 	ProjectID *uint `json:"project_id"`
 	ChannelID uint  `json:"channel_id" binding:"required"`
-	Priority  int   `json:"priority"`
+	Priority  *int  `json:"priority"`
 	Enabled   *bool `json:"enabled"`
 }
 
 // RuleChannelBindingUpdateRequest is the request body for updating a rule-channel binding.
 type RuleChannelBindingUpdateRequest struct {
 	ProjectID *uint `json:"project_id"`
-	Priority  int   `json:"priority"`
+	Priority  *int  `json:"priority"`
 	Enabled   *bool `json:"enabled"`
 }
 
