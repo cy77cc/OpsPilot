@@ -242,6 +242,95 @@ func (l *Logic) ReplaceSeverityRoutes(ctx context.Context, projectID uint, route
 	})
 }
 
+func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
+	b, err := json.Marshal(input.ChannelIDs)
+	if err != nil {
+		return nil, err
+	}
+	row := model.AlertSeverityRoute{
+		Scope:          strings.ToLower(strings.TrimSpace(input.Scope)),
+		Severity:       strings.ToLower(strings.TrimSpace(input.Severity)),
+		ChannelIDsJSON: string(b),
+		Enabled:        input.Enabled,
+	}
+	if projectID > 0 {
+		pid := projectID
+		row.ProjectID = &pid
+		if row.Scope == "" {
+			row.Scope = "project"
+		}
+	}
+	if row.Scope == "" {
+		row.Scope = "global"
+	}
+	if err := l.svcCtx.DB.WithContext(ctx).Create(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
+	b, err := json.Marshal(input.ChannelIDs)
+	if err != nil {
+		return nil, err
+	}
+	q := l.svcCtx.DB.WithContext(ctx).Model(&model.AlertSeverityRoute{}).Where("id = ?", id)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+	updates := map[string]any{
+		"scope":            strings.ToLower(strings.TrimSpace(input.Scope)),
+		"severity":         strings.ToLower(strings.TrimSpace(input.Severity)),
+		"channel_ids_json": string(b),
+		"enabled":          input.Enabled,
+	}
+	if err := q.Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	var row model.AlertSeverityRoute
+	if err := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) DeleteSeverityRoute(ctx context.Context, id uint, projectID uint) error {
+	q := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+	result := q.Delete(&model.AlertSeverityRoute{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (l *Logic) DeleteRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint) error {
+	q := l.svcCtx.DB.WithContext(ctx).Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+	result := q.Delete(&model.AlertRuleChannelBinding{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func parseChannelIDs(raw string) []uint {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
