@@ -60,6 +60,9 @@ func TestDeleteChannel_ReturnsConflictWhenReferencedBySeverityRoute(t *testing.T
 	if !errors.As(err, &conflict) {
 		t.Fatalf("expected DeleteConflictError, got %v", err)
 	}
+	if len(conflict.Blockers) == 0 {
+		t.Fatalf("expected blockers, got %#v", conflict)
+	}
 }
 
 func TestDeleteSeverityRoute_DeletesExactRow(t *testing.T) {
@@ -73,7 +76,7 @@ func TestDeleteSeverityRoute_DeletesExactRow(t *testing.T) {
 	if err := db.Create(&model.AlertSeverityRoute{ID: 31, Scope: "global", Severity: "warning", ChannelIDsJSON: `[1001]`, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed route: %v", err)
 	}
-	if err := db.Create(&model.AlertSeverityRoute{ID: 32, Scope: "global", Severity: "critical", ChannelIDsJSON: `[2002]`, Enabled: true}).Error; err != nil {
+	if err := db.Create(&model.AlertSeverityRoute{ID: 32, Scope: "global", Severity: "warning", ChannelIDsJSON: `[2002]`, Enabled: true}).Error; err != nil {
 		t.Fatalf("seed sibling route: %v", err)
 	}
 
