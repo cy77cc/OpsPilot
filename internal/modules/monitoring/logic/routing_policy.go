@@ -9,6 +9,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrInvalidRouteInput = errors.New("invalid route input")
@@ -268,10 +269,11 @@ func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID,
 
 	row := model.AlertRuleChannelBinding{}
 	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Select("id").Where("id = ?", ruleID).Take(&model.AlertRule{}).Error; err != nil {
+		// Lock parent rows in a consistent order to serialize concurrent scoped creates.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ?", ruleID).Take(&model.AlertRule{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Select("id").Where("id = ?", channelID).Take(&model.AlertNotificationChannel{}).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ?", channelID).Take(&model.AlertNotificationChannel{}).Error; err != nil {
 			return err
 		}
 
