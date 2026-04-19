@@ -127,11 +127,7 @@ const ChannelsConfigPage: React.FC = () => {
       const values = await editForm.validateFields();
       setSubmitting(true);
       try {
-        const updater = (Api.monitoring as any).updateAlertChannel;
-        if (typeof updater !== 'function') {
-          throw new Error('update channel api not available');
-        }
-        await updater(editing.id, {
+        await Api.monitoring.updateAlertChannel(editing.id, {
           name: values.channelName,
           provider: values.channelProvider,
           target: values.channelTarget,

@@ -109,6 +109,33 @@ describe('monitoringApi config endpoints', () => {
     });
   });
 
+  it('calls update alert channel endpoint with mapped payload', async () => {
+    const putMock = vi.spyOn(apiService, 'put').mockResolvedValue({
+      success: true,
+      data: { id: 1001 },
+    } as any);
+
+    await monitoringApi.updateAlertChannel('1001', {
+      name: 'ops-webhook',
+      type: 'webhook',
+      provider: 'webhook',
+      target: 'https://example.com/hook',
+      enabled: true,
+      configJson: '{"a":1}',
+      projectId: '42',
+    });
+
+    expect(putMock).toHaveBeenCalledWith('/alert-channels/1001', {
+      name: 'ops-webhook',
+      type: 'webhook',
+      provider: 'webhook',
+      target: 'https://example.com/hook',
+      enabled: true,
+      config_json: '{"a":1}',
+      project_id: 42,
+    });
+  });
+
   it('calls update severity route by id endpoint with mapped payload', async () => {
     const putMock = vi.spyOn(apiService, 'put').mockResolvedValue({
       success: true,

@@ -270,6 +270,17 @@ export const monitoringApi = {
       project_id: toPositiveIntOrUndefined(payload.projectId),
     });
   },
+  async updateAlertChannel(id: string, payload: { name?: string; type?: string; provider?: string; target?: string; enabled?: boolean; configJson?: string; projectId?: string }): Promise<ApiResponse<any>> {
+    return apiService.put(`/alert-channels/${encodeURIComponent(id)}`, {
+      name: payload.name,
+      type: payload.type,
+      provider: payload.provider,
+      target: payload.target,
+      enabled: payload.enabled,
+      config_json: payload.configJson,
+      project_id: toPositiveIntOrUndefined(payload.projectId),
+    });
+  },
   async deleteAlertChannel(id: string): Promise<ApiResponse<any>> {
     return apiService.delete(`/alert-channels/${encodeURIComponent(id)}`);
   },
