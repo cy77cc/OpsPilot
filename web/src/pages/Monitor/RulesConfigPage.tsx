@@ -29,12 +29,12 @@ const RulesConfigPage: React.FC = () => {
   const [editing, setEditing] = useState<EffectiveRuleRow | null>(null);
   const mountedRef = useRef(true);
 
-  const load = async () => {
+  const load = async (showError = true): Promise<boolean> => {
     setLoading(true);
     try {
       const res = await Api.monitoring.getEffectiveRules({ page: 1, pageSize: 50 });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       setRows(
         list.map((item: any) => ({
           id: String(item.id),
@@ -46,6 +46,12 @@ const RulesConfigPage: React.FC = () => {
           inherit_key: item.inherit_key,
         })),
       );
+      return true;
+    } catch {
+      if (showError) {
+        message.error('规则列表加载失败');
+      }
+      return false;
     } finally {
       if (mountedRef.current) {
         setLoading(false);
@@ -74,7 +80,10 @@ const RulesConfigPage: React.FC = () => {
         message.success('规则创建成功');
         setCreateOpen(false);
         createForm.resetFields();
-        await load();
+        const refreshed = await load(false);
+        if (!refreshed) {
+          message.warning('规则创建成功，但列表刷新失败');
+        }
       } catch {
         message.error('规则创建失败');
       } finally {
@@ -109,7 +118,10 @@ const RulesConfigPage: React.FC = () => {
         });
         message.success('规则更新成功');
         setEditing(null);
-        await load();
+        const refreshed = await load(false);
+        if (!refreshed) {
+          message.warning('规则更新成功，但列表刷新失败');
+        }
       } catch {
         message.error('规则更新失败');
       } finally {
@@ -127,7 +139,10 @@ const RulesConfigPage: React.FC = () => {
     try {
       await Api.monitoring.deleteAlertRule(id);
       message.success('规则删除成功');
-      await load();
+      const refreshed = await load(false);
+      if (!refreshed) {
+        message.warning('规则删除成功，但列表刷新失败');
+      }
     } catch {
       message.error('规则删除失败');
     } finally {
