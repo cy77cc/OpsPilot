@@ -80,6 +80,12 @@ OpsPilot 现有监控模块已经具备以下能力：
 2. Prometheus 触发告警 -> Alertmanager 聚合与通知 -> 回调平台 `/alerts/receiver`。  
 3. 平台接收 AM 告警事件后，执行项目级路由决策、通知投递、重试与审计记录。
 
+与 AI 自愈链路对齐约束：
+
+- `/alerts/receiver` 作为 Alertmanager 告警唯一推荐入口。
+- 监控入口在事件落库后，同步触发 AI alert-heal ingest/enqueue（同一 payload，不要求调用方再额外请求 `/ai/alerts/webhook`）。
+- `/ai/alerts/webhook` 在过渡期保留兼容，标记为 deprecated。
+
 ## 5. 数据模型设计
 
 ### 5.1 规则（`alert_rules`）
@@ -254,6 +260,8 @@ notification:
 
 - 保持现有 `/alert-rules`、`/alert-channels`、`/alert-deliveries` 基础行为可用。
 - 新字段全部采用向后兼容策略（可空或带默认值），避免破坏旧调用方。
+- `POST /alerts/receiver` 新增内部 fan-out 到 AI alert-heal 管道（不改变外部请求契约）。
+- `POST /ai/alerts/webhook` 保持可用但标记过渡态，后续版本移除外部依赖。
 
 ## 11. 前端交互设计
 
@@ -329,3 +337,40 @@ notification:
 - 渠道测试支持保存前和保存后。
 - 敏感字段加密存储且脱敏展示。
 - RBAC 达成“运营/SRE 可写，开发只读”。
+- Alertmanager 仅调用 `/alerts/receiver` 时，监控告警与 AI 自愈都能正常触发。
+
+## 15. AI 自愈兼容补充（新增）
+
+### 15.1 冲突修正结论
+
+为避免监控告警链路与 AI 自愈链路分叉，采用以下补充约束：
+
+1. 单入口：AM 事件统一从 `/alerts/receiver` 进入平台。  
+2. 入口 fan-out：`/alerts/receiver` 内部调用 AI ingest/enqueue。  
+3. 渐进迁移：`/ai/alerts/webhook` 暂保留，仅作为兼容入口。  
+4. 统一幂等键语义：AI 自愈去重与 resolved 取消逻辑，不再依赖 AM receiver 名称。  
+
+### 15.2 Source/Fingerprint 语义规范
+
+为确保 firing/resolved 连续性与去重稳定性：
+
+- `source` 规范为协议级固定值（推荐 `alertmanager`），不直接使用 receiver 作为主键维度。
+- receiver 信息保存在 labels/annotations 扩展字段（如 `am_receiver`），用于展示与排障。
+- AI 自愈 dedupe/cancel 建议主维度为 `protocol + fingerprint + status`（或在查询取消时使用 `protocol + fingerprint`）。
+- 监控页关联 AI 自愈摘要时，建议使用 `protocol + fingerprint`，避免跨源串联。
+
+### 15.3 Secret 配置统一建议
+
+当前监控与 AI webhook 使用不同 secret 字段。为降低运维错误率，建议：
+
+- 在 AM 统一入口方案下，外部仅配置 `prometheus.webhook_secret`。
+- AI 模块内部调用场景复用该入口签名校验结果，不要求额外外部签名配置。
+- `ai.alert_webhook_secret` 保留兼容读取窗口，后续标记弃用。
+
+### 15.4 迁移步骤（无中断）
+
+1. 在 `/alerts/receiver` 增加 AI ingest/enqueue fan-out，灰度开关默认关闭。  
+2. 灰度开启后，验证同一 AM 事件可同时驱动监控与自愈。  
+3. 调整 AI dedupe/cancel 的 source 语义（去 receiver 依赖）。  
+4. 更新文档与告警接入指引，要求外部仅调用 `/alerts/receiver`。  
+5. 观察窗口通过后，将 `/ai/alerts/webhook` 标记为 deprecated。  
