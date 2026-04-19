@@ -9,6 +9,10 @@ const mockApi = vi.hoisted(() => ({
     createAlertRule: vi.fn(),
     updateAlertRule: vi.fn(),
     deleteAlertRule: vi.fn(),
+    getRuleChannels: vi.fn(),
+    createRuleChannelBinding: vi.fn(),
+    updateRuleChannelBinding: vi.fn(),
+    deleteRuleChannelBinding: vi.fn(),
   },
 }));
 
@@ -31,6 +35,14 @@ describe('RulesConfigPage', () => {
     mockApi.monitoring.createAlertRule.mockResolvedValue({ data: { id: '2' } });
     mockApi.monitoring.updateAlertRule.mockResolvedValue({ data: { id: '1' } });
     mockApi.monitoring.deleteAlertRule.mockResolvedValue({ data: { ok: true } });
+    mockApi.monitoring.getRuleChannels.mockResolvedValue({
+      data: {
+        list: [{ channel_id: 1001, priority: 1, enabled: true }],
+      },
+    });
+    mockApi.monitoring.createRuleChannelBinding.mockResolvedValue({ data: { ok: true } });
+    mockApi.monitoring.updateRuleChannelBinding.mockResolvedValue({ data: { ok: true } });
+    mockApi.monitoring.deleteRuleChannelBinding.mockResolvedValue({ data: { ok: true } });
   });
 
   afterEach(() => {
@@ -138,5 +150,63 @@ describe('RulesConfigPage', () => {
       expect(message.warning).toHaveBeenCalledWith('规则删除成功，但列表刷新失败');
     });
     expect(message.error).not.toHaveBeenCalledWith('规则删除失败');
+  });
+
+  it('creates a rule-channel binding and refreshes bindings', async () => {
+    render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
+    fireEvent.click(screen.getByRole('button', { name: '渠道绑定' }));
+    const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
+    fireEvent.change(within(drawer).getByLabelText('渠道ID'), { target: { value: '1002' } });
+    fireEvent.change(within(drawer).getByRole('spinbutton', { name: '优先级' }), { target: { value: '5' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '新增绑定' }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledWith('1', { projectId: undefined });
+      expect(mockApi.monitoring.createRuleChannelBinding).toHaveBeenCalledWith('1', {
+        projectId: undefined,
+        channelId: '1002',
+        priority: 5,
+        enabled: true,
+      });
+      expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('updates a rule-channel binding and refreshes bindings', async () => {
+    render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
+    fireEvent.click(screen.getByRole('button', { name: '渠道绑定' }));
+    const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '编辑绑定' }));
+    fireEvent.change(within(drawer).getByRole('spinbutton', { name: '优先级' }), { target: { value: '10' } });
+    fireEvent.mouseDown(within(drawer).getByLabelText('状态'));
+    fireEvent.click(await screen.findByText('禁用'));
+    fireEvent.click(within(drawer).getByRole('button', { name: '更新绑定' }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.updateRuleChannelBinding).toHaveBeenCalledWith('1', '1001', {
+        projectId: undefined,
+        priority: 10,
+        enabled: false,
+      });
+      expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('deletes a rule-channel binding and refreshes bindings', async () => {
+    render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
+    fireEvent.click(screen.getByRole('button', { name: '渠道绑定' }));
+    const drawer = await screen.findByRole('dialog', { name: '规则渠道绑定' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '删除绑定' }));
+
+    await waitFor(() => {
+      expect(mockApi.monitoring.deleteRuleChannelBinding).toHaveBeenCalledWith('1', '1001', undefined);
+      expect(mockApi.monitoring.getRuleChannels).toHaveBeenCalledTimes(2);
+    });
   });
 });

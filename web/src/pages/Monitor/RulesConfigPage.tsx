@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
+import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 
 type EffectiveRuleRow = {
@@ -19,15 +19,40 @@ type RuleFormValues = {
   threshold: number;
 };
 
+type RuleChannelBindingRow = {
+  channelId: string;
+  priority?: number;
+  enabled: boolean;
+};
+
+type RuleChannelBindingFormValues = {
+  channelId: string;
+  priority?: number;
+  enabled: boolean;
+};
+
 const RulesConfigPage: React.FC = () => {
   const [createForm] = Form.useForm<RuleFormValues>();
   const [editForm] = Form.useForm<RuleFormValues>();
+  const [bindingForm] = Form.useForm<RuleChannelBindingFormValues>();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [rows, setRows] = useState<EffectiveRuleRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<EffectiveRuleRow | null>(null);
+  const [bindingOpen, setBindingOpen] = useState(false);
+  const [bindingRule, setBindingRule] = useState<EffectiveRuleRow | null>(null);
+  const [bindings, setBindings] = useState<RuleChannelBindingRow[]>([]);
+  const [bindingLoading, setBindingLoading] = useState(false);
+  const [bindingSubmitting, setBindingSubmitting] = useState(false);
+  const [editingBindingChannelId, setEditingBindingChannelId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+
+  const getProjectId = (): string | undefined => {
+    if (typeof window === 'undefined') return undefined;
+    const value = window.localStorage.getItem('projectId');
+    return value || undefined;
+  };
 
   const load = async (showError = true): Promise<boolean> => {
     setLoading(true);
@@ -150,6 +175,122 @@ const RulesConfigPage: React.FC = () => {
     }
   };
 
+  const loadBindings = async (ruleId: string): Promise<boolean> => {
+    setBindingLoading(true);
+    try {
+      const res = await Api.monitoring.getRuleChannels(ruleId, { projectId: getProjectId() });
+      const list = (res?.data as any)?.list || [];
+      if (!mountedRef.current) return false;
+      setBindings(
+        list.map((item: any) => ({
+          channelId: String(item.channel_id ?? item.channelId ?? item.id ?? ''),
+          priority: item.priority,
+          enabled: item.enabled !== false,
+        })),
+      );
+      return true;
+    } catch {
+      message.error('规则渠道绑定加载失败');
+      return false;
+    } finally {
+      if (mountedRef.current) {
+        setBindingLoading(false);
+      }
+    }
+  };
+
+  const openBindingDrawer = async (record: EffectiveRuleRow) => {
+    setBindingRule(record);
+    setBindingOpen(true);
+    setEditingBindingChannelId(null);
+    bindingForm.setFieldsValue({
+      channelId: '',
+      priority: 1,
+      enabled: true,
+    });
+    await loadBindings(record.id);
+  };
+
+  const handleCreateBinding = async () => {
+    if (!bindingRule) return;
+    try {
+      const values = await bindingForm.validateFields();
+      setBindingSubmitting(true);
+      try {
+        await Api.monitoring.createRuleChannelBinding(bindingRule.id, {
+          projectId: getProjectId(),
+          channelId: values.channelId,
+          priority: values.priority,
+          enabled: values.enabled,
+        });
+        message.success('绑定创建成功');
+        setEditingBindingChannelId(null);
+        bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
+        await loadBindings(bindingRule.id);
+      } catch {
+        message.error('绑定创建失败');
+      } finally {
+        setBindingSubmitting(false);
+      }
+    } catch (error: any) {
+      if (!Array.isArray(error?.errorFields)) {
+        message.error('绑定创建失败');
+      }
+    }
+  };
+
+  const handlePrepareUpdateBinding = (record: RuleChannelBindingRow) => {
+    setEditingBindingChannelId(record.channelId);
+    bindingForm.setFieldsValue({
+      channelId: record.channelId,
+      priority: record.priority,
+      enabled: record.enabled,
+    });
+  };
+
+  const handleUpdateBinding = async () => {
+    if (!bindingRule || !editingBindingChannelId) return;
+    try {
+      const values = await bindingForm.validateFields();
+      setBindingSubmitting(true);
+      try {
+        await Api.monitoring.updateRuleChannelBinding(bindingRule.id, editingBindingChannelId, {
+          projectId: getProjectId(),
+          priority: values.priority,
+          enabled: values.enabled,
+        });
+        message.success('绑定更新成功');
+        setEditingBindingChannelId(null);
+        bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
+        await loadBindings(bindingRule.id);
+      } catch {
+        message.error('绑定更新失败');
+      } finally {
+        setBindingSubmitting(false);
+      }
+    } catch (error: any) {
+      if (!Array.isArray(error?.errorFields)) {
+        message.error('绑定更新失败');
+      }
+    }
+  };
+
+  const handleDeleteBinding = async (channelId: string) => {
+    if (!bindingRule) return;
+    setBindingSubmitting(true);
+    try {
+      await Api.monitoring.deleteRuleChannelBinding(bindingRule.id, channelId, getProjectId());
+      message.success('绑定删除成功');
+      setEditingBindingChannelId(null);
+      bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
+      await loadBindings(bindingRule.id);
+    } catch {
+      message.error('绑定删除失败');
+    } finally {
+      setBindingSubmitting(false);
+    }
+  };
+
   return (
     <Card
       title="规则配置"
@@ -177,6 +318,9 @@ const RulesConfigPage: React.FC = () => {
               <Space>
                 <Button type="link" onClick={() => handleOpenEdit(record)}>
                   编辑
+                </Button>
+                <Button type="link" onClick={() => void openBindingDrawer(record)}>
+                  渠道绑定
                 </Button>
                 <Popconfirm title="确定删除此规则？" onConfirm={() => handleDelete(record.id)}>
                   <Button type="link" danger>
@@ -264,6 +408,90 @@ const RulesConfigPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+      <Drawer
+        title="规则渠道绑定"
+        open={bindingOpen}
+        onClose={() => {
+          setBindingOpen(false);
+          setBindingRule(null);
+          setEditingBindingChannelId(null);
+          setBindings([]);
+          bindingForm.resetFields();
+        }}
+        size="large"
+      >
+        <Form
+          form={bindingForm}
+          layout="vertical"
+          initialValues={{
+            channelId: '',
+            priority: 1,
+            enabled: true,
+          }}
+        >
+          <Form.Item label="渠道ID" name="channelId" rules={[{ required: true, message: '请输入渠道ID' }]}>
+            <Input disabled={!!editingBindingChannelId} />
+          </Form.Item>
+          <Form.Item label="优先级" name="priority" rules={[{ required: true, message: '请输入优先级' }]}>
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
+            <Select
+              options={[
+                { label: '启用', value: true },
+                { label: '禁用', value: false },
+              ]}
+            />
+          </Form.Item>
+          <Space style={{ marginBottom: 16 }}>
+            {editingBindingChannelId ? (
+              <>
+                <Button type="primary" onClick={() => void handleUpdateBinding()} loading={bindingSubmitting}>
+                  更新绑定
+                </Button>
+                <Button
+                  onClick={() => {
+                    setEditingBindingChannelId(null);
+                    bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
+                  }}
+                  disabled={bindingSubmitting}
+                >
+                  取消编辑
+                </Button>
+              </>
+            ) : (
+              <Button type="primary" onClick={() => void handleCreateBinding()} loading={bindingSubmitting}>
+                新增绑定
+              </Button>
+            )}
+          </Space>
+        </Form>
+        <Table
+          rowKey="channelId"
+          loading={bindingLoading}
+          dataSource={bindings}
+          pagination={false}
+          columns={[
+            { title: '渠道ID', dataIndex: 'channelId' },
+            { title: '优先级', dataIndex: 'priority', render: (v: number | undefined) => (v == null ? '-' : v) },
+            { title: '状态', dataIndex: 'enabled', render: (v: boolean) => (v ? '启用' : '禁用') },
+            {
+              title: '操作',
+              key: 'actions',
+              render: (_value: unknown, record: RuleChannelBindingRow) => (
+                <Space>
+                  <Button type="link" onClick={() => handlePrepareUpdateBinding(record)}>
+                    编辑绑定
+                  </Button>
+                  <Button type="link" danger onClick={() => void handleDeleteBinding(record.channelId)}>
+                    删除绑定
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Drawer>
     </Card>
   );
 };
