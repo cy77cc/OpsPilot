@@ -118,6 +118,17 @@ security:
     - http://localhost:3000
     - http://127.0.0.1:3000
 
+notification:
+  smtp:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    use_tls: true
+    starttls: true
+    timeout: 5s
+
 llm:
   enable: true
   provider: "qwen" # 或 "ark" (火山引擎), "ollama"

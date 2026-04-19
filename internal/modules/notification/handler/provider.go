@@ -15,10 +15,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	monitoringmodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 )
 
@@ -263,14 +265,36 @@ func (p *EmailProvider) ValidateConfig(config map[string]any) error {
 // Send 发送邮件告警通知（待实现）。
 //
 // 参数:
-//   - _: 上下文（未使用）
+//   - ctx: 上下文
 //   - alert: 告警事件模型
-//   - _: 通知通道模型（未使用）
+//   - channel: 通知通道模型
 //
-// 返回: 当前直接返回 nil
-func (p *EmailProvider) Send(_ context.Context, alert *monitoringmodel.AlertEvent, _ monitoringmodel.AlertNotificationChannel) error {
-	_ = alert
-	return nil
+// 返回: 发送失败返回错误
+func (p *EmailProvider) Send(ctx context.Context, alert *monitoringmodel.AlertEvent, channel monitoringmodel.AlertNotificationChannel) error {
+	smtpCfg := config.CFG.Notification.SMTP
+	if strings.TrimSpace(smtpCfg.Host) == "" || smtpCfg.Port == 0 || strings.TrimSpace(smtpCfg.From) == "" {
+		return fmt.Errorf("smtp config is incomplete")
+	}
+	return sendSMTPMessage(ctx, smtpCfg, channel, alert)
+}
+
+func sendSMTPMessage(ctx context.Context, smtpCfg config.SMTP, channel monitoringmodel.AlertNotificationChannel, alert *monitoringmodel.AlertEvent) error {
+	recipients := strings.TrimSpace(channel.Target)
+	if recipients == "" {
+		return fmt.Errorf("email target is empty")
+	}
+	subject := fmt.Sprintf("[OpsPilot][%s] %s", strings.ToUpper(strings.TrimSpace(alert.Severity)), strings.TrimSpace(alert.Title))
+	body := fmt.Sprintf("message=%s\nmetric=%s\nstatus=%s\n", alert.Message, alert.Metric, alert.Status)
+	return smtpSend(ctx, smtpCfg, recipients, subject, body)
+}
+
+func smtpSend(ctx context.Context, cfg config.SMTP, to, subject, body string) error {
+	_ = ctx
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	recipients := strings.Split(to, ",")
+	msg := []byte("To: " + to + "\r\nSubject: " + subject + "\r\n\r\n" + body + "\r\n")
+	return smtp.SendMail(addr, auth, cfg.From, recipients, msg)
 }
 
 // SMSProvider 是短信通知提供者。
