@@ -42,6 +42,7 @@ type Handler struct {
 	svcCtx    *svc.ServiceContext    // 服务上下文
 	ruleSync  *RuleSyncService       // 规则同步服务
 	webhookGW *NotificationGateway   // 通知网关
+	aiFanout  AlertAIFanout          // AI 告警自愈扇出适配器
 }
 
 // NewHandler 创建监控服务处理器实例。
@@ -56,6 +57,7 @@ func NewHandler(svcCtx *svc.ServiceContext) *Handler {
 		svcCtx:    svcCtx,
 		ruleSync:  NewRuleSyncService(svcCtx.DB),
 		webhookGW: NewNotificationGateway(svcCtx),
+		aiFanout:  newAIAlertHealFanout(svcCtx),
 	}
 }
 
@@ -95,6 +97,9 @@ func (h *Handler) ReceiveWebhook(c *gin.Context) {
 	if err != nil {
 		httpx.ServerErr(c, err)
 		return
+	}
+	if h.aiFanout != nil {
+		_ = h.aiFanout.HandleAlertmanager(c.Request.Context(), req)
 	}
 	httpx.OK(c, gin.H{
 		"status":    "success",
