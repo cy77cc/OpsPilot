@@ -46,6 +46,7 @@ func RegisterMonitoringHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext)
 	{
 		g.GET("/alerts", h.ListAlerts)
 		g.GET("/alert-rules", h.ListRules)
+		g.GET("/alert-rules/effective", h.ListEffectiveRules)
 		g.POST("/alert-rules", h.CreateRule)
 		g.PUT("/alert-rules/:id", h.UpdateRule)
 		g.POST("/alert-rules/:id/enable", h.EnableRule)

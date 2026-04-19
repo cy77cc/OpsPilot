@@ -207,6 +207,80 @@ func alertFingerprintFromSource(source string) string {
 	return fingerprint
 }
 
+// ListEffectiveRules 查询项目生效规则（全局规则 + 项目覆盖规则）。
+func (l *Logic) ListEffectiveRules(ctx context.Context, projectID uint, page, pageSize int) ([]model.AlertRule, int64, error) {
+	globals := make([]model.AlertRule, 0, 32)
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Where("project_id IS NULL").
+		Order("id ASC").
+		Find(&globals).Error; err != nil {
+		return nil, 0, err
+	}
+
+	overrides := make([]model.AlertRule, 0, 16)
+	if projectID > 0 {
+		if err := l.svcCtx.DB.WithContext(ctx).
+			Where("project_id = ?", projectID).
+			Order("id ASC").
+			Find(&overrides).Error; err != nil {
+			return nil, 0, err
+		}
+	}
+
+	merged := mergeRules(globals, overrides)
+	total := int64(len(merged))
+	start, end := paginateRange(page, pageSize, len(merged))
+	if start >= len(merged) {
+		return []model.AlertRule{}, total, nil
+	}
+	return merged[start:end], total, nil
+}
+
+func mergeRules(globals, overrides []model.AlertRule) []model.AlertRule {
+	merged := make([]model.AlertRule, 0, len(globals)+len(overrides))
+	indexByKey := make(map[string]int, len(globals))
+
+	for _, rule := range globals {
+		key := effectiveRuleKey(rule)
+		indexByKey[key] = len(merged)
+		merged = append(merged, rule)
+	}
+
+	for _, rule := range overrides {
+		key := effectiveRuleKey(rule)
+		if idx, ok := indexByKey[key]; ok {
+			merged[idx] = rule
+			continue
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, rule)
+	}
+	return merged
+}
+
+func effectiveRuleKey(rule model.AlertRule) string {
+	inheritKey := strings.TrimSpace(rule.InheritKey)
+	if inheritKey != "" {
+		return "inherit:" + inheritKey
+	}
+	return fmt.Sprintf("id:%d", rule.ID)
+}
+
+func paginateRange(page, pageSize, total int) (start, end int) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	start = (page - 1) * pageSize
+	end = start + pageSize
+	if end > total {
+		end = total
+	}
+	return start, end
+}
+
 // ListRules 查询告警规则列表。
 //
 // 首次查询时会自动初始化默认规则和通知渠道。

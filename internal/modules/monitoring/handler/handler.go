@@ -228,6 +228,39 @@ func (h *Handler) ListRules(c *gin.Context) {
 	httpx.OK(c, gin.H{"list": rules, "total": total})
 }
 
+// ListEffectiveRules 获取项目生效告警规则列表。
+//
+// @Summary 获取生效告警规则列表
+// @Description 读取全局规则并合并项目覆盖规则，返回当前项目生效规则
+// @Tags 监控告警
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer Token"
+// @Param project_id query int false "项目 ID"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(50)
+// @Success 200 {object} httpx.Response
+// @Failure 401 {object} httpx.Response
+// @Failure 500 {object} httpx.Response
+// @Router /alert-rules/effective [get]
+func (h *Handler) ListEffectiveRules(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "monitoring:read") {
+		return
+	}
+	projectID := uint(intFromQuery(c, "project_id", 0))
+	list, total, err := h.logic.ListEffectiveRules(
+		c.Request.Context(),
+		projectID,
+		intFromQuery(c, "page", 1),
+		intFromQuery(c, "page_size", 50),
+	)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"list": list, "total": total})
+}
+
 // CreateRule 创建告警规则。
 //
 // @Summary 创建告警规则
