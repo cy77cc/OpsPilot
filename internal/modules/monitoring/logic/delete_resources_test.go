@@ -37,6 +37,14 @@ func TestDeleteRule_ReturnsConflictWhenBindingExists(t *testing.T) {
 	if len(conflict.Blockers) == 0 {
 		t.Fatalf("expected blockers, got %#v", conflict)
 	}
+
+	var ruleRemain int64
+	if err := db.Model(&model.AlertRule{}).Where("id = ?", 7).Count(&ruleRemain).Error; err != nil {
+		t.Fatalf("count rule after conflict delete: %v", err)
+	}
+	if ruleRemain != 1 {
+		t.Fatalf("expected rule to remain after conflict, got %d", ruleRemain)
+	}
 }
 
 func TestDeleteChannel_ReturnsConflictWhenReferencedBySeverityRoute(t *testing.T) {
@@ -44,7 +52,7 @@ func TestDeleteChannel_ReturnsConflictWhenReferencedBySeverityRoute(t *testing.T
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AlertNotificationChannel{}, &model.AlertSeverityRoute{}); err != nil {
+	if err := db.AutoMigrate(&model.AlertNotificationChannel{}, &model.AlertSeverityRoute{}, &model.AlertRuleChannelBinding{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	if err := db.Create(&model.AlertNotificationChannel{ID: 1001, Name: "webhook", Type: "webhook", Provider: "webhook", Enabled: true}).Error; err != nil {
@@ -62,6 +70,14 @@ func TestDeleteChannel_ReturnsConflictWhenReferencedBySeverityRoute(t *testing.T
 	}
 	if len(conflict.Blockers) == 0 {
 		t.Fatalf("expected blockers, got %#v", conflict)
+	}
+
+	var channelRemain int64
+	if err := db.Model(&model.AlertNotificationChannel{}).Where("id = ?", 1001).Count(&channelRemain).Error; err != nil {
+		t.Fatalf("count channel after conflict delete: %v", err)
+	}
+	if channelRemain != 1 {
+		t.Fatalf("expected channel to remain after conflict, got %d", channelRemain)
 	}
 }
 
