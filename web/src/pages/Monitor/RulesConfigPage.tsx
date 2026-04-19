@@ -61,21 +61,29 @@ const RulesConfigPage: React.FC = () => {
   }, []);
 
   const handleCreate = async () => {
-    const values = await createForm.validateFields();
-    setSubmitting(true);
     try {
-      await Api.monitoring.createAlertRule({
-        name: values.name,
-        metric: values.metric || '',
-        severity: values.severity,
-        threshold: values.threshold,
-      });
-      message.success('规则创建成功');
-      setCreateOpen(false);
-      createForm.resetFields();
-      await load();
-    } finally {
-      setSubmitting(false);
+      const values = await createForm.validateFields();
+      setSubmitting(true);
+      try {
+        await Api.monitoring.createAlertRule({
+          name: values.name,
+          metric: values.metric || '',
+          severity: values.severity,
+          threshold: values.threshold,
+        });
+        message.success('规则创建成功');
+        setCreateOpen(false);
+        createForm.resetFields();
+        await load();
+      } catch {
+        message.error('规则创建失败');
+      } finally {
+        setSubmitting(false);
+      }
+    } catch (error: any) {
+      if (!Array.isArray(error?.errorFields)) {
+        message.error('规则创建失败');
+      }
     }
   };
 
@@ -90,19 +98,27 @@ const RulesConfigPage: React.FC = () => {
 
   const handleUpdate = async () => {
     if (!editing) return;
-    const values = await editForm.validateFields();
-    setSubmitting(true);
     try {
-      await Api.monitoring.updateAlertRule(editing.id, {
-        name: values.name,
-        severity: values.severity,
-        threshold: values.threshold,
-      });
-      message.success('规则更新成功');
-      setEditing(null);
-      await load();
-    } finally {
-      setSubmitting(false);
+      const values = await editForm.validateFields();
+      setSubmitting(true);
+      try {
+        await Api.monitoring.updateAlertRule(editing.id, {
+          name: values.name,
+          severity: values.severity,
+          threshold: values.threshold,
+        });
+        message.success('规则更新成功');
+        setEditing(null);
+        await load();
+      } catch {
+        message.error('规则更新失败');
+      } finally {
+        setSubmitting(false);
+      }
+    } catch (error: any) {
+      if (!Array.isArray(error?.errorFields)) {
+        message.error('规则更新失败');
+      }
     }
   };
 
@@ -112,6 +128,8 @@ const RulesConfigPage: React.FC = () => {
       await Api.monitoring.deleteAlertRule(id);
       message.success('规则删除成功');
       await load();
+    } catch {
+      message.error('规则删除失败');
     } finally {
       setSubmitting(false);
     }
