@@ -71,28 +71,29 @@ describe('aiApi approval contract', () => {
   });
 
   it('refreshes approval state with getApproval and falls back to pending approvals', async () => {
-    const getApprovalMock = vi.spyOn(aiApi, 'getApproval').mockRejectedValueOnce(new ApiRequestError('conflict', 409));
-    const listPendingMock = vi.spyOn(aiApi, 'listPendingApprovals').mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          approval_id: 'approval-1',
-          checkpoint_id: 'checkpoint-1',
-          session_id: 'session-1',
-          run_id: 'run-1',
-          tool_name: 'kubectl_apply',
-          tool_call_id: 'call-1',
-          arguments_json: '{}',
-          preview_json: '{}',
-          status: 'pending',
-        },
-      ],
-    } as any);
+    const apiGetMock = vi.spyOn(apiService, 'get')
+      .mockRejectedValueOnce(new ApiRequestError('conflict', 409))
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            approval_id: 'approval-1',
+            checkpoint_id: 'checkpoint-1',
+            session_id: 'session-1',
+            run_id: 'run-1',
+            tool_name: 'kubectl_apply',
+            tool_call_id: 'call-1',
+            arguments_json: '{}',
+            preview_json: '{}',
+            status: 'pending',
+          },
+        ],
+      } as any);
 
     const ticket = await resolveApprovalTicket('approval-1');
 
-    expect(getApprovalMock).toHaveBeenCalledWith('approval-1');
-    expect(listPendingMock).toHaveBeenCalled();
+    expect(apiGetMock).toHaveBeenNthCalledWith(1, '/ai/approvals/approval-1');
+    expect(apiGetMock).toHaveBeenNthCalledWith(2, '/ai/approvals/pending');
     expect(ticket).toEqual(expect.objectContaining({
       approval_id: 'approval-1',
       tool_call_id: 'call-1',
@@ -101,25 +102,28 @@ describe('aiApi approval contract', () => {
   });
 
   it('resolveApprovalTicket matches pending records by tool_call_id fallback', async () => {
-    vi.spyOn(aiApi, 'getApproval').mockRejectedValueOnce(new ApiRequestError('not found', 404));
-    vi.spyOn(aiApi, 'listPendingApprovals').mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          approval_id: 'approval-99',
-          checkpoint_id: 'checkpoint-1',
-          session_id: 'session-1',
-          run_id: 'run-1',
-          tool_name: 'host_exec',
-          tool_call_id: 'call_7dd6640999ee4875836a0256',
-          arguments_json: '{}',
-          preview_json: '{}',
-          status: 'pending',
-        },
-      ],
-    } as any);
+    const apiGetMock = vi.spyOn(apiService, 'get')
+      .mockRejectedValueOnce(new ApiRequestError('not found', 404))
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            approval_id: 'approval-99',
+            checkpoint_id: 'checkpoint-1',
+            session_id: 'session-1',
+            run_id: 'run-1',
+            tool_name: 'host_exec',
+            tool_call_id: 'call_7dd6640999ee4875836a0256',
+            arguments_json: '{}',
+            preview_json: '{}',
+            status: 'pending',
+          },
+        ],
+      } as any);
 
     const ticket = await resolveApprovalTicket('call_7dd6640999ee4875836a0256');
+    expect(apiGetMock).toHaveBeenNthCalledWith(1, '/ai/approvals/call_7dd6640999ee4875836a0256');
+    expect(apiGetMock).toHaveBeenNthCalledWith(2, '/ai/approvals/pending');
     expect(ticket?.approval_id).toBe('approval-99');
   });
 
@@ -131,26 +135,29 @@ describe('aiApi approval contract', () => {
         success: true,
         data: { approval_id: 'approval-99', status: 'approved', message: 'ok' },
       });
-    vi.spyOn(aiApi, 'getApproval').mockRejectedValueOnce(new ApiRequestError('not found', 404));
-    vi.spyOn(aiApi, 'listPendingApprovals').mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          approval_id: 'approval-99',
-          checkpoint_id: 'checkpoint-1',
-          session_id: 'session-1',
-          run_id: 'run-1',
-          tool_name: 'host_exec',
-          tool_call_id: 'call_7dd6640999ee4875836a0256',
-          arguments_json: '{}',
-          preview_json: '{}',
-          status: 'pending',
-        },
-      ],
-    } as any);
+    const apiGetMock = vi.spyOn(apiService, 'get')
+      .mockRejectedValueOnce(new ApiRequestError('not found', 404))
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            approval_id: 'approval-99',
+            checkpoint_id: 'checkpoint-1',
+            session_id: 'session-1',
+            run_id: 'run-1',
+            tool_name: 'host_exec',
+            tool_call_id: 'call_7dd6640999ee4875836a0256',
+            arguments_json: '{}',
+            preview_json: '{}',
+            status: 'pending',
+          },
+        ],
+      } as any);
 
     const result = await submitApproval('call_7dd6640999ee4875836a0256', { approved: true });
 
+    expect(apiGetMock).toHaveBeenNthCalledWith(1, '/ai/approvals/call_7dd6640999ee4875836a0256');
+    expect(apiGetMock).toHaveBeenNthCalledWith(2, '/ai/approvals/pending');
     expect(postMock).toHaveBeenNthCalledWith(
       1,
       '/ai/approvals/call_7dd6640999ee4875836a0256/submit',
@@ -177,26 +184,29 @@ describe('aiApi approval contract', () => {
         success: true,
         data: { approval_id: 'approval-100', status: 'approved', message: 'ok' },
       });
-    vi.spyOn(aiApi, 'getApproval').mockRejectedValueOnce(new ApiRequestError('approval "call_409a77c6a4be45d6bc324218" not found', 200, 2005));
-    vi.spyOn(aiApi, 'listPendingApprovals').mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          approval_id: 'approval-100',
-          checkpoint_id: 'checkpoint-1',
-          session_id: 'session-1',
-          run_id: 'run-1',
-          tool_name: 'host_exec',
-          tool_call_id: 'call_409a77c6a4be45d6bc324218',
-          arguments_json: '{}',
-          preview_json: '{}',
-          status: 'pending',
-        },
-      ],
-    } as any);
+    const apiGetMock = vi.spyOn(apiService, 'get')
+      .mockRejectedValueOnce(new ApiRequestError('approval "call_409a77c6a4be45d6bc324218" not found', 200, 2005))
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          {
+            approval_id: 'approval-100',
+            checkpoint_id: 'checkpoint-1',
+            session_id: 'session-1',
+            run_id: 'run-1',
+            tool_name: 'host_exec',
+            tool_call_id: 'call_409a77c6a4be45d6bc324218',
+            arguments_json: '{}',
+            preview_json: '{}',
+            status: 'pending',
+          },
+        ],
+      } as any);
 
     const result = await submitApproval('call_409a77c6a4be45d6bc324218', { approved: true });
 
+    expect(apiGetMock).toHaveBeenNthCalledWith(1, '/ai/approvals/call_409a77c6a4be45d6bc324218');
+    expect(apiGetMock).toHaveBeenNthCalledWith(2, '/ai/approvals/pending');
     expect(postMock).toHaveBeenNthCalledWith(
       1,
       '/ai/approvals/call_409a77c6a4be45d6bc324218/submit',

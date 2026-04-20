@@ -47,6 +47,7 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
     body: JSON.stringify({
       session_id: params.session_id ?? params.sessionId,
       client_request_id: params.clientRequestId,
+      lastEventId: params.lastEventId ?? params.last_event_id,
       last_event_id: params.last_event_id ?? params.lastEventId,
       message: params.message,
       scene: params.scene,

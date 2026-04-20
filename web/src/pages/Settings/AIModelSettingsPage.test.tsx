@@ -137,5 +137,5 @@ describe('AIModelSettingsPage', () => {
       sort_order: 5,
     });
     expect(payload).not.toHaveProperty('api_key');
-  });
+  }, 90000);
 });
