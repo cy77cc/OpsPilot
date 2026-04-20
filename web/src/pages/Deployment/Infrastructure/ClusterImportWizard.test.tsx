@@ -156,4 +156,48 @@ describe('ClusterImportWizard', () => {
       kubeconfig: 'apiVersion: v1',
     }));
   }, 30000);
+
+  it('shows endpoint guidance when certificate auth fields receive focus', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterImportWizard />);
+
+    await user.type(screen.getByLabelText('集群名称'), 'prod-k8s');
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+    await user.click(screen.getByRole('radio', { name: /API 地址 \+ 证书/ }));
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    const endpointInput = screen.getByLabelText('API Server 地址');
+    fireEvent.focus(endpointInput);
+
+    expect(screen.getByText('这里填什么')).toBeInTheDocument();
+    expect(screen.getByText('填写目标集群 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
+
+    fireEvent.blur(endpointInput);
+
+    await waitFor(() => {
+      expect(screen.queryByText('填写目标集群 Kubernetes API Server 的完整 HTTPS 地址。')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows insecure TLS guidance when the token checkbox receives focus', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterImportWizard />);
+
+    await user.type(screen.getByLabelText('集群名称'), 'prod-k8s');
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+    await user.click(screen.getByRole('radio', { name: /ServiceAccount Token/ }));
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    const skipTlsCheckbox = screen.getByRole('checkbox');
+    fireEvent.focus(skipTlsCheckbox);
+
+    expect(screen.getByText('只在测试环境或临时排障时启用。')).toBeInTheDocument();
+    expect(screen.getByText('开启后虽然可能绕过证书问题，但也会放大中间人攻击风险。')).toBeInTheDocument();
+
+    fireEvent.blur(skipTlsCheckbox);
+
+    await waitFor(() => {
+      expect(screen.queryByText('只在测试环境或临时排障时启用。')).not.toBeInTheDocument();
+    });
+  });
 });

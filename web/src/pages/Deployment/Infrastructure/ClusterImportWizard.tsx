@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Steps, Form, Input, Button, Card, Space, message, Upload, Alert, Result,
-  Radio, Spin, Descriptions, Tag, Divider, Typography
+  Radio, Spin, Descriptions, Tag, Divider, Typography, Checkbox
 } from 'antd';
 import {
   ArrowLeftOutlined, UploadOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -11,6 +11,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { Cluster, ClusterImportReq } from '../../../api/modules/cluster';
+import { GuidedFormItem } from '../../../components/FormGuidance';
+import { clusterImportFieldGuides } from './clusterImportFieldGuides';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -278,9 +280,10 @@ const ClusterImportWizard: React.FC = () => {
   const renderStep2 = () => {
     const renderKubeconfigForm = () => (
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="kubeconfig"
           label="Kubeconfig 内容"
+          guide={clusterImportFieldGuides.kubeconfig}
           rules={[{ required: true, message: '请输入或上传 kubeconfig' }]}
         >
           <TextArea
@@ -288,7 +291,7 @@ const ClusterImportWizard: React.FC = () => {
             placeholder="粘贴 kubeconfig 内容，或点击下方按钮上传文件"
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
         <Upload
           beforeUpload={(file) => handleFileUpload(file, 'kubeconfig')}
           accept=".yaml,.yml,.conf,.config"
@@ -301,29 +304,29 @@ const ClusterImportWizard: React.FC = () => {
 
     const renderCertificateForm = () => (
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="endpoint"
           label="API Server 地址"
+          guide={clusterImportFieldGuides.endpoint}
           rules={[{ required: true, message: '请输入 API Server 地址' }]}
-          extra="例如: https://api.k8s.example.com:6443"
         >
           <Input placeholder="https://api.k8s.example.com:6443" />
-        </Form.Item>
+        </GuidedFormItem>
 
         <Divider>证书配置</Divider>
 
-        <Form.Item
+        <GuidedFormItem
           name="ca_cert"
           label="CA 证书"
+          guide={clusterImportFieldGuides.ca_cert}
           rules={[{ required: true, message: '请输入 CA 证书' }]}
-          extra="PEM 格式或 Base64 编码"
         >
           <TextArea
             rows={4}
             placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
         <Upload
           beforeUpload={(file) => handleFileUpload(file, 'ca_cert')}
           accept=".pem,.crt,.cert"
@@ -332,9 +335,10 @@ const ClusterImportWizard: React.FC = () => {
           <Button icon={<UploadOutlined />} size="small">上传 CA 证书</Button>
         </Upload>
 
-        <Form.Item
+        <GuidedFormItem
           name="cert"
           label="客户端证书"
+          guide={clusterImportFieldGuides.cert}
           rules={[{ required: true, message: '请输入客户端证书' }]}
           className="mt-4"
         >
@@ -343,7 +347,7 @@ const ClusterImportWizard: React.FC = () => {
             placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
         <Upload
           beforeUpload={(file) => handleFileUpload(file, 'cert')}
           accept=".pem,.crt,.cert"
@@ -352,9 +356,10 @@ const ClusterImportWizard: React.FC = () => {
           <Button icon={<UploadOutlined />} size="small">上传客户端证书</Button>
         </Upload>
 
-        <Form.Item
+        <GuidedFormItem
           name="key"
           label="客户端私钥"
+          guide={clusterImportFieldGuides.key}
           rules={[{ required: true, message: '请输入客户端私钥' }]}
           className="mt-4"
         >
@@ -363,7 +368,7 @@ const ClusterImportWizard: React.FC = () => {
             placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
         <Upload
           beforeUpload={(file) => handleFileUpload(file, 'key')}
           accept=".pem,.key"
@@ -376,26 +381,26 @@ const ClusterImportWizard: React.FC = () => {
 
     const renderTokenForm = () => (
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="endpoint"
           label="API Server 地址"
+          guide={clusterImportFieldGuides.endpoint}
           rules={[{ required: true, message: '请输入 API Server 地址' }]}
-          extra="例如: https://api.k8s.example.com:6443"
         >
           <Input placeholder="https://api.k8s.example.com:6443" />
-        </Form.Item>
+        </GuidedFormItem>
 
-        <Form.Item
+        <GuidedFormItem
           name="ca_cert"
           label="CA 证书（可选）"
-          extra="不提供时可以选择跳过 TLS 验证"
+          guide={clusterImportFieldGuides.ca_cert}
         >
           <TextArea
             rows={4}
             placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
         <Upload
           beforeUpload={(file) => handleFileUpload(file, 'ca_cert')}
           accept=".pem,.crt,.cert"
@@ -404,26 +409,28 @@ const ClusterImportWizard: React.FC = () => {
           <Button icon={<UploadOutlined />} size="small">上传 CA 证书</Button>
         </Upload>
 
-        <Form.Item
+        <GuidedFormItem
           name="token"
           label="Bearer Token"
+          guide={clusterImportFieldGuides.token}
           rules={[{ required: true, message: '请输入 Token' }]}
           className="mt-4"
-          extra="可通过 kubectl create token 或查看 Secret 获取"
         >
           <TextArea
             rows={4}
             placeholder="eyJhbGciOiJSUzI1NiIsImtpZCI6Ii..."
             style={{ fontFamily: 'monospace', fontSize: '12px' }}
           />
-        </Form.Item>
+        </GuidedFormItem>
 
-        <Form.Item name="skip_tls_verify" valuePropName="checked" initialValue={false} className="mt-2">
-          <Space>
-            <input type="checkbox" className="w-4 h-4" />
-            <span>跳过 TLS 证书验证（不推荐）</span>
-          </Space>
-        </Form.Item>
+        <GuidedFormItem
+          name="skip_tls_verify"
+          guide={clusterImportFieldGuides.skip_tls_verify}
+          valuePropName="checked"
+          className="mt-2"
+        >
+          <Checkbox>跳过 TLS 证书验证（不推荐）</Checkbox>
+        </GuidedFormItem>
       </Form>
     );
 
