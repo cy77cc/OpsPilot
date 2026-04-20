@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,6 +57,16 @@ describe('RulesConfigPage', () => {
 
     expect(await screen.findByText('CPU High')).toBeInTheDocument();
     expect(screen.getByText('warning')).toBeInTheDocument();
+  });
+
+  it('loads global scope list in StrictMode without getting stuck', async () => {
+    render(
+      <StrictMode>
+        <RulesConfigPage />
+      </StrictMode>
+    );
+
+    expect(await screen.findByText('CPU High')).toBeInTheDocument();
   });
 
   it('passes project scope to effective-rules requests after switching scope', async () => {

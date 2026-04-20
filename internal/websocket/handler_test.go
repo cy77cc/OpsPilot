@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +15,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNotificationWS_UnauthenticatedReturns401(t *testing.T) {
@@ -148,6 +153,46 @@ func TestIsOriginAllowed(t *testing.T) {
 			t.Fatal("expected origin to be rejected")
 		}
 	})
+}
+
+func TestWebSocketConfig_AllowlistIncludesViteDevOrigins(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve test file path")
+	}
+
+	configPath := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", "configs", "config.yaml"))
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config template %q: %v", configPath, err)
+	}
+
+	var cfg struct {
+		Security struct {
+			WebSocketAllowOrigins []string `yaml:"websocket_allow_origins"`
+		} `yaml:"security"`
+	}
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("failed to parse config template: %v", err)
+	}
+
+	requiredOrigins := []string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	}
+
+	for _, required := range requiredOrigins {
+		found := false
+		for _, configured := range cfg.Security.WebSocketAllowOrigins {
+			if strings.EqualFold(strings.TrimSpace(configured), required) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected websocket_allow_origins to include %q, got %v", required, cfg.Security.WebSocketAllowOrigins)
+		}
+	}
 }
 
 func configureJWTForWebSocketTest(t *testing.T) {

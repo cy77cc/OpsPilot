@@ -107,6 +107,7 @@ const RulesConfigPage: React.FC = () => {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       loadSeqRef.current += 1;

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,6 +44,16 @@ describe('RoutingConfigPage', () => {
 
     expect(await screen.findByText('critical')).toBeInTheDocument();
     expect(screen.getByText('[1001]')).toBeInTheDocument();
+  });
+
+  it('loads global scope routes in StrictMode without getting stuck', async () => {
+    render(
+      <StrictMode>
+        <RoutingConfigPage />
+      </StrictMode>
+    );
+
+    expect(await screen.findByText('critical')).toBeInTheDocument();
   });
 
   it('passes project scope to route list request after switching scope', async () => {

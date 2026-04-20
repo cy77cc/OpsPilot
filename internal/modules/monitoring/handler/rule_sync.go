@@ -9,9 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,10 +33,13 @@ import (
 type RuleSyncService struct {
 	db        *gorm.DB     // 数据库连接
 	rulesFile string       // 规则文件路径
+	rulesURL  string       // Prometheus rules API URL
 	reloadURL string       // Prometheus 重载 URL
 	client    *http.Client // HTTP 客户端
 	mu        sync.Mutex   // 并发锁
 }
+
+const importedPrometheusSource = "prometheus"
 
 // promRulesFile 是 Prometheus 规则文件结构。
 //
@@ -59,6 +65,28 @@ type promRule struct {
 	For         string            `yaml:"for,omitempty"`         // 持续时间
 	Labels      map[string]string `yaml:"labels,omitempty"`      // 标签
 	Annotations map[string]string `yaml:"annotations,omitempty"` // 注解
+}
+
+type promRulesResponse struct {
+	Status    string `json:"status"`
+	ErrorType string `json:"errorType"`
+	Error     string `json:"error"`
+	Data      struct {
+		Groups []promRulesGroup `json:"groups"`
+	} `json:"data"`
+}
+
+type promRulesGroup struct {
+	Rules []promRulesAPIRule `json:"rules"`
+}
+
+type promRulesAPIRule struct {
+	Type        string            `json:"type"`
+	Name        string            `json:"name"`
+	Query       string            `json:"query"`
+	Duration    json.RawMessage   `json:"duration"`
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 // NewRuleSyncService 创建规则同步服务实例。
@@ -99,6 +127,7 @@ func NewRuleSyncService(db *gorm.DB) *RuleSyncService {
 	return &RuleSyncService{
 		db:        db,
 		rulesFile: rulesFile,
+		rulesURL:  strings.TrimRight(address, "/") + "/api/v1/rules",
 		reloadURL: strings.TrimRight(address, "/") + "/-/reload",
 		client: &http.Client{
 			Timeout: 5 * time.Second,
@@ -119,8 +148,16 @@ func (s *RuleSyncService) SyncRules(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := s.syncPrometheusRulesToDB(ctx); err != nil {
+		return 0, err
+	}
+
 	rules := make([]model.AlertRule, 0, 64)
-	if err := s.db.WithContext(ctx).Where("enabled = ?", true).Order("id ASC").Find(&rules).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Where("enabled = ?", true).
+		Where("COALESCE(source, '') <> ?", importedPrometheusSource).
+		Order("id ASC").
+		Find(&rules).Error; err != nil {
 		return 0, err
 	}
 
@@ -152,7 +189,7 @@ func (s *RuleSyncService) SyncRules(ctx context.Context) (int, error) {
 // 返回: Prometheus 格式的规则和可能的错误
 func convertRuleToPrometheus(rule model.AlertRule) (promRule, error) {
 	metric := strings.TrimSpace(rule.Metric)
-	if metric == "" {
+	if metric == "" && strings.TrimSpace(rule.PromQLExpr) == "" {
 		return promRule{}, fmt.Errorf("rule %d metric is empty", rule.ID)
 	}
 	op := strings.TrimSpace(rule.Operator)
@@ -234,6 +271,350 @@ func convertRuleToPrometheus(rule model.AlertRule) (promRule, error) {
 		result.For = (time.Duration(rule.DurationSec) * time.Second).String()
 	}
 	return result, nil
+}
+
+func (s *RuleSyncService) syncPrometheusRulesToDB(ctx context.Context) error {
+	promRules, err := s.fetchPrometheusRules(ctx)
+	if err != nil {
+		return err
+	}
+	if len(promRules) == 0 {
+		return nil
+	}
+
+	existing := make([]model.AlertRule, 0, len(promRules))
+	if err := s.db.WithContext(ctx).
+		Where("project_id IS NULL").
+		Order("id ASC").
+		Find(&existing).Error; err != nil {
+		return err
+	}
+
+	existingByName := make(map[string]model.AlertRule, len(existing))
+	for _, row := range existing {
+		key := normalizeRuleName(row.Name)
+		if key == "" {
+			continue
+		}
+		if _, ok := existingByName[key]; !ok {
+			existingByName[key] = row
+		}
+	}
+
+	for _, pr := range promRules {
+		converted := convertPrometheusRuleToModel(pr)
+		key := normalizeRuleName(converted.Name)
+		if key == "" {
+			continue
+		}
+		if row, ok := existingByName[key]; ok {
+			if err := s.updateRuleFromPrometheus(ctx, row, converted); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.db.WithContext(ctx).Create(&converted).Error; err != nil {
+			return err
+		}
+		existingByName[key] = converted
+	}
+	return nil
+}
+
+func (s *RuleSyncService) fetchPrometheusRules(ctx context.Context) ([]promRule, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.rulesURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("prometheus rules query failed: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var parsed promRulesResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	if parsed.Status != "success" {
+		msg := strings.TrimSpace(parsed.Error)
+		if msg == "" {
+			msg = strings.TrimSpace(parsed.ErrorType)
+		}
+		if msg == "" {
+			msg = "unknown error"
+		}
+		return nil, fmt.Errorf("prometheus rules query failed: %s", msg)
+	}
+
+	rules := make([]promRule, 0, 64)
+	for _, group := range parsed.Data.Groups {
+		for _, item := range group.Rules {
+			if strings.TrimSpace(strings.ToLower(item.Type)) != "alerting" {
+				continue
+			}
+			name := strings.TrimSpace(item.Name)
+			expr := strings.TrimSpace(item.Query)
+			if name == "" || expr == "" {
+				continue
+			}
+			rules = append(rules, promRule{
+				Alert:       name,
+				Expr:        expr,
+				For:         parsePrometheusDuration(item.Duration),
+				Labels:      cloneStringMap(item.Labels),
+				Annotations: cloneStringMap(item.Annotations),
+			})
+		}
+	}
+	return rules, nil
+}
+
+func (s *RuleSyncService) updateRuleFromPrometheus(ctx context.Context, existing, imported model.AlertRule) error {
+	metric, operator, threshold, simpleExpr := parseSimplePromExpression(imported.PromQLExpr)
+
+	updates := map[string]any{
+		"name":             imported.Name,
+		"promql_expr":      imported.PromQLExpr,
+		"duration_sec":     imported.DurationSec,
+		"labels_json":      imported.LabelsJSON,
+		"annotations_json": imported.AnnotationsJSON,
+		"severity":         imported.Severity,
+		"source":           imported.Source,
+		"state":            "enabled",
+		"enabled":          true,
+	}
+
+	if imported.DurationSec <= 0 {
+		delete(updates, "duration_sec")
+	}
+	if strings.TrimSpace(imported.Operator) == "" {
+		delete(updates, "operator")
+	}
+	if imported.PromQLExpr == "" {
+		delete(updates, "promql_expr")
+	}
+	if imported.LabelsJSON == "" {
+		delete(updates, "labels_json")
+	}
+	if imported.AnnotationsJSON == "" {
+		delete(updates, "annotations_json")
+	}
+	if simpleExpr {
+		updates["metric"] = metric
+		updates["operator"] = operator
+		updates["threshold"] = threshold
+	} else {
+		delete(updates, "metric")
+		delete(updates, "operator")
+		delete(updates, "threshold")
+	}
+	if existing.Metric == "" && !simpleExpr {
+		updates["metric"] = imported.Metric
+		updates["operator"] = "gt"
+		updates["threshold"] = 0
+	}
+	return s.db.WithContext(ctx).
+		Model(&model.AlertRule{}).
+		Where("id = ?", existing.ID).
+		Updates(updates).Error
+}
+
+func convertPrometheusRuleToModel(rule promRule) model.AlertRule {
+	expr := strings.TrimSpace(rule.Expr)
+	metric, operator, threshold, ok := parseSimplePromExpression(expr)
+	if !ok {
+		metric = inferMetric(expr)
+		operator = "gt"
+		threshold = 0
+	}
+	if metric == "" {
+		metric = "prometheus_expression"
+	}
+	labelsJSON := encodeJSONMap(rule.Labels)
+	annotationsJSON := encodeJSONMap(rule.Annotations)
+	severity := normalizeSeverity(rule.Labels["severity"])
+
+	return model.AlertRule{
+		Name:            strings.TrimSpace(rule.Alert),
+		Metric:          metric,
+		PromQLExpr:      expr,
+		Operator:        operator,
+		Threshold:       threshold,
+		DurationSec:     parseDurationSeconds(rule.For),
+		WindowSec:       3600,
+		GranularitySec:  60,
+		LabelsJSON:      labelsJSON,
+		AnnotationsJSON: annotationsJSON,
+		Severity:        severity,
+		Source:          importedPrometheusSource,
+		Scope:           "global",
+		Enabled:         true,
+		State:           "enabled",
+	}
+}
+
+func parsePrometheusDuration(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		trimmed := strings.TrimSpace(str)
+		if trimmed == "" {
+			return ""
+		}
+		if sec, err := strconv.ParseFloat(trimmed, 64); err == nil && sec > 0 {
+			return (time.Duration(sec * float64(time.Second))).String()
+		}
+		return trimmed
+	}
+	var num float64
+	if err := json.Unmarshal(raw, &num); err == nil && num > 0 {
+		return (time.Duration(num * float64(time.Second))).String()
+	}
+	return ""
+}
+
+func parseSimplePromExpression(expr string) (metric, operator string, threshold float64, ok bool) {
+	compact := strings.Join(strings.Fields(strings.TrimSpace(expr)), " ")
+	if compact == "" {
+		return "", "", 0, false
+	}
+
+	ops := []string{">=", "<=", "==", "=", ">", "<"}
+	selected := ""
+	selectedIdx := -1
+	for _, op := range ops {
+		if idx := strings.Index(compact, op); idx > 0 {
+			selected = op
+			selectedIdx = idx
+			break
+		}
+	}
+	if selected == "" {
+		return "", "", 0, false
+	}
+
+	left := strings.TrimSpace(compact[:selectedIdx])
+	right := strings.TrimSpace(compact[selectedIdx+len(selected):])
+	if left == "" || right == "" {
+		return "", "", 0, false
+	}
+
+	n, err := strconv.ParseFloat(right, 64)
+	if err != nil {
+		return "", "", 0, false
+	}
+	if !isPromMetricName(left) {
+		return "", "", 0, false
+	}
+
+	return left, toModelOperator(selected), n, true
+}
+
+func isPromMetricName(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r == '_' || r == ':':
+		case i > 0 && r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func inferMetric(expr string) string {
+	for _, token := range strings.FieldsFunc(expr, func(r rune) bool {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return false
+		case r >= 'A' && r <= 'Z':
+			return false
+		case r >= '0' && r <= '9':
+			return false
+		case r == '_' || r == ':':
+			return false
+		default:
+			return true
+		}
+	}) {
+		if isPromMetricName(token) {
+			return token
+		}
+	}
+	return ""
+}
+
+func toModelOperator(op string) string {
+	switch strings.TrimSpace(op) {
+	case ">":
+		return "gt"
+	case ">=":
+		return "gte"
+	case "<":
+		return "lt"
+	case "<=":
+		return "lte"
+	case "=", "==":
+		return "eq"
+	default:
+		return "gt"
+	}
+}
+
+func parseDurationSeconds(v string) int {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return 0
+	}
+	if sec, err := strconv.ParseFloat(trimmed, 64); err == nil {
+		return int(math.Round(sec))
+	}
+	d, err := time.ParseDuration(trimmed)
+	if err != nil {
+		return 0
+	}
+	return int(d.Seconds())
+}
+
+func encodeJSONMap(data map[string]string) string {
+	if len(data) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func normalizeRuleName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // writeRulesFile 将规则写入文件。

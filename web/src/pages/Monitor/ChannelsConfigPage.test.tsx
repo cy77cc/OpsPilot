@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { message, Modal } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,6 +62,16 @@ describe('ChannelsConfigPage', () => {
     await waitFor(() => {
       expect(mockApi.monitoring.testAlertChannel).toHaveBeenCalled();
     });
+  });
+
+  it('loads global scope channels in StrictMode without getting stuck', async () => {
+    render(
+      <StrictMode>
+        <ChannelsConfigPage />
+      </StrictMode>
+    );
+
+    expect(await screen.findByText('Ops Webhook')).toBeInTheDocument();
   });
 
   it('passes project scope to channel create request after switching scope', async () => {
