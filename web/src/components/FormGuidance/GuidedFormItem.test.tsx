@@ -86,17 +86,25 @@ describe('GuidedFormItem', () => {
   it('preserves child focus handlers', async () => {
     const user = userEvent.setup();
     const handleFocus = vi.fn();
+    const handleBlur = vi.fn();
 
     renderWithAntd(
       <Form layout="vertical">
         <GuidedFormItem name="endpoint" label="API Server" guide={endpointGuide}>
-          <Input onFocus={handleFocus} />
+          <Input onFocus={handleFocus} onBlur={handleBlur} />
         </GuidedFormItem>
+        <Form.Item name="another" label="另一个字段">
+          <Input />
+        </Form.Item>
       </Form>,
     );
 
     await user.click(screen.getByLabelText('API Server'));
 
     expect(handleFocus).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByLabelText('另一个字段'));
+
+    expect(handleBlur).toHaveBeenCalledTimes(1);
   });
 });

@@ -22,14 +22,22 @@ const callFocusHandler = (
 };
 
 const GuidedFormItem: React.FC<GuidedFormItemProps> = ({ guide, extra, children, ...formItemProps }) => {
+  if (!guide) {
+    return (
+      <Form.Item {...formItemProps} extra={extra}>
+        {children}
+      </Form.Item>
+    );
+  }
+
   const [isFocused, setIsFocused] = React.useState(false);
   const child = children as React.ReactElement<FocusableChildProps>;
 
   const mergedExtra =
-    guide && isFocused ? (
+    isFocused ? (
       <div className="space-y-2">
         <FieldGuideCard guide={guide} />
-        {extra ? <div>{extra}</div> : null}
+        {extra != null ? <div>{extra}</div> : null}
       </div>
     ) : (
       extra
