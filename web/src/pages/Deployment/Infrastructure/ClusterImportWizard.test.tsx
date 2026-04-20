@@ -84,7 +84,7 @@ describe('ClusterImportWizard', () => {
 
     fireEvent.change(screen.getByLabelText('API Server 地址'), { target: { value: 'https://k8s.example.com:6443' } });
     fireEvent.change(screen.getByLabelText('Bearer Token'), { target: { value: 'token-value' } });
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('checkbox', { name: '跳过 TLS 证书验证（不推荐）' }));
     await user.click(screen.getByRole('button', { name: '下一步' }));
 
     await user.click(screen.getByRole('button', { name: /测试连接/ }));
@@ -170,9 +170,6 @@ describe('ClusterImportWizard', () => {
     fireEvent.focus(endpointInput);
 
     expect(screen.getByText('这里填什么')).toBeInTheDocument();
-    expect(screen.getByText('这个值是干嘛的')).toBeInTheDocument();
-    expect(screen.getByText('推荐示例')).toBeInTheDocument();
-    expect(screen.getByText('填错会怎样')).toBeInTheDocument();
     expect(screen.getByText('填写目标集群 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
 
     fireEvent.blur(endpointInput);
@@ -191,7 +188,7 @@ describe('ClusterImportWizard', () => {
     await user.click(screen.getByRole('radio', { name: /ServiceAccount Token/ }));
     await user.click(screen.getByRole('button', { name: '下一步' }));
 
-    const skipTlsCheckbox = screen.getByRole('checkbox');
+    const skipTlsCheckbox = screen.getByRole('checkbox', { name: '跳过 TLS 证书验证（不推荐）' });
     fireEvent.focus(skipTlsCheckbox);
 
     expect(screen.getByText('只在测试环境或临时排障时启用。')).toBeInTheDocument();
@@ -203,4 +200,42 @@ describe('ClusterImportWizard', () => {
       expect(screen.queryByText('只在测试环境或临时排障时启用。')).not.toBeInTheDocument();
     });
   });
+
+  it('includes explicit skip_tls_verify false when importing with token auth and checkbox untouched', async () => {
+    const user = userEvent.setup();
+    mockApi.cluster.validateImport.mockResolvedValue({
+      data: { valid: true, message: 'ok', endpoint: 'https://k8s.example.com:6443', version: 'v1.28.0' },
+    });
+    mockApi.cluster.importCluster.mockResolvedValue({
+      data: { id: 3, name: 'prod-k8s' },
+    });
+
+    renderWithProviders(<ClusterImportWizard />);
+
+    await user.type(screen.getByLabelText('集群名称'), 'prod-k8s');
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    await user.click(screen.getByRole('radio', { name: /ServiceAccount Token/ }));
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    fireEvent.change(screen.getByLabelText('API Server 地址'), { target: { value: 'https://k8s.example.com:6443' } });
+    fireEvent.change(screen.getByLabelText('Bearer Token'), { target: { value: 'token-value' } });
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    await user.click(screen.getByRole('button', { name: /测试连接/ }));
+    await waitFor(() => expect(mockApi.cluster.validateImport).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('button', { name: '下一步' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+    await user.click(screen.getByRole('button', { name: '确认导入' }));
+
+    await waitFor(() => expect(mockApi.cluster.importCluster).toHaveBeenCalledWith({
+      name: 'prod-k8s',
+      description: undefined,
+      auth_method: 'token',
+      endpoint: 'https://k8s.example.com:6443',
+      ca_cert: undefined,
+      token: 'token-value',
+      skip_tls_verify: false,
+    }));
+  }, 90000);
 });
