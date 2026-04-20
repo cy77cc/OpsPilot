@@ -170,6 +170,9 @@ describe('ClusterImportWizard', () => {
     fireEvent.focus(endpointInput);
 
     expect(screen.getByText('这里填什么')).toBeInTheDocument();
+    expect(screen.getByText('这个值是干嘛的')).toBeInTheDocument();
+    expect(screen.getByText('推荐示例')).toBeInTheDocument();
+    expect(screen.getByText('填错会怎样')).toBeInTheDocument();
     expect(screen.getByText('填写目标集群 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
 
     fireEvent.blur(endpointInput);

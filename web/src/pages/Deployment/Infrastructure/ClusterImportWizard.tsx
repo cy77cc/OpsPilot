@@ -427,6 +427,7 @@ const ClusterImportWizard: React.FC = () => {
           name="skip_tls_verify"
           guide={clusterImportFieldGuides.skip_tls_verify}
           valuePropName="checked"
+          initialValue={false}
           className="mt-2"
         >
           <Checkbox>跳过 TLS 证书验证（不推荐）</Checkbox>
