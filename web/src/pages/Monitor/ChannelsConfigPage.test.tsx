@@ -187,4 +187,25 @@ describe('ChannelsConfigPage', () => {
       expect(mockApi.monitoring.listAlertChannels).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('shows config JSON guidance in the create-channel modal', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(screen.getByRole('button', { name: '新增渠道' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '新增渠道' });
+    const configInput = within(dialog).getByLabelText('配置 JSON');
+
+    fireEvent.focus(configInput);
+
+    expect(within(dialog).getByText('这里填什么')).toBeInTheDocument();
+    expect(within(dialog).getByText('这里填当前渠道 provider 需要的附加配置，必须是合法 JSON。')).toBeInTheDocument();
+
+    fireEvent.blur(configInput);
+
+    await waitFor(() => {
+      expect(screen.queryByText('这里填当前渠道 provider 需要的附加配置，必须是合法 JSON。')).not.toBeInTheDocument();
+    });
+  });
 });
