@@ -21,6 +21,7 @@ import (
 	notifhandler "github.com/cy77cc/OpsPilot/internal/modules/notification/handler"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	"gorm.io/gorm"
 )
 
 // Logic 是监控服务的业务逻辑层。
@@ -1069,4 +1070,74 @@ func boolToRuleState(enabled bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+func (l *Logic) DeleteRule(ctx context.Context, id uint) error {
+	if id == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.AlertRule
+		if err := tx.Where("id = ?", id).Take(&row).Error; err != nil {
+			return err
+		}
+
+		var bindingCount int64
+		if err := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("rule_id = ?", id).
+			Count(&bindingCount).Error; err != nil {
+			return err
+		}
+		if bindingCount > 0 {
+			return &DeleteConflictError{
+				Resource: "alert_rule",
+				Blockers: []DeleteBlocker{{Type: "binding", Count: int(bindingCount)}},
+			}
+		}
+		return tx.Delete(&model.AlertRule{}, id).Error
+	})
+}
+
+func (l *Logic) DeleteChannel(ctx context.Context, id uint) error {
+	if id == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.AlertNotificationChannel
+		if err := tx.Where("id = ?", id).Take(&row).Error; err != nil {
+			return err
+		}
+
+		var bindingCount int64
+		if err := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("channel_id = ?", id).
+			Count(&bindingCount).Error; err != nil {
+			return err
+		}
+
+		routes := make([]model.AlertSeverityRoute, 0, 16)
+		if err := tx.Find(&routes).Error; err != nil {
+			return err
+		}
+		routeRefs := 0
+		for _, route := range routes {
+			for _, channelID := range parseChannelIDs(route.ChannelIDsJSON) {
+				if channelID == id {
+					routeRefs++
+					break
+				}
+			}
+		}
+		if bindingCount > 0 || routeRefs > 0 {
+			blockers := make([]DeleteBlocker, 0, 2)
+			if bindingCount > 0 {
+				blockers = append(blockers, DeleteBlocker{Type: "binding", Count: int(bindingCount)})
+			}
+			if routeRefs > 0 {
+				blockers = append(blockers, DeleteBlocker{Type: "severity_route", Count: routeRefs})
+			}
+			return &DeleteConflictError{Resource: "alert_channel", Blockers: blockers}
+		}
+		return tx.Delete(&model.AlertNotificationChannel{}, id).Error
+	})
 }

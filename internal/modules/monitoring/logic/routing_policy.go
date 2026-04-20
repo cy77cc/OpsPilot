@@ -3,12 +3,28 @@ package logic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+var ErrInvalidRouteInput = errors.New("invalid route input")
+
+type InvalidRouteInputError struct {
+	msg string
+}
+
+func (e *InvalidRouteInputError) Error() string {
+	return e.msg
+}
+
+func (e *InvalidRouteInputError) Is(target error) bool {
+	return target == ErrInvalidRouteInput
+}
 
 // SeverityRouteInput 定义严重级别路由写入参数。
 type SeverityRouteInput struct {
@@ -195,34 +211,13 @@ func (l *Logic) ReplaceSeverityRoutes(ctx context.Context, projectID uint, route
 		}
 
 		for _, item := range routes {
-			severity := strings.ToLower(strings.TrimSpace(item.Severity))
-			if severity == "" {
-				continue
-			}
-			chIDs := make([]uint, 0, len(item.ChannelIDs))
-			seen := make(map[uint]struct{}, len(item.ChannelIDs))
-			for _, id := range item.ChannelIDs {
-				if id == 0 {
-					continue
-				}
-				if _, ok := seen[id]; ok {
-					continue
-				}
-				seen[id] = struct{}{}
-				chIDs = append(chIDs, id)
-			}
-			b, err := json.Marshal(chIDs)
+			scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, item)
 			if err != nil {
 				return err
 			}
-
-			scope := strings.ToLower(strings.TrimSpace(item.Scope))
-			if scope == "" {
-				if projectID > 0 {
-					scope = "project"
-				} else {
-					scope = "global"
-				}
+			b, err := json.Marshal(channelIDs)
+			if err != nil {
+				return err
 			}
 			row := model.AlertSeverityRoute{
 				Scope:          scope,
@@ -240,6 +235,228 @@ func (l *Logic) ReplaceSeverityRoutes(ctx context.Context, projectID uint, route
 		}
 		return nil
 	})
+}
+
+func (l *Logic) CreateSeverityRoute(ctx context.Context, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
+	scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, input)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(channelIDs)
+	if err != nil {
+		return nil, err
+	}
+	row := model.AlertSeverityRoute{
+		Scope:          scope,
+		Severity:       severity,
+		ChannelIDsJSON: string(b),
+		Enabled:        input.Enabled,
+	}
+	if projectID > 0 {
+		pid := projectID
+		row.ProjectID = &pid
+	}
+	if err := l.svcCtx.DB.WithContext(ctx).Create(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) CreateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority *int, enabled *bool) (*model.AlertRuleChannelBinding, error) {
+	if ruleID == 0 || channelID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	row := model.AlertRuleChannelBinding{}
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Lock parent rows in a consistent order to serialize concurrent scoped creates.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ?", ruleID).Take(&model.AlertRule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ?", channelID).Take(&model.AlertNotificationChannel{}).Error; err != nil {
+			return err
+		}
+
+		existing, err := findScopedBinding(tx, projectID, ruleID, channelID)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if existing != nil {
+			row = *existing
+			return nil
+		}
+
+		row = model.AlertRuleChannelBinding{
+			RuleID:    ruleID,
+			ChannelID: channelID,
+			Priority:  normalizeBindingPriority(priority),
+			Enabled:   normalizeBindingEnabled(enabled, true),
+		}
+		if projectID > 0 {
+			pid := projectID
+			row.ProjectID = &pid
+		}
+		return tx.Create(&row).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) UpdateSeverityRoute(ctx context.Context, id uint, projectID uint, input SeverityRouteInput) (*model.AlertSeverityRoute, error) {
+	scope, severity, channelIDs, err := normalizeSeverityRouteWrite(projectID, input)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(channelIDs)
+	if err != nil {
+		return nil, err
+	}
+	q := l.svcCtx.DB.WithContext(ctx).Model(&model.AlertSeverityRoute{}).Where("id = ?", id)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+	updates := map[string]any{
+		"scope":            scope,
+		"severity":         severity,
+		"channel_ids_json": string(b),
+		"enabled":          input.Enabled,
+	}
+	result := q.Updates(updates)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var row model.AlertSeverityRoute
+	fetch := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id)
+	if projectID > 0 {
+		fetch = fetch.Where("project_id = ?", projectID)
+	} else {
+		fetch = fetch.Where("project_id IS NULL")
+	}
+	if err := fetch.Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) UpdateRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint, priority *int, enabled *bool) (*model.AlertRuleChannelBinding, error) {
+	if ruleID == 0 || channelID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var row model.AlertRuleChannelBinding
+	err := l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		existing, err := findScopedBinding(tx, projectID, ruleID, channelID)
+		if err != nil {
+			return err
+		}
+
+		updates := map[string]any{}
+		if priority != nil {
+			updates["priority"] = normalizeBindingPriority(priority)
+		}
+		if enabled != nil {
+			updates["enabled"] = *enabled
+		}
+		if len(updates) == 0 {
+			row = *existing
+			return nil
+		}
+		result := tx.Model(&model.AlertRuleChannelBinding{}).Where("id = ?", existing.ID).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Where("id = ?", existing.ID).Take(&row).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (l *Logic) DeleteSeverityRoute(ctx context.Context, id uint, projectID uint) error {
+	q := l.svcCtx.DB.WithContext(ctx).Where("id = ?", id)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+	result := q.Delete(&model.AlertSeverityRoute{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (l *Logic) DeleteRuleChannelBinding(ctx context.Context, projectID, ruleID, channelID uint) error {
+	return l.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		q := tx.Model(&model.AlertRuleChannelBinding{}).
+			Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
+		if projectID > 0 {
+			q = q.Where("project_id = ?", projectID)
+		} else {
+			q = q.Where("project_id IS NULL")
+		}
+
+		ids := make([]uint, 0, 2)
+		if err := q.Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if len(ids) > 1 {
+			return fmt.Errorf("multiple bindings matched scoped delete: rule_id=%d channel_id=%d project_id=%d", ruleID, channelID, projectID)
+		}
+
+		result := tx.Delete(&model.AlertRuleChannelBinding{}, ids[0])
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
+func findScopedBinding(tx *gorm.DB, projectID, ruleID, channelID uint) (*model.AlertRuleChannelBinding, error) {
+	q := tx.Model(&model.AlertRuleChannelBinding{}).
+		Where("rule_id = ? AND channel_id = ?", ruleID, channelID)
+	if projectID > 0 {
+		q = q.Where("project_id = ?", projectID)
+	} else {
+		q = q.Where("project_id IS NULL")
+	}
+
+	ids := make([]uint, 0, 2)
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if len(ids) > 1 {
+		return nil, fmt.Errorf("multiple bindings matched scoped write: rule_id=%d channel_id=%d project_id=%d", ruleID, channelID, projectID)
+	}
+
+	var row model.AlertRuleChannelBinding
+	if err := tx.Where("id = ?", ids[0]).Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
 }
 
 func parseChannelIDs(raw string) []uint {
@@ -291,6 +508,64 @@ func validateRouteScope(scope string) error {
 	case "", "global", "project":
 		return nil
 	default:
-		return fmt.Errorf("invalid route scope: %s", scope)
+		return invalidRouteInputf("invalid route scope: %s", scope)
 	}
+}
+
+func normalizeSeverityRouteWrite(projectID uint, input SeverityRouteInput) (string, string, []uint, error) {
+	scope := strings.ToLower(strings.TrimSpace(input.Scope))
+	severity := strings.ToLower(strings.TrimSpace(input.Severity))
+	if severity == "" {
+		return "", "", nil, invalidRouteInputf("severity is required")
+	}
+	switch severity {
+	case "critical", "warning", "info":
+	default:
+		return "", "", nil, invalidRouteInputf("invalid route severity: %s", severity)
+	}
+	if scope == "" {
+		if projectID > 0 {
+			scope = "project"
+		} else {
+			scope = "global"
+		}
+	}
+	if err := validateRouteScope(scope); err != nil {
+		return "", "", nil, err
+	}
+	if scope == "project" && projectID == 0 {
+		return "", "", nil, invalidRouteInputf("project scope requires project id")
+	}
+
+	channelIDs := make([]uint, 0, len(input.ChannelIDs))
+	seen := make(map[uint]struct{}, len(input.ChannelIDs))
+	for _, channelID := range input.ChannelIDs {
+		if channelID == 0 {
+			continue
+		}
+		if _, exists := seen[channelID]; exists {
+			continue
+		}
+		seen[channelID] = struct{}{}
+		channelIDs = append(channelIDs, channelID)
+	}
+	return scope, severity, channelIDs, nil
+}
+
+func normalizeBindingPriority(priority *int) int {
+	if priority != nil && *priority > 0 {
+		return *priority
+	}
+	return 100
+}
+
+func normalizeBindingEnabled(enabled *bool, def bool) bool {
+	if enabled != nil {
+		return *enabled
+	}
+	return def
+}
+
+func invalidRouteInputf(format string, args ...any) error {
+	return &InvalidRouteInputError{msg: fmt.Sprintf(format, args...)}
 }
