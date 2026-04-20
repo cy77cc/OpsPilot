@@ -187,4 +187,62 @@ describe('ChannelsConfigPage', () => {
       expect(mockApi.monitoring.listAlertChannels).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('shows config JSON guidance in the create-channel modal', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(screen.getByRole('button', { name: '新增渠道' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '新增渠道' });
+    const configInput = within(dialog).getByLabelText('配置 JSON');
+
+    fireEvent.focus(configInput);
+
+    expect(within(dialog).getByText('这里填什么')).toBeInTheDocument();
+    expect(within(dialog).getByText(/附加配置，必须是合法 JSON/)).toBeInTheDocument();
+
+    fireEvent.blur(configInput);
+
+    await waitFor(() => {
+      expect(within(dialog).queryByText(/附加配置，必须是合法 JSON/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows and hides guidance for test-send target field on focus and blur', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    const targetInput = screen.getByLabelText('目标地址');
+    fireEvent.focus(targetInput);
+
+    expect(screen.getByText('这里填什么')).toBeInTheDocument();
+    expect(screen.getByText(/填写当前渠道的实际投递目标/)).toBeInTheDocument();
+
+    fireEvent.blur(targetInput);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/填写当前渠道的实际投递目标/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows and hides guidance for provider field in edit modal on focus and blur', async () => {
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑渠道' });
+    const providerInput = within(dialog).getByLabelText('Provider');
+
+    fireEvent.focus(providerInput);
+
+    expect(within(dialog).getByText('这里填什么')).toBeInTheDocument();
+    expect(within(dialog).getByText(/填写通知渠道类型的枚举值/)).toBeInTheDocument();
+
+    fireEvent.blur(providerInput);
+
+    await waitFor(() => {
+      expect(within(dialog).queryByText(/填写通知渠道类型的枚举值/)).not.toBeInTheDocument();
+    });
+  });
 });

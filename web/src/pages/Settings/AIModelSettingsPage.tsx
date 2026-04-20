@@ -32,6 +32,7 @@ import {
 } from '../../api';
 import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
+import { GuidedFormItem } from '../../components/FormGuidance';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
 import {
   EditOutlined,
@@ -44,6 +45,7 @@ import {
   EyeOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import { aiModelFieldGuides } from './aiModelFieldGuides';
 
 const { Text, Paragraph } = Typography;
 
@@ -437,34 +439,45 @@ const AIModelSettingsPage: React.FC = () => {
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="provider" label="供应商" rules={[{ required: true }]}>
+              <GuidedFormItem name="provider" label="供应商" guide={aiModelFieldGuides.provider} rules={[{ required: true }]}>
                 <Select options={providerChoices} placeholder="请选择供应商" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={12}>
-              <Form.Item name="model" label="模型标识" rules={[{ required: true, message: '请输入模型标识' }]}>
+              <GuidedFormItem
+                name="model"
+                label="模型标识"
+                guide={aiModelFieldGuides.model}
+                rules={[{ required: true, message: '请输入模型标识' }]}
+              >
                 <Input placeholder="qwen-max / doubao-pro / llama3" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
           </Row>
 
-          <Form.Item name="base_url" label="Base URL" rules={[{ required: true, message: '请输入 Base URL' }]}>
+          <GuidedFormItem
+            name="base_url"
+            label="Base URL"
+            guide={aiModelFieldGuides.base_url}
+            rules={[{ required: true, message: '请输入 Base URL' }]}
+          >
             <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-          </Form.Item>
+          </GuidedFormItem>
 
-          <Form.Item
+          <GuidedFormItem
             name="api_key"
             label={editing ? 'API Key（留空则不修改）' : 'API Key'}
+            guide={aiModelFieldGuides.api_key}
             rules={editing ? [] : [{ required: true, message: '请输入 API Key' }]}
           >
             <Input.Password placeholder={editing ? '留空表示保持原值' : '输入 API Key'} />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Row gutter={12}>
             <Col span={8}>
-              <Form.Item name="temperature" label="Temperature">
+              <GuidedFormItem name="temperature" label="Temperature" guide={aiModelFieldGuides.temperature}>
                 <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={8}>
               <Form.Item name="sort_order" label="排序权重">

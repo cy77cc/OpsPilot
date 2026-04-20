@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
+import { channelFieldGuides } from './channelFieldGuides';
 
 type ChannelTestForm = {
   provider: string;
@@ -271,7 +273,12 @@ const ChannelsConfigPage: React.FC = () => {
             configJson: '{}',
           }}
         >
-          <Form.Item label="Provider" name="provider" rules={[{ required: true, message: '请选择 provider' }]}>
+          <GuidedFormItem
+            label="Provider"
+            name="provider"
+            guide={channelFieldGuides.provider}
+            rules={[{ required: true, message: '请选择 provider' }]}
+          >
             <Select
               options={[
                 { label: 'Webhook', value: 'webhook' },
@@ -279,13 +286,13 @@ const ChannelsConfigPage: React.FC = () => {
                 { label: 'Email', value: 'email' },
               ]}
             />
-          </Form.Item>
-          <Form.Item label="目标地址" name="target">
+          </GuidedFormItem>
+          <GuidedFormItem label="目标地址" name="target" guide={channelFieldGuides.target}>
             <Input placeholder="https://example.com/hook" />
-          </Form.Item>
-          <Form.Item label="配置 JSON" name="configJson">
+          </GuidedFormItem>
+          <GuidedFormItem label="配置 JSON" name="configJson" guide={channelFieldGuides.configJson}>
             <Input.TextArea rows={4} />
-          </Form.Item>
+          </GuidedFormItem>
           <Space>
             <Button type="primary" onClick={handleTestSend} loading={submitting}>
               测试发送
@@ -312,15 +319,20 @@ const ChannelsConfigPage: React.FC = () => {
           <Form.Item label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="渠道名称" />
           </Form.Item>
-          <Form.Item label="Provider" name="channelProvider" rules={[{ required: true, message: '请输入 provider' }]}>
+          <GuidedFormItem
+            label="Provider"
+            name="channelProvider"
+            guide={channelFieldGuides.provider}
+            rules={[{ required: true, message: '请输入 provider' }]}
+          >
             <Input />
-          </Form.Item>
-          <Form.Item label="目标地址" name="channelTarget">
+          </GuidedFormItem>
+          <GuidedFormItem label="目标地址" name="channelTarget" guide={channelFieldGuides.target}>
             <Input />
-          </Form.Item>
-          <Form.Item label="配置 JSON" name="channelConfigJson">
+          </GuidedFormItem>
+          <GuidedFormItem label="配置 JSON" name="channelConfigJson" guide={channelFieldGuides.configJson}>
             <Input.TextArea rows={4} />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
       <Modal
@@ -342,15 +354,20 @@ const ChannelsConfigPage: React.FC = () => {
           <Form.Item label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Provider" name="channelProvider" rules={[{ required: true, message: '请输入 provider' }]}>
+          <GuidedFormItem
+            label="Provider"
+            name="channelProvider"
+            guide={channelFieldGuides.provider}
+            rules={[{ required: true, message: '请输入 provider' }]}
+          >
             <Input />
-          </Form.Item>
-          <Form.Item label="目标地址" name="channelTarget">
+          </GuidedFormItem>
+          <GuidedFormItem label="目标地址" name="channelTarget" guide={channelFieldGuides.target}>
             <Input />
-          </Form.Item>
-          <Form.Item label="配置 JSON" name="channelConfigJson">
+          </GuidedFormItem>
+          <GuidedFormItem label="配置 JSON" name="channelConfigJson" guide={channelFieldGuides.configJson}>
             <Input.TextArea rows={4} />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
     </Space>

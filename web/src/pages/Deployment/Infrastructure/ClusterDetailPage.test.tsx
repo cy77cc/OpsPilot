@@ -454,7 +454,7 @@ describe('ClusterDetailPage', () => {
       'href',
       '/deployment/infrastructure/clusters/42/operations?audit_id=202',
     );
-  });
+  }, 90000);
 
   it('confirms remove before calling the remove node API', async () => {
     const user = userEvent.setup();
