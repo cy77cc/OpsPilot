@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { cleanup, renderWithProviders, screen, waitFor } from '../../test/utils/render';
+import { cleanup, fireEvent, renderWithProviders, screen, waitFor } from '../../test/utils/render';
 import AIModelSettingsPage from './AIModelSettingsPage';
 
 const mockApi = vi.hoisted(() => ({
@@ -59,12 +59,10 @@ describe('AIModelSettingsPage', () => {
 
     await user.click(screen.getByRole('button', { name: /新增模型/ }));
 
-    await user.type(await screen.findByLabelText('显示名称'), 'OpenAI 生产模型');
-    await user.click(screen.getByLabelText('供应商'));
-    await user.click(screen.getByText('OpenAI'));
-    await user.type(screen.getByLabelText('模型标识'), 'gpt-4.1');
-    await user.type(screen.getByLabelText('Base URL'), 'https://api.openai.com/v1');
-    await user.type(screen.getByLabelText('API Key'), 'sk-create-test');
+    fireEvent.change(await screen.findByLabelText('显示名称'), { target: { value: 'OpenAI 生产模型' } });
+    fireEvent.change(screen.getByLabelText('模型标识'), { target: { value: 'gpt-4.1' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.openai.com/v1' } });
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-create-test' } });
 
     await user.click(screen.getByRole('button', { name: /保\s*存/ }));
 
@@ -73,7 +71,7 @@ describe('AIModelSettingsPage', () => {
     });
     expect(mockApi.ai.createAdminModel).toHaveBeenCalledWith({
       name: 'OpenAI 生产模型',
-      provider: 'openai',
+      provider: 'qwen',
       model: 'gpt-4.1',
       base_url: 'https://api.openai.com/v1',
       api_key: 'sk-create-test',
