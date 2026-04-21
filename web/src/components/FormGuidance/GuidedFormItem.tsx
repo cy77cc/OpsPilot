@@ -127,7 +127,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     },
   });
 
-  const aiTrigger = ((isFocused || isOpen) && (effectiveAiAssist || guide)) ? (
+  const aiTrigger = (effectiveAiAssist || guide) ? (
     <AIFormAssistantPopover
       guide={guide}
       isOpen={isOpen}

@@ -24,9 +24,8 @@ afterEach(() => {
 });
 
 describe('GuidedFormItem', () => {
-  it('shows and hides the trigger on focus transitions', async () => {
+  it('renders the trigger permanently when a guide is provided', async () => {
     localStorage.setItem('ai-form-assist-enabled', '0');
-    const user = userEvent.setup();
 
     const { container } = renderWithAntd(
       <Form layout="vertical">
@@ -36,23 +35,9 @@ describe('GuidedFormItem', () => {
       </Form>,
     );
 
-    // No guide or icon initially
+    // Icon should be present initially
+    expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
     expect(screen.queryByText('填写指引')).not.toBeInTheDocument();
-    expect(container.querySelector('.anticon-question-circle')).not.toBeInTheDocument();
-
-    // Focus shows the icon
-    await user.click(screen.getByLabelText('API Server'));
-    expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
-
-    // Blur hides the icon (when popover is not open)
-    await user.tab();
-    await waitFor(() => {
-      expect(container.querySelector('.anticon-question-circle')).not.toBeInTheDocument();
-    });
-
-    // Focus again to show the icon
-    await user.click(screen.getByLabelText('API Server'));
-    expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
 
     // Click icon shows the popover content
     fireEvent.click(container.querySelector('.anticon-question-circle')!);
@@ -139,7 +124,6 @@ describe('GuidedFormItem', () => {
     };
 
     it('renders AI trigger when aiAssist is provided and feature is enabled', async () => {
-      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '1');
       
       const { container } = renderWithAntd(
@@ -150,15 +134,11 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      // Focus to show trigger
-      await user.click(screen.getByLabelText('Test Field'));
-
-      // The star icon (SparklesIcon) should be present
+      // The star icon (SparklesIcon) should be present initially
       expect(container.querySelector('svg[aria-label="AI 辅助图标"]')).toBeInTheDocument();
     });
 
     it('does not render AI trigger when feature is disabled', async () => {
-      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '0');
       
       const { container } = renderWithAntd(
@@ -169,12 +149,10 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      await user.click(screen.getByLabelText('Test Field'));
       expect(container.querySelector('svg[aria-label="AI 辅助图标"]')).not.toBeInTheDocument();
     });
 
     it('opens AI popover when trigger is clicked', async () => {
-      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '1');
       
       const { container } = renderWithAntd(
@@ -185,7 +163,6 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      await user.click(screen.getByLabelText('Test Field'));
       const trigger = container.querySelector('svg[aria-label="AI 辅助图标"]');
       fireEvent.click(trigger!);
 
