@@ -63,13 +63,13 @@ const MonitorPage: React.FC = () => {
     <div className="space-y-3">
       <div className="flex justify-end">
         <Space>
-          <Button size="small" icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
+          <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
         </Space>
       </div>
       
       <Row gutter={[12, 12]}>
         <Col xs={24} md={12}>
-          <Card size="small" title="CPU 资源使用率趋势 (24h)">
+          <Card title="CPU 资源使用率趋势 (24h)">
              <div style={{ height: 200 }}>
               {chartData.cpu.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -95,7 +95,7 @@ const MonitorPage: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} md={12}>
-          <Card size="small" title="内存资源使用率趋势 (24h)">
+          <Card title="内存资源使用率趋势 (24h)">
              <div style={{ height: 200 }}>
               {chartData.mem.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -122,9 +122,9 @@ const MonitorPage: React.FC = () => {
         </Col>
       </Row>
 
-      <Card size="small" title="当前活跃告警 (Firing)">
+      <Card title="当前活跃告警 (Firing)">
         <Table
-          size="small"
+         
           rowKey="id"
           loading={loading && !isInitialLoading}
           dataSource={alerts}

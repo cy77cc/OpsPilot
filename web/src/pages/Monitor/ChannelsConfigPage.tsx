@@ -224,14 +224,14 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   return (
-    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Card
         title="通知渠道配置"
-        size="small"
+       
         extra={(
-          <Space size="small">
+          <Space>
             <ScopeSelector value={scope} onChange={setScope} />
-            <Button type="primary" onClick={() => setCreateOpen(true)} size="small">
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
               新增渠道
             </Button>
           </Space>
@@ -239,7 +239,7 @@ const ChannelsConfigPage: React.FC = () => {
       >
         <Table
           rowKey="id"
-          size="small"
+         
           loading={loading}
           dataSource={rows}
           pagination={false}
@@ -252,11 +252,11 @@ const ChannelsConfigPage: React.FC = () => {
               key: 'actions',
               render: (_v: unknown, record: ChannelRow) => (
                 <Space>
-                  <Button type="link" onClick={() => handleOpenEdit(record)} size="small">
+                  <Button type="link" onClick={() => handleOpenEdit(record)}>
                     编辑
                   </Button>
                   <Popconfirm title="确定删除此渠道？" onConfirm={() => handleDelete(record.id)}>
-                    <Button type="link" danger size="small">
+                    <Button type="link" danger>
                       删除
                     </Button>
                   </Popconfirm>
@@ -266,11 +266,11 @@ const ChannelsConfigPage: React.FC = () => {
           ]}
         />
       </Card>
-      <Card title="渠道测试发送" size="small">
+      <Card title="渠道测试发送">
         <Form
           form={form}
           layout="vertical"
-          size="small"
+         
           initialValues={{
             provider: 'webhook',
             target: '',
@@ -315,7 +315,7 @@ const ChannelsConfigPage: React.FC = () => {
             <Input.TextArea rows={4} />
           </GuidedFormItem>
           <Space>
-            <Button type="primary" onClick={handleTestSend} loading={submitting} size="small">
+            <Button type="primary" onClick={handleTestSend} loading={submitting}>
               测试发送
             </Button>
           </Space>
@@ -335,7 +335,7 @@ const ChannelsConfigPage: React.FC = () => {
         <Form
           form={createForm}
           layout="vertical"
-          size="small"
+         
           initialValues={{ channelName: '', channelProvider: 'webhook', channelTarget: '', channelConfigJson: '{}' }}
         >
           <GuidedFormItem label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
@@ -388,7 +388,7 @@ const ChannelsConfigPage: React.FC = () => {
         <Form
           form={editForm}
           layout="vertical"
-          size="small"
+         
           initialValues={{ channelName: '', channelProvider: 'webhook', channelTarget: '', channelConfigJson: '{}' }}
         >
           <GuidedFormItem label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>

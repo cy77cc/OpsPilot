@@ -27,10 +27,10 @@ const DeliveriesPage: React.FC = () => {
   }, []);
 
   return (
-    <Card title="投递记录" size="small">
+    <Card title="投递记录">
       <Table
         rowKey="id"
-        size="small"
+       
         loading={loading}
         dataSource={rows}
         pagination={false}

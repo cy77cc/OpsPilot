@@ -364,14 +364,14 @@ const RulesConfigPage: React.FC = () => {
   return (
     <Card
       title="告警规则配置"
-      size="small"
+     
       extra={(
-        <Space size="small">
+        <Space>
           <ScopeSelector value={scope} onChange={setScope} />
-          <Button icon={<SyncOutlined />} onClick={handleSyncRules} size="small">
+          <Button icon={<SyncOutlined />} onClick={handleSyncRules}>
             同步规则
           </Button>
-          <Button type="primary" onClick={() => setCreateOpen(true)} size="small">
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
             新增规则
           </Button>
         </Space>
@@ -379,7 +379,7 @@ const RulesConfigPage: React.FC = () => {
     >
       <Table
         rowKey="id"
-        size="small"
+       
         loading={loading}
         dataSource={rows}
         pagination={false}
@@ -423,7 +423,7 @@ const RulesConfigPage: React.FC = () => {
           <Form
             form={createForm}
             layout="vertical"
-            size="small"
+           
             initialValues={{
               name: '',
               metric: '',
@@ -464,7 +464,7 @@ const RulesConfigPage: React.FC = () => {
           <Form
             form={editForm}
             layout="vertical"
-            size="small"
+           
             initialValues={{
               name: '',
               severity: 'warning',
@@ -506,7 +506,7 @@ const RulesConfigPage: React.FC = () => {
           <Form
             form={bindingForm}
             layout="vertical"
-            size="small"
+           
             initialValues={{
               channelId: '',
               priority: 1,
@@ -531,7 +531,7 @@ const RulesConfigPage: React.FC = () => {
             <Space style={{ marginBottom: 16 }}>
               {editingBindingChannelId ? (
                 <>
-                  <Button type="primary" onClick={() => void handleUpdateBinding()} loading={bindingSubmitting} size="small">
+                  <Button type="primary" onClick={() => void handleUpdateBinding()} loading={bindingSubmitting}>
                     更新绑定
                   </Button>
                   <Button
@@ -540,13 +540,13 @@ const RulesConfigPage: React.FC = () => {
                       bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
                     }}
                     disabled={bindingSubmitting}
-                    size="small"
+                   
                   >
                     取消编辑
                   </Button>
                 </>
               ) : (
-                <Button type="primary" onClick={() => void handleCreateBinding()} loading={bindingSubmitting} size="small">
+                <Button type="primary" onClick={() => void handleCreateBinding()} loading={bindingSubmitting}>
                   新增绑定
                 </Button>
               )}
@@ -554,7 +554,7 @@ const RulesConfigPage: React.FC = () => {
           </Form>
           <Table
             rowKey="channelId"
-            size="small"
+           
             loading={bindingLoading}
             dataSource={bindings}
             pagination={false}
@@ -567,7 +567,7 @@ const RulesConfigPage: React.FC = () => {
                 key: 'actions',
                 render: (_value: unknown, record: RuleChannelBindingRow) => (
                   <Space>
-                    <Button type="link" onClick={() => handlePrepareUpdateBinding(record)} disabled={bindingSubmitting} size="small">
+                    <Button type="link" onClick={() => handlePrepareUpdateBinding(record)} disabled={bindingSubmitting}>
                       编辑绑定
                     </Button>
                     <Popconfirm
@@ -577,7 +577,7 @@ const RulesConfigPage: React.FC = () => {
                       okButtonProps={{ loading: bindingSubmitting, disabled: bindingSubmitting }}
                       cancelButtonProps={{ disabled: bindingSubmitting }}
                     >
-                      <Button type="link" danger disabled={bindingSubmitting} size="small">
+                      <Button type="link" danger disabled={bindingSubmitting}>
                         删除绑定
                       </Button>
                     </Popconfirm>
