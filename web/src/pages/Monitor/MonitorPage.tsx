@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Col, Row, Statistic, Table, Tabs, Tag, Progress, Button, Space, message } from 'antd';
 import { AlertOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Link } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert, AlertRule, MetricData, AlertChannel } from '../../api/modules/monitoring';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
@@ -67,48 +66,65 @@ const MonitorPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex justify-end">
         <Space>
-          <Button><Link to="/monitor/rules">规则配置</Link></Button>
-          <Button><Link to="/monitor/channels">渠道配置</Link></Button>
-          <Button><Link to="/monitor/routing">路由配置</Link></Button>
-          <Button><Link to="/monitor/deliveries">投递记录</Link></Button>
-          <Button onClick={handleSyncRules}>同步规则</Button>
-          <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
+          <Button size="small" onClick={handleSyncRules}>同步规则</Button>
+          <Button size="small" icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
         </Space>
       </div>
-      <Row gutter={[16, 16]}>
+      <Row gutter={[12, 12]}>
         <Col xs={24} sm={8}>
-          <Card><Statistic title="活跃告警" value={firingCount} prefix={<AlertOutlined />} /></Card>
+          <Card size="small">
+            <Statistic 
+              title="活跃告警" 
+              value={firingCount} 
+              prefix={<AlertOutlined />} 
+              valueStyle={{ fontSize: 20 }} 
+            />
+          </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card><Statistic title="严重告警" value={criticalCount} /></Card>
+          <Card size="small">
+            <Statistic 
+              title="严重告警" 
+              value={criticalCount} 
+              valueStyle={{ fontSize: 20, color: criticalCount > 0 ? '#ff4d4f' : 'inherit' }} 
+            />
+          </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card><Statistic title="告警规则" value={rules.length} /></Card>
+          <Card size="small">
+            <Statistic 
+              title="告警规则" 
+              value={rules.length} 
+              valueStyle={{ fontSize: 20 }} 
+            />
+          </Card>
         </Col>
       </Row>
-      <Row gutter={[16, 16]}>
+      <Row gutter={[12, 12]}>
         <Col xs={24} md={12}>
-          <Card title="CPU 平均使用率">
-            <Progress percent={Math.round(cpuAvg)} />
+          <Card size="small" title="CPU 平均使用率">
+            <Progress size="small" percent={Math.round(cpuAvg)} />
           </Card>
         </Col>
         <Col xs={24} md={12}>
-          <Card title="内存平均使用率">
-            <Progress percent={Math.round(memAvg)} strokeColor="#1677ff" />
+          <Card size="small" title="内存平均使用率">
+            <Progress size="small" percent={Math.round(memAvg)} strokeColor="#1677ff" />
           </Card>
         </Col>
       </Row>
 
       <Tabs
+        size="small"
         items={[
           {
             key: 'alerts',
             label: '告警历史',
             children: (
               <Table
+                size="small"
                 rowKey="id"
                 loading={false}
                 dataSource={alerts}
@@ -127,6 +143,7 @@ const MonitorPage: React.FC = () => {
             label: '告警规则',
             children: (
               <Table
+                size="small"
                 rowKey="id"
                 loading={false}
                 dataSource={rules}
@@ -144,6 +161,7 @@ const MonitorPage: React.FC = () => {
             label: '通知渠道',
             children: (
               <Table
+                size="small"
                 rowKey="id"
                 loading={false}
                 dataSource={channels}
@@ -159,7 +177,6 @@ const MonitorPage: React.FC = () => {
           },
         ]}
       />
-      <Space />
     </div>
   );
 };
