@@ -37,15 +37,7 @@ const MonitorPage: React.FC = () => {
 
   const cpuAvg = useMemo(() => (cpuMetrics.length ? cpuMetrics.reduce((s, i) => s + Number(i.value), 0) / cpuMetrics.length : 0), [cpuMetrics]);
   const memAvg = useMemo(() => (memMetrics.length ? memMetrics.reduce((s, i) => s + Number(i.value), 0) / memMetrics.length : 0), [memMetrics]);
-  const isInitialLoading = loading
-    && alerts.length === 0
-    && cpuMetrics.length === 0
-    && memMetrics.length === 0;
-
-  if (isInitialLoading) {
-    return <PageSkeleton />;
-  }
-
+  
   // Format data for recharts
   const chartData = useMemo(() => {
     const mapData = (data: MetricData[]) => data.map(item => ({
@@ -57,6 +49,15 @@ const MonitorPage: React.FC = () => {
       mem: mapData(memMetrics)
     };
   }, [cpuMetrics, memMetrics]);
+
+  const isInitialLoading = loading
+    && alerts.length === 0
+    && cpuMetrics.length === 0
+    && memMetrics.length === 0;
+
+  if (isInitialLoading) {
+    return <PageSkeleton />;
+  }
 
   return (
     <div className="space-y-3">

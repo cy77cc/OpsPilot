@@ -64,12 +64,12 @@ const MonitorCenterLayout: React.FC = () => {
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
           <Col span={6}>
             <Card size="small">
-              <Statistic title="当前活跃告警" value={stats.firing} prefix={<AlertOutlined />} valueStyle={{ fontSize: 20, color: stats.firing > 0 ? '#ff4d4f' : 'inherit' }} />
+              <Statistic title="当前活跃告警" value={stats.firing} prefix={<AlertOutlined />} styles={{ content: { fontSize: 20, color: stats.firing > 0 ? '#ff4d4f' : 'inherit' } }} />
             </Card>
           </Col>
           <Col span={6}>
             <Card size="small">
-              <Statistic title="告警规则总数" value={stats.rules} valueStyle={{ fontSize: 20 }} />
+              <Statistic title="告警规则总数" value={stats.rules} styles={{ content: { fontSize: 20 } }} />
             </Card>
           </Col>
           {/* Add more stats if needed */}
