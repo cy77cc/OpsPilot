@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
+import { SyncOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
+import MonitorConfigLayout from './MonitorConfigLayout';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
 
@@ -350,214 +352,59 @@ const RulesConfigPage: React.FC = () => {
     }
   };
 
+  const handleSyncRules = async () => {
+    try {
+      await Api.monitoring.syncAlertRules();
+      message.success('规则同步成功');
+      void load();
+    } catch (error: any) {
+      message.error(error?.message || '规则同步失败');
+    }
+  };
+
   return (
-    <Card
-      title="规则配置"
-      extra={(
-        <Space size={12}>
-          <ScopeSelector value={scope} onChange={setScope} />
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            新增规则
-          </Button>
-        </Space>
-      )}
-    >
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={rows}
-        pagination={false}
-        columns={[
-          { title: '名称', dataIndex: 'name' },
-          { title: '级别', dataIndex: 'severity' },
-          { title: '阈值', dataIndex: 'threshold', render: (v: number | undefined) => (v == null ? '-' : v) },
-          { title: '作用域', dataIndex: 'scope', render: (v: string | undefined) => v || '-' },
-          { title: '继承键', dataIndex: 'inherit_key', render: (v: string | undefined) => v || '-' },
-          {
-            title: '操作',
-            key: 'actions',
-            render: (_value: unknown, record: EffectiveRuleRow) => (
-              <Space>
-                <Button type="link" onClick={() => handleOpenEdit(record)}>
-                  编辑
-                </Button>
-                <Button type="link" onClick={() => void openBindingDrawer(record)}>
-                  渠道绑定
-                </Button>
-                <Popconfirm title="确定删除此规则？" onConfirm={() => handleDelete(record.id)}>
-                  <Button type="link" danger>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-      />
-      <Modal
-        title="新增规则"
-        open={createOpen}
-        onOk={() => void handleCreate()}
-        onCancel={() => {
-          setCreateOpen(false);
-          createForm.resetFields();
-        }}
-        confirmLoading={submitting}
-      >
-        <Form
-          form={createForm}
-          layout="vertical"
-          initialValues={{
-            name: '',
-            metric: '',
-            severity: 'warning',
-            threshold: 0,
-          }}
-        >
-          <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input />
-          </GuidedFormItem>
-          <GuidedFormItem label="指标" name="metric" rules={[{ required: true, message: '请输入指标' }]}>
-            <Input />
-          </GuidedFormItem>
-          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
-            <Select
-              options={[
-                { label: 'critical', value: 'critical' },
-                { label: 'warning', value: 'warning' },
-                { label: 'info', value: 'info' },
-              ]}
-            />
-          </Form.Item>
-          <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
-            <InputNumber style={{ width: '100%' }} />
-          </GuidedFormItem>
-        </Form>
-      </Modal>
-      <Modal
-        title="编辑规则"
-        open={!!editing}
-        onOk={() => void handleUpdate()}
-        onCancel={() => {
-          setEditing(null);
-          editForm.resetFields();
-        }}
-        confirmLoading={submitting}
-      >
-        <Form
-          form={editForm}
-          layout="vertical"
-          initialValues={{
-            name: '',
-            severity: 'warning',
-            threshold: 0,
-          }}
-        >
-          <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input />
-          </GuidedFormItem>
-          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
-            <Select
-              options={[
-                { label: 'critical', value: 'critical' },
-                { label: 'warning', value: 'warning' },
-                { label: 'info', value: 'info' },
-              ]}
-            />
-          </Form.Item>
-          <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
-            <InputNumber style={{ width: '100%' }} />
-          </GuidedFormItem>
-        </Form>
-      </Modal>
-      <Drawer
-        title="规则渠道绑定"
-        open={bindingOpen}
-        onClose={() => {
-          bindingOpenRef.current = false;
-          activeBindingRuleIdRef.current = null;
-          bindingLoadSeqRef.current += 1;
-          setBindingOpen(false);
-          setBindingRule(null);
-          setEditingBindingChannelId(null);
-          setBindings([]);
-          bindingForm.resetFields();
-        }}
-        size="large"
-      >
-        <Form
-          form={bindingForm}
-          layout="vertical"
-          initialValues={{
-            channelId: '',
-            priority: 1,
-            enabled: true,
-          }}
-        >
-          <GuidedFormItem label="渠道ID" name="channelId" rules={[{ required: true, message: '请输入渠道ID' }]}>
-            <Input disabled={!!editingBindingChannelId || bindingSubmitting} />
-          </GuidedFormItem>
-          <GuidedFormItem label="优先级" name="priority" rules={[{ required: true, message: '请输入优先级' }]}>
-            <InputNumber style={{ width: '100%' }} disabled={bindingSubmitting} />
-          </GuidedFormItem>
-          <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
-            <Select
-              disabled={bindingSubmitting}
-              options={[
-                { label: '启用', value: true },
-                { label: '禁用', value: false },
-              ]}
-            />
-          </Form.Item>
-          <Space style={{ marginBottom: 16 }}>
-            {editingBindingChannelId ? (
-              <>
-                <Button type="primary" onClick={() => void handleUpdateBinding()} loading={bindingSubmitting}>
-                  更新绑定
-                </Button>
-                <Button
-                  onClick={() => {
-                    setEditingBindingChannelId(null);
-                    bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
-                  }}
-                  disabled={bindingSubmitting}
-                >
-                  取消编辑
-                </Button>
-              </>
-            ) : (
-              <Button type="primary" onClick={() => void handleCreateBinding()} loading={bindingSubmitting}>
-                新增绑定
-              </Button>
-            )}
+    <MonitorConfigLayout>
+      <Card
+        title="告警规则配置"
+        size="small"
+        extra={(
+          <Space size="small">
+            <ScopeSelector value={scope} onChange={setScope} />
+            <Button icon={<SyncOutlined />} onClick={handleSyncRules}>
+              同步规则
+            </Button>
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
+              新增规则
+            </Button>
           </Space>
-        </Form>
+        )}
+      >
         <Table
-          rowKey="channelId"
-          loading={bindingLoading}
-          dataSource={bindings}
+          rowKey="id"
+          size="small"
+          loading={loading}
+          dataSource={rows}
           pagination={false}
           columns={[
-            { title: '渠道ID', dataIndex: 'channelId' },
-            { title: '优先级', dataIndex: 'priority', render: (v: number | undefined) => (v == null ? '-' : v) },
-            { title: '状态', dataIndex: 'enabled', render: (v: boolean) => (v ? '启用' : '禁用') },
+            { title: '名称', dataIndex: 'name' },
+            { title: '级别', dataIndex: 'severity' },
+            { title: '阈值', dataIndex: 'threshold', render: (v: number | undefined) => (v == null ? '-' : v) },
+            { title: '作用域', dataIndex: 'scope', render: (v: string | undefined) => v || '-' },
+            { title: '继承键', dataIndex: 'inherit_key', render: (v: string | undefined) => v || '-' },
             {
               title: '操作',
               key: 'actions',
-              render: (_value: unknown, record: RuleChannelBindingRow) => (
+              render: (_value: unknown, record: EffectiveRuleRow) => (
                 <Space>
-                  <Button type="link" onClick={() => handlePrepareUpdateBinding(record)} disabled={bindingSubmitting}>
-                    编辑绑定
+                  <Button type="link" onClick={() => handleOpenEdit(record)}>
+                    编辑
                   </Button>
-                  <Popconfirm
-                    title="确定删除此绑定？"
-                    onConfirm={() => handleDeleteBinding(record.channelId)}
-                    disabled={bindingSubmitting}
-                    okButtonProps={{ loading: bindingSubmitting, disabled: bindingSubmitting }}
-                    cancelButtonProps={{ disabled: bindingSubmitting }}
-                  >
-                    <Button type="link" danger disabled={bindingSubmitting}>
-                      删除绑定
+                  <Button type="link" onClick={() => void openBindingDrawer(record)}>
+                    渠道绑定
+                  </Button>
+                  <Popconfirm title="确定删除此规则？" onConfirm={() => handleDelete(record.id)}>
+                    <Button type="link" danger>
+                      删除
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -565,8 +412,180 @@ const RulesConfigPage: React.FC = () => {
             },
           ]}
         />
-      </Drawer>
-    </Card>
+        <Modal
+          title="新增规则"
+          open={createOpen}
+          onOk={() => void handleCreate()}
+          onCancel={() => {
+            setCreateOpen(false);
+            createForm.resetFields();
+          }}
+          confirmLoading={submitting}
+        >
+          <Form
+            form={createForm}
+            layout="vertical"
+            initialValues={{
+              name: '',
+              metric: '',
+              severity: 'warning',
+              threshold: 0,
+            }}
+          >
+            <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+              <Input />
+            </GuidedFormItem>
+            <GuidedFormItem label="指标" name="metric" rules={[{ required: true, message: '请输入指标' }]}>
+              <Input />
+            </GuidedFormItem>
+            <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
+              <Select
+                options={[
+                  { label: 'critical', value: 'critical' },
+                  { label: 'warning', value: 'warning' },
+                  { label: 'info', value: 'info' },
+                ]}
+              />
+            </Form.Item>
+            <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+              <InputNumber style={{ width: '100%' }} />
+            </GuidedFormItem>
+          </Form>
+        </Modal>
+        <Modal
+          title="编辑规则"
+          open={!!editing}
+          onOk={() => void handleUpdate()}
+          onCancel={() => {
+            setEditing(null);
+            editForm.resetFields();
+          }}
+          confirmLoading={submitting}
+        >
+          <Form
+            form={editForm}
+            layout="vertical"
+            initialValues={{
+              name: '',
+              severity: 'warning',
+              threshold: 0,
+            }}
+          >
+            <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+              <Input />
+            </GuidedFormItem>
+            <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
+              <Select
+                options={[
+                  { label: 'critical', value: 'critical' },
+                  { label: 'warning', value: 'warning' },
+                  { label: 'info', value: 'info' },
+                ]}
+              />
+            </Form.Item>
+            <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+              <InputNumber style={{ width: '100%' }} />
+            </GuidedFormItem>
+          </Form>
+        </Modal>
+        <Drawer
+          title="规则渠道绑定"
+          open={bindingOpen}
+          onClose={() => {
+            bindingOpenRef.current = false;
+            activeBindingRuleIdRef.current = null;
+            bindingLoadSeqRef.current += 1;
+            setBindingOpen(false);
+            setBindingRule(null);
+            setEditingBindingChannelId(null);
+            setBindings([]);
+            bindingForm.resetFields();
+          }}
+          size="large"
+        >
+          <Form
+            form={bindingForm}
+            layout="vertical"
+            initialValues={{
+              channelId: '',
+              priority: 1,
+              enabled: true,
+            }}
+          >
+            <GuidedFormItem label="渠道ID" name="channelId" rules={[{ required: true, message: '请输入渠道ID' }]}>
+              <Input disabled={!!editingBindingChannelId || bindingSubmitting} />
+            </GuidedFormItem>
+            <GuidedFormItem label="优先级" name="priority" rules={[{ required: true, message: '请输入优先级' }]}>
+              <InputNumber style={{ width: '100%' }} disabled={bindingSubmitting} />
+            </GuidedFormItem>
+            <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
+              <Select
+                disabled={bindingSubmitting}
+                options={[
+                  { label: '启用', value: true },
+                  { label: '禁用', value: false },
+                ]}
+              />
+            </Form.Item>
+            <Space style={{ marginBottom: 16 }}>
+              {editingBindingChannelId ? (
+                <>
+                  <Button type="primary" onClick={() => void handleUpdateBinding()} loading={bindingSubmitting}>
+                    更新绑定
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditingBindingChannelId(null);
+                      bindingForm.setFieldsValue({ channelId: '', priority: 1, enabled: true });
+                    }}
+                    disabled={bindingSubmitting}
+                  >
+                    取消编辑
+                  </Button>
+                </>
+              ) : (
+                <Button type="primary" onClick={() => void handleCreateBinding()} loading={bindingSubmitting}>
+                  新增绑定
+                </Button>
+              )}
+            </Space>
+          </Form>
+          <Table
+            rowKey="channelId"
+            loading={bindingLoading}
+            dataSource={bindings}
+            pagination={false}
+            columns={[
+              { title: '渠道ID', dataIndex: 'channelId' },
+              { title: '优先级', dataIndex: 'priority', render: (v: number | undefined) => (v == null ? '-' : v) },
+              { title: '状态', dataIndex: 'enabled', render: (v: boolean) => (v ? '启用' : '禁用') },
+              {
+                title: '操作',
+                key: 'actions',
+                render: (_value: unknown, record: RuleChannelBindingRow) => (
+                  <Space>
+                    <Button type="link" onClick={() => handlePrepareUpdateBinding(record)} disabled={bindingSubmitting}>
+                      编辑绑定
+                    </Button>
+                    <Popconfirm
+                      title="确定删除此绑定？"
+                      onConfirm={() => handleDeleteBinding(record.channelId)}
+                      disabled={bindingSubmitting}
+                      okButtonProps={{ loading: bindingSubmitting, disabled: bindingSubmitting }}
+                      cancelButtonProps={{ disabled: bindingSubmitting }}
+                    >
+                      <Button type="link" danger disabled={bindingSubmitting}>
+                        删除绑定
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Drawer>
+      </Card>
+    </MonitorConfigLayout>
   );
 };
 
