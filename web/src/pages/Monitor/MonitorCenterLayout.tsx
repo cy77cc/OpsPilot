@@ -35,7 +35,9 @@ const MonitorCenterLayout: React.FC = () => {
       }
     };
     loadStats();
-  }, [location.pathname]);
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const menuItems = [
     { key: '/monitor/dashboard', icon: <DashboardOutlined />, label: '实时大盘' },
