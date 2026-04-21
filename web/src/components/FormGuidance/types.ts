@@ -9,6 +9,7 @@ export type FieldGuide = {
   impact?: string;
   whenRequired?: string;
   formatNotes?: string;
+  aiPlaceholder?: string;
 };
 
 export type FocusableChildProps = {

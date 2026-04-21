@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Form } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Form, Tooltip, Popover } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import SparklesIcon from '../common/SparklesIcon';
 import { useFormAssist } from '../../features/ai/hooks/useFormAssist';
 import AIFormAssistantPopover from './AIFormAssistantPopover';
 import type { GuidedFormItemProps, FocusableChildProps, FieldGuide } from './types';
+import { commonFieldGuides } from '../../constants/fieldGuides';
 
 const callFocusHandler = (
   handler: React.FocusEventHandler<HTMLElement> | undefined,
@@ -76,13 +77,53 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
   ...formItemProps 
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+  const [nudgeVisible, setNudgeVisible] = useState(false);
+  const nudgeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const form = Form.useFormInstance();
   const name = formItemProps.name;
   
+  // Auto-infer guide for common field names if not provided
+  const effectiveGuide = React.useMemo(() => {
+    if (guide) return guide;
+    if (!name) return undefined;
+    
+    const nameStr = String(name).toLowerCase();
+    if (nameStr === 'name') return commonFieldGuides.name;
+    if (nameStr === 'description') return commonFieldGuides.description;
+    if (nameStr.includes('schedule') || nameStr.includes('cron')) return commonFieldGuides.cron;
+    if (nameStr.includes('json') || nameStr.includes('policy')) return commonFieldGuides.json;
+    
+    return undefined;
+  }, [guide, name]);
+
   // Watch the current field value for the AI hint logic.
   // Note: Form.useWatch is available in Ant Design 5.x+
   const currentValue = Form.useWatch(name, form) || '';
   
+  // Proactive nudge logic
+  useEffect(() => {
+    if (isFocused && !currentValue && !nudgeVisible) {
+      // If focused and empty, wait 5 seconds then show nudge
+      nudgeTimerRef.current = setTimeout(() => {
+        setNudgeVisible(true);
+      }, 5000);
+    } else {
+      // Clear timer and hide nudge if conditions not met
+      if (nudgeTimerRef.current) {
+        clearTimeout(nudgeTimerRef.current);
+        nudgeTimerRef.current = null;
+      }
+      if (nudgeVisible && (currentValue || !isFocused)) {
+        setNudgeVisible(false);
+      }
+    }
+    
+    return () => {
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    };
+  }, [isFocused, currentValue, nudgeVisible]);
+
   // Auto-infer AI assistance if not explicitly provided but global feature is on
   const effectiveAiAssist = React.useMemo(() => {
     // If global assist is disabled, don't auto-infer or use provided assist
@@ -101,13 +142,13 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
         fieldMeta: {
           key: String(name),
           label: String(formItemProps.label || name),
-          purpose: guide?.purpose || '协助填写表单字段',
+          purpose: effectiveGuide?.purpose || '协助填写表单字段',
           rules: '直接输出结果，不要包含解释',
         }
       };
     }
     return undefined;
-  }, [aiAssist, name, formItemProps.label, guide?.purpose, children]);
+  }, [aiAssist, name, formItemProps.label, effectiveGuide?.purpose, children]);
 
   const {
     isOpen,
@@ -125,7 +166,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     }
   });
 
-  if (!guide && !effectiveAiAssist) {
+  if (!effectiveGuide && !effectiveAiAssist) {
     return (
       <Form.Item {...formItemProps} extra={extra}>
         {children}
@@ -155,19 +196,35 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
       prompt={aiPrompt}
       preview={preview}
       error={error}
+      placeholder={effectiveGuide?.aiPlaceholder}
       onCancel={cancel}
       onSubmit={submit}
       onApply={applySuggestion}
     >
-      <div 
-        className="flex items-center justify-center h-8 w-8 rounded-lg hover:bg-indigo-50 transition-all cursor-pointer text-indigo-500" 
-        onClick={(e) => {
-          e.stopPropagation();
-          open();
-        }}
+      <Popover
+        content={
+          <div className="flex items-center gap-2 text-indigo-600 font-medium">
+            <SparklesIcon size={14} />
+            <span>需要帮助吗？试试 AI 辅助生成</span>
+          </div>
+        }
+        open={nudgeVisible && !isOpen}
+        placement="topRight"
+        arrow={{ pointAtCenter: true }}
       >
-        <SparklesIcon className={isStreaming ? "animate-pulse" : ""} />
-      </div>
+        <Tooltip title="AI 智能生成" placement="top">
+          <div 
+            className="flex items-center justify-center h-8 w-8 rounded-lg hover:bg-indigo-50 transition-all cursor-pointer text-indigo-500" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setNudgeVisible(false);
+              open();
+            }}
+          >
+            <SparklesIcon className={isStreaming || nudgeVisible ? "animate-pulse" : ""} />
+          </div>
+        </Tooltip>
+      </Popover>
     </AIFormAssistantPopover>
   ) : null;
 
@@ -175,7 +232,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     <Form.Item 
       {...formItemProps} 
       extra={mergedExtra}
-      tooltip={guide ? { title: <GuideTooltip guide={guide} />, color: 'white', styles: { root: { maxWidth: '280px' } } } : formItemProps.tooltip}
+      tooltip={effectiveGuide ? { title: <GuideTooltip guide={effectiveGuide} />, color: 'white', styles: { root: { maxWidth: '280px' } } } : formItemProps.tooltip}
     >
       <AIFieldWrapper aiTrigger={aiTrigger}>{enhancedChild}</AIFieldWrapper>
     </Form.Item>

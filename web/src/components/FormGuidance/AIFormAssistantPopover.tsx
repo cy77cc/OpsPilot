@@ -12,6 +12,7 @@ export interface AIFormAssistantPopoverProps {
   prompt: string;
   preview: string;
   error: string | null;
+  placeholder?: string;
   onCancel: () => void;
   onSubmit: (prompt: string) => void;
   onApply: () => void;
@@ -24,6 +25,7 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
   prompt: initialPrompt,
   preview,
   error,
+  placeholder,
   onCancel,
   onSubmit,
   onApply,
@@ -47,7 +49,7 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
             <span>AI 辅助生成</span>
           </div>
           <TextArea
-            placeholder="描述你想要的内容，例如：'一个描述云原生架构优势的段落'"
+            placeholder={placeholder || "描述你想要的内容..."}
             value={localPrompt}
             onChange={(e) => setLocalPrompt(e.target.value)}
             rows={3}
