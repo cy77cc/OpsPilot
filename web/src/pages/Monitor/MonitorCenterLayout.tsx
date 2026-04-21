@@ -46,12 +46,22 @@ const MonitorCenterLayout: React.FC = () => {
     { key: '/monitor/deliveries', icon: <HistoryOutlined />, label: '投递记录' },
   ];
 
+  const getSelectedKey = () => {
+    if (location.pathname.startsWith('/monitor/dashboard')) return '/monitor/dashboard';
+    if (location.pathname.startsWith('/monitor/alerts')) return '/monitor/alerts';
+    if (location.pathname.startsWith('/monitor/rules')) return '/monitor/rules';
+    if (location.pathname.startsWith('/monitor/channels')) return '/monitor/channels';
+    if (location.pathname.startsWith('/monitor/routing')) return '/monitor/routing';
+    if (location.pathname.startsWith('/monitor/deliveries')) return '/monitor/deliveries';
+    return location.pathname;
+  };
+
   return (
     <Layout style={{ background: '#f0f2f5', minHeight: 'calc(100vh - 64px)' }}>
       <Sider width={200} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
         <Menu
           mode="inline"
-          selectedKeys={[location.pathname.startsWith('/monitor/dashboard') ? '/monitor/dashboard' : location.pathname]}
+          selectedKeys={[getSelectedKey()]}
           style={{ height: '100%' }}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
@@ -60,12 +70,12 @@ const MonitorCenterLayout: React.FC = () => {
       <Content style={{ padding: '12px' }}>
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
           <Col span={6}>
-            <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+            <Card size="small">
               <Statistic title="当前活跃告警" value={stats.firing} prefix={<AlertOutlined />} valueStyle={{ fontSize: 20, color: stats.firing > 0 ? '#ff4d4f' : 'inherit' }} />
             </Card>
           </Col>
           <Col span={6}>
-            <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+            <Card size="small">
               <Statistic title="告警规则总数" value={stats.rules} valueStyle={{ fontSize: 20 }} />
             </Card>
           </Col>

@@ -204,7 +204,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
       <Popover
         content={
           <div className="flex items-center gap-2 text-indigo-600 font-medium">
-            <SparklesIcon size={14} />
+            <SparklesIcon width={14} height={14} />
             <span>需要帮助吗？试试 AI 辅助生成</span>
           </div>
         }
