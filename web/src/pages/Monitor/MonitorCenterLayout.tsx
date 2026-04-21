@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Menu, Card, Statistic, Row, Col } from 'antd';
+import { Layout, Tabs, Card, Statistic, Row, Col } from 'antd';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
   DashboardOutlined,
@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons';
 import { Api } from '../../api';
 
-const { Sider, Content } = Layout;
+const { Content } = Layout;
 
 const MonitorCenterLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -39,13 +39,13 @@ const MonitorCenterLayout: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const menuItems = [
-    { key: '/monitor/dashboard', icon: <DashboardOutlined />, label: '实时大盘' },
-    { key: '/monitor/alerts', icon: <BellOutlined />, label: '告警历史' },
-    { key: '/monitor/rules', icon: <SettingOutlined />, label: '规则配置' },
-    { key: '/monitor/channels', icon: <NotificationOutlined />, label: '通知渠道' },
-    { key: '/monitor/routing', icon: <BranchesOutlined />, label: '路由策略' },
-    { key: '/monitor/deliveries', icon: <HistoryOutlined />, label: '投递记录' },
+  const tabItems = [
+    { key: '/monitor/dashboard', label: <span><DashboardOutlined /> 实时大盘</span> },
+    { key: '/monitor/alerts', label: <span><BellOutlined /> 告警历史</span> },
+    { key: '/monitor/rules', label: <span><SettingOutlined /> 规则配置</span> },
+    { key: '/monitor/channels', label: <span><NotificationOutlined /> 通知渠道</span> },
+    { key: '/monitor/routing', label: <span><BranchesOutlined /> 路由策略</span> },
+    { key: '/monitor/deliveries', label: <span><HistoryOutlined /> 投递记录</span> },
   ];
 
   const getSelectedKey = () => {
@@ -60,15 +60,6 @@ const MonitorCenterLayout: React.FC = () => {
 
   return (
     <Layout style={{ background: '#f0f2f5', minHeight: 'calc(100vh - 64px)' }}>
-      <Sider width={200} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
-        <Menu
-          mode="inline"
-          selectedKeys={[getSelectedKey()]}
-          style={{ height: '100%' }}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-        />
-      </Sider>
       <Content style={{ padding: '12px' }}>
         <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
           <Col span={6}>
@@ -83,6 +74,16 @@ const MonitorCenterLayout: React.FC = () => {
           </Col>
           {/* Add more stats if needed */}
         </Row>
+        
+        <div style={{ background: '#fff', padding: '0 16px', borderRadius: 8, marginBottom: 12, boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}>
+          <Tabs
+            activeKey={getSelectedKey()}
+            items={tabItems}
+            onChange={(key) => navigate(key)}
+            tabBarStyle={{ marginBottom: 0 }}
+          />
+        </div>
+
         <Outlet />
       </Content>
     </Layout>
