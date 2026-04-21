@@ -24,10 +24,11 @@ afterEach(() => {
 });
 
 describe('GuidedFormItem', () => {
-  it('shows and hides the guide card on focus transitions', async () => {
+  it('shows and hides the trigger on focus transitions', async () => {
+    localStorage.setItem('ai-form-assist-enabled', '0');
     const user = userEvent.setup();
 
-    renderWithAntd(
+    const { container } = renderWithAntd(
       <Form layout="vertical">
         <GuidedFormItem name="endpoint" label="API Server" guide={endpointGuide}>
           <Input />
@@ -35,24 +36,32 @@ describe('GuidedFormItem', () => {
       </Form>,
     );
 
-    expect(screen.queryByText('这里填什么')).not.toBeInTheDocument();
+    // No guide or icon initially
+    expect(screen.queryByText('填写指引')).not.toBeInTheDocument();
+    expect(container.querySelector('.anticon-question-circle')).not.toBeInTheDocument();
 
+    // Focus shows the icon
     await user.click(screen.getByLabelText('API Server'));
+    expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
 
-    expect(screen.getByText('这里填什么')).toBeInTheDocument();
-    expect(screen.getByText('填写 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
-    expect(screen.getByText('这个值是干嘛的')).toBeInTheDocument();
-    expect(screen.getByText('推荐示例')).toBeInTheDocument();
-    expect(screen.getByText('填错会怎样')).toBeInTheDocument();
-
+    // Blur hides the icon (when popover is not open)
     await user.tab();
-
     await waitFor(() => {
-      expect(screen.queryByText('填写 Kubernetes API Server 的完整 HTTPS 地址。')).not.toBeInTheDocument();
+      expect(container.querySelector('.anticon-question-circle')).not.toBeInTheDocument();
     });
+
+    // Focus again to show the icon
+    await user.click(screen.getByLabelText('API Server'));
+    expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
+
+    // Click icon shows the popover content
+    fireEvent.click(container.querySelector('.anticon-question-circle')!);
+    expect(screen.getByText('填写指引')).toBeInTheDocument();
+    expect(screen.getByText('填写 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
   });
 
-  it('renders existing extra copy below the guide card while focused', async () => {
+  it('renders existing extra copy always', async () => {
+    localStorage.setItem('ai-form-assist-enabled', '0');
     const user = userEvent.setup();
 
     renderWithAntd(
@@ -68,15 +77,18 @@ describe('GuidedFormItem', () => {
       </Form>,
     );
 
-    await user.click(screen.getByLabelText('API Server'));
+    // extra should always be there
+    expect(screen.getByText('例如: https://api.k8s.example.com:6443')).toBeInTheDocument();
 
+    await user.click(screen.getByLabelText('API Server'));
     expect(screen.getByText('例如: https://api.k8s.example.com:6443')).toBeInTheDocument();
   });
 
   it('falls back to plain Form.Item behavior when guide is undefined', async () => {
+    localStorage.setItem('ai-form-assist-enabled', '0');
     const user = userEvent.setup();
 
-    renderWithAntd(
+    const { container } = renderWithAntd(
       <Form layout="vertical">
         <GuidedFormItem name="plain-field" label="普通字段">
           <Input />
@@ -86,10 +98,12 @@ describe('GuidedFormItem', () => {
 
     await user.click(screen.getByLabelText('普通字段'));
 
-    expect(screen.queryByText('这里填什么')).not.toBeInTheDocument();
+    expect(container.querySelector('.anticon-question-circle')).not.toBeInTheDocument();
+    expect(container.querySelector('svg[aria-label="AI 辅助图标"]')).not.toBeInTheDocument();
   });
 
   it('preserves child focus handlers', async () => {
+    localStorage.setItem('ai-form-assist-enabled', '0');
     const user = userEvent.setup();
     const handleFocus = vi.fn();
     const handleBlur = vi.fn();
@@ -124,7 +138,8 @@ describe('GuidedFormItem', () => {
       },
     };
 
-    it('renders AI trigger when aiAssist is provided and feature is enabled', () => {
+    it('renders AI trigger when aiAssist is provided and feature is enabled', async () => {
+      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '1');
       
       const { container } = renderWithAntd(
@@ -135,11 +150,15 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      // The star icon should be present
-      expect(container.querySelector('.anticon-star')).toBeInTheDocument();
+      // Focus to show trigger
+      await user.click(screen.getByLabelText('Test Field'));
+
+      // The star icon (SparklesIcon) should be present
+      expect(container.querySelector('svg[aria-label="AI 辅助图标"]')).toBeInTheDocument();
     });
 
-    it('does not render AI trigger when feature is disabled', () => {
+    it('does not render AI trigger when feature is disabled', async () => {
+      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '0');
       
       const { container } = renderWithAntd(
@@ -150,10 +169,12 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      expect(container.querySelector('.anticon-star')).not.toBeInTheDocument();
+      await user.click(screen.getByLabelText('Test Field'));
+      expect(container.querySelector('svg[aria-label="AI 辅助图标"]')).not.toBeInTheDocument();
     });
 
     it('opens AI popover when trigger is clicked', async () => {
+      const user = userEvent.setup();
       localStorage.setItem('ai-form-assist-enabled', '1');
       
       const { container } = renderWithAntd(
@@ -164,7 +185,8 @@ describe('GuidedFormItem', () => {
         </Form>,
       );
 
-      const trigger = container.querySelector('.anticon-star');
+      await user.click(screen.getByLabelText('Test Field'));
+      const trigger = container.querySelector('svg[aria-label="AI 辅助图标"]');
       fireEvent.click(trigger!);
 
       expect(screen.getByText('AI 辅助生成')).toBeInTheDocument();
