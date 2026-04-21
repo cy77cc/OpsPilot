@@ -1,10 +1,11 @@
 import { Form, Input } from 'antd';
 import { cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithAntd, screen, waitFor } from '../../test/utils/render';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderWithAntd, screen, waitFor, fireEvent } from '../../test/utils/render';
 import GuidedFormItem from './GuidedFormItem';
 import type { FieldGuide } from './types';
+import type { FormAssistConfig } from '../../features/ai/types/formAssist';
 
 const endpointGuide: FieldGuide = {
   whatToEnter: '填写 Kubernetes API Server 的完整 HTTPS 地址。',
@@ -12,6 +13,11 @@ const endpointGuide: FieldGuide = {
   example: 'https://api.k8s.example.com:6443',
   impact: '填错后连接测试会失败，集群无法导入。',
 };
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
+});
 
 afterEach(() => {
   cleanup();
@@ -106,5 +112,62 @@ describe('GuidedFormItem', () => {
     await user.click(screen.getByLabelText('另一个字段'));
 
     expect(handleBlur).toHaveBeenCalledTimes(1);
+  });
+
+  describe('AI Support', () => {
+    const aiAssist: FormAssistConfig = {
+      scene: 'test-scene',
+      fieldMeta: {
+        key: 'test-field',
+        label: 'Test Field',
+        purpose: 'testing purpose',
+      },
+    };
+
+    it('renders AI trigger when aiAssist is provided and feature is enabled', () => {
+      localStorage.setItem('ai-form-assist-enabled', '1');
+      
+      const { container } = renderWithAntd(
+        <Form layout="vertical">
+          <GuidedFormItem name="test-field" label="Test Field" aiAssist={aiAssist}>
+            <Input />
+          </GuidedFormItem>
+        </Form>,
+      );
+
+      // The star icon should be present
+      expect(container.querySelector('.anticon-star')).toBeInTheDocument();
+    });
+
+    it('does not render AI trigger when feature is disabled', () => {
+      localStorage.setItem('ai-form-assist-enabled', '0');
+      
+      const { container } = renderWithAntd(
+        <Form layout="vertical">
+          <GuidedFormItem name="test-field" label="Test Field" aiAssist={aiAssist}>
+            <Input />
+          </GuidedFormItem>
+        </Form>,
+      );
+
+      expect(container.querySelector('.anticon-star')).not.toBeInTheDocument();
+    });
+
+    it('opens AI popover when trigger is clicked', async () => {
+      localStorage.setItem('ai-form-assist-enabled', '1');
+      
+      const { container } = renderWithAntd(
+        <Form layout="vertical">
+          <GuidedFormItem name="test-field" label="Test Field" aiAssist={aiAssist}>
+            <Input />
+          </GuidedFormItem>
+        </Form>,
+      );
+
+      const trigger = container.querySelector('.anticon-star');
+      fireEvent.click(trigger!);
+
+      expect(screen.getByText('AI 辅助生成')).toBeInTheDocument();
+    });
   });
 });

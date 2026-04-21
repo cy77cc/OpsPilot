@@ -207,3 +207,21 @@ type ApprovalStatusResponse struct {
 	ApprovedAt string `json:"approved_at,omitempty"`
 	Comment    string `json:"comment,omitempty"`
 }
+
+// FieldMeta contains metadata for a single form field.
+type FieldMeta struct {
+	Key          string `json:"key"`
+	Label        string `json:"label"`
+	Purpose      string `json:"purpose"`
+	Rules        string `json:"rules,omitempty"`
+	Placeholder  string `json:"placeholder,omitempty"`
+	CurrentValue string `json:"current_value,omitempty"`
+}
+
+// FormAssistRequest defines the request body for form assistance.
+type FormAssistRequest struct {
+	Scene       string         `json:"scene"`
+	UserPrompt  string         `json:"user_prompt"`
+	FieldMeta   FieldMeta      `json:"field_meta"`
+	FormContext map[string]any `json:"form_context"`
+}

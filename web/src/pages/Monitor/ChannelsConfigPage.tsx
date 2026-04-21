@@ -291,7 +291,24 @@ const ChannelsConfigPage: React.FC = () => {
           <GuidedFormItem label="目标地址" name="target" guide={channelFieldGuides.target}>
             <Input placeholder="https://example.com/hook" />
           </GuidedFormItem>
-          <GuidedFormItem label="配置 JSON" name="configJson" guide={channelFieldGuides.configJson}>
+          <GuidedFormItem
+            label="配置 JSON"
+            name="configJson"
+            guide={channelFieldGuides.configJson}
+            aiAssist={{
+              scene: 'monitoring',
+              fieldMeta: {
+                key: 'config_json',
+                label: '配置 JSON',
+                purpose: 'Generate valid channel configuration JSON',
+                rules: 'Return valid JSON only. No markdown fences. No explanation.',
+              },
+              getFormContext: () => ({
+                provider: form.getFieldValue('provider'),
+                target: form.getFieldValue('target'),
+              }),
+            }}
+          >
             <Input.TextArea rows={4} />
           </GuidedFormItem>
           <Space>
@@ -331,7 +348,24 @@ const ChannelsConfigPage: React.FC = () => {
           <GuidedFormItem label="目标地址" name="channelTarget" guide={channelFieldGuides.target}>
             <Input />
           </GuidedFormItem>
-          <GuidedFormItem label="配置 JSON" name="channelConfigJson" guide={channelFieldGuides.configJson}>
+          <GuidedFormItem
+            label="配置 JSON"
+            name="channelConfigJson"
+            guide={channelFieldGuides.configJson}
+            aiAssist={{
+              scene: 'monitoring',
+              fieldMeta: {
+                key: 'config_json',
+                label: '配置 JSON',
+                purpose: 'Generate valid channel configuration JSON',
+                rules: 'Return valid JSON only. No markdown fences. No explanation.',
+              },
+              getFormContext: () => ({
+                provider: createForm.getFieldValue('channelProvider'),
+                target: createForm.getFieldValue('channelTarget'),
+              }),
+            }}
+          >
             <Input.TextArea rows={4} />
           </GuidedFormItem>
         </Form>
@@ -366,7 +400,24 @@ const ChannelsConfigPage: React.FC = () => {
           <GuidedFormItem label="目标地址" name="channelTarget" guide={channelFieldGuides.target}>
             <Input />
           </GuidedFormItem>
-          <GuidedFormItem label="配置 JSON" name="channelConfigJson" guide={channelFieldGuides.configJson}>
+          <GuidedFormItem
+            label="配置 JSON"
+            name="channelConfigJson"
+            guide={channelFieldGuides.configJson}
+            aiAssist={{
+              scene: 'monitoring',
+              fieldMeta: {
+                key: 'config_json',
+                label: '配置 JSON',
+                purpose: 'Generate valid channel configuration JSON',
+                rules: 'Return valid JSON only. No markdown fences. No explanation.',
+              },
+              getFormContext: () => ({
+                provider: editForm.getFieldValue('channelProvider'),
+                target: editForm.getFieldValue('channelTarget'),
+              }),
+            }}
+          >
             <Input.TextArea rows={4} />
           </GuidedFormItem>
         </Form>

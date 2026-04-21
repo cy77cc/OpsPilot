@@ -10,6 +10,7 @@ import (
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
 	aicommand "github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
 	aichatservice "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
+	aiassist "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/assist"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
 	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
@@ -37,11 +38,18 @@ import (
 
 const aiBackgroundWorkerTick = 2 * time.Second
 
-func registerAIChatRoute(v1 *gin.RouterGroup, appCtx *svc.ServiceContext) {
-	chatCommandHandler := aicommand.NewChatCommandHandler(aichatservice.NewService(appCtx))
+func registerAIRoutes(v1 *gin.RouterGroup, appCtx *svc.ServiceContext) {
+	aiService := aichatservice.NewService(appCtx)
+	chatCommandHandler := aicommand.NewChatCommandHandler(aiService)
 	chatHTTPHandler := aihttp.NewChatHandler(chatCommandHandler)
+
+	aiLogic := ailogic.NewAILogic(appCtx)
+	formAssistService := aiassist.NewService(aiLogic)
+	formAssistHandler := aihttp.NewFormAssistHandler(formAssistService)
+
 	aiGroup := v1.Group("/ai", middleware.JWTAuth())
 	aiGroup.POST("/chat", chatHTTPHandler.HandleChat)
+	aiGroup.POST("/assist/form/stream", formAssistHandler.HandleAssist)
 }
 
 // RegisterModules wires all HTTP modules into the shared router.
@@ -75,7 +83,7 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		}
 	}
 	aiapi.RegisterAIWebhookHandlers(v1, appCtx)
-	registerAIChatRoute(v1, appCtx)
+	registerAIRoutes(v1, appCtx)
 	aiapi.RegisterAIHandlers(v1, appCtx)
 	llmproviderapi.RegisterAdminAIModelRoutes(v1, appCtx)
 	projectapi.RegisterProjectHandlers(v1, appCtx)

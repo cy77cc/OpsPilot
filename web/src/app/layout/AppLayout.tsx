@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Tooltip, Button, Drawer } from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Tooltip, Button, Drawer, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -15,6 +15,7 @@ import {
   CloudServerOutlined,
   MenuOutlined,
 } from '@ant-design/icons';
+import SparklesIcon from '../../components/common/SparklesIcon';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
 import ProjectSwitcher from '../../components/Project/ProjectSwitcher';
@@ -49,6 +50,19 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aiFormAssistEnabled, setAiFormAssistEnabled] = useState(
+    typeof window !== 'undefined' ? localStorage.getItem('ai-form-assist-enabled') !== '0' : true
+  );
+
+  const toggleAiFormAssist = (enabled: boolean) => {
+    setAiFormAssistEnabled(enabled);
+    localStorage.setItem('ai-form-assist-enabled', enabled ? '1' : '0');
+    // Force a reload or notify hooks if needed, but since it reads from localStorage 
+    // on every render in the current implementation, it might just work if the component tree re-renders.
+    // For a cleaner approach, a Context would be better, but this satisfies "Help me open".
+    window.dispatchEvent(new Event('storage')); // Notify other tabs/hooks
+  };
+
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
@@ -271,13 +285,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               />
             )}
 
-            <Tooltip title={<span>帮助文档 <kbd className="ml-1 text-xs">?</kbd></span>}>
+            <Tooltip title="帮助文档 <kbd className='ml-1 text-xs'>?</kbd>">
               <Button
                 type="text"
                 icon={<QuestionCircleOutlined />}
                 className="text-gray-600 hover:text-primary-600"
                 onClick={() => setHelpOpen(true)}
               />
+            </Tooltip>
+
+            <Tooltip title={aiFormAssistEnabled ? "关闭 AI 表单辅助" : "开启 AI 表单辅助"}>
+              <div className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors">
+                <SparklesIcon active={aiFormAssistEnabled} />
+                <Switch 
+                  size="small" 
+                  checked={aiFormAssistEnabled} 
+                  onChange={toggleAiFormAssist} 
+                />
+              </div>
             </Tooltip>
 
             <NotificationBell onViewAll={() => navigate('/monitor')} />

@@ -22,6 +22,7 @@ describe('ChannelsConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    localStorage.setItem('ai-form-assist-enabled', '1');
     vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     vi.spyOn(Modal, 'error').mockImplementation(() => ({ destroy: vi.fn(), update: vi.fn() }) as any);
@@ -255,5 +256,20 @@ describe('ChannelsConfigPage', () => {
     await waitFor(() => {
       expect(within(dialog).queryByText(/填写通知渠道类型的枚举值/)).not.toBeInTheDocument();
     });
+  });
+
+  it('renders AI assist trigger for config JSON field and opens assistant', async () => {
+    localStorage.setItem('ai-form-assist-enabled', '1');
+    render(<ChannelsConfigPage />);
+    await screen.findByText('Ops Webhook');
+
+    const configInput = screen.getByLabelText('配置 JSON');
+    fireEvent.focus(configInput);
+
+    const sparkle = document.querySelector('.anticon-star');
+    expect(sparkle).toBeInTheDocument();
+
+    fireEvent.click(sparkle!);
+    expect(await screen.findByText('AI 辅助生成')).toBeInTheDocument();
   });
 });
