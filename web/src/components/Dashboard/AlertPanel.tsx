@@ -21,7 +21,7 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ alerts, loading }) => {
     <Card
       title={<span>活跃告警</span>}
       extra={(
-        <Button type="link" onClick={() => navigate('/monitoring/alerts')}>
+        <Button type="link" onClick={() => navigate('/monitor/alerts')}>
           查看全部
         </Button>
       )}
@@ -41,7 +41,7 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ alerts, loading }) => {
         renderItem={(item) => (
           <List.Item
             className="cursor-pointer rounded-md px-2"
-            onClick={() => navigate('/monitoring/alerts')}
+            onClick={() => navigate('/monitor/alerts')}
           >
             <List.Item.Meta
               title={<span className="text-sm font-medium">{item.title}</span>}

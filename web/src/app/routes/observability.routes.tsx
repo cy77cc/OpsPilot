@@ -35,7 +35,6 @@ export function renderObservabilityRoutes(withAuth: WithAuth) {
         <Route path="routing" element={<RoutingConfigPage />} />
         <Route path="deliveries" element={<DeliveriesPage />} />
       </Route>
-      <Route path="/monitoring/alerts" element={withAuth('monitoring', 'read', <AlertsPage />)} />
     </>
   );
 }
