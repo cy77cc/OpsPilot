@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Col, Row, Statistic, Table, Tabs, Tag, Progress, Button, Space, message } from 'antd';
-import { AlertOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Table, Tabs, Tag, Progress, Button, Space } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Api } from '../../api';
 import type { Alert, AlertRule, MetricData, AlertChannel } from '../../api/modules/monitoring';
@@ -40,26 +40,12 @@ const MonitorPage: React.FC = () => {
     load();
   }, []);
 
-  const handleSyncRules = async () => {
-    try {
-      await Api.monitoring.syncAlertRules();
-      message.success('规则同步成功');
-      await load();
-    } catch (error: any) {
-      message.error(error?.message || '规则同步失败');
-    }
-  };
-
-  const firingCount = useMemo(() => alerts.filter((a) => a.status === 'firing').length, [alerts]);
-  const criticalCount = useMemo(() => alerts.filter((a) => a.severity === 'critical' && a.status === 'firing').length, [alerts]);
   const cpuAvg = useMemo(() => (cpuMetrics.length ? cpuMetrics.reduce((s, i) => s + Number(i.value), 0) / cpuMetrics.length : 0), [cpuMetrics]);
   const memAvg = useMemo(() => (memMetrics.length ? memMetrics.reduce((s, i) => s + Number(i.value), 0) / memMetrics.length : 0), [memMetrics]);
   const isInitialLoading = loading
     && alerts.length === 0
-    && rules.length === 0
     && cpuMetrics.length === 0
-    && memMetrics.length === 0
-    && channels.length === 0;
+    && memMetrics.length === 0;
 
   if (isInitialLoading) {
     return <PageSkeleton />;
@@ -69,40 +55,9 @@ const MonitorPage: React.FC = () => {
     <div className="space-y-3">
       <div className="flex justify-end">
         <Space>
-          <Button size="small" onClick={handleSyncRules}>同步规则</Button>
           <Button size="small" icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
         </Space>
       </div>
-      <Row gutter={[12, 12]}>
-        <Col xs={24} sm={8}>
-          <Card size="small">
-            <Statistic 
-              title="活跃告警" 
-              value={firingCount} 
-              prefix={<AlertOutlined />} 
-              valueStyle={{ fontSize: 20 }} 
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card size="small">
-            <Statistic 
-              title="严重告警" 
-              value={criticalCount} 
-              valueStyle={{ fontSize: 20, color: criticalCount > 0 ? '#ff4d4f' : 'inherit' }} 
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card size="small">
-            <Statistic 
-              title="告警规则" 
-              value={rules.length} 
-              valueStyle={{ fontSize: 20 }} 
-            />
-          </Card>
-        </Col>
-      </Row>
       <Row gutter={[12, 12]}>
         <Col xs={24} md={12}>
           <Card size="small" title="CPU 平均使用率">
