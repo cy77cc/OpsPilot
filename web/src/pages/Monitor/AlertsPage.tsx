@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert } from '../../api/modules/monitoring';
 import { normalizeHealStatus } from './monitorAlertHealStatus';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const severityColor: Record<string, string> = {
   critical: 'error',
@@ -42,6 +43,10 @@ const AlertsPage: React.FC = () => {
     const nextPageSize = pagination.pageSize || pageSize;
     void load(nextPage, nextPageSize);
   };
+
+  if (loading && rows.length === 0) {
+    return <PageSkeleton />;
+  }
 
   return (
     <Card

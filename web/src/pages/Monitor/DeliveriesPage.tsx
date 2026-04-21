@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Table } from 'antd';
 import { Api } from '../../api';
 import type { AlertDelivery } from '../../api/modules/monitoring';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const DeliveriesPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -25,6 +26,10 @@ const DeliveriesPage: React.FC = () => {
       mounted = false;
     };
   }, []);
+
+  if (loading && rows.length === 0) {
+    return <PageSkeleton />;
+  }
 
   return (
     <Card title="投递记录">

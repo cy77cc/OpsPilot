@@ -3,6 +3,7 @@ import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, mes
 import { Api } from '../../api';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 type RouteRow = {
   id: string;
@@ -214,6 +215,10 @@ const RoutingConfigPage: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  if (loading && rows.length === 0) {
+    return <PageSkeleton />;
+  }
 
   return (
     <Card

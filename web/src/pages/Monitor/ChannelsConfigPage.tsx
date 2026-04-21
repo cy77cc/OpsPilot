@@ -4,6 +4,7 @@ import { Api } from '../../api';
 import { GuidedFormItem } from '../../components/FormGuidance';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { channelFieldGuides } from './channelFieldGuides';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 type ChannelTestForm = {
   provider: string;
@@ -218,14 +219,17 @@ const ChannelsConfigPage: React.FC = () => {
         return;
       }
       message.error('渠道删除失败');
-    } finally {
+      } finally {
       setSubmitting(false);
-    }
-  };
+      }
+      };
 
-  return (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <Card
+      if (loading && rows.length === 0) {
+      return <PageSkeleton />;
+      }
+
+      return (
+      <Space orientation="vertical" style={{ width: '100%' }}>      <Card
         title="通知渠道配置"
        
         extra={(

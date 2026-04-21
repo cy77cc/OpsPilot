@@ -4,6 +4,7 @@ import { SyncOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 type EffectiveRuleRow = {
   id: string;
@@ -360,6 +361,10 @@ const RulesConfigPage: React.FC = () => {
       message.error(error?.message || '规则同步失败');
     }
   };
+
+  if (loading && rows.length === 0) {
+    return <PageSkeleton />;
+  }
 
   return (
     <Card
