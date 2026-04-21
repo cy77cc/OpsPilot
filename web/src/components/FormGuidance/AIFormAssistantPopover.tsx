@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Popover, Input, Button, Alert, Typography, Spin } from 'antd';
-import { LoadingOutlined, SendOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { LoadingOutlined, SendOutlined } from '@ant-design/icons';
 import SparklesIcon from '../common/SparklesIcon';
-import type { FieldGuide } from './types';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 export interface AIFormAssistantPopoverProps {
-  guide?: FieldGuide;
   isOpen: boolean;
   isStreaming: boolean;
   prompt: string;
@@ -21,7 +19,6 @@ export interface AIFormAssistantPopoverProps {
 }
 
 const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
-  guide,
   isOpen,
   isStreaming,
   prompt: initialPrompt,
@@ -43,33 +40,6 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
 
   const content = (
     <div className="w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-      {guide && (
-        <div className="bg-slate-50 p-4 border-b border-slate-100">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="bg-indigo-50 text-indigo-500 p-1 rounded-md flex items-center justify-center">
-               <QuestionCircleOutlined style={{ fontSize: 14 }} />
-            </div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">填写指引</span>
-          </div>
-          <div className="space-y-3">
-            {guide.whatToEnter && (
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">建议</div>
-                <div className="text-sm text-slate-600 leading-relaxed">{guide.whatToEnter}</div>
-              </div>
-            )}
-            {guide.example && (
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">示例</div>
-                <code className="text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-mono break-all">
-                  {guide.example}
-                </code>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      
       <div className="p-4 space-y-4">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600">
@@ -141,7 +111,7 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
         }
       }}
       overlayClassName="ai-assist-popover"
-      overlayInnerStyle={{ padding: 0, background: 'none', boxShadow: 'none', border: 'none' }}
+      styles={{ content: { padding: 0, background: 'none', boxShadow: 'none', border: 'none' } }}
     >
       {children}
     </Popover>

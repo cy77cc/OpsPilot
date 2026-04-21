@@ -13,6 +13,25 @@ const callFocusHandler = (
   if (handler) handler(event);
 };
 
+const GuideTooltip: React.FC<{ guide: FieldGuide }> = ({ guide }) => (
+  <div className="space-y-3 p-1">
+    {guide.whatToEnter && (
+      <div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">建议</div>
+        <div className="text-sm text-slate-200 leading-relaxed">{guide.whatToEnter}</div>
+      </div>
+    )}
+    {guide.example && (
+      <div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">示例</div>
+        <code className="text-xs text-indigo-300 bg-indigo-900/30 px-1.5 py-0.5 rounded font-mono break-all">
+          {guide.example}
+        </code>
+      </div>
+    )}
+  </div>
+);
+
 /**
  * AIFieldWrapper handles the layout for AI-assisted fields while ensuring
  * Ant Design Form.Item can still inject value and onChange props.
@@ -37,12 +56,14 @@ const AIFieldWrapper: React.FC<{
             if (restProps.onBlur) restProps.onBlur(event);
             if (children.props.onBlur) children.props.onBlur(event);
           },
-          style: { ...children.props.style, paddingRight: '32px', ...restProps.style }
+          style: { ...children.props.style, paddingRight: aiTrigger ? '32px' : children.props.style?.paddingRight, ...restProps.style }
         })}
       </div>
-      <div className={`absolute right-1 z-10 flex items-center ${isTextArea ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}>
-        {aiTrigger}
-      </div>
+      {aiTrigger && (
+        <div className={`absolute right-1 z-10 flex items-center ${isTextArea ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}>
+          {aiTrigger}
+        </div>
+      )}
     </div>
   );
 };
@@ -127,9 +148,8 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     },
   });
 
-  const aiTrigger = (effectiveAiAssist || guide) ? (
+  const aiTrigger = effectiveAiAssist ? (
     <AIFormAssistantPopover
-      guide={guide}
       isOpen={isOpen}
       isStreaming={isStreaming}
       prompt={aiPrompt}
@@ -146,17 +166,17 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
           open();
         }}
       >
-        {effectiveAiAssist ? (
-          <SparklesIcon className={isStreaming ? "animate-pulse" : ""} />
-        ) : (
-          <QuestionCircleOutlined />
-        )}
+        <SparklesIcon className={isStreaming ? "animate-pulse" : ""} />
       </div>
     </AIFormAssistantPopover>
   ) : null;
 
   return (
-    <Form.Item {...formItemProps} extra={mergedExtra}>
+    <Form.Item 
+      {...formItemProps} 
+      extra={mergedExtra}
+      tooltip={guide ? { title: <GuideTooltip guide={guide} />, styles: { root: { maxWidth: '280px' } } } : formItemProps.tooltip}
+    >
       <AIFieldWrapper aiTrigger={aiTrigger}>{enhancedChild}</AIFieldWrapper>
     </Form.Item>
   );

@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('GuidedFormItem', () => {
-  it('renders the trigger permanently when a guide is provided', async () => {
+  it('renders a tooltip icon next to the label when a guide is provided', async () => {
     localStorage.setItem('ai-form-assist-enabled', '0');
 
     const { container } = renderWithAntd(
@@ -35,14 +35,8 @@ describe('GuidedFormItem', () => {
       </Form>,
     );
 
-    // Icon should be present initially
+    // Ant Design's tooltip icon should be present near the label
     expect(container.querySelector('.anticon-question-circle')).toBeInTheDocument();
-    expect(screen.queryByText('填写指引')).not.toBeInTheDocument();
-
-    // Click icon shows the popover content
-    fireEvent.click(container.querySelector('.anticon-question-circle')!);
-    expect(screen.getByText('填写指引')).toBeInTheDocument();
-    expect(screen.getByText('填写 Kubernetes API Server 的完整 HTTPS 地址。')).toBeInTheDocument();
   });
 
   it('renders existing extra copy always', async () => {
