@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Form, Input, InputNumber, Modal, Space, Table, Tag, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
   clusterId: string;
@@ -98,17 +99,17 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
 
       <Modal title="新建 Namespace" open={nsOpen} onCancel={() => setNsOpen(false)} onOk={() => void createNamespace()}>
         <Form form={nsForm} layout="vertical">
-          <Form.Item label="名称" name="name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="环境" name="env"><Input placeholder="development/staging/production" /></Form.Item>
+          <GuidedFormItem label="名称" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="环境" name="env"><Input placeholder="development/staging/production" /></GuidedFormItem>
         </Form>
       </Modal>
 
       <Modal title="更新 Team Namespace 绑定" open={bindOpen} onCancel={() => setBindOpen(false)} onOk={() => void saveBindings()}>
         <Form form={bindForm} layout="vertical" initialValues={{ team_id: Number(localStorage.getItem('teamId') || 1) }}>
-          <Form.Item label="Team ID" name="team_id" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="Namespaces" name="namespaces" rules={[{ required: true, message: '至少一个 namespace' }]}>
+          <GuidedFormItem label="Team ID" name="team_id" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
+          <GuidedFormItem label="Namespaces" name="namespaces" rules={[{ required: true, message: '至少一个 namespace' }]}>
             <Input placeholder="逗号分隔: default,dev,staging" onBlur={(e) => bindForm.setFieldValue('namespaces', String(e.target.value || '').split(',').map((x) => x.trim()).filter(Boolean))} />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
     </div>

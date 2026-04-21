@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Form, Input, InputNumber, Modal, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
   clusterId: string;
@@ -72,14 +73,14 @@ const HPAEditor: React.FC<Props> = ({ clusterId }) => {
 
       <Modal title="HPA 策略" open={open} onCancel={() => setOpen(false)} onOk={() => void save()}>
         <Form form={form} layout="vertical" initialValues={{ namespace: 'default', target_ref_kind: 'Deployment', min_replicas: 1, max_replicas: 3, cpu_utilization: 70, memory_utilization: 75 }}>
-          <Form.Item label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Target Kind" name="target_ref_kind" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Target Name" name="target_ref_name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Min Replicas" name="min_replicas" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="Max Replicas" name="max_replicas" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="CPU Utilization %" name="cpu_utilization"><InputNumber min={1} max={100} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="Memory Utilization %" name="memory_utilization"><InputNumber min={1} max={100} style={{ width: '100%' }} /></Form.Item>
+          <GuidedFormItem label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Name" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Target Kind" name="target_ref_kind" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Target Name" name="target_ref_name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Min Replicas" name="min_replicas" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
+          <GuidedFormItem label="Max Replicas" name="max_replicas" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
+          <GuidedFormItem label="CPU Utilization %" name="cpu_utilization"><InputNumber min={1} max={100} style={{ width: '100%' }} /></GuidedFormItem>
+          <GuidedFormItem label="Memory Utilization %" name="memory_utilization"><InputNumber min={1} max={100} style={{ width: '100%' }} /></GuidedFormItem>
         </Form>
       </Modal>
     </div>

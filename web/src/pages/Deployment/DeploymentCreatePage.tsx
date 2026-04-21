@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
 import type { DeployTarget } from '../../api/modules/deployment';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const DeploymentCreatePage: React.FC = () => {
   const navigate = useNavigate();
@@ -179,7 +180,7 @@ const DeploymentCreatePage: React.FC = () => {
     return (
       <Card title="配置部署参数">
         <Form form={form} layout="vertical">
-          <Form.Item
+          <GuidedFormItem
             name="variables_json"
             label={`部署变量 (JSON) - ${target?.target_type === 'k8s' ? 'Kubernetes' : 'Compose'}`}
             extra={
@@ -196,7 +197,7 @@ const DeploymentCreatePage: React.FC = () => {
                   : '{\n  "COMPOSE_PROJECT_NAME": "svc-a",\n  "IMAGE_TAG": "v1.2.3"\n}'
               }
             />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Button type="primary" onClick={handlePreview} loading={loading}>
             预览部署清单

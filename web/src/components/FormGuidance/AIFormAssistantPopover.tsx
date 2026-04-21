@@ -113,8 +113,7 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
       overlayClassName="ai-assist-popover"
       overlayInnerStyle={{ padding: 0, background: 'transparent', boxShadow: 'none' }}
       styles={{ 
-        content: { padding: 0, background: 'transparent', boxShadow: 'none' },
-        body: { padding: 0, background: 'transparent', boxShadow: 'none' } 
+        content: { padding: 0, background: 'transparent', boxShadow: 'none' }
       }}
     >
       {children}

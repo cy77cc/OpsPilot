@@ -40,6 +40,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 import type {
   LabelKV,
   ServiceCreateParams,
@@ -378,9 +379,9 @@ const ServiceDetailPage: React.FC = () => {
             <Form form={editForm} layout="vertical">
               <Row gutter={12}>
                 <Col span={12}>
-                  <Form.Item name="name" label="服务名" rules={[{ required: true, message: '请输入服务名' }]}>
+                  <GuidedFormItem name="name" label="服务名" rules={[{ required: true, message: '请输入服务名' }]}>
                     <Input disabled={!editing} />
-                  </Form.Item>
+                  </GuidedFormItem>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="env" label="环境" rules={[{ required: true }]}>
@@ -391,9 +392,9 @@ const ServiceDetailPage: React.FC = () => {
 
               <Row gutter={12}>
                 <Col span={12}>
-                  <Form.Item name="owner" label="负责人" rules={[{ required: true, message: '请输入负责人' }]}>
+                  <GuidedFormItem name="owner" label="负责人" rules={[{ required: true, message: '请输入负责人' }]}>
                     <Input disabled={!editing} />
-                  </Form.Item>
+                  </GuidedFormItem>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="status" label="状态" rules={[{ required: true }]}>
@@ -404,9 +405,9 @@ const ServiceDetailPage: React.FC = () => {
 
               <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name="service_kind" label="服务分类" rules={[{ required: true }]}>
+                  <GuidedFormItem name="service_kind" label="服务分类" rules={[{ required: true }]}>
                     <Input disabled={!editing} placeholder="web/worker/job" />
-                  </Form.Item>
+                  </GuidedFormItem>
                 </Col>
                 <Col span={8}>
                   <Form.Item name="service_type" label="服务类型" rules={[{ required: true }]}>
@@ -433,20 +434,20 @@ const ServiceDetailPage: React.FC = () => {
                 </Col>
               </Row>
 
-              <Form.Item name="labels_text" label="标签（每行 key=value）">
+              <GuidedFormItem name="labels_text" label="标签（每行 key=value）">
                 <Input.TextArea rows={3} disabled={!editing} placeholder={'app=api\nteam=platform'} />
-              </Form.Item>
+              </GuidedFormItem>
 
               <Form.Item noStyle shouldUpdate={(prev, next) => prev.config_mode !== next.config_mode}>
                 {({ getFieldValue }) => (
                   getFieldValue('config_mode') === 'standard' ? (
-                    <Form.Item name="standard_config_text" label="标准配置（JSON）" rules={[{ required: true, message: '请输入标准配置 JSON' }]}>
+                    <GuidedFormItem name="standard_config_text" label="标准配置（JSON）" rules={[{ required: true, message: '请输入标准配置 JSON' }]}>
                       <Input.TextArea rows={10} disabled={!editing} />
-                    </Form.Item>
+                    </GuidedFormItem>
                   ) : (
-                    <Form.Item name="custom_yaml" label="自定义 YAML" rules={[{ required: true, message: '请输入 YAML 配置' }]}>
+                    <GuidedFormItem name="custom_yaml" label="自定义 YAML" rules={[{ required: true, message: '请输入 YAML 配置' }]}>
                       <Input.TextArea rows={10} disabled={!editing} />
-                    </Form.Item>
+                    </GuidedFormItem>
                   )
                 )}
               </Form.Item>
@@ -466,13 +467,13 @@ const ServiceDetailPage: React.FC = () => {
                 />
               </Form.Item>
               {varSchema.map((v) => (
-                <Form.Item
+                <GuidedFormItem
                   key={v.name}
                   name={`var_${v.name}`}
                   label={`${v.name}${v.required ? ' *' : ''}`}
                 >
                   <Input placeholder={v.default || ''} />
-                </Form.Item>
+                </GuidedFormItem>
               ))}
               <Button onClick={saveVarValues}>保存变量集</Button>
             </Form>

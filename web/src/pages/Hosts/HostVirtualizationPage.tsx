@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 import type { Host } from '../../api/modules/hosts';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const HostVirtualizationPage: React.FC = () => {
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -64,16 +65,16 @@ const HostVirtualizationPage: React.FC = () => {
             placeholder="选择在线宿主机"
           />
         </Form.Item>
-        <Form.Item name="name" label="新机器名称" rules={[{ required: true }]}><Input /></Form.Item>
-        <Form.Item name="ip" label="新机器IP" rules={[{ required: true }]}><Input /></Form.Item>
+        <GuidedFormItem name="name" label="新机器名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+        <GuidedFormItem name="ip" label="新机器IP" rules={[{ required: true }]}><Input /></GuidedFormItem>
         <Space style={{ display: 'flex' }} size={16}>
-          <Form.Item name="cpu" label="CPU" rules={[{ required: true }]}><Input type="number" /></Form.Item>
-          <Form.Item name="memoryMB" label="内存MB" rules={[{ required: true }]}><Input type="number" /></Form.Item>
-          <Form.Item name="diskGB" label="磁盘GB" rules={[{ required: true }]}><Input type="number" /></Form.Item>
+          <GuidedFormItem name="cpu" label="CPU" rules={[{ required: true }]}><Input type="number" /></GuidedFormItem>
+          <GuidedFormItem name="memoryMB" label="内存MB" rules={[{ required: true }]}><Input type="number" /></GuidedFormItem>
+          <GuidedFormItem name="diskGB" label="磁盘GB" rules={[{ required: true }]}><Input type="number" /></GuidedFormItem>
         </Space>
         <Space style={{ display: 'flex' }} size={16}>
-          <Form.Item name="sshUser" label="SSH用户"><Input /></Form.Item>
-          <Form.Item name="password" label="SSH密码"><Input.Password /></Form.Item>
+          <GuidedFormItem name="sshUser" label="SSH用户"><Input /></GuidedFormItem>
+          <GuidedFormItem name="password" label="SSH密码"><Input.Password /></GuidedFormItem>
         </Space>
         <Space>
           <Button onClick={doPreview} loading={loading}>预检查</Button>

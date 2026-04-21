@@ -7,6 +7,7 @@ import { TableSkeleton } from '../../components/LoadingSkeleton';
 import AssetTree from './components/AssetTree';
 import TopologyGraph from './components/TopologyGraph';
 import AssetDetailDrawer from './components/AssetDetailDrawer';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Sider, Content } = Layout;
 
@@ -185,10 +186,10 @@ const CMDBPage: React.FC = () => {
 
       <Modal title="新增资产" open={open} onCancel={() => setOpen(false)} onOk={create}>
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="资产名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <GuidedFormItem name="name" label="资产名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
           <Form.Item name="assetType" label="资产类型" rules={[{ required: true }]}><Select options={[{ value: 'host' }, { value: 'service' }, { value: 'cluster' }, { value: 'custom' }]} /></Form.Item>
           <Form.Item name="source" label="来源" initialValue="manual"><Select options={[{ value: 'manual' }, { value: 'system' }]} /></Form.Item>
-          <Form.Item name="owner" label="负责人"><Input /></Form.Item>
+          <GuidedFormItem name="owner" label="负责人"><Input /></GuidedFormItem>
         </Form>
       </Modal>
     </Card>

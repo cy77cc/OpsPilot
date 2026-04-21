@@ -4,6 +4,7 @@ import { PlayCircleOutlined, ReloadOutlined, StopOutlined } from '@ant-design/ic
 import { Api } from '../../api';
 import type { Task } from '../../api/modules/tasks';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const TasksPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -101,9 +102,9 @@ const TasksPage: React.FC = () => {
 
       <Modal title="创建任务" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createJob}>
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
           <Form.Item name="type" label="类型" rules={[{ required: true }]}><Select options={[{ value: 'shell' }, { value: 'script' }]} /></Form.Item>
-          <Form.Item name="cron" label="Cron"><Input placeholder="*/5 * * * *" /></Form.Item>
+          <GuidedFormItem name="cron" label="Cron"><Input placeholder="*/5 * * * *" /></GuidedFormItem>
         </Form>
       </Modal>
 

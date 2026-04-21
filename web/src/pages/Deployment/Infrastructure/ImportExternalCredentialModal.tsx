@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Form, Input, Select, Upload, Button, Radio, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { Api } from '../../../api';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 
 interface ImportExternalCredentialModalProps {
   visible: boolean;
@@ -67,13 +68,13 @@ const ImportExternalCredentialModal: React.FC<ImportExternalCredentialModalProps
       width={700}
     >
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="name"
           label="凭证名称"
           rules={[{ required: true, message: '请输入凭证名称' }]}
         >
           <Input placeholder="例如: production-k8s-cluster" />
-        </Form.Item>
+        </GuidedFormItem>
 
         <Form.Item
           name="runtime_type"
@@ -96,7 +97,7 @@ const ImportExternalCredentialModal: React.FC<ImportExternalCredentialModalProps
         </Form.Item>
 
         {authMethod === 'kubeconfig' ? (
-          <Form.Item
+          <GuidedFormItem
             name="kubeconfig"
             label="Kubeconfig 内容"
             rules={[{ required: true, message: '请上传或粘贴 kubeconfig 内容' }]}
@@ -105,44 +106,44 @@ const ImportExternalCredentialModal: React.FC<ImportExternalCredentialModalProps
               rows={10}
               placeholder="粘贴 kubeconfig 内容或使用下方按钮上传文件"
             />
-          </Form.Item>
+          </GuidedFormItem>
         ) : (
           <>
-            <Form.Item
+            <GuidedFormItem
               name="endpoint"
               label="API Server Endpoint"
               rules={[{ required: true, message: '请输入 API Server 地址' }]}
             >
               <Input placeholder="https://kubernetes.example.com:6443" />
-            </Form.Item>
+            </GuidedFormItem>
 
-            <Form.Item
+            <GuidedFormItem
               name="ca_cert"
               label="CA 证书"
               rules={[{ required: true, message: '请输入 CA 证书' }]}
             >
               <Input.TextArea rows={4} placeholder="-----BEGIN CERTIFICATE-----" />
-            </Form.Item>
+            </GuidedFormItem>
 
-            <Form.Item
+            <GuidedFormItem
               name="cert"
               label="客户端证书"
               rules={[{ required: true, message: '请输入客户端证书' }]}
             >
               <Input.TextArea rows={4} placeholder="-----BEGIN CERTIFICATE-----" />
-            </Form.Item>
+            </GuidedFormItem>
 
-            <Form.Item
+            <GuidedFormItem
               name="key"
               label="客户端私钥"
               rules={[{ required: true, message: '请输入客户端私钥' }]}
             >
               <Input.TextArea rows={4} placeholder="-----BEGIN RSA PRIVATE KEY-----" />
-            </Form.Item>
+            </GuidedFormItem>
 
-            <Form.Item name="token" label="Bearer Token (可选)">
+            <GuidedFormItem name="token" label="Bearer Token (可选)">
               <Input.Password placeholder="可选的 Bearer Token" />
-            </Form.Item>
+            </GuidedFormItem>
           </>
         )}
 

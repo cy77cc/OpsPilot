@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { authApi } from '../../api/modules/auth';
 import type { AuthUser, LoginParams, RegisterParams } from '../../api/modules/auth';
-import { TOKEN_EVENTS } from '../../api/api';
+import apiService, { TOKEN_EVENTS } from '../../api/api';
+import { parseJwtExpiresAt } from '../../utils/tokenManager';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -23,6 +24,8 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const persistSession = (nextUser: AuthUser, permissions?: string[]) => {
     localStorage.setItem('user', JSON.stringify(nextUser));
@@ -34,8 +37,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const clearSession = useCallback(() => {
     localStorage.removeItem('user');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('permissions');
     setUser(null);
+    setExpiresAt(null);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -49,12 +54,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (payload: LoginParams) => {
     const res = await authApi.login(payload);
-    persistSession(res.data.user, res.data.permissions);
+    const { token, refreshToken, user: authUser, permissions } = res.data;
+    if (token) {
+      localStorage.setItem('token', token);
+      const exp = parseJwtExpiresAt(token);
+      setExpiresAt(exp ? exp / 1000 : null);
+    }
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
+    persistSession(authUser, permissions);
   };
 
   const register = async (payload: RegisterParams) => {
     const res = await authApi.register(payload);
-    persistSession(res.data.user, res.data.permissions);
+    const { token, refreshToken, user: authUser, permissions } = res.data;
+    if (token) {
+      localStorage.setItem('token', token);
+      const exp = parseJwtExpiresAt(token);
+      setExpiresAt(exp ? exp / 1000 : null);
+    }
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
+    persistSession(authUser, permissions);
   };
 
   const logout = useCallback(() => {
@@ -64,8 +87,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // 处理 token 刷新成功事件
   const handleTokenRefreshed = useCallback(
-    (_event: Event) => {
+    (event: Event) => {
       console.log('[Auth] Token refreshed successfully');
+      const customEvent = event as CustomEvent;
+      const { token } = customEvent.detail || {};
+      if (token) {
+        const exp = parseJwtExpiresAt(token);
+        setExpiresAt(exp ? exp / 1000 : null);
+      }
       void refreshUser().catch(() => clearSession());
     },
     [clearSession, refreshUser]
@@ -98,6 +127,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (userText && mounted) {
           setUser(JSON.parse(userText) as AuthUser);
         }
+
+        const token = localStorage.getItem('token');
+        if (token && mounted) {
+          const exp = parseJwtExpiresAt(token);
+          setExpiresAt(exp ? exp / 1000 : null);
+        }
+
         await refreshUser();
       } catch {
         clearSession();
@@ -121,6 +157,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       window.removeEventListener(TOKEN_EVENTS.EXPIRED, handleTokenExpired);
     };
   }, [clearSession, handleTokenRefreshed, handleTokenExpired, refreshUser]);
+ 
+  // Proactive refresh based on expiresAt
+  useEffect(() => {
+    if (expiresAt) {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      const now = Date.now() / 1000;
+      const timeToExpiry = expiresAt - now;
+      const refreshThreshold = 5 * 60; // 5 minutes
+      if (timeToExpiry > refreshThreshold) {
+        const delay = (timeToExpiry - refreshThreshold) * 1000;
+        refreshTimeoutRef.current = setTimeout(() => {
+          console.log('[Auth] Proactive refresh triggered');
+          void apiService.refreshAccessToken();
+        }, delay);
+      } else if (timeToExpiry > 0) {
+        // If already within threshold, refresh immediately
+        console.log('[Auth] Token expiring soon, refreshing now');
+        void apiService.refreshAccessToken();
+      }
+    }
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, [expiresAt]);
 
   const value = useMemo(
     () => ({

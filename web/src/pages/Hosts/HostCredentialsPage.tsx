@@ -4,6 +4,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { CredentialTemplate, SSHKeyItem } from '../../api/modules/hosts';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const HostCredentialsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -264,15 +265,15 @@ const HostCredentialsPage: React.FC = () => {
         width={600}
       >
         <Form form={keyForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true }]}>
             <Input />
-          </Form.Item>
-          <Form.Item name="privateKey" label="私钥内容（PEM）" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="privateKey" label="私钥内容（PEM）" rules={[{ required: true }]}>
             <Input.TextArea rows={8} />
-          </Form.Item>
-          <Form.Item name="passphrase" label="Passphrase（可选）">
+          </GuidedFormItem>
+          <GuidedFormItem name="passphrase" label="Passphrase（可选）">
             <Input.Password />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 
@@ -284,15 +285,15 @@ const HostCredentialsPage: React.FC = () => {
         onOk={onVerifyKey}
       >
         <Form form={verifyForm} layout="vertical" initialValues={{ port: 22, username: 'root' }}>
-          <Form.Item name="ip" label="目标 IP" rules={[{ required: true }]}>
+          <GuidedFormItem name="ip" label="目标 IP" rules={[{ required: true }]}>
             <Input />
-          </Form.Item>
-          <Form.Item name="port" label="端口" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="port" label="端口" rules={[{ required: true }]}>
             <Input type="number" />
-          </Form.Item>
-          <Form.Item name="username" label="用户名" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="username" label="用户名" rules={[{ required: true }]}>
             <Input />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 
@@ -305,25 +306,25 @@ const HostCredentialsPage: React.FC = () => {
         width={500}
       >
         <Form form={templateForm} layout="vertical" initialValues={{ authType: 'password', sshUser: 'root', port: 22 }}>
-          <Form.Item name="name" label="预设名称" rules={[{ required: true, message: '请输入预设名称' }]}>
+          <GuidedFormItem name="name" label="预设名称" rules={[{ required: true, message: '请输入预设名称' }]}>
             <Input placeholder="如: root-22-password" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="authType" label="认证类型" rules={[{ required: true }]}>
             <Radio.Group optionType="button" buttonStyle="solid">
               <Radio.Button value="password">密码认证</Radio.Button>
               <Radio.Button value="key">密钥认证</Radio.Button>
             </Radio.Group>
           </Form.Item>
-          <Form.Item name="sshUser" label="SSH 用户" rules={[{ required: true }]}>
+          <GuidedFormItem name="sshUser" label="SSH 用户" rules={[{ required: true }]}>
             <Input placeholder="默认 root" />
-          </Form.Item>
-          <Form.Item name="port" label="SSH 端口" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]}>
             <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-          </Form.Item>
+          </GuidedFormItem>
           {authType === 'password' ? (
-            <Form.Item name="password" label="SSH 密码" rules={[{ required: true, message: '请输入密码' }]}>
+            <GuidedFormItem name="password" label="SSH 密码" rules={[{ required: true, message: '请输入密码' }]}>
               <Input.Password placeholder="SSH 登录密码" />
-            </Form.Item>
+            </GuidedFormItem>
           ) : (
             <Form.Item name="sshKeyId" label="SSH 密钥" rules={[{ required: true, message: '请选择密钥' }]}>
               <Select
@@ -332,9 +333,9 @@ const HostCredentialsPage: React.FC = () => {
               />
             </Form.Item>
           )}
-          <Form.Item name="description" label="描述">
+          <GuidedFormItem name="description" label="描述">
             <Input.TextArea rows={2} placeholder="可选描述" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
     </Card>

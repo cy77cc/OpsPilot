@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 type RouteRow = {
   id: string;
@@ -275,15 +276,15 @@ const RoutingConfigPage: React.FC = () => {
             enabled: true,
           }}
         >
-          <Form.Item label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
+          <GuidedFormItem label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
             <Input />
-          </Form.Item>
-          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
             <Input placeholder="critical/warning/info" />
-          </Form.Item>
-          <Form.Item label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
             <Input placeholder="渠道ID，逗号分隔" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
             <Select
               options={[
@@ -315,15 +316,15 @@ const RoutingConfigPage: React.FC = () => {
             enabled: true,
           }}
         >
-          <Form.Item label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
+          <GuidedFormItem label="作用域" name="scope" rules={[{ required: true, message: '请输入作用域' }]}>
             <Input />
-          </Form.Item>
-          <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="级别" name="severity" rules={[{ required: true, message: '请输入级别' }]}>
             <Input placeholder="critical/warning/info" />
-          </Form.Item>
-          <Form.Item label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="渠道ID" name="channelIDs" rules={[{ required: true, message: '请输入渠道ID' }]}>
             <Input placeholder="渠道ID，逗号分隔" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
             <Select
               options={[

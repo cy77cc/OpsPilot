@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Form, Input, Modal, Space, Table, Tabs, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
   clusterId: string;
@@ -126,19 +127,19 @@ const QuotaEditor: React.FC<Props> = ({ clusterId }) => {
     >
       <Modal title="Quota" open={quotaOpen} onCancel={() => setQuotaOpen(false)} onOk={() => void saveQuota()}>
         <Form form={quotaForm} layout="vertical" initialValues={{ namespace: 'default', hard: 'limits.cpu=4\nlimits.memory=8Gi\npods=20' }}>
-          <Form.Item label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Hard (每行 key=value)" name="hard" rules={[{ required: true }]}><Input.TextArea rows={6} /></Form.Item>
+          <GuidedFormItem label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Name" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Hard (每行 key=value)" name="hard" rules={[{ required: true }]}><Input.TextArea rows={6} /></GuidedFormItem>
         </Form>
       </Modal>
       <Modal title="LimitRange" open={limitOpen} onCancel={() => setLimitOpen(false)} onOk={() => void saveLimit()}>
         <Form form={limitForm} layout="vertical" initialValues={{ namespace: 'default', default_values: 'cpu=500m\nmemory=512Mi', default_request: 'cpu=100m\nmemory=128Mi', min_values: 'cpu=50m\nmemory=64Mi', max_values: 'cpu=2\nmemory=2Gi' }}>
-          <Form.Item label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Default" name="default_values"><Input.TextArea rows={3} /></Form.Item>
-          <Form.Item label="Default Request" name="default_request"><Input.TextArea rows={3} /></Form.Item>
-          <Form.Item label="Min" name="min_values"><Input.TextArea rows={3} /></Form.Item>
-          <Form.Item label="Max" name="max_values"><Input.TextArea rows={3} /></Form.Item>
+          <GuidedFormItem label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Name" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Default" name="default_values"><Input.TextArea rows={3} /></GuidedFormItem>
+          <GuidedFormItem label="Default Request" name="default_request"><Input.TextArea rows={3} /></GuidedFormItem>
+          <GuidedFormItem label="Min" name="min_values"><Input.TextArea rows={3} /></GuidedFormItem>
+          <GuidedFormItem label="Max" name="max_values"><Input.TextArea rows={3} /></GuidedFormItem>
         </Form>
       </Modal>
     </Tabs>

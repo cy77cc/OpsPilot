@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 type EffectiveRuleRow = {
   id: string;
@@ -413,12 +414,12 @@ const RulesConfigPage: React.FC = () => {
             threshold: 0,
           }}
         >
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+          <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
             <Input />
-          </Form.Item>
-          <Form.Item label="指标" name="metric" rules={[{ required: true, message: '请输入指标' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="指标" name="metric" rules={[{ required: true, message: '请输入指标' }]}>
             <Input />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
             <Select
               options={[
@@ -428,9 +429,9 @@ const RulesConfigPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+          <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
             <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
       <Modal
@@ -452,9 +453,9 @@ const RulesConfigPage: React.FC = () => {
             threshold: 0,
           }}
         >
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+          <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
             <Input />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
             <Select
               options={[
@@ -464,9 +465,9 @@ const RulesConfigPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+          <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
             <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
       <Drawer
@@ -493,12 +494,12 @@ const RulesConfigPage: React.FC = () => {
             enabled: true,
           }}
         >
-          <Form.Item label="渠道ID" name="channelId" rules={[{ required: true, message: '请输入渠道ID' }]}>
+          <GuidedFormItem label="渠道ID" name="channelId" rules={[{ required: true, message: '请输入渠道ID' }]}>
             <Input disabled={!!editingBindingChannelId || bindingSubmitting} />
-          </Form.Item>
-          <Form.Item label="优先级" name="priority" rules={[{ required: true, message: '请输入优先级' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem label="优先级" name="priority" rules={[{ required: true, message: '请输入优先级' }]}>
             <InputNumber style={{ width: '100%' }} disabled={bindingSubmitting} />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item label="状态" name="enabled" rules={[{ required: true, message: '请选择状态' }]}>
             <Select
               disabled={bindingSubmitting}

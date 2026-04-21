@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Title, Text } = Typography;
 const LOGIN_ERROR_TEXT = '登录失败，请检查用户名或密码后重试';
@@ -34,12 +35,12 @@ const LoginPage: React.FC = () => {
         <Text type="secondary">使用账号密码访问控制台</Text>
         <Form layout="vertical" className="mt-6" onFinish={onFinish}>
           {error && <Alert type="error" message={error} className="mb-4" />}
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+          <GuidedFormItem name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input placeholder="admin" />
-          </Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
             <Input.Password placeholder="******" />
-          </Form.Item>
+          </GuidedFormItem>
           <Button type="primary" htmlType="submit" loading={loading} block>
             登录
           </Button>

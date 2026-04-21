@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Title, Text } = Typography;
 const REGISTER_ERROR_TEXT = '注册失败，请稍后重试';
@@ -32,26 +33,26 @@ const RegisterPage: React.FC = () => {
         <Text type="secondary">创建账号并自动登录系统</Text>
         <Form layout="vertical" className="mt-6" onFinish={onFinish}>
           {error && <Alert type="error" message={error} className="mb-4" />}
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+          <GuidedFormItem name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input placeholder="ops_user" />
-          </Form.Item>
-          <Form.Item name="name" label="显示名称">
+          </GuidedFormItem>
+          <GuidedFormItem name="name" label="显示名称">
             <Input placeholder="运维同学" />
-          </Form.Item>
-          <Form.Item
+          </GuidedFormItem>
+          <GuidedFormItem
             name="email"
             label="邮箱"
             rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}
           >
             <Input placeholder="ops@example.com" />
-          </Form.Item>
-          <Form.Item
+          </GuidedFormItem>
+          <GuidedFormItem
             name="password"
             label="密码"
             rules={[{ required: true, message: '请输入密码' }, { min: 6, message: '至少 6 位字符' }]}
           >
             <Input.Password placeholder="******" />
-          </Form.Item>
+          </GuidedFormItem>
           <Button type="primary" htmlType="submit" loading={loading} block>
             注册并登录
           </Button>

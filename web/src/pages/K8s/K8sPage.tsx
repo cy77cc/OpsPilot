@@ -10,6 +10,7 @@ import NamespacePolicyPanel from '../../components/K8s/NamespacePolicyPanel';
 import RolloutPanel from '../../components/K8s/RolloutPanel';
 import HPAEditor from '../../components/K8s/HPAEditor';
 import QuotaEditor from '../../components/K8s/QuotaEditor';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const K8sPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -162,20 +163,20 @@ const K8sPage: React.FC = () => {
 
       <Modal title="添加集群" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={createCluster} okText="创建">
         <Form form={createForm} layout="vertical">
-          <Form.Item name="name" label="集群名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="server" label="API Server" rules={[{ required: true }]}><Input placeholder="https://127.0.0.1:6443" /></Form.Item>
-          <Form.Item name="kubeconfig" label="Kubeconfig"><Input.TextArea rows={6} /></Form.Item>
-          <Form.Item name="credential_ref" label="Credential Ref"><Input placeholder="env:KUBECONFIG_PROD or vault:cluster/prod" /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea rows={2} /></Form.Item>
+          <GuidedFormItem name="name" label="集群名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="server" label="API Server" rules={[{ required: true }]}><Input placeholder="https://127.0.0.1:6443" /></GuidedFormItem>
+          <GuidedFormItem name="kubeconfig" label="Kubeconfig"><Input.TextArea rows={6} /></GuidedFormItem>
+          <GuidedFormItem name="credential_ref" label="Credential Ref"><Input placeholder="env:KUBECONFIG_PROD or vault:cluster/prod" /></GuidedFormItem>
+          <GuidedFormItem name="description" label="描述"><Input.TextArea rows={2} /></GuidedFormItem>
         </Form>
       </Modal>
 
       <Modal title={`部署向导 - ${selectedCluster?.name || ''}`} open={deployOpen} onCancel={() => { setDeployOpen(false); setDeployPreview(null); }} onOk={applyDeploy} okText="确认应用">
         <Form form={form} layout="vertical" initialValues={{ namespace: 'default', replicas: 1 }}>
-          <Form.Item name="namespace" label="命名空间" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="name" label="应用名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="image" label="镜像" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="replicas" label="副本"><InputNumber min={1} /></Form.Item>
+          <GuidedFormItem name="namespace" label="命名空间" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="name" label="应用名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="image" label="镜像" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="replicas" label="副本"><InputNumber min={1} /></GuidedFormItem>
         </Form>
         <Button onClick={previewDeploy}>预览 Diff</Button>
         {deployPreview ? <pre style={{ marginTop: 12, maxHeight: 180, overflow: 'auto' }}>{JSON.stringify(deployPreview, null, 2)}</pre> : null}

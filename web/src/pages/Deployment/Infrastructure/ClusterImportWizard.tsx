@@ -214,16 +214,16 @@ const ClusterImportWizard: React.FC = () => {
   const renderStep0 = () => (
     <Card title="基本信息">
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="name"
           label="集群名称"
           rules={[{ required: true, message: '请输入集群名称' }]}
         >
           <Input placeholder="例如: production-k8s" />
-        </Form.Item>
-        <Form.Item name="description" label="描述">
+        </GuidedFormItem>
+        <GuidedFormItem name="description" label="描述">
           <TextArea rows={2} placeholder="集群描述（可选）" />
-        </Form.Item>
+        </GuidedFormItem>
       </Form>
     </Card>
   );

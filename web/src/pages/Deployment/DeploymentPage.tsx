@@ -23,6 +23,7 @@ import type { Cluster } from '../../api/modules/kubernetes';
 import type { Host } from '../../api/modules/hosts';
 import type { ServiceItem } from '../../api/modules/services';
 import type { ClusterBootstrapTask, ClusterCredential, DeployTarget, DeployRelease, DeployReleaseTimelineEvent, EnvironmentBootstrapJob, Inspection } from '../../api/modules/deployment';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const envOptions = [{ value: 'development' }, { value: 'staging' }, { value: 'production' }];
 const strategyOptions = [{ value: 'rolling' }, { value: 'blue-green' }, { value: 'canary' }];
@@ -391,7 +392,7 @@ const DeploymentPage: React.FC = () => {
               <>
                 <Form form={targetForm} layout="vertical">
                   <Row gutter={12}>
-                    <Col span={6}><Form.Item name="name" label="目标名称" rules={[{ required: true }]}><Input placeholder="prod-k8s / edge-compose" /></Form.Item></Col>
+                    <Col span={6}><GuidedFormItem name="name" label="目标名称" rules={[{ required: true }]}><Input placeholder="prod-k8s / edge-compose" /></GuidedFormItem></Col>
                     <Col span={4}><Form.Item name="target_type" label="类型" initialValue="k8s" rules={[{ required: true }]}><Select options={[{ value: 'k8s' }, { value: 'compose' }]} /></Form.Item></Col>
                     <Col span={4}><Form.Item name="env" label="环境" initialValue="staging"><Select options={envOptions} /></Form.Item></Col>
                     <Col span={10}>
@@ -483,9 +484,9 @@ const DeploymentPage: React.FC = () => {
                           const target = targets.find((t) => t.id === targetId);
                           if (!target) return null;
                           if (target.target_type === 'k8s') {
-                            return <Form.Item name="variables_json" label="K8s 变量(JSON)"><Input.TextArea rows={6} placeholder='{"image_tag":"v1.2.3","replicas":"3"}' /></Form.Item>;
+                            return <GuidedFormItem name="variables_json" label="K8s 变量(JSON)"><Input.TextArea rows={6} placeholder='{"image_tag":"v1.2.3","replicas":"3"}' /></GuidedFormItem>;
                           }
-                          return <Form.Item name="variables_json" label="Compose 变量(JSON)"><Input.TextArea rows={6} placeholder='{"COMPOSE_PROJECT_NAME":"svc-a","IMAGE_TAG":"v1.2.3"}' /></Form.Item>;
+                          return <GuidedFormItem name="variables_json" label="Compose 变量(JSON)"><Input.TextArea rows={6} placeholder='{"COMPOSE_PROJECT_NAME":"svc-a","IMAGE_TAG":"v1.2.3"}' /></GuidedFormItem>;
                         }}
                       </Form.Item>
                       <Row gutter={12}>
@@ -570,10 +571,10 @@ const DeploymentPage: React.FC = () => {
                     <Col span={12}><Space style={{ marginTop: 30 }}><Button onClick={() => void loadGovernance()}>加载策略</Button><Button type="primary" onClick={() => void saveGovernance()}>保存策略</Button></Space></Col>
                   </Row>
                   <Row gutter={12}>
-                    <Col span={12}><Form.Item name="traffic_policy" label="流量策略(JSON)"><Input.TextArea rows={7} /></Form.Item></Col>
-                    <Col span={12}><Form.Item name="resilience_policy" label="韧性策略(JSON)"><Input.TextArea rows={7} /></Form.Item></Col>
-                    <Col span={12}><Form.Item name="access_policy" label="访问策略(JSON)"><Input.TextArea rows={7} /></Form.Item></Col>
-                    <Col span={12}><Form.Item name="slo_policy" label="SLO 策略(JSON)"><Input.TextArea rows={7} /></Form.Item></Col>
+                    <Col span={12}><GuidedFormItem name="traffic_policy" label="流量策略(JSON)"><Input.TextArea rows={7} /></GuidedFormItem></Col>
+                    <Col span={12}><GuidedFormItem name="resilience_policy" label="韧性策略(JSON)"><Input.TextArea rows={7} /></GuidedFormItem></Col>
+                    <Col span={12}><GuidedFormItem name="access_policy" label="访问策略(JSON)"><Input.TextArea rows={7} /></GuidedFormItem></Col>
+                    <Col span={12}><GuidedFormItem name="slo_policy" label="SLO 策略(JSON)"><Input.TextArea rows={7} /></GuidedFormItem></Col>
                   </Row>
                 </Form>
               </Card>
@@ -588,7 +589,7 @@ const DeploymentPage: React.FC = () => {
                   <Form form={inspectionForm} layout="inline">
                     <Form.Item name="service_id"><Select allowClear style={{ width: 220 }} showSearch options={serviceOptions} placeholder="服务" optionFilterProp="label" /></Form.Item>
                     <Form.Item name="target_id"><Select allowClear style={{ width: 220 }} showSearch options={targetOptions} placeholder="部署目标" optionFilterProp="label" /></Form.Item>
-                    <Form.Item name="release_id"><InputNumber min={1} placeholder="release id" /></Form.Item>
+                    <GuidedFormItem name="release_id"><InputNumber min={1} placeholder="release id" /></GuidedFormItem>
                     <Form.Item name="stage" initialValue="periodic"><Select style={{ width: 160 }} options={[{ value: 'pre' }, { value: 'post' }, { value: 'periodic' }]} /></Form.Item>
                     <Button type="primary" onClick={() => void runInspection((inspectionForm.getFieldValue('stage') || 'periodic') as 'pre' | 'post' | 'periodic')}>运行巡检</Button>
                   </Form>
@@ -617,7 +618,7 @@ const DeploymentPage: React.FC = () => {
                 <Col span={10}>
                   <Card size="small" title="节点选择与参数">
                     <Form form={bootstrapForm} layout="vertical" initialValues={{ cni: 'flannel' }}>
-                      <Form.Item name="name" label="集群名称" rules={[{ required: true }]}><Input placeholder="edge-cluster-a" /></Form.Item>
+                      <GuidedFormItem name="name" label="集群名称" rules={[{ required: true }]}><Input placeholder="edge-cluster-a" /></GuidedFormItem>
                       <Form.Item name="control_plane_host_id" label="控制平面节点" rules={[{ required: true }]}>
                         <Select showSearch optionFilterProp="label" options={hostOptions} placeholder="选择一台控制平面主机" />
                       </Form.Item>
@@ -663,9 +664,9 @@ const DeploymentPage: React.FC = () => {
                   <Card size="small" title="环境部署（SSH + 二进制安装）">
                     <Form form={environmentForm} layout="vertical" initialValues={{ runtime_type: 'k8s', package_version: 'v0.1.0', env: 'staging' }}>
                       <Row gutter={12}>
-                        <Col span={6}><Form.Item name="name" label="任务名称" rules={[{ required: true }]}><Input placeholder="env-bootstrap-a" /></Form.Item></Col>
+                        <Col span={6}><GuidedFormItem name="name" label="任务名称" rules={[{ required: true }]}><Input placeholder="env-bootstrap-a" /></GuidedFormItem></Col>
                         <Col span={4}><Form.Item name="runtime_type" label="Runtime" rules={[{ required: true }]}><Select options={runtimeOptions} /></Form.Item></Col>
-                        <Col span={4}><Form.Item name="package_version" label="版本" rules={[{ required: true }]}><Input placeholder="v0.1.0" /></Form.Item></Col>
+                        <Col span={4}><GuidedFormItem name="package_version" label="版本" rules={[{ required: true }]}><Input placeholder="v0.1.0" /></GuidedFormItem></Col>
                         <Col span={4}><Form.Item name="env" label="环境"><Select options={envOptions} /></Form.Item></Col>
                         <Col span={6}><Form.Item name="target_id" label="绑定目标"><Select allowClear options={targetOptions} placeholder="可选" /></Form.Item></Col>
                       </Row>
@@ -712,23 +713,23 @@ const DeploymentPage: React.FC = () => {
                     <Form form={credentialForm} layout="vertical" initialValues={{ auth_method: 'kubeconfig' }}>
                       <Row gutter={12}>
                         <Col span={8}><Form.Item name="platform_cluster_id" label="平台注册集群"><Select allowClear options={clusterOptions} placeholder="选择现有集群" /></Form.Item></Col>
-                        <Col span={8}><Form.Item name="platform_name" label="平台注册名称"><Input placeholder="可选，默认集群名" /></Form.Item></Col>
+                        <Col span={8}><GuidedFormItem name="platform_name" label="平台注册名称"><Input placeholder="可选，默认集群名" /></GuidedFormItem></Col>
                         <Col span={8}><Space style={{ marginTop: 30 }}><Button onClick={() => void registerPlatformCredential()}>注册平台凭据</Button></Space></Col>
                       </Row>
                       <Row gutter={12}>
-                        <Col span={6}><Form.Item name="external_name" label="外部凭据名称" rules={[{ required: true }]}><Input placeholder="external-prod-k8s" /></Form.Item></Col>
+                        <Col span={6}><GuidedFormItem name="external_name" label="外部凭据名称" rules={[{ required: true }]}><Input placeholder="external-prod-k8s" /></GuidedFormItem></Col>
                         <Col span={4}><Form.Item name="auth_method" label="认证方式" rules={[{ required: true }]}><Select options={[{ value: 'kubeconfig' }, { value: 'cert' }]} /></Form.Item></Col>
                         <Col span={14}><Form.Item shouldUpdate noStyle>{({ getFieldValue }) => {
                           const auth = getFieldValue('auth_method') || 'kubeconfig';
                           if (auth === 'kubeconfig') {
-                            return <Form.Item name="kubeconfig" label="Kubeconfig" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>;
+                            return <GuidedFormItem name="kubeconfig" label="Kubeconfig" rules={[{ required: true }]}><Input.TextArea rows={4} /></GuidedFormItem>;
                           }
                           return (
                             <Row gutter={8}>
-                              <Col span={24}><Form.Item name="endpoint" label="Endpoint" rules={[{ required: true }]}><Input placeholder="https://10.0.0.10:6443" /></Form.Item></Col>
-                              <Col span={8}><Form.Item name="ca_cert" label="CA Cert" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item></Col>
-                              <Col span={8}><Form.Item name="cert" label="Client Cert" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item></Col>
-                              <Col span={8}><Form.Item name="key" label="Client Key" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item></Col>
+                              <Col span={24}><GuidedFormItem name="endpoint" label="Endpoint" rules={[{ required: true }]}><Input placeholder="https://10.0.0.10:6443" /></GuidedFormItem></Col>
+                              <Col span={8}><GuidedFormItem name="ca_cert" label="CA Cert" rules={[{ required: true }]}><Input.TextArea rows={3} /></GuidedFormItem></Col>
+                              <Col span={8}><GuidedFormItem name="cert" label="Client Cert" rules={[{ required: true }]}><Input.TextArea rows={3} /></GuidedFormItem></Col>
+                              <Col span={8}><GuidedFormItem name="key" label="Client Key" rules={[{ required: true }]}><Input.TextArea rows={3} /></GuidedFormItem></Col>
                             </Row>
                           );
                         }}</Form.Item></Col>
@@ -760,10 +761,10 @@ const DeploymentPage: React.FC = () => {
 
       <Modal title="新建 K8s 集群" open={clusterModalOpen} onCancel={() => setClusterModalOpen(false)} onOk={() => void createCluster()} okText="创建">
         <Form form={clusterForm} layout="vertical">
-          <Form.Item name="name" label="集群名称" rules={[{ required: true }]}><Input placeholder="prod-cn-hz" /></Form.Item>
-          <Form.Item name="server" label="API Server" rules={[{ required: true }]}><Input placeholder="https://10.0.0.10:6443" /></Form.Item>
-          <Form.Item name="credential_ref" label="凭据引用"><Input placeholder="env:KUBECONFIG_PROD" /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea rows={3} /></Form.Item>
+          <GuidedFormItem name="name" label="集群名称" rules={[{ required: true }]}><Input placeholder="prod-cn-hz" /></GuidedFormItem>
+          <GuidedFormItem name="server" label="API Server" rules={[{ required: true }]}><Input placeholder="https://10.0.0.10:6443" /></GuidedFormItem>
+          <GuidedFormItem name="credential_ref" label="凭据引用"><Input placeholder="env:KUBECONFIG_PROD" /></GuidedFormItem>
+          <GuidedFormItem name="description" label="描述"><Input.TextArea rows={3} /></GuidedFormItem>
         </Form>
       </Modal>
 

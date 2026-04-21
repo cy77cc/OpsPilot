@@ -433,9 +433,9 @@ const AIModelSettingsPage: React.FC = () => {
         extra={<Button type="primary" loading={saving} onClick={() => void saveModel()}>保存</Button>}
       >
         <Form<ModelFormValues> form={form} layout="vertical" initialValues={initialFormValues}>
-          <Form.Item name="name" label="显示名称" rules={[{ required: true, message: '请输入模型显示名称' }]}>
+          <GuidedFormItem name="name" label="显示名称" rules={[{ required: true, message: '请输入模型显示名称' }]}>
             <Input placeholder="例如：Qwen3.5-Plus（生产）" />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Row gutter={12}>
             <Col span={12}>
@@ -480,9 +480,9 @@ const AIModelSettingsPage: React.FC = () => {
               </GuidedFormItem>
             </Col>
             <Col span={8}>
-              <Form.Item name="sort_order" label="排序权重">
+              <GuidedFormItem name="sort_order" label="排序权重">
                 <InputNumber style={{ width: '100%' }} />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={8}>
               <Form.Item name="thinking" label="思考模式" valuePropName="checked">

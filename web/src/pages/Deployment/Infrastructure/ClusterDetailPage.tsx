@@ -15,6 +15,7 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../../api';
 import { DetailSkeleton } from '../../../components/LoadingSkeleton';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 import type {
   Cluster, ClusterNode, NamespaceInfo, DeploymentInfo,
   StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo, IngressInfo,
@@ -1783,8 +1784,8 @@ const ClusterDetailPage: React.FC = () => {
       {/* Modals */}
       <Modal title="编辑集群" open={editModalVisible} onCancel={() => setEditModalVisible(false)} footer={null}>
         <Form form={editForm} layout="vertical" onFinish={handleEdit}>
-          <Form.Item name="name" label="集群名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="description" label="描述"><Input.TextArea rows={3} /></Form.Item>
+          <GuidedFormItem name="name" label="集群名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="description" label="描述"><Input.TextArea rows={3} /></GuidedFormItem>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setEditModalVisible(false)}>取消</Button>
             <Button type="primary" htmlType="submit">保存</Button>
@@ -1794,7 +1795,7 @@ const ClusterDetailPage: React.FC = () => {
 
       <Modal title="添加节点" open={addNodeModalVisible} onCancel={() => { setAddNodeModalVisible(false); addNodeForm.resetFields(); }} footer={null}>
         <Form form={addNodeForm} layout="vertical" onFinish={handleAddNodes}>
-          <Form.Item name="hostIds" label="主机 ID" rules={[{ required: true }]} extra="多个 ID 用逗号分隔"><Input placeholder="例如: 1,2,3" /></Form.Item>
+          <GuidedFormItem name="hostIds" label="主机 ID" rules={[{ required: true }]} extra="多个 ID 用逗号分隔"><Input placeholder="例如: 1,2,3" /></GuidedFormItem>
           <Form.Item name="role" label="角色" initialValue="worker">
             <Select options={[{ label: 'Worker', value: 'worker' }, { label: 'Control Plane', value: 'control-plane' }]} />
           </Form.Item>
@@ -1820,14 +1821,14 @@ const ClusterDetailPage: React.FC = () => {
         destroyOnHidden
       >
         <Form form={scaleForm} layout="vertical">
-          <Form.Item
+          <GuidedFormItem
             name="replicas"
             label="replicas"
             rules={[{ required: true, message: '请输入副本数' }]}
             initialValue={pendingScaleOperation?.currentReplicas}
           >
             <InputNumber min={0} className="w-full" aria-label="replicas" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 
@@ -1846,9 +1847,9 @@ const ClusterDetailPage: React.FC = () => {
         destroyOnHidden
       >
         <Form form={serviceForm} layout="vertical">
-          <Form.Item name="name" label="service_name" rules={[{ required: true, message: '请输入 Service 名称' }]}>
+          <GuidedFormItem name="name" label="service_name" rules={[{ required: true, message: '请输入 Service 名称' }]}>
             <Input aria-label="service_name" disabled={pendingServiceModal?.mode === 'edit'} />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="type" label="service_type" rules={[{ required: true, message: '请选择 Service 类型' }]}>
             <Select
               aria-label="service_type"
@@ -1859,21 +1860,21 @@ const ClusterDetailPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item name="selector_text" label="selector" rules={[{ required: true, message: '请输入 selector，格式 key=value' }]}>
+          <GuidedFormItem name="selector_text" label="selector" rules={[{ required: true, message: '请输入 selector，格式 key=value' }]}>
             <Input aria-label="selector" placeholder="app=web,component=api" />
-          </Form.Item>
-          <Form.Item name="port" label="service_port" rules={[{ required: true, message: '请输入端口' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="port" label="service_port" rules={[{ required: true, message: '请输入端口' }]}>
             <InputNumber min={1} max={65535} className="w-full" aria-label="service_port" />
-          </Form.Item>
-          <Form.Item name="target_port" label="target_port" rules={[{ required: true, message: '请输入 target_port' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="target_port" label="target_port" rules={[{ required: true, message: '请输入 target_port' }]}>
             <Input aria-label="target_port" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="protocol" label="protocol" initialValue="TCP">
             <Select aria-label="protocol" options={[{ label: 'TCP', value: 'TCP' }, { label: 'UDP', value: 'UDP' }]} />
           </Form.Item>
-          <Form.Item name="node_port" label="node_port">
+          <GuidedFormItem name="node_port" label="node_port">
             <InputNumber min={30000} max={32767} className="w-full" aria-label="node_port" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 
@@ -1892,18 +1893,18 @@ const ClusterDetailPage: React.FC = () => {
         destroyOnHidden
       >
         <Form form={ingressForm} layout="vertical">
-          <Form.Item name="name" label="ingress_name" rules={[{ required: true, message: '请输入 Ingress 名称' }]}>
+          <GuidedFormItem name="name" label="ingress_name" rules={[{ required: true, message: '请输入 Ingress 名称' }]}>
             <Input aria-label="ingress_name" disabled={pendingIngressModal?.mode === 'edit'} />
-          </Form.Item>
-          <Form.Item name="ingress_class_name" label="ingress_class_name">
+          </GuidedFormItem>
+          <GuidedFormItem name="ingress_class_name" label="ingress_class_name">
             <Input aria-label="ingress_class_name" />
-          </Form.Item>
-          <Form.Item name="host" label="ingress_host" rules={[{ required: true, message: '请输入主机名' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="host" label="ingress_host" rules={[{ required: true, message: '请输入主机名' }]}>
             <Input aria-label="ingress_host" />
-          </Form.Item>
-          <Form.Item name="path" label="ingress_path" rules={[{ required: true, message: '请输入路径' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="path" label="ingress_path" rules={[{ required: true, message: '请输入路径' }]}>
             <Input aria-label="ingress_path" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="path_type" label="path_type" initialValue="Prefix">
             <Select
               aria-label="path_type"
@@ -1914,15 +1915,15 @@ const ClusterDetailPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item name="service_name" label="backend_service_name" rules={[{ required: true, message: '请输入后端 Service 名称' }]}>
+          <GuidedFormItem name="service_name" label="backend_service_name" rules={[{ required: true, message: '请输入后端 Service 名称' }]}>
             <Input aria-label="backend_service_name" />
-          </Form.Item>
-          <Form.Item name="service_port" label="backend_service_port" rules={[{ required: true, message: '请输入后端 Service 端口' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="service_port" label="backend_service_port" rules={[{ required: true, message: '请输入后端 Service 端口' }]}>
             <InputNumber min={1} max={65535} className="w-full" aria-label="backend_service_port" />
-          </Form.Item>
-          <Form.Item name="tls_secret_name" label="tls_secret_name">
+          </GuidedFormItem>
+          <GuidedFormItem name="tls_secret_name" label="tls_secret_name">
             <Input aria-label="tls_secret_name" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 
@@ -1950,13 +1951,13 @@ const ClusterDetailPage: React.FC = () => {
             {pendingApprovalOperation?.title ? `为“${pendingApprovalOperation.title}”提交审批 token 后继续执行。` : '请输入 approval_token 以继续执行。'}
           </Text>
           <Form form={approvalForm} layout="vertical">
-            <Form.Item
+            <GuidedFormItem
               name="approval_token"
               label="approval_token"
               rules={[{ required: true, message: '请输入 approval_token' }]}
             >
               <Input placeholder="请输入审批 token" autoComplete="off" />
-            </Form.Item>
+            </GuidedFormItem>
           </Form>
         </Space>
       </Modal>
@@ -1993,12 +1994,12 @@ const ClusterDetailPage: React.FC = () => {
                 }}
               >
                 <div className="grid grid-cols-1 gap-3">
-                  <Form.Item name="key" label="标签键" rules={[{ required: true }]} className="mb-0">
+                  <GuidedFormItem name="key" label="标签键" rules={[{ required: true }]} className="mb-0">
                     <Input placeholder="app.kubernetes.io/name" />
-                  </Form.Item>
-                  <Form.Item name="value" label="标签值" className="mb-0">
+                  </GuidedFormItem>
+                  <GuidedFormItem name="value" label="标签值" className="mb-0">
                     <Input placeholder="frontend" />
-                  </Form.Item>
+                  </GuidedFormItem>
                 </div>
                 <Space className="mt-3">
                   <Button
@@ -2040,12 +2041,12 @@ const ClusterDetailPage: React.FC = () => {
                 }}
               >
                 <div className="grid grid-cols-1 gap-3">
-                  <Form.Item name="key" label="污点键" rules={[{ required: true }]} className="mb-0">
+                  <GuidedFormItem name="key" label="污点键" rules={[{ required: true }]} className="mb-0">
                     <Input placeholder="node-role.kubernetes.io/worker" />
-                  </Form.Item>
-                  <Form.Item name="value" label="污点值" className="mb-0">
+                  </GuidedFormItem>
+                  <GuidedFormItem name="value" label="污点值" className="mb-0">
                     <Input placeholder="value" />
-                  </Form.Item>
+                  </GuidedFormItem>
                   <Form.Item name="effect" label="效果" className="mb-0">
                     <Select
                       options={[

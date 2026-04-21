@@ -4,6 +4,7 @@ import { CheckCircleOutlined, DeleteOutlined, QuestionCircleOutlined, ReloadOutl
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { CloudAccount, CloudInstance, CloudProviderInfo, CredentialTemplate } from '../../api/modules/hosts';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 // 云厂商选项
 const providerOptions = [
@@ -322,30 +323,30 @@ const HostCloudImportPage: React.FC = () => {
               );
             }}
           </Form.Item>
-          <Form.Item name="accountName" rules={[{ required: true }]}>
+          <GuidedFormItem name="accountName" rules={[{ required: true }]}>
             <Input placeholder="账号名称" style={{ width: 140 }} />
-          </Form.Item>
-          <Form.Item name="accessKeyId" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="accessKeyId" rules={[{ required: true }]}>
             <Input placeholder="AccessKey ID" style={{ width: 180 }} />
-          </Form.Item>
-          <Form.Item name="accessKeySecret" rules={[{ required: true }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="accessKeySecret" rules={[{ required: true }]}>
             <Input.Password placeholder="AccessKey Secret" style={{ width: 180 }} />
-          </Form.Item>
-          <Form.Item name="regionDefault">
+          </GuidedFormItem>
+          <GuidedFormItem name="regionDefault">
             <Input placeholder="默认地域（如 cn-beijing）" style={{ width: 180 }} />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item shouldUpdate>
             {({ getFieldValue }) => {
               const provider = getFieldValue('provider');
               if (provider !== 'ucloud') return null;
               return (
                 <>
-                  <Form.Item name="projectId">
+                  <GuidedFormItem name="projectId">
                     <Input
                       placeholder="项目 ID（子账户必填）"
                       style={{ width: 140 }}
                     />
-                  </Form.Item>
+                  </GuidedFormItem>
                   <Form.Item name="isIntl" valuePropName="checked">
                     <Checkbox>
                       <Tooltip title="使用国际版 API 端点（api.intl.ucloud.cn）。国内站账号通常无需勾选，国际站账号需勾选。">
@@ -444,9 +445,9 @@ const HostCloudImportPage: React.FC = () => {
               optionFilterProp="label"
             />
           </Form.Item>
-          <Form.Item name="provider" hidden>
+          <GuidedFormItem name="provider" hidden>
             <Input />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="region" rules={[{ required: true, message: '请选择地域' }]}>
             <Select
               style={{ width: 180 }}
@@ -467,15 +468,15 @@ const HostCloudImportPage: React.FC = () => {
               allowClear
             />
           </Form.Item>
-          <Form.Item name="keyword">
+          <GuidedFormItem name="keyword">
             <Input placeholder="关键词过滤" style={{ width: 120 }} />
-          </Form.Item>
-          <Form.Item name="role">
+          </GuidedFormItem>
+          <GuidedFormItem name="role">
             <Input placeholder="导入角色" style={{ width: 100 }} />
-          </Form.Item>
-          <Form.Item name="labels">
+          </GuidedFormItem>
+          <GuidedFormItem name="labels">
             <Input placeholder="标签（逗号分隔）" style={{ width: 130 }} />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item>
             <Button type="primary" onClick={queryInstances} loading={querying}>查询实例</Button>
           </Form.Item>

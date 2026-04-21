@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
 import type { BootstrapProfile, BootstrapTask, BootstrapVersionItem, BootstrapValidationIssue } from '../../../api/modules/cluster';
 import type { Host } from '../../../api/modules/hosts';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 
 const { TextArea } = Input;
 
@@ -301,17 +302,17 @@ const ClusterBootstrapWizard: React.FC = () => {
   const renderStep0 = () => (
     <Card title="基本信息">
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="name"
           label="集群名称"
           rules={[{ required: true, message: '请输入集群名称' }]}
           initialValue={formData.name}
         >
           <Input placeholder="例如: production-k8s-cluster" />
-        </Form.Item>
-        <Form.Item name="description" label="描述">
+        </GuidedFormItem>
+        <GuidedFormItem name="description" label="描述">
           <TextArea rows={2} placeholder="集群描述（可选）" />
-        </Form.Item>
+        </GuidedFormItem>
       </Form>
     </Card>
   );
@@ -429,22 +430,22 @@ const ClusterBootstrapWizard: React.FC = () => {
             ]}
           />
         </Form.Item>
-        <Form.Item
+        <GuidedFormItem
           name="pod_cidr"
           label="Pod CIDR"
           rules={[{ required: true }]}
           initialValue={formData.pod_cidr}
         >
           <Input placeholder="10.244.0.0/16" />
-        </Form.Item>
-        <Form.Item
+        </GuidedFormItem>
+        <GuidedFormItem
           name="service_cidr"
           label="Service CIDR"
           rules={[{ required: true }]}
           initialValue={formData.service_cidr}
         >
           <Input placeholder="10.96.0.0/12" />
-        </Form.Item>
+        </GuidedFormItem>
         <Alert
           className="mb-4"
           type="info"
@@ -460,12 +461,12 @@ const ClusterBootstrapWizard: React.FC = () => {
             ]}
           />
         </Form.Item>
-        <Form.Item name="repo_url" label="内网包仓地址（mirror 时建议）" initialValue={formData.repo_url}>
+        <GuidedFormItem name="repo_url" label="内网包仓地址（mirror 时建议）" initialValue={formData.repo_url}>
           <Input placeholder="例如: https://apt-mirror.local/kubernetes" />
-        </Form.Item>
-        <Form.Item name="image_repository" label="镜像仓库" initialValue={formData.image_repository}>
+        </GuidedFormItem>
+        <GuidedFormItem name="image_repository" label="镜像仓库" initialValue={formData.image_repository}>
           <Input placeholder="例如: registry.aliyuncs.com/google_containers 或 registry.local/k8s" />
-        </Form.Item>
+        </GuidedFormItem>
         <Form.Item name="endpoint_mode" label="控制平面入口模式" initialValue={formData.endpoint_mode}>
           <Select
             options={[
@@ -475,9 +476,9 @@ const ClusterBootstrapWizard: React.FC = () => {
             ]}
           />
         </Form.Item>
-        <Form.Item name="control_plane_endpoint" label="Control Plane Endpoint" initialValue={formData.control_plane_endpoint}>
+        <GuidedFormItem name="control_plane_endpoint" label="Control Plane Endpoint" initialValue={formData.control_plane_endpoint}>
           <Input placeholder="例如: 10.0.0.10:6443 或 k8s-api.example.com:6443" />
-        </Form.Item>
+        </GuidedFormItem>
         <Form.Item name="vip_provider" label="VIP Provider" initialValue={formData.vip_provider}>
           <Select
             options={[
@@ -494,18 +495,18 @@ const ClusterBootstrapWizard: React.FC = () => {
             ]}
           />
         </Form.Item>
-        <Form.Item name="external_etcd_endpoints" label="external etcd endpoints（逗号分隔）">
+        <GuidedFormItem name="external_etcd_endpoints" label="external etcd endpoints（逗号分隔）">
           <Input placeholder="https://10.0.0.21:2379,https://10.0.0.22:2379" />
-        </Form.Item>
-        <Form.Item name="external_etcd_ca_cert" label="external etcd CA cert (PEM)">
+        </GuidedFormItem>
+        <GuidedFormItem name="external_etcd_ca_cert" label="external etcd CA cert (PEM)">
           <TextArea rows={2} />
-        </Form.Item>
-        <Form.Item name="external_etcd_cert" label="external etcd client cert (PEM)">
+        </GuidedFormItem>
+        <GuidedFormItem name="external_etcd_cert" label="external etcd client cert (PEM)">
           <TextArea rows={2} />
-        </Form.Item>
-        <Form.Item name="external_etcd_key" label="external etcd client key (PEM)">
+        </GuidedFormItem>
+        <GuidedFormItem name="external_etcd_key" label="external etcd client key (PEM)">
           <TextArea rows={2} />
-        </Form.Item>
+        </GuidedFormItem>
         <Alert
           type="info"
           message="网络配置说明"

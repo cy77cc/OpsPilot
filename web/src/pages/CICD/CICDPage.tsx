@@ -4,6 +4,7 @@ import { Api } from '../../api';
 import type { ServiceItem } from '../../api/modules/services';
 import type { DeployTarget } from '../../api/modules/deployment';
 import type { CIRunRecord, ReleaseApproval, ReleaseRecord, ServiceCIConfig, TimelineEvent } from '../../api/modules/cicd';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const triggerModes = ['manual', 'source-event', 'both'];
 const releaseStrategies = ['rolling', 'blue-green', 'canary'];
@@ -203,10 +204,10 @@ const CICDPage: React.FC = () => {
           children: (
             <Card>
               <Form form={ciForm} layout="vertical" initialValues={{ branch: 'main', trigger_mode: 'manual' }}>
-                <Form.Item name="repo_url" label="仓库地址" rules={[{ required: true }]}><Input /></Form.Item>
-                <Form.Item name="branch" label="分支"><Input /></Form.Item>
-                <Form.Item name="build_steps" label="构建步骤（每行一个）"><Input.TextArea rows={5} /></Form.Item>
-                <Form.Item name="artifact_target" label="产物目标（镜像仓库）" rules={[{ required: true }]}><Input /></Form.Item>
+                <GuidedFormItem name="repo_url" label="仓库地址" rules={[{ required: true }]}><Input /></GuidedFormItem>
+                <GuidedFormItem name="branch" label="分支"><Input /></GuidedFormItem>
+                <GuidedFormItem name="build_steps" label="构建步骤（每行一个）"><Input.TextArea rows={5} /></GuidedFormItem>
+                <GuidedFormItem name="artifact_target" label="产物目标（镜像仓库）" rules={[{ required: true }]}><Input /></GuidedFormItem>
                 <Form.Item name="trigger_mode" label="触发模式" rules={[{ required: true }]}><Select options={triggerModes.map((x) => ({ value: x }))} /></Form.Item>
                 <Space>
                   <Button type="primary" onClick={() => void saveCIConfig()} disabled={!serviceId}>保存 CI 配置</Button>
@@ -232,11 +233,11 @@ const CICDPage: React.FC = () => {
             <Card>
               <Form form={cdForm} layout="vertical" initialValues={{ env: 'staging', strategy: 'rolling', approval_required: false, strategy_config: '{}' }}>
                 <Row gutter={12}>
-                  <Col span={6}><Form.Item name="env" label="环境" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                  <Col span={6}><GuidedFormItem name="env" label="环境" rules={[{ required: true }]}><Input /></GuidedFormItem></Col>
                   <Col span={6}><Form.Item name="strategy" label="发布策略" rules={[{ required: true }]}><Select options={releaseStrategies.map((x) => ({ value: x }))} /></Form.Item></Col>
                   <Col span={6}><Form.Item name="approval_required" label="需要审批"><Select options={[{ value: true, label: '是' }, { value: false, label: '否' }]} /></Form.Item></Col>
                 </Row>
-                <Form.Item name="strategy_config" label="策略配置(JSON)"><Input.TextArea rows={4} /></Form.Item>
+                <GuidedFormItem name="strategy_config" label="策略配置(JSON)"><Input.TextArea rows={4} /></GuidedFormItem>
                 <Button type="primary" onClick={() => void saveCDConfig()} disabled={!deploymentId}>保存 CD 配置</Button>
               </Form>
 
@@ -244,8 +245,8 @@ const CICDPage: React.FC = () => {
                 <Row gutter={12}>
                   <Col span={6}><Form.Item name="service_id" label="服务" rules={[{ required: true }]}><Select options={serviceOptions} /></Form.Item></Col>
                   <Col span={6}><Form.Item name="deployment_id" label="部署目标" rules={[{ required: true }]}><Select options={targetOptions} /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="env" label="环境" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="version" label="版本" rules={[{ required: true }]}><Input placeholder="v1.0.0" /></Form.Item></Col>
+                  <Col span={4}><GuidedFormItem name="env" label="环境" rules={[{ required: true }]}><Input /></GuidedFormItem></Col>
+                  <Col span={6}><GuidedFormItem name="version" label="版本" rules={[{ required: true }]}><Input placeholder="v1.0.0" /></GuidedFormItem></Col>
                 </Row>
                 <Button type="primary" onClick={() => void triggerRelease()}>触发发布</Button>
               </Form>
@@ -276,9 +277,9 @@ const CICDPage: React.FC = () => {
           children: (
             <Card>
               <Form form={rollbackForm} layout="inline" initialValues={{ target_version: 'v0.0.0' }}>
-                <Form.Item name="release_id" label="Release ID" rules={[{ required: true }]}><InputNumber min={1} /></Form.Item>
-                <Form.Item name="target_version" label="回滚到版本" rules={[{ required: true }]}><Input /></Form.Item>
-                <Form.Item name="comment" label="说明"><Input /></Form.Item>
+                <GuidedFormItem name="release_id" label="Release ID" rules={[{ required: true }]}><InputNumber min={1} /></GuidedFormItem>
+                <GuidedFormItem name="target_version" label="回滚到版本" rules={[{ required: true }]}><Input /></GuidedFormItem>
+                <GuidedFormItem name="comment" label="说明"><Input /></GuidedFormItem>
                 <Button onClick={() => void rollback()}>执行回滚</Button>
               </Form>
               <Table rowKey="id" dataSource={approvals} pagination={false} style={{ marginTop: 16 }} columns={[

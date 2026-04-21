@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, message } from 'antd';
 import { Api } from '../../../api';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 
 interface RegisterPlatformCredentialModalProps {
   visible: boolean;
@@ -76,13 +77,13 @@ const RegisterPlatformCredentialModal: React.FC<RegisterPlatformCredentialModalP
           />
         </Form.Item>
 
-        <Form.Item
+        <GuidedFormItem
           name="name"
           label="凭证名称"
           tooltip="可选，默认使用集群名称"
         >
           <Input placeholder="留空则使用集群名称" />
-        </Form.Item>
+        </GuidedFormItem>
 
         <Form.Item
           name="runtime_type"

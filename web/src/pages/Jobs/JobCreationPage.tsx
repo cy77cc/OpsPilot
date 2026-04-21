@@ -3,6 +3,7 @@ import { Form, Input, Select, Button, Card, Row, Col, InputNumber, Switch, notif
 import { SaveOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -93,9 +94,9 @@ const JobCreationPage: React.FC = () => {
         <Card title="基本信息" style={{ marginBottom: 16, background: '#1a1a2e', border: '1px solid #2d3748' }}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+              <GuidedFormItem name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
                 <Input placeholder="输入任务名称" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={12}>
               <Form.Item name="type" label="任务类型" rules={[{ required: true, message: '请选择任务类型' }]}>
@@ -110,31 +111,31 @@ const JobCreationPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Form.Item name="description" label="任务描述">
+          <GuidedFormItem name="description" label="任务描述">
             <TextArea rows={3} placeholder="输入任务描述" />
-          </Form.Item>
+          </GuidedFormItem>
         </Card>
 
         <Card title="执行配置" style={{ marginBottom: 16, background: '#1a1a2e', border: '1px solid #2d3748' }}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="schedule" label="定时规则 (cron)" rules={[{ required: true, message: '请输入定时规则' }]}>
+              <GuidedFormItem name="schedule" label="定时规则 (cron)" rules={[{ required: true, message: '请输入定时规则' }]}>
                 <Input placeholder="例如: */5 * * * *" />
-              </Form.Item>
-              <Form.Item name="command" label="执行命令" rules={[{ required: true, message: '请输入执行命令' }]}>
+              </GuidedFormItem>
+              <GuidedFormItem name="command" label="执行命令" rules={[{ required: true, message: '请输入执行命令' }]}>
                 <TextArea rows={6} placeholder="输入要执行的命令或脚本内容" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={12}>
-              <Form.Item name="hostIds" label="执行节点ID" extra="多个ID用逗号分隔，如 1,2,3">
+              <GuidedFormItem name="hostIds" label="执行节点ID" extra="多个ID用逗号分隔，如 1,2,3">
                 <Input placeholder="默认 1" />
-              </Form.Item>
-              <Form.Item name="timeout" label="超时时间（秒）">
+              </GuidedFormItem>
+              <GuidedFormItem name="timeout" label="超时时间（秒）">
                 <InputNumber min={1} max={86400} className="w-full" />
-              </Form.Item>
-              <Form.Item name="priority" label="优先级">
+              </GuidedFormItem>
+              <GuidedFormItem name="priority" label="优先级">
                 <InputNumber min={0} max={100} className="w-full" />
-              </Form.Item>
+              </GuidedFormItem>
               <Form.Item name="enabled" label="启用状态" valuePropName="checked">
                 <Switch checkedChildren="启用" unCheckedChildren="禁用" />
               </Form.Item>

@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { Api } from '../../../api';
 import type { Policy } from '../../../api/modules/deployment';
 import { TableSkeleton } from '../../../components/LoadingSkeleton';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 
 const PolicyManagementPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -261,13 +262,13 @@ const PolicyManagementPage: React.FC = () => {
         width={720}
       >
         <Form form={form} layout="vertical">
-          <Form.Item
+          <GuidedFormItem
             name="name"
             label="策略名称"
             rules={[{ required: true, message: '请输入策略名称' }]}
           >
             <Input placeholder="例如: Rate Limiting" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item
             name="type"
             label="策略类型"
@@ -283,15 +284,15 @@ const PolicyManagementPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item name="target_id" label="关联部署目标">
+          <GuidedFormItem name="target_id" label="关联部署目标">
             <Input type="number" placeholder="部署目标 ID（可选）" />
-          </Form.Item>
-          <Form.Item name="config" label="配置 (JSON)">
+          </GuidedFormItem>
+          <GuidedFormItem name="config" label="配置 (JSON)">
             <Input.TextArea
               rows={10}
               placeholder={'{\n  "rate": 1000,\n  "per": "minute"\n}'}
             />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="enabled" label="启用状态" valuePropName="checked">
             <Switch />
           </Form.Item>

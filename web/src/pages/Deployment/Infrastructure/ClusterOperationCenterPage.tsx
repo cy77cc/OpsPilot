@@ -27,6 +27,7 @@ import dayjs from 'dayjs';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Api } from '../../../api';
 import { DetailSkeleton, TableSkeleton } from '../../../components/LoadingSkeleton';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 import type {
   Cluster,
   ClusterOperationDetail,
@@ -526,9 +527,9 @@ const ClusterOperationCenterPage: React.FC = () => {
                 ]}
               />
             </Form.Item>
-            <Form.Item name="operator" label="操作人">
+            <GuidedFormItem name="operator" label="操作人">
               <Input placeholder="用户 ID / 名称" style={{ width: 180 }} allowClear />
-            </Form.Item>
+            </GuidedFormItem>
             <Form.Item label="时间范围" name="range">
               <DatePicker.RangePicker showTime />
             </Form.Item>

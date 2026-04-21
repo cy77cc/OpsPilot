@@ -334,9 +334,9 @@ const ChannelsConfigPage: React.FC = () => {
           layout="vertical"
           initialValues={{ channelName: '', channelProvider: 'webhook', channelTarget: '', channelConfigJson: '{}' }}
         >
-          <Form.Item label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
+          <GuidedFormItem label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="渠道名称" />
-          </Form.Item>
+          </GuidedFormItem>
           <GuidedFormItem
             label="Provider"
             name="channelProvider"
@@ -386,9 +386,9 @@ const ChannelsConfigPage: React.FC = () => {
           layout="vertical"
           initialValues={{ channelName: '', channelProvider: 'webhook', channelTarget: '', channelConfigJson: '{}' }}
         >
-          <Form.Item label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
+          <GuidedFormItem label="名称" name="channelName" rules={[{ required: true, message: '请输入名称' }]}>
             <Input />
-          </Form.Item>
+          </GuidedFormItem>
           <GuidedFormItem
             label="Provider"
             name="channelProvider"

@@ -23,6 +23,7 @@ import type { HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
 import { useAuth } from '../../components/Auth/AuthContext';
 import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 interface StepOneForm {
   name: string;
@@ -209,19 +210,19 @@ const HostOnboardingPage: React.FC = () => {
           {currentStep === 0 && (
             <>
               <Alert type="info" showIcon message="填写主机连接信息并执行探测" className="mb-4" />
-              <Form.Item name="name" label="主机名称" rules={[{ required: true, message: '请输入主机名称' }]}>
+              <GuidedFormItem name="name" label="主机名称" rules={[{ required: true, message: '请输入主机名称' }]}>
                 <Input placeholder="例如: prod-api-01" />
-              </Form.Item>
-              <Form.Item name="ip" label="主机 IP" rules={[{ required: true, message: '请输入主机IP' }]}>
+              </GuidedFormItem>
+              <GuidedFormItem name="ip" label="主机 IP" rules={[{ required: true, message: '请输入主机IP' }]}>
                 <Input placeholder="例如: 10.0.0.21" />
-              </Form.Item>
+              </GuidedFormItem>
               <Space style={{ width: '100%' }} size={16}>
-                <Form.Item name="port" label="SSH 端口" rules={[{ required: true }]} style={{ minWidth: 150 }}>
+                <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]} style={{ minWidth: 150 }}>
                   <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-                </Form.Item>
-                <Form.Item name="username" label="SSH 用户" rules={[{ required: true }]} style={{ minWidth: 200 }}>
+                </GuidedFormItem>
+                <GuidedFormItem name="username" label="SSH 用户" rules={[{ required: true }]} style={{ minWidth: 200 }}>
                   <Input />
-                </Form.Item>
+                </GuidedFormItem>
               </Space>
               <Form.Item name="authType" label="认证方式" rules={[{ required: true }]}>
                 <Radio.Group>
@@ -232,9 +233,9 @@ const HostOnboardingPage: React.FC = () => {
               <Form.Item noStyle shouldUpdate={(prev, next) => prev.authType !== next.authType}>
                 {({ getFieldValue }) =>
                   getFieldValue('authType') === 'password' ? (
-                    <Form.Item name="password" label="SSH 密码" rules={[{ required: true, message: '请输入 SSH 密码' }]}>
+                    <GuidedFormItem name="password" label="SSH 密码" rules={[{ required: true, message: '请输入 SSH 密码' }]}>
                       <Input.Password />
-                    </Form.Item>
+                    </GuidedFormItem>
                   ) : (
                     <Form.Item
                       name="sshKeyId"
@@ -294,19 +295,19 @@ const HostOnboardingPage: React.FC = () => {
           {currentStep === 2 && (
             <>
               <Alert type="info" showIcon message="确认入库参数，提交后完成纳管" className="mb-4" />
-              <Form.Item name="description" label="描述">
+              <GuidedFormItem name="description" label="描述">
                 <Input placeholder="可选" />
-              </Form.Item>
-              <Form.Item name="labels" label="标签（逗号分隔）">
+              </GuidedFormItem>
+              <GuidedFormItem name="labels" label="标签（逗号分隔）">
                 <Input placeholder="prod,api,critical" />
-              </Form.Item>
+              </GuidedFormItem>
               <Space style={{ width: '100%' }} size={16}>
-                <Form.Item name="role" label="角色" style={{ minWidth: 220 }}>
+                <GuidedFormItem name="role" label="角色" style={{ minWidth: 220 }}>
                   <Input placeholder="例如: worker" />
-                </Form.Item>
-                <Form.Item name="clusterId" label="集群 ID" style={{ minWidth: 180 }}>
+                </GuidedFormItem>
+                <GuidedFormItem name="clusterId" label="集群 ID" style={{ minWidth: 180 }}>
                   <InputNumber min={0} style={{ width: '100%' }} />
-                </Form.Item>
+                </GuidedFormItem>
               </Space>
               {canForceCreate && (
                 <Form.Item name="force" label="探测失败时强制创建">
@@ -366,15 +367,15 @@ const HostOnboardingPage: React.FC = () => {
         width={760}
       >
         <Form form={keyForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}>
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}>
             <Input placeholder="例如: prod-root-key" />
-          </Form.Item>
-          <Form.Item name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}>
+          </GuidedFormItem>
+          <GuidedFormItem name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}>
             <Input.TextArea rows={10} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
-          </Form.Item>
-          <Form.Item name="passphrase" label="Passphrase（可选）">
+          </GuidedFormItem>
+          <GuidedFormItem name="passphrase" label="Passphrase（可选）">
             <Input.Password placeholder="若私钥有口令请输入" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Space, Typography, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Title, Paragraph } = Typography;
 
@@ -62,9 +63,9 @@ const ServiceDeployPage: React.FC = () => {
       <Card>
         <Form form={form} layout="vertical">
           <Space size={16} wrap>
-            <Form.Item label="环境" name="env"><Input style={{ width: 180 }} /></Form.Item>
-            <Form.Item label="Cluster ID" name="cluster_id"><Input style={{ width: 180 }} /></Form.Item>
-            <Form.Item label="Namespace" name="namespace"><Input style={{ width: 240 }} /></Form.Item>
+            <GuidedFormItem label="环境" name="env"><Input style={{ width: 180 }} /></GuidedFormItem>
+            <GuidedFormItem label="Cluster ID" name="cluster_id"><Input style={{ width: 180 }} /></GuidedFormItem>
+            <GuidedFormItem label="Namespace" name="namespace"><Input style={{ width: 240 }} /></GuidedFormItem>
           </Space>
         </Form>
 

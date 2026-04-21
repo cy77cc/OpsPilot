@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, Form, Input, Button, Switch, Select, Divider, Space, message, Alert } from 'antd';
 import { SaveOutlined, UserOutlined, LockOutlined, BellOutlined, GlobalOutlined } from '@ant-design/icons';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Option } = Select;
 
@@ -26,31 +27,31 @@ const SettingsPage: React.FC = () => {
         <Form form={form} layout="vertical" style={{ maxWidth: 600 }}>
           <Divider><UserOutlined /> 个人信息</Divider>
           
-          <Form.Item label="用户名" name="username" initialValue="admin">
+          <GuidedFormItem label="用户名" name="username" initialValue="admin">
             <Input placeholder="请输入用户名" />
-          </Form.Item>
+          </GuidedFormItem>
           
-          <Form.Item label="邮箱" name="email" initialValue="admin@company.com">
+          <GuidedFormItem label="邮箱" name="email" initialValue="admin@company.com">
             <Input placeholder="请输入邮箱" />
-          </Form.Item>
+          </GuidedFormItem>
           
-          <Form.Item label="手机号" name="phone" initialValue="138****8888">
+          <GuidedFormItem label="手机号" name="phone" initialValue="138****8888">
             <Input placeholder="请输入手机号" />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Divider><LockOutlined /> 安全设置</Divider>
           
-          <Form.Item label="当前密码" name="currentPassword">
+          <GuidedFormItem label="当前密码" name="currentPassword">
             <Input.Password placeholder="请输入当前密码" />
-          </Form.Item>
+          </GuidedFormItem>
           
-          <Form.Item label="新密码" name="newPassword">
+          <GuidedFormItem label="新密码" name="newPassword">
             <Input.Password placeholder="请输入新密码" />
-          </Form.Item>
+          </GuidedFormItem>
           
-          <Form.Item label="确认密码" name="confirmPassword">
+          <GuidedFormItem label="确认密码" name="confirmPassword">
             <Input.Password placeholder="请确认新密码" />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Divider><BellOutlined /> 通知设置</Divider>
           

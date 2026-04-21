@@ -28,6 +28,7 @@ import { useStableFetch } from '../../hooks';
 import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 import { DetailSkeleton } from '../../components/LoadingSkeleton';
 import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 type HostEditFormValues = {
   name: string;
@@ -360,9 +361,9 @@ const HostDetailPage: React.FC = () => {
         <Form form={editForm} layout="vertical">
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="name" label="主机名称" rules={[{ required: true, message: '请输入主机名称' }]}>
+              <GuidedFormItem name="name" label="主机名称" rules={[{ required: true, message: '请输入主机名称' }]}>
                 <Input />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={12}>
               <Form.Item name="status" label="状态" rules={[{ required: true }]}> 
@@ -373,20 +374,20 @@ const HostDetailPage: React.FC = () => {
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="region" label="区域">
+              <GuidedFormItem name="region" label="区域">
                 <Input placeholder="可选" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
             <Col span={12}>
-              <Form.Item name="tags" label="标签（逗号分隔）">
+              <GuidedFormItem name="tags" label="标签（逗号分隔）">
                 <Input placeholder="prod,web,critical" />
-              </Form.Item>
+              </GuidedFormItem>
             </Col>
           </Row>
 
-          <Form.Item name="description" label="描述">
+          <GuidedFormItem name="description" label="描述">
             <Input.TextArea rows={2} />
-          </Form.Item>
+          </GuidedFormItem>
 
           <Card size="small" title="SSH 凭据" style={{ marginBottom: 8 }}>
             <Row gutter={12}>
@@ -399,23 +400,23 @@ const HostDetailPage: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item name="username" label="SSH 用户" rules={[{ required: true }]}> 
+                <GuidedFormItem name="username" label="SSH 用户" rules={[{ required: true }]}> 
                   <Input />
-                </Form.Item>
+                </GuidedFormItem>
               </Col>
               <Col span={8}>
-                <Form.Item name="port" label="SSH 端口" rules={[{ required: true }]}> 
+                <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]}> 
                   <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-                </Form.Item>
+                </GuidedFormItem>
               </Col>
             </Row>
 
             <Form.Item noStyle shouldUpdate={(prev, next) => prev.authType !== next.authType}>
               {({ getFieldValue }) => (
                 getFieldValue('authType') === 'password' ? (
-                  <Form.Item name="password" label="SSH 密码" rules={[{ required: true, message: '请输入 SSH 密码' }]}>
+                  <GuidedFormItem name="password" label="SSH 密码" rules={[{ required: true, message: '请输入 SSH 密码' }]}>
                     <Input.Password placeholder="请输入新密码" />
-                  </Form.Item>
+                  </GuidedFormItem>
                 ) : (
                   <Form.Item
                     name="sshKeyId"
@@ -458,15 +459,15 @@ const HostDetailPage: React.FC = () => {
         width={760}
       >
         <Form form={keyForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}> 
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}> 
             <Input placeholder="例如: prod-root-key" />
-          </Form.Item>
-          <Form.Item name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}> 
+          </GuidedFormItem>
+          <GuidedFormItem name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}> 
             <Input.TextArea rows={10} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
-          </Form.Item>
-          <Form.Item name="passphrase" label="Passphrase（可选）">
+          </GuidedFormItem>
+          <GuidedFormItem name="passphrase" label="Passphrase（可选）">
             <Input.Password placeholder="若私钥有口令请输入" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 

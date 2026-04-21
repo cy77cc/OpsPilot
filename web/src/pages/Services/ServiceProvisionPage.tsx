@@ -6,6 +6,7 @@ import Editor from '@monaco-editor/react';
 import { Api } from '../../api';
 import type { LabelKV, StandardServiceConfig, TemplateVar } from '../../api/modules/services';
 import type { Project } from '../../api/modules/projects';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Text } = Typography;
 
@@ -249,8 +250,8 @@ const ServiceProvisionPage: React.FC = () => {
                   </Col>
                 </Row>
                 <Row gutter={10}>
-                  <Col span={12}><Form.Item label="服务名" name="name" rules={[{ required: true }]}><Input placeholder="user-service" /></Form.Item></Col>
-                  <Col span={12}><Form.Item label="负责人" name="owner" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                  <Col span={12}><GuidedFormItem label="服务名" name="name" rules={[{ required: true }]}><Input placeholder="user-service" /></GuidedFormItem></Col>
+                  <Col span={12}><GuidedFormItem label="负责人" name="owner" rules={[{ required: true }]}><Input /></GuidedFormItem></Col>
                 </Row>
                 <Row gutter={10}>
                   <Col span={8}><Form.Item label="运行时" name="runtime_type"><Select options={[{ value: 'k8s' }, { value: 'compose' }, { value: 'helm' }]} /></Form.Item></Col>
@@ -260,7 +261,7 @@ const ServiceProvisionPage: React.FC = () => {
                 <Row gutter={10}>
                   <Col span={6}><Form.Item label="服务分类" name="service_kind"><Select options={[{ value: 'middleware', label: '中间件' }, { value: 'business', label: '业务服务' }]} /></Form.Item></Col>
                   <Col span={6}><Form.Item label="可见性" name="visibility"><Select options={[{ value: 'private' }, { value: 'team' }, { value: 'team-granted' }, { value: 'public' }]} /></Form.Item></Col>
-                  <Col span={6}><Form.Item label="图标" name="icon"><Input placeholder="图标URL/名称" /></Form.Item></Col>
+                  <Col span={6}><GuidedFormItem label="图标" name="icon"><Input placeholder="图标URL/名称" /></GuidedFormItem></Col>
                   <Col span={6}><Form.Item label="服务标签" name="tags"><Select mode="tags" placeholder="mysql,database" /></Form.Item></Col>
                 </Row>
                 <Row gutter={10}>
@@ -270,16 +271,16 @@ const ServiceProvisionPage: React.FC = () => {
                 {mode === 'standard' ? (
                   <>
                     <Row gutter={10}>
-                      <Col span={24}><Form.Item label="镜像" name="image" rules={[{ required: true }]}><Input placeholder="ghcr.io/org/app:v1" /></Form.Item></Col>
+                      <Col span={24}><GuidedFormItem label="镜像" name="image" rules={[{ required: true }]}><Input placeholder="ghcr.io/org/app:v1" /></GuidedFormItem></Col>
                     </Row>
                     <Row gutter={10}>
-                      <Col span={8}><Form.Item label="副本" name="replicas"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
-                      <Col span={8}><Form.Item label="服务端口" name="service_port"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
-                      <Col span={8}><Form.Item label="容器端口" name="container_port"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
+                      <Col span={8}><GuidedFormItem label="副本" name="replicas"><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem></Col>
+                      <Col span={8}><GuidedFormItem label="服务端口" name="service_port"><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem></Col>
+                      <Col span={8}><GuidedFormItem label="容器端口" name="container_port"><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem></Col>
                     </Row>
                     <Row gutter={10}>
-                      <Col span={12}><Form.Item label="CPU" name="cpu"><Input placeholder="500m" /></Form.Item></Col>
-                      <Col span={12}><Form.Item label="内存" name="memory"><Input placeholder="512Mi" /></Form.Item></Col>
+                      <Col span={12}><GuidedFormItem label="CPU" name="cpu"><Input placeholder="500m" /></GuidedFormItem></Col>
+                      <Col span={12}><GuidedFormItem label="内存" name="memory"><Input placeholder="512Mi" /></GuidedFormItem></Col>
                     </Row>
                     <Form.Item label="环境变量(KEY=VALUE)" name="envs"><Select mode="tags" /></Form.Item>
                     <Button icon={<SwapOutlined />} onClick={transformToCustom}>转换为自定义 YAML</Button>

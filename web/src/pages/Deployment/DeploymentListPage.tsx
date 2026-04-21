@@ -223,7 +223,7 @@ const DeploymentListPage: React.FC = () => {
                       title={<span className="text-gray-600">总部署次数</span>}
                       value={stats.total}
                       prefix={<CloudUploadOutlined className="text-primary-500" />}
-                      valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
+                      styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
                     />
                   </Card>
                 </StaggerItem>
@@ -238,7 +238,7 @@ const DeploymentListPage: React.FC = () => {
                       title={<span className="text-gray-600">成功部署</span>}
                       value={stats.succeeded}
                       prefix={<CheckCircleOutlined className="text-success" />}
-                      valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
+                      styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
                     />
                     <div className="mt-2 text-sm text-gray-500">成功率 {stats.successRate}%</div>
                   </Card>
@@ -254,7 +254,7 @@ const DeploymentListPage: React.FC = () => {
                       title={<span className="text-gray-600">失败部署</span>}
                       value={stats.failed}
                       prefix={<CloseCircleOutlined className="text-error" />}
-                      valueStyle={{ color: '#ef4444', fontSize: '28px', fontWeight: 600 }}
+                      styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
                     />
                   </Card>
                 </StaggerItem>
@@ -269,7 +269,7 @@ const DeploymentListPage: React.FC = () => {
                       title={<span className="text-gray-600">待审批</span>}
                       value={stats.pending}
                       prefix={<ClockCircleOutlined className="text-warning" />}
-                      valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
+                      styles={{ content: { color: '#f59e0b', fontSize: '28px', fontWeight: 600 } }}
                     />
                   </Card>
                 </StaggerItem>

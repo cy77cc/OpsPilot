@@ -3,6 +3,7 @@ import { Button, Card, Form, Input, Select, Space, Typography, message } from 'a
 import { useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { ServiceVisibility } from '../../api/modules/services';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Title, Paragraph } = Typography;
 
@@ -63,9 +64,9 @@ const ServiceVisibilityPage: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item name="granted_teams_text" label="授权团队 ID 列表（逗号分隔）">
+          <GuidedFormItem name="granted_teams_text" label="授权团队 ID 列表（逗号分隔）">
             <Input placeholder="例如: 2,3,5" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
 
         <Space>

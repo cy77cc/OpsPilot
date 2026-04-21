@@ -4,7 +4,7 @@ import { QuestionCircleOutlined } from '@ant-design/icons';
 import SparklesIcon from '../common/SparklesIcon';
 import { useFormAssist } from '../../features/ai/hooks/useFormAssist';
 import AIFormAssistantPopover from './AIFormAssistantPopover';
-import type { GuidedFormItemProps, FocusableChildProps } from './types';
+import type { GuidedFormItemProps, FocusableChildProps, FieldGuide } from './types';
 
 const callFocusHandler = (
   handler: React.FocusEventHandler<HTMLElement> | undefined,

@@ -7,6 +7,7 @@ import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
 import { usePermission } from '../../components/RBAC/PermissionContext';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const UsersPage: React.FC = () => {
   const { hasPermission } = usePermission();
@@ -267,9 +268,9 @@ const UsersPage: React.FC = () => {
 
       <Modal title="新增用户" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} okButtonProps={{ disabled: !canWrite }}>
         <Form form={form} layout="vertical" initialValues={{ roles: ['viewer'], status: 'active' }}>
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}><Input /></Form.Item>
-          <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入正确邮箱' }]}><Input /></Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少 6 位' }]}><Input.Password /></Form.Item>
+          <GuidedFormItem name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入正确邮箱' }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少 6 位' }]}><Input.Password /></GuidedFormItem>
           <Form.Item name="roles" label="角色" rules={[{ required: true, message: '请至少选择一个角色' }]}>
             <Select mode="multiple" options={roleOptions} />
           </Form.Item>
@@ -305,18 +306,18 @@ const UsersPage: React.FC = () => {
           <Form.Item label="用户名">
             <Input value={editingUser?.username} disabled aria-label="编辑用户用户名" />
           </Form.Item>
-          <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入正确邮箱' }]}>
+          <GuidedFormItem name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入正确邮箱' }]}>
             <Input aria-label="编辑用户邮箱" />
-          </Form.Item>
+          </GuidedFormItem>
           <Form.Item name="roles" label="角色" rules={[{ required: true, message: '请至少选择一个角色' }]}>
             <Select mode="multiple" options={roleOptions} aria-label="编辑用户角色" />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
             <Select options={[{ value: 'active' }, { value: 'disabled' }]} aria-label="编辑用户状态" />
           </Form.Item>
-          <Form.Item name="password" label="重置密码（可选）" rules={[{ min: 6, message: '密码至少 6 位' }]}>
+          <GuidedFormItem name="password" label="重置密码（可选）" rules={[{ min: 6, message: '密码至少 6 位' }]}>
             <Input.Password aria-label="编辑用户密码" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Modal>
 

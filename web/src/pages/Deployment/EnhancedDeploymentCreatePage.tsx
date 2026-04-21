@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 import type { ServiceItem } from '../../api/modules/services';
 import type { DeployTarget } from '../../api/modules/deployment';
 
@@ -126,7 +127,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
           className="mb-4"
         />
         <Form form={form} layout="vertical">
-          <Form.Item
+          <GuidedFormItem
             name="variables"
             label="部署变量 (JSON)"
             extra="示例: {&quot;image_tag&quot;:&quot;v1.2.3&quot;,&quot;replicas&quot;:&quot;3&quot;}"
@@ -135,7 +136,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
               rows={10}
               placeholder={'{\n  "image_tag": "v1.2.3",\n  "replicas": "3"\n}'}
             />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
       </Card>
     );

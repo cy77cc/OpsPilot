@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
   clusterId: string;
@@ -93,10 +94,10 @@ const RolloutPanel: React.FC<Props> = ({ clusterId }) => {
         width={760}
       >
         <Form form={form} layout="vertical" initialValues={{ strategy: 'rolling', namespace: 'default', replicas: 1 }}>
-          <Form.Item label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Image" name="image" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="Replicas" name="replicas"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
+          <GuidedFormItem label="Namespace" name="namespace" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Name" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Image" name="image" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem label="Replicas" name="replicas"><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
           <Form.Item label="Strategy" name="strategy"><Select options={[{ value: 'rolling' }, { value: 'blue-green' }, { value: 'canary' }]} /></Form.Item>
           <Space>
             <Button onClick={() => void doPreview()}>Preview</Button>

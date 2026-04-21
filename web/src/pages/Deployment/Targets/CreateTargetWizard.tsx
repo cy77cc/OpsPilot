@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Steps, Form, Input, Select, Button, Card, Space, message, Radio, Alert } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { Api } from '../../../api';
+import { GuidedFormItem } from '../../../components/FormGuidance';
 
 
 
@@ -109,14 +110,14 @@ const CreateTargetWizard: React.FC = () => {
   const renderStep0 = () => (
     <Card title="基本信息">
       <Form form={form} layout="vertical">
-        <Form.Item
+        <GuidedFormItem
           name="name"
           label="目标名称"
           rules={[{ required: true, message: '请输入目标名称' }]}
           initialValue={formData.name}
         >
           <Input placeholder="例如: production-k8s-cluster" />
-        </Form.Item>
+        </GuidedFormItem>
         <Form.Item
           name="environment"
           label="环境"
@@ -212,13 +213,13 @@ const CreateTargetWizard: React.FC = () => {
                   }))}
                 />
               </Form.Item>
-              <Form.Item
+              <GuidedFormItem
                 name="namespace"
                 label="命名空间"
                 initialValue={formData.namespace || 'default'}
               >
                 <Input placeholder="default" />
-              </Form.Item>
+              </GuidedFormItem>
             </>
           )}
 

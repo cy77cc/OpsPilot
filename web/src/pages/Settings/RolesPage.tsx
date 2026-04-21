@@ -8,6 +8,7 @@ import { ApiRequestError } from '../../api/api';
 import AccessDeniedPage from '../../components/Auth/AccessDeniedPage';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
 import { usePermission } from '../../components/RBAC/PermissionContext';
+import { GuidedFormItem } from '../../components/FormGuidance';
 import {
   filterPermissions,
   getFilteredPermissionCodes,
@@ -307,8 +308,8 @@ const RolesPage: React.FC = () => {
 
       <Modal title="新增角色" open={open} onCancel={() => setOpen(false)} onOk={() => void create()} width={760} okButtonProps={{ disabled: !canWrite }}>
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}><Input /></Form.Item>
-          <Form.Item name="description" label="描述"><Input /></Form.Item>
+          <GuidedFormItem name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="description" label="描述"><Input /></GuidedFormItem>
           <Form.Item name="permissions" label="权限">
             <Tree
               checkable
@@ -345,12 +346,12 @@ const RolesPage: React.FC = () => {
         ) : null}
       >
         <Form form={detailForm} layout="vertical">
-          <Form.Item name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}>
+          <GuidedFormItem name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}>
             <Input disabled={!canWrite} aria-label="角色名" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
+          </GuidedFormItem>
+          <GuidedFormItem name="description" label="描述">
             <Input disabled={!canWrite} aria-label="角色描述" />
-          </Form.Item>
+          </GuidedFormItem>
         </Form>
 
         <Space direction="vertical" size={12} style={{ width: '100%' }}>

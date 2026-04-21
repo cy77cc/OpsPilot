@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Col, Form, Input, Modal, Row, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import { GuidedFormItem } from '../../components/FormGuidance';
 
 const AutomationPage: React.FC = () => {
   const [inventories, setInventories] = useState<any[]>([]);
@@ -91,15 +92,15 @@ const AutomationPage: React.FC = () => {
 
       <Modal title="新建 Inventory" open={invOpen} onCancel={() => setInvOpen(false)} onOk={createInventory}>
         <Form form={invForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="hostsJson" label="Hosts(JSON)"><Input.TextArea rows={4} /></Form.Item>
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="hostsJson" label="Hosts(JSON)"><Input.TextArea rows={4} /></GuidedFormItem>
         </Form>
       </Modal>
 
       <Modal title="新建 Playbook" open={pbOpen} onCancel={() => setPbOpen(false)} onOk={createPlaybook}>
         <Form form={pbForm} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="contentYml" label="YAML" rules={[{ required: true }]}><Input.TextArea rows={8} /></Form.Item>
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true }]}><Input /></GuidedFormItem>
+          <GuidedFormItem name="contentYml" label="YAML" rules={[{ required: true }]}><Input.TextArea rows={8} /></GuidedFormItem>
         </Form>
       </Modal>
     </Row>
