@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Popover, Input, Button, Alert, Typography, Spin } from 'antd';
 import { LoadingOutlined, SendOutlined } from '@ant-design/icons';
 import SparklesIcon from '../common/SparklesIcon';
+import type { FieldGuide } from './types';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
-interface AIFormAssistantPopoverProps {
+export interface AIFormAssistantPopoverProps {
+  guide?: FieldGuide;
   isOpen: boolean;
   isStreaming: boolean;
   prompt: string;
@@ -19,6 +21,7 @@ interface AIFormAssistantPopoverProps {
 }
 
 const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
+  guide,
   isOpen,
   isStreaming,
   prompt: initialPrompt,

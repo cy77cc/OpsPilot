@@ -3,6 +3,7 @@ import type React from 'react';
 import type { FormAssistConfig } from '../../features/ai/types/formAssist';
 
 export type FieldGuide = {
+  icon?: React.ReactNode;
   whatToEnter: string;
   purpose: string;
   example?: string;
