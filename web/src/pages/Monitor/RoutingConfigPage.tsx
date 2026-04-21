@@ -271,6 +271,7 @@ const RoutingConfigPage: React.FC = () => {
         <Form
           form={createForm}
           layout="vertical"
+          size="small"
           initialValues={{
             scope: 'global',
             severity: '',
@@ -311,6 +312,7 @@ const RoutingConfigPage: React.FC = () => {
         <Form
           form={editForm}
           layout="vertical"
+          size="small"
           initialValues={{
             scope: 'global',
             severity: '',
