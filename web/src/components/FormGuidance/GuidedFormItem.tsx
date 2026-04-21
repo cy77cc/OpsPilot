@@ -18,13 +18,13 @@ const GuideTooltip: React.FC<{ guide: FieldGuide }> = ({ guide }) => (
     {guide.whatToEnter && (
       <div>
         <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">建议</div>
-        <div className="text-sm text-slate-200 leading-relaxed">{guide.whatToEnter}</div>
+        <div className="text-sm text-slate-600 leading-relaxed">{guide.whatToEnter}</div>
       </div>
     )}
     {guide.example && (
       <div>
         <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">示例</div>
-        <code className="text-xs text-indigo-300 bg-indigo-900/30 px-1.5 py-0.5 rounded font-mono break-all">
+        <code className="text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-mono break-all">
           {guide.example}
         </code>
       </div>
@@ -175,7 +175,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     <Form.Item 
       {...formItemProps} 
       extra={mergedExtra}
-      tooltip={guide ? { title: <GuideTooltip guide={guide} />, styles: { root: { maxWidth: '280px' } } } : formItemProps.tooltip}
+      tooltip={guide ? { title: <GuideTooltip guide={guide} />, color: 'white', styles: { root: { maxWidth: '280px' } } } : formItemProps.tooltip}
     >
       <AIFieldWrapper aiTrigger={aiTrigger}>{enhancedChild}</AIFieldWrapper>
     </Form.Item>
