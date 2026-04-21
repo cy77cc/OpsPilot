@@ -36,6 +36,7 @@ export const MetricsDashboardPage = lazy(() => import('../../pages/Deployment/Ob
 export const DeploymentAuditLogsPage = lazy(() => import('../../pages/Deployment/Observability/AuditLogsPage'));
 export const PolicyManagementPage = lazy(() => import('../../pages/Deployment/Observability/PolicyManagementPage'));
 export const AIOpsInsightsPage = lazy(() => import('../../pages/Deployment/Observability/AIOpsInsightsPage'));
+export const MonitorCenterLayout = lazy(() => import('../../pages/Monitor/MonitorCenterLayout'));
 export const MonitorPage = lazy(() => import('../../pages/Monitor/MonitorPage'));
 export const AlertsPage = lazy(() => import('../../pages/Monitor/AlertsPage'));
 export const AlertDetailPage = lazy(() => import('../../pages/Monitor/AlertDetailPage'));

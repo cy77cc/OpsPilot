@@ -7,6 +7,7 @@ import {
   DeploymentAuditLogsPage,
   PolicyManagementPage,
   AIOpsInsightsPage,
+  MonitorCenterLayout,
   MonitorPage,
   AlertsPage,
   AlertDetailPage,
@@ -24,14 +25,16 @@ export function renderObservabilityRoutes(withAuth: WithAuth) {
       <Route path="/deployment/observability/audit-logs" element={withAuth('deploy:target', 'read', <DeploymentAuditLogsPage />)} />
       <Route path="/deployment/observability/policies" element={withAuth('deploy:target', 'write', <PolicyManagementPage />)} />
       <Route path="/deployment/observability/aiops" element={withAuth('monitoring', 'read', <AIOpsInsightsPage />)} />
-      <Route path="/monitor" element={withAuth('monitoring', 'read', <MonitorPage />)} />
-      <Route path="/monitor/dashboard" element={withAuth('monitoring', 'read', <MonitorPage />)} />
-      <Route path="/monitor/alerts" element={withAuth('monitoring', 'read', <AlertsPage />)} />
-      <Route path="/monitor/alerts/:alertId" element={withAuth('monitoring', 'read', <AlertDetailPage />)} />
-      <Route path="/monitor/rules" element={withAuth('monitoring', 'read', <RulesConfigPage />)} />
-      <Route path="/monitor/channels" element={withAuth('monitoring', 'read', <ChannelsConfigPage />)} />
-      <Route path="/monitor/routing" element={withAuth('monitoring', 'read', <RoutingConfigPage />)} />
-      <Route path="/monitor/deliveries" element={withAuth('monitoring', 'read', <DeliveriesPage />)} />
+      <Route path="/monitor" element={withAuth('monitoring', 'read', <MonitorCenterLayout />)}>
+        <Route index element={<MonitorPage />} />
+        <Route path="dashboard" element={<MonitorPage />} />
+        <Route path="alerts" element={<AlertsPage />} />
+        <Route path="alerts/:alertId" element={<AlertDetailPage />} />
+        <Route path="rules" element={<RulesConfigPage />} />
+        <Route path="channels" element={<ChannelsConfigPage />} />
+        <Route path="routing" element={<RoutingConfigPage />} />
+        <Route path="deliveries" element={<DeliveriesPage />} />
+      </Route>
       <Route path="/monitoring/alerts" element={withAuth('monitoring', 'read', <AlertsPage />)} />
     </>
   );
