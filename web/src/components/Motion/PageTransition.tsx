@@ -40,10 +40,18 @@ export const PageTransition: React.FC<PageTransitionProps> = ({ children }) => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  // Group sub-routes that share a layout so they don't trigger a full page transition
+  const getTransitionKey = (pathname: string) => {
+    if (pathname.startsWith('/monitor')) {
+      return '/monitor';
+    }
+    return pathname;
+  };
+
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={location.pathname}
+        key={getTransitionKey(location.pathname)}
         initial="initial"
         animate="enter"
         exit="exit"
