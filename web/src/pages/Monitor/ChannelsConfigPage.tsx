@@ -224,13 +224,14 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   return (
-    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
       <Card
         title="通知渠道配置"
+        size="small"
         extra={(
-          <Space size={12}>
+          <Space size="small">
             <ScopeSelector value={scope} onChange={setScope} />
-            <Button type="primary" onClick={() => setCreateOpen(true)}>
+            <Button type="primary" onClick={() => setCreateOpen(true)} size="small">
               新增渠道
             </Button>
           </Space>
@@ -238,6 +239,7 @@ const ChannelsConfigPage: React.FC = () => {
       >
         <Table
           rowKey="id"
+          size="small"
           loading={loading}
           dataSource={rows}
           pagination={false}
@@ -250,11 +252,11 @@ const ChannelsConfigPage: React.FC = () => {
               key: 'actions',
               render: (_v: unknown, record: ChannelRow) => (
                 <Space>
-                  <Button type="link" onClick={() => handleOpenEdit(record)}>
+                  <Button type="link" onClick={() => handleOpenEdit(record)} size="small">
                     编辑
                   </Button>
                   <Popconfirm title="确定删除此渠道？" onConfirm={() => handleDelete(record.id)}>
-                    <Button type="link" danger>
+                    <Button type="link" danger size="small">
                       删除
                     </Button>
                   </Popconfirm>
@@ -264,10 +266,11 @@ const ChannelsConfigPage: React.FC = () => {
           ]}
         />
       </Card>
-      <Card title="渠道测试发送">
+      <Card title="渠道测试发送" size="small">
         <Form
           form={form}
           layout="vertical"
+          size="small"
           initialValues={{
             provider: 'webhook',
             target: '',
@@ -312,7 +315,7 @@ const ChannelsConfigPage: React.FC = () => {
             <Input.TextArea rows={4} />
           </GuidedFormItem>
           <Space>
-            <Button type="primary" onClick={handleTestSend} loading={submitting}>
+            <Button type="primary" onClick={handleTestSend} loading={submitting} size="small">
               测试发送
             </Button>
           </Space>

@@ -218,10 +218,11 @@ const RoutingConfigPage: React.FC = () => {
   return (
     <Card
       title="路由配置"
+      size="small"
       extra={(
-        <Space size={12}>
+        <Space size="small">
           <ScopeSelector value={scope} onChange={setScope} />
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
+          <Button type="primary" onClick={() => setCreateOpen(true)} size="small">
             新增路由
           </Button>
         </Space>
@@ -229,6 +230,7 @@ const RoutingConfigPage: React.FC = () => {
     >
       <Table
         rowKey="id"
+        size="small"
         loading={loading}
         dataSource={rows}
         pagination={false}
@@ -242,11 +244,11 @@ const RoutingConfigPage: React.FC = () => {
             key: 'actions',
             render: (_value: unknown, record: RouteRow) => (
               <Space>
-                <Button type="link" onClick={() => handleOpenEdit(record)}>
+                <Button type="link" onClick={() => handleOpenEdit(record)} size="small">
                   编辑
                 </Button>
                 <Popconfirm title="确定删除此路由？" onConfirm={() => handleDelete(record)}>
-                  <Button type="link" danger>
+                  <Button type="link" danger size="small">
                     删除
                   </Button>
                 </Popconfirm>
