@@ -46,7 +46,7 @@ export function renderPlatformRoutes({ withAuth, governanceMenuEnabled }: Platfo
     <Route path="/tools/cmdb" element={<ToolsPage />} />
     <Route path="/tools/archery" element={<ToolsPage />} />
     <Route path="/settings" element={<SettingsPage />} />
-    <Route path="/settings/ai-models" element={<AIModelSettingsPage />} />
+    <Route path="/settings/ai-models" element={<SettingsPage defaultTab="ai" />} />
     <Route path="/governance/users" element={withAuth('rbac', 'read', <UsersPage />)} />
     <Route path="/governance/roles" element={withAuth('rbac', 'read', <RolesPage />)} />
     <Route path="/governance/permissions" element={withAuth('rbac', 'read', <PermissionsPage />)} />

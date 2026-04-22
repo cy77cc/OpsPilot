@@ -110,7 +110,7 @@ const HostsPage: React.FC = () => {
             <Statistic
               title={<span className="text-gray-400">在线主机</span>}
               value={onlineCount}
-              valueStyle={{ color: '#00d9a5' }}
+              styles={{ content: { color: '#00d9a5' } }}
               suffix={`/ ${mockHosts.length}`}
             />
           </Card>
@@ -120,7 +120,7 @@ const HostsPage: React.FC = () => {
             <Statistic
               title={<span className="text-gray-400">警告主机</span>}
               value={warningCount}
-              valueStyle={{ color: '#ffc107' }}
+              styles={{ content: { color: '#ffc107' } }}
             />
           </Card>
         </Col>
@@ -129,7 +129,7 @@ const HostsPage: React.FC = () => {
             <Statistic
               title={<span className="text-gray-400">离线主机</span>}
               value={mockHosts.filter(h => h.status === 'offline').length}
-              valueStyle={{ color: '#ff4757' }}
+              styles={{ content: { color: '#ff4757' } }}
             />
           </Card>
         </Col>
@@ -200,7 +200,7 @@ const HostsPage: React.FC = () => {
                     title="CPU" 
                     value={selectedHost.cpu} 
                     suffix="%" 
-                    valueStyle={{ color: selectedHost.cpu > 80 ? '#ff4757' : '#00d9a5' }}
+                    styles={{ content: { color: selectedHost.cpu > 80 ? '#ff4757' : '#00d9a5' } }}
                   />
                   <Progress percent={selectedHost.cpu} showInfo={false} strokeColor={selectedHost.cpu > 80 ? '#ff4757' : '#00d9a5'} />
                 </Col>
@@ -209,7 +209,7 @@ const HostsPage: React.FC = () => {
                     title="内存" 
                     value={selectedHost.memory} 
                     suffix="%" 
-                    valueStyle={{ color: selectedHost.memory > 85 ? '#ff4757' : '#00d9a5' }}
+                    styles={{ content: { color: selectedHost.memory > 85 ? '#ff4757' : '#00d9a5' } }}
                   />
                   <Progress percent={selectedHost.memory} showInfo={false} strokeColor={selectedHost.memory > 85 ? '#ff4757' : '#00d9a5'} />
                 </Col>
@@ -218,7 +218,7 @@ const HostsPage: React.FC = () => {
                     title="磁盘" 
                     value={selectedHost.disk} 
                     suffix="%" 
-                    valueStyle={{ color: selectedHost.disk > 90 ? '#ff4757' : '#3498db' }}
+                    styles={{ content: { color: selectedHost.disk > 90 ? '#ff4757' : '#3498db' } }}
                   />
                   <Progress percent={selectedHost.disk} showInfo={false} strokeColor={selectedHost.disk > 90 ? '#ff4757' : '#3498db'} />
                 </Col>
@@ -230,7 +230,7 @@ const HostsPage: React.FC = () => {
                 title="网络使用" 
                 value={selectedHost.network} 
                 suffix="Mbps"
-                valueStyle={{ color: '#3498db' }}
+                styles={{ content: { color: '#3498db' } }}
               />
               <Progress percent={selectedHost.network} showInfo={false} strokeColor="#3498db" />
             </Card>

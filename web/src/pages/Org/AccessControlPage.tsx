@@ -28,6 +28,8 @@ import {
   SwapOutlined,
   SafetyCertificateOutlined,
   KeyOutlined,
+  SearchOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
 import type { Department, Member, CreateDepartmentParams, UpdateDepartmentParams, TransferMemberParams } from '../../api/modules/org';
 import Api from '../../api';
@@ -382,7 +384,7 @@ const AccessControlPage: React.FC = () => {
                       {
                         key: 'roles',
                         label: '部门角色',
-                        icon: <ShieldOutlined />,
+                        icon: <SafetyOutlined />,
                         onClick: () => handleOpenDeptRoles(node.key),
                       },
                       {

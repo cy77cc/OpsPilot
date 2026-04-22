@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge, Button, Card, Empty, List, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Empty, Tag, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import type { AlertItem } from '../../api/modules/dashboard';
 
@@ -34,23 +34,25 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ alerts, loading }) => {
         </Typography.Text>
       </div>
 
-      <List
-        loading={loading}
-        dataSource={alerts}
-        locale={{ emptyText: <Empty description="暂无告警" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-        renderItem={(item) => (
-          <List.Item
-            className="cursor-pointer rounded-md px-2"
+      <div className="flex flex-col gap-1">
+        {loading && <div className="text-center py-4">加载中...</div>}
+        {!loading && alerts.length === 0 && (
+          <Empty description="暂无告警" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+        {!loading && alerts.map((item, index) => (
+          <div
+            key={index}
+            className="cursor-pointer rounded-md px-2 py-2 hover:bg-gray-50 flex items-center justify-between border-b border-gray-50 last:border-0"
             onClick={() => navigate('/monitor/alerts')}
           >
-            <List.Item.Meta
-              title={<span className="text-sm font-medium">{item.title}</span>}
-              description={<span className="text-xs text-gray-500">来源: {item.source}</span>}
-            />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{item.title}</span>
+              <span className="text-xs text-gray-500">来源: {item.source}</span>
+            </div>
             <Tag color={severityColorMap[item.severity] || 'default'}>{item.severity}</Tag>
-          </List.Item>
-        )}
-      />
+          </div>
+        ))}
+      </div>
     </Card>
   );
 };

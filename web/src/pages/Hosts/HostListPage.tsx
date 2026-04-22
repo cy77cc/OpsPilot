@@ -484,7 +484,7 @@ const HostListPage: React.FC = () => {
                   title={<span className="text-gray-600">主机总数</span>}
                   value={stats.total}
                   prefix={<DesktopOutlined className="text-primary-500" />}
-                  valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -499,7 +499,7 @@ const HostListPage: React.FC = () => {
                   title={<span className="text-gray-600">在线主机</span>}
                   value={stats.online}
                   prefix={<CheckCircleOutlined className="text-success" />}
-                  valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
                 />
                 <Progress
                   percent={stats.healthRate}
@@ -520,7 +520,7 @@ const HostListPage: React.FC = () => {
                   title={<span className="text-gray-600">维护中</span>}
                   value={stats.maintenance}
                   prefix={<ToolOutlined className="text-warning" />}
-                  valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#f59e0b', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -535,7 +535,7 @@ const HostListPage: React.FC = () => {
                   title={<span className="text-gray-600">错误</span>}
                   value={stats.error}
                   prefix={<ExclamationCircleOutlined className="text-error" />}
-                  valueStyle={{ color: '#ef4444', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>

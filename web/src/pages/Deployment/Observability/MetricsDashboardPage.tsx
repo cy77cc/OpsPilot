@@ -157,7 +157,7 @@ const MetricsDashboardPage: React.FC = () => {
               title="总发布数"
               value={summary?.total_releases || 0}
               prefix={<RiseOutlined className="text-success" />}
-              valueStyle={{ color: '#10b981' }}
+              styles={{ content: { color: '#10b981' } }}
             />
             <div className="text-xs text-gray-500 mt-2">
               最近7天: {summary?.recent_releases || 0} 次
@@ -171,7 +171,7 @@ const MetricsDashboardPage: React.FC = () => {
               value={Number((summary?.success_rate || 0).toFixed(1))}
               suffix="%"
               prefix={<CheckCircleOutlined className="text-success" />}
-              valueStyle={{ color: '#10b981' }}
+              styles={{ content: { color: '#10b981' } }}
             />
             <div className="text-xs text-gray-500 mt-2">
               最近7天失败: {summary?.recent_failures || 0} 次
@@ -185,7 +185,7 @@ const MetricsDashboardPage: React.FC = () => {
               value={Number((summary?.avg_duration_seconds || 0) / 60).toFixed(1)}
               suffix="分钟"
               prefix={<ClockCircleOutlined className="text-primary" />}
-              valueStyle={{ color: '#6366f1' }}
+              styles={{ content: { color: '#6366f1' } }}
             />
           </Card>
         </Col>
@@ -196,7 +196,7 @@ const MetricsDashboardPage: React.FC = () => {
               value={summary?.by_status?.applying || 0}
               suffix="个"
               prefix={<ClockCircleOutlined className="text-warning" />}
-              valueStyle={{ color: '#f59e0b' }}
+              styles={{ content: { color: '#f59e0b' } }}
             />
             <div className="text-xs text-gray-500 mt-2">
               待审批: {summary?.by_status?.pending_approval || 0} 个
@@ -234,7 +234,7 @@ const MetricsDashboardPage: React.FC = () => {
                     title={getEnvLabel(env)}
                     value={data.total}
                     suffix="次部署"
-                    valueStyle={{ color: getEnvColor(env) }}
+                    styles={{ content: { color: getEnvColor(env) } }}
                   />
                   <div className="text-xs text-gray-600 mt-2">
                     成功率: {Number(data.success_rate).toFixed(1)}%

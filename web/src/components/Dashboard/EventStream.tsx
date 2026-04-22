@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertOutlined, CloudServerOutlined, DeploymentUnitOutlined, NodeIndexOutlined } from '@ant-design/icons';
-import { Button, Card, Empty, List, Typography } from 'antd';
+import { Button, Card, Empty, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import type { EventItem } from '../../api/modules/dashboard';
@@ -53,26 +53,25 @@ const EventStream: React.FC<EventStreamProps> = ({ events, loading }) => {
       )}
       styles={{ body: { minHeight: 240, paddingTop: 8, paddingBottom: 8 } }}
     >
-      <List
-        loading={loading}
-        dataSource={events}
-        locale={{ emptyText: <Empty description="暂无事件" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-        renderItem={(item) => (
-          <List.Item>
-            <List.Item.Meta
-              avatar={iconByType(item.type)}
-              title={(
-                <div className="flex items-center justify-between gap-3">
-                  <Typography.Text className="text-sm">{item.message}</Typography.Text>
-                  <Typography.Text type="secondary" className="shrink-0 text-xs">
-                    {formatRelativeTime(item.createdAt)}
-                  </Typography.Text>
-                </div>
-              )}
-            />
-          </List.Item>
+      <div className="flex flex-col">
+        {loading && <div className="text-center py-4 text-gray-400">加载中...</div>}
+        {!loading && events.length === 0 && (
+          <Empty description="暂无事件" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
-      />
+        {!loading && events.map((item, index) => (
+          <div key={index} className="flex gap-3 py-3 border-b border-gray-50 last:border-0 items-start">
+            <div className="pt-1">
+              {iconByType(item.type)}
+            </div>
+            <div className="flex-1 flex items-center justify-between gap-3">
+              <Typography.Text className="text-sm">{item.message}</Typography.Text>
+              <Typography.Text type="secondary" className="shrink-0 text-xs">
+                {formatRelativeTime(item.createdAt)}
+              </Typography.Text>
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 };

@@ -292,10 +292,10 @@ const AIModelSettingsPage: React.FC = () => {
   const isInitialLoading = loading && rows.length === 0;
 
   return (
-    <div className="space-y-6">
-      <Card
-        className="border-0 shadow-sm"
-        bodyStyle={{
+    <div className="space-y-6 pt-4">
+      <div
+        className="border-0 shadow-sm p-6 mb-6"
+        style={{
           background: 'linear-gradient(135deg, rgba(37,99,235,0.08) 0%, rgba(15,23,42,0.04) 100%)',
           borderRadius: 12,
         }}
@@ -320,7 +320,7 @@ const AIModelSettingsPage: React.FC = () => {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增模型</Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={6}>

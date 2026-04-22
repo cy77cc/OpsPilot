@@ -17,9 +17,17 @@ const AutomationPage: React.FC = () => {
   const [pbForm] = Form.useForm();
 
   const load = async () => {
-    const [invRes, pbRes] = await Promise.all([Api.automation.listInventories(), Api.automation.listPlaybooks()]);
-    setInventories(invRes.data || []);
-    setPlaybooks(pbRes.data || []);
+    try {
+      const [invRes, pbRes] = await Promise.all([Api.automation.listInventories(), Api.automation.listPlaybooks()]);
+      // 确保数据是数组，防止 Table 组件报错 (rawData.some is not a function)
+      setInventories(Array.isArray(invRes.data) ? invRes.data : []);
+      setPlaybooks(Array.isArray(pbRes.data) ? pbRes.data : []);
+    } catch (err) {
+      console.error('Failed to load automation data:', err);
+      message.error('加载自动化数据失败');
+      setInventories([]);
+      setPlaybooks([]);
+    }
   };
 
   useEffect(() => {
@@ -60,7 +68,7 @@ const AutomationPage: React.FC = () => {
     const runId = String(res.data.runId || '');
     if (runId) {
       const logs = await Api.automation.getRunLogs(runId);
-      setRunLogs(logs.data || []);
+      setRunLogs(Array.isArray(logs.data) ? logs.data : []);
     }
     setPreviewToken('');
     message.success('执行成功');
@@ -70,12 +78,30 @@ const AutomationPage: React.FC = () => {
     <Row gutter={[16, 16]}>
       <Col span={12}>
         <Card title="Inventories" extra={<Button onClick={() => setInvOpen(true)}>新建</Button>}>
-          <Table rowKey="id" pagination={false} dataSource={inventories} columns={[{ title: 'ID', dataIndex: 'id' }, { title: 'Name', dataIndex: 'name' }, { title: 'Hosts', dataIndex: 'hosts_json' }]} />
+          <Table 
+            rowKey="id" 
+            pagination={false} 
+            dataSource={inventories} 
+            columns={[
+              { title: 'ID', dataIndex: 'id' }, 
+              { title: 'Name', dataIndex: 'name' }, 
+              { title: 'Hosts', dataIndex: 'hosts_json' }
+            ]} 
+          />
         </Card>
       </Col>
       <Col span={12}>
         <Card title="Playbooks" extra={<Button onClick={() => setPbOpen(true)}>新建</Button>}>
-          <Table rowKey="id" pagination={false} dataSource={playbooks} columns={[{ title: 'ID', dataIndex: 'id' }, { title: 'Name', dataIndex: 'name' }, { title: 'Risk', dataIndex: 'risk_level' }]} />
+          <Table 
+            rowKey="id" 
+            pagination={false} 
+            dataSource={playbooks} 
+            columns={[
+              { title: 'ID', dataIndex: 'id' }, 
+              { title: 'Name', dataIndex: 'name' }, 
+              { title: 'Risk', dataIndex: 'risk_level' }
+            ]} 
+          />
         </Card>
       </Col>
       <Col span={24}>
@@ -85,8 +111,17 @@ const AutomationPage: React.FC = () => {
             <Input value={hostIDs} onChange={(e) => setHostIDs(e.target.value)} placeholder="host ids: 1,2,3" />
             <Input.TextArea value={command} onChange={(e) => setCommand(e.target.value)} rows={3} placeholder="command or playbook content" />
           </Space>
-          <p>approval_token: {previewToken || '-'}</p>
-          <Table rowKey="id" pagination={false} dataSource={runLogs} columns={[{ title: '时间', dataIndex: 'created_at' }, { title: '级别', dataIndex: 'level' }, { title: '内容', dataIndex: 'message' }]} />
+          <p style={{ marginTop: 16 }}>approval_token: {previewToken || '-'}</p>
+          <Table 
+            rowKey="id" 
+            pagination={false} 
+            dataSource={runLogs} 
+            columns={[
+              { title: '时间', dataIndex: 'created_at' }, 
+              { title: '级别', dataIndex: 'level' }, 
+              { title: '内容', dataIndex: 'message' }
+            ]} 
+          />
         </Card>
       </Col>
 

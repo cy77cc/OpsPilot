@@ -79,7 +79,7 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
               ) : isStreaming ? (
                 <Text type="secondary" italic>AI 正在构思中...</Text>
               ) : null}
-              {error && <Alert message={error} type="error" showIcon className="mt-2" />}
+              {error && <Alert title={error} type="error" showIcon className="mt-2" />}
             </div>
             <div className="flex justify-end gap-2">
               <Button size="small" onClick={onCancel}>
@@ -113,7 +113,6 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
         }
       }}
       overlayClassName="ai-assist-popover"
-      overlayInnerStyle={{ padding: 0, background: 'transparent', boxShadow: 'none' }}
       styles={{ 
         content: { padding: 0, background: 'transparent', boxShadow: 'none' }
       }}

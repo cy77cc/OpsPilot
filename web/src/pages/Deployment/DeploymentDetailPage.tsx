@@ -246,7 +246,7 @@ const DeploymentDetailPage: React.FC = () => {
               <Statistic
                 title={<span className="text-gray-600">服务</span>}
                 value={release.service_name || release.service_id}
-                valueStyle={{ color: '#495057', fontSize: '20px', fontWeight: 600 }}
+                styles={{ content: { color: '#495057', fontSize: '20px', fontWeight: 600 } }}
               />
             </Card>
           </Col>
@@ -255,7 +255,7 @@ const DeploymentDetailPage: React.FC = () => {
               <Statistic
                 title={<span className="text-gray-600">目标</span>}
                 value={release.target_name || release.target_id}
-                valueStyle={{ color: '#495057', fontSize: '20px', fontWeight: 600 }}
+                styles={{ content: { color: '#495057', fontSize: '20px', fontWeight: 600 } }}
               />
             </Card>
           </Col>
@@ -264,7 +264,7 @@ const DeploymentDetailPage: React.FC = () => {
               <Statistic
                 title={<span className="text-gray-600">运行时</span>}
                 value={release.runtime_type}
-                valueStyle={{ color: '#6366f1', fontSize: '20px', fontWeight: 600 }}
+                styles={{ content: { color: '#6366f1', fontSize: '20px', fontWeight: 600 } }}
               />
             </Card>
           </Col>
@@ -273,7 +273,7 @@ const DeploymentDetailPage: React.FC = () => {
               <Statistic
                 title={<span className="text-gray-600">策略</span>}
                 value={release.strategy || 'rolling'}
-                valueStyle={{ color: '#495057', fontSize: '20px', fontWeight: 600 }}
+                styles={{ content: { color: '#495057', fontSize: '20px', fontWeight: 600 } }}
               />
             </Card>
           </Col>

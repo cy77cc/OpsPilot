@@ -561,7 +561,7 @@ const ServiceDetailPage: React.FC = () => {
               title={<span className="text-gray-600">总发布次数</span>}
               value={stats.totalReleases}
               prefix={<ApiOutlined className="text-primary-500" />}
-              valueStyle={{ color: '#495057', fontSize: '24px', fontWeight: 600 }}
+              styles={{ content: { color: '#495057', fontSize: '24px', fontWeight: 600 } }}
             />
           </Card>
         </Col>
@@ -572,7 +572,7 @@ const ServiceDetailPage: React.FC = () => {
               value={stats.successRate}
               suffix="%"
               prefix={<CheckCircleOutlined className="text-success" />}
-              valueStyle={{ color: '#10b981', fontSize: '24px', fontWeight: 600 }}
+              styles={{ content: { color: '#10b981', fontSize: '24px', fontWeight: 600 } }}
             />
             <Progress
               percent={stats.successRate}
@@ -588,7 +588,7 @@ const ServiceDetailPage: React.FC = () => {
               title={<span className="text-gray-600">版本数</span>}
               value={revisions.length}
               prefix={<DatabaseOutlined className="text-primary-500" />}
-              valueStyle={{ color: '#495057', fontSize: '24px', fontWeight: 600 }}
+              styles={{ content: { color: '#495057', fontSize: '24px', fontWeight: 600 } }}
             />
           </Card>
         </Col>
@@ -598,7 +598,7 @@ const ServiceDetailPage: React.FC = () => {
               title={<span className="text-gray-600">事件数</span>}
               value={events.length}
               prefix={<FileSearchOutlined className="text-primary-500" />}
-              valueStyle={{ color: '#495057', fontSize: '24px', fontWeight: 600 }}
+              styles={{ content: { color: '#495057', fontSize: '24px', fontWeight: 600 } }}
             />
           </Card>
         </Col>

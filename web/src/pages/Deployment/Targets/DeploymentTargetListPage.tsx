@@ -160,7 +160,7 @@ const DeploymentTargetListPage: React.FC = () => {
                   title={<span className="text-gray-600">总数</span>}
                   value={stats.total}
                   prefix={<CloudServerOutlined className="text-primary-500" />}
-                  valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -172,7 +172,7 @@ const DeploymentTargetListPage: React.FC = () => {
                   title={<span className="text-gray-600">就绪</span>}
                   value={stats.ready}
                   prefix={<CheckCircleOutlined className="text-success" />}
-                  valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -184,7 +184,7 @@ const DeploymentTargetListPage: React.FC = () => {
                   title={<span className="text-gray-600">初始化中</span>}
                   value={stats.bootstrapping}
                   prefix={<SyncOutlined className="text-warning" />}
-                  valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#f59e0b', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -196,7 +196,7 @@ const DeploymentTargetListPage: React.FC = () => {
                   title={<span className="text-gray-600">未就绪</span>}
                   value={stats.notReady}
                   prefix={<CloseCircleOutlined className="text-error" />}
-                  valueStyle={{ color: '#ef4444', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>

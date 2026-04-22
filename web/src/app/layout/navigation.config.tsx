@@ -79,8 +79,7 @@ export function buildMenuSections({
       title: '平台与支持',
       items: [
         { key: '/org', icon: <UserOutlined />, label: '组织管理' },
-        { key: '/settings', icon: <SettingOutlined />, label: '基础设置' },
-        { key: '/settings/ai-models', icon: <SettingOutlined />, label: 'AI 模型配置' },
+        { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
         { key: '/tools', icon: <ToolOutlined />, label: t('menu.tools') },
         { key: '/help', icon: <FileTextOutlined />, label: '帮助中心' },
       ],

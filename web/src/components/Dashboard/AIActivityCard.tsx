@@ -1,33 +1,39 @@
 import React from 'react';
-import { Card, Col, Row, Statistic, List, Tag, Empty, Typography } from 'antd';
+import { Card, Row, Col, Statistic, Typography, Tag, Empty, Space } from 'antd';
 import {
-  RobotOutlined,
-  ThunderboltOutlined,
-  ClockCircleOutlined,
-  CheckCircleOutlined,
   MessageOutlined,
+  ThunderboltOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  UserOutlined,
+  LayoutOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import type { AIActivity } from '../../api/modules/dashboard';
+import type { AIStats, AISession, SceneStats } from '../../api/modules/dashboard';
 
 interface AIActivityCardProps {
-  data: AIActivity;
+  data: {
+    stats: AIStats;
+    sessions: AISession[];
+    byScene: SceneStats;
+  };
   loading?: boolean;
 }
 
 const sceneColorMap: Record<string, string> = {
-  host: 'blue',
-  cluster: 'purple',
-  service: 'green',
-  k8s: 'cyan',
-  default: 'default',
+  chat: 'blue',
+  assist: 'purple',
+  troubleshoot: 'orange',
+  optimization: 'green',
+  default: 'gray',
 };
 
 const sceneLabelMap: Record<string, string> = {
-  host: '主机',
-  cluster: '集群',
-  service: '服务',
-  k8s: 'K8s',
+  chat: '智能问答',
+  assist: '运维辅助',
+  troubleshoot: '故障排查',
+  optimization: '性能优化',
 };
 
 const formatRelativeTime = (time: string): string => {
@@ -41,7 +47,7 @@ const formatRelativeTime = (time: string): string => {
   if (diffHours < 24 && now.isSame(at, 'day')) {
     return `${diffHours} 小时前`;
   }
-  return at.format('MM-DD HH:mm');
+  return at.format('YYYY-MM-DD HH:mm');
 };
 
 const formatDuration = (ms: number): string => {
@@ -77,7 +83,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="会话总数"
             value={stats.sessionCount}
             prefix={<MessageOutlined className="text-blue-500" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         <Col span={6}>
@@ -85,7 +91,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="Token (总)"
             value={formatTokens(stats.tokenCount)}
             prefix={<ThunderboltOutlined className="text-orange-500" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         <Col span={6}>
@@ -93,7 +99,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="Token (输入)"
             value={formatTokens(stats.promptTokenCount)}
             prefix={<ThunderboltOutlined className="text-blue-400" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         <Col span={6}>
@@ -101,7 +107,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="Token (输出)"
             value={formatTokens(stats.completionTokenCount)}
             prefix={<ThunderboltOutlined className="text-cyan-400" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         
@@ -111,7 +117,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             value={stats.successRate}
             suffix="%"
             prefix={<CheckCircleOutlined className="text-green-500" />}
-            valueStyle={{ fontSize: 18, color: stats.successRate >= 95 ? '#22c55e' : stats.successRate >= 80 ? '#f59e0b' : '#ef4444' }}
+            styles={{ content: { fontSize: 18, color: stats.successRate >= 95 ? '#22c55e' : stats.successRate >= 80 ? '#f59e0b' : '#ef4444' } }}
           />
         </Col>
         <Col span={6}>
@@ -119,7 +125,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="平均响应"
             value={formatDuration(stats.avgDurationMs)}
             prefix={<ClockCircleOutlined className="text-purple-500" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         <Col span={6}>
@@ -127,7 +133,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="平均/对话"
             value={formatTokens(stats.avgTokenPerSession)}
             prefix={<ThunderboltOutlined className="text-orange-300" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
         <Col span={6}>
@@ -135,7 +141,7 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
             title="平均/请求"
             value={formatTokens(stats.avgTokenPerInteraction)}
             prefix={<ThunderboltOutlined className="text-orange-200" />}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Col>
       </Row>
@@ -161,13 +167,12 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
         <Typography.Text type="secondary" className="text-xs">
           最近对话:
         </Typography.Text>
-        <List
-          className="mt-2"
-          dataSource={sessions}
-          locale={{ emptyText: <Empty description="暂无对话记录" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-          renderItem={(item) => (
-            <List.Item className="!py-2 !px-0">
-              <div className="flex w-full items-center justify-between">
+        <div className="mt-2 flex flex-col gap-2">
+          {sessions.length === 0 ? (
+            <Empty description="暂无对话记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : (
+            sessions.map((item) => (
+              <div key={item.id} className="flex w-full items-center justify-between py-2 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-2">
                   <Tag color={sceneColorMap[item.scene] || sceneColorMap.default}>
                     {sceneLabelMap[item.scene] || item.scene}
@@ -180,9 +185,9 @@ const AIActivityCard: React.FC<AIActivityCardProps> = ({ data, loading }) => {
                   {formatRelativeTime(item.createdAt)}
                 </Typography.Text>
               </div>
-            </List.Item>
+            ))
           )}
-        />
+        </div>
       </div>
     </Card>
   );

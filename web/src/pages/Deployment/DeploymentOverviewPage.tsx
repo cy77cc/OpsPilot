@@ -224,7 +224,7 @@ const DeploymentOverviewPage: React.FC = () => {
                   title={<span className="text-gray-600">总发布数</span>}
                   value={stats.total}
                   prefix={<RocketOutlined className="text-primary-500" />}
-                  valueStyle={{ color: '#495057', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -236,7 +236,7 @@ const DeploymentOverviewPage: React.FC = () => {
                   title={<span className="text-gray-600">待审批</span>}
                   value={stats.pendingApproval}
                   prefix={<ClockCircleOutlined className="text-warning" />}
-                  valueStyle={{ color: '#f59e0b', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#f59e0b', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -248,7 +248,7 @@ const DeploymentOverviewPage: React.FC = () => {
                   title={<span className="text-gray-600">进行中</span>}
                   value={stats.inProgress}
                   prefix={<SyncOutlined className="text-processing" />}
-                  valueStyle={{ color: '#1890ff', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#1890ff', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>
@@ -261,7 +261,7 @@ const DeploymentOverviewPage: React.FC = () => {
                   value={stats.successRate}
                   suffix="%"
                   prefix={<CheckCircleOutlined className="text-success" />}
-                  valueStyle={{ color: '#10b981', fontSize: '28px', fontWeight: 600 }}
+                  styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
                 />
               </Card>
             </StaggerItem>

@@ -116,10 +116,10 @@ const ExecutionHistoryPage: React.FC = () => {
       }
     >
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card size="small"><Statistic title="总执行次数" value={stats.total} valueStyle={{ color: '#3f8600' }} /></Card>
-        <Card size="small"><Statistic title="成功执行" value={stats.success} valueStyle={{ color: '#3f8600' }} /></Card>
-        <Card size="small"><Statistic title="失败次数" value={stats.failed} valueStyle={{ color: '#cf1322' }} /></Card>
-        <Card size="small"><Statistic title="平均时长" value={stats.avgDuration} suffix="秒" valueStyle={{ color: '#1890ff' }} /></Card>
+        <Card size="small"><Statistic title="总执行次数" value={stats.total} styles={{ content: { color: '#3f8600' } }} /></Card>
+        <Card size="small"><Statistic title="成功执行" value={stats.success} styles={{ content: { color: '#3f8600' } }} /></Card>
+        <Card size="small"><Statistic title="失败次数" value={stats.failed} styles={{ content: { color: '#cf1322' } }} /></Card>
+        <Card size="small"><Statistic title="平均时长" value={stats.avgDuration} suffix="秒" styles={{ content: { color: '#1890ff' } }} /></Card>
       </div>
 
       {currentExecution && (

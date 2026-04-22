@@ -506,7 +506,7 @@ const DeploymentPage: React.FC = () => {
                 <Col span={14}>
                   <Card size="small" title="Preview Manifest">
                     {previewWarnings.length > 0 ? (
-                      <Space orientation="vertical" style={{ width: '100%', marginBottom: 8 }}>
+                      <Space direction="vertical" style={{ width: '100%', marginBottom: 8 }}>
                         {previewWarnings.map((w, idx) => <Alert key={`${w.code}-${idx}`} type={w.level === 'error' ? 'error' : 'warning'} showIcon title={w.message} />)}
                       </Space>
                     ) : null}

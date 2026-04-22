@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Badge, List, Typography } from 'antd';
+import { Card, Badge, Typography } from 'antd';
 import {
   RocketOutlined,
   ThunderboltOutlined,
@@ -68,10 +68,9 @@ const OperationsCard: React.FC<Props> = ({ data, loading }) => {
 
   return (
     <Card title="运行状态" size="small" loading={loading}>
-      <List
-        dataSource={items}
-        renderItem={(item) => (
-          <List.Item className="!py-2 !px-0">
+      <div className="flex flex-col gap-2">
+        {items.map((item) => (
+          <div key={item.key} className="py-2 px-0 border-b border-gray-50 last:border-0">
             <div className="w-full">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -99,9 +98,9 @@ const OperationsCard: React.FC<Props> = ({ data, loading }) => {
                 ))}
               </div>
             </div>
-          </List.Item>
-        )}
-      />
+          </div>
+        ))}
+      </div>
     </Card>
   );
 };
