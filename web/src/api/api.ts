@@ -4,7 +4,9 @@ import {
   TOKEN_EVENTS,
   dispatchTokenRefreshed,
   dispatchTokenExpired,
+  dispatchTokenNeedsRefresh,
 } from '../utils/tokenManager';
+import { getRequestContextHeaders } from './requestContext';
 
 export class ApiRequestError extends Error {
   statusCode?: number;
@@ -63,14 +65,10 @@ class ApiService {
     // 请求拦截器
     this.instance.interceptors.request.use(
       (config) => {
-        const projectId = localStorage.getItem('projectId');
-        if (projectId) {
-          config.headers['X-Project-ID'] = projectId;
-        }
-        const teamId = localStorage.getItem('teamId');
-        if (teamId) {
-          config.headers['X-Team-ID'] = teamId;
-        }
+        config.headers = {
+          ...(config.headers || {}),
+          ...getRequestContextHeaders(),
+        } as Record<string, string>;
         return config;
       },
       (error) => {
@@ -87,6 +85,7 @@ class ApiService {
         // 兼容后端统一结构：{ code, msg/message, data, total }
         if (typeof payload?.code === 'number') {
           if (isAuthBusinessCode(payload.code) && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
+            dispatchTokenNeedsRefresh('response');
             originalConfig._retry = true;
             return this.tryRefreshAndRetry(originalConfig);
           }
@@ -113,6 +112,7 @@ class ApiService {
         const originalConfig = (error.config || {}) as AxiosRequestConfig & { _retry?: boolean };
         const requestURL = String(originalConfig.url || '');
         if (error.response?.status === 401 && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
+          dispatchTokenNeedsRefresh('response');
           originalConfig._retry = true;
           return this.tryRefreshAndRetry(originalConfig);
         }
@@ -174,16 +174,10 @@ class ApiService {
 
     this.refreshPromise = (async () => {
       try {
-        const response = await this.instance.post<ApiResponse<any>>('/auth/refresh');
-        const payload = response.data;
-        const token = payload?.data?.accessToken || payload?.data?.token || '';
-        const nextRefreshToken = payload?.data?.refreshToken;
+        await this.instance.post<ApiResponse<any>>('/auth/refresh');
 
         // 触发刷新成功事件
-        dispatchTokenRefreshed({
-          token,
-          refreshToken: nextRefreshToken,
-        });
+        dispatchTokenRefreshed();
 
         return true;
       } catch {
