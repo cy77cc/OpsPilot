@@ -8,12 +8,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestRegisterModulesOwnsAIChatRoute(t *testing.T) {
+func TestRegisterModulesOwnsAIInteractiveRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
-	registerAIChatRoute(v1, &svc.ServiceContext{})
+	registerAIRoutes(v1, &svc.ServiceContext{})
 
 	routes := engine.Routes()
 	seen := make(map[string]struct{}, len(routes))
@@ -21,7 +21,14 @@ func TestRegisterModulesOwnsAIChatRoute(t *testing.T) {
 		seen[route.Method+" "+route.Path] = struct{}{}
 	}
 
-	if _, ok := seen[http.MethodPost+" /api/v1/ai/chat"]; !ok {
-		t.Fatal("expected bootstrap to own POST /api/v1/ai/chat")
+	expected := []string{
+		http.MethodPost + " /api/v1/ai/chat",
+		http.MethodPost + " /api/v1/ai/assist/form/stream",
+	}
+
+	for _, route := range expected {
+		if _, ok := seen[route]; !ok {
+			t.Fatalf("expected bootstrap to own %s", route)
+		}
 	}
 }
