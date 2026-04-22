@@ -56,6 +56,7 @@ export const ServiceProvisionPage = lazy(() => import('../../pages/Services/Serv
 export const ServiceDeployPage = lazy(() => import('../../pages/Services/ServiceDeployPage'));
 export const ServiceVisibilityPage = lazy(() => import('../../pages/Services/ServiceVisibilityPage'));
 export const CMDBPage = lazy(() => import('../../pages/CMDB/CMDBPage'));
+export const AccessControlPage = lazy(() => import('../../pages/Org/AccessControlPage'));
 export const AutomationPage = lazy(() => import('../../pages/Automation/AutomationPage'));
 export const CICDPage = lazy(() => import('../../pages/CICD/CICDPage'));
 export const JobListPage = lazy(() => import('../../pages/Jobs/JobListPage'));

@@ -16,6 +16,7 @@ import {
   ServiceDeployPage,
   ServiceVisibilityPage,
   CMDBPage,
+  AccessControlPage,
   AutomationPage,
   CICDPage,
   HelpCenterPage,
@@ -66,6 +67,7 @@ export function renderPlatformRoutes({ withAuth, governanceMenuEnabled }: Platfo
     <Route path="/services/:id/deploy" element={withAuth('service', 'deploy', <ServiceDeployPage />)} />
     <Route path="/services/:id/visibility" element={withAuth('service', 'write', <ServiceVisibilityPage />)} />
     <Route path="/cmdb" element={withAuth('cmdb', 'read', <CMDBPage />)} />
+    <Route path="/org" element={withAuth('rbac', 'read', <AccessControlPage />)} />
     <Route path="/automation" element={withAuth('automation', 'read', <AutomationPage />)} />
     <Route path="/cicd" element={withAuth('cicd', 'read', <CICDPage />)} />
       <Route path="/help" element={<HelpCenterPage />} />

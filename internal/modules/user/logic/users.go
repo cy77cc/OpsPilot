@@ -64,6 +64,55 @@ func (l *UserLogic) GetUser(ctx context.Context, id model.UserID) (v1.UserResp, 
 	}, nil
 }
 
+// ListUsers 获取用户列表。
+func (l *UserLogic) ListUsers(ctx context.Context, req v1.UserListReq) (v1.UserListResp, error) {
+	var users []model.User
+	var total int64
+
+	db := l.svcCtx.DB.WithContext(ctx).Model(&model.User{})
+	if req.Query != "" {
+		q := "%" + req.Query + "%"
+		db = db.Where("username LIKE ? OR email LIKE ?", q, q)
+	}
+
+	if err := db.Count(&total).Error; err != nil {
+		return v1.UserListResp{}, err
+	}
+
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 10
+	}
+
+	offset := int((req.Page - 1) * req.PageSize)
+	err := db.Offset(offset).Limit(int(req.PageSize)).Order("id DESC").Find(&users).Error
+	if err != nil {
+		return v1.UserListResp{}, err
+	}
+
+	var list []v1.UserResp
+	for _, u := range users {
+		list = append(list, v1.UserResp{
+			Id:            uint64(u.ID),
+			Username:      u.Username,
+			Email:         u.Email,
+			Phone:         u.Phone,
+			Avatar:        u.Avatar,
+			Status:        int32(u.Status),
+			CreateTime:    u.CreateTime,
+			UpdateTime:    u.UpdateTime,
+			LastLoginTime: u.LastLoginTime,
+		})
+	}
+
+	return v1.UserListResp{
+		Total: total,
+		List:  list,
+	}, nil
+}
+
 // GetMe 获取当前登录用户的完整信息。
 //
 // 参数:

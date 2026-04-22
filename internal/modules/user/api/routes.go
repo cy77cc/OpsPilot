@@ -19,21 +19,35 @@ func RegisterUserHandlers(r *gin.RouterGroup, serverCtx *svc.ServiceContext) {
 	// 无需认证的组
 	authGroup := r.Group("auth")
 
-	userHandler := userHandler.NewUserHandler(serverCtx)
+	uHandler := userHandler.NewUserHandler(serverCtx)
 
 	{
-		authGroup.POST("login", userHandler.Login)
-		authGroup.POST("logout", userHandler.Logout)
-		authGroup.POST("refresh", userHandler.Refresh)
-		authGroup.POST("register", userHandler.Register)
-		authGroup.GET("me", middleware.JWTAuth(), userHandler.Me)
+		authGroup.POST("login", uHandler.Login)
+		authGroup.POST("logout", uHandler.Logout)
+		authGroup.POST("refresh", uHandler.Refresh)
+		authGroup.POST("register", uHandler.Register)
+		authGroup.GET("me", middleware.JWTAuth(), uHandler.Me)
 	}
 
 	userGroup := r.Group("user", middleware.JWTAuth())
 	{
+		userGroup.GET("/list", uHandler.ListUsers)
 		userGroup.POST("/", middleware.CasbinAuth(serverCtx.CasbinEnforcer, "user:view"), func(c *gin.Context) {
 			httpx.OK(c, nil)
 		})
-		userGroup.GET("/:id", userHandler.GetUserInfo)
+		userGroup.GET("/:id", uHandler.GetUserInfo)
+	}
+
+	orgHandler := userHandler.NewOrgHandler(serverCtx)
+	orgGroup := r.Group("org", middleware.JWTAuth())
+	{
+		orgGroup.GET("/departments/tree", orgHandler.GetDepartmentTree)
+		orgGroup.POST("/departments", orgHandler.CreateDepartment)
+		orgGroup.PUT("/departments/:id", orgHandler.UpdateDepartment)
+		orgGroup.DELETE("/departments/:id", orgHandler.DeleteDepartment)
+		orgGroup.GET("/departments/:id/members", orgHandler.GetDepartmentMembers)
+		orgGroup.GET("/departments/:id/roles", orgHandler.GetDepartmentRoles)
+		orgGroup.POST("/departments/:id/roles", orgHandler.UpdateDepartmentRoles)
+		orgGroup.POST("/members/transfer", orgHandler.TransferMember)
 	}
 }

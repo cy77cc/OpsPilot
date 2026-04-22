@@ -14,16 +14,19 @@ const ProjectSwitcher: React.FC = () => {
         const res = await Api.projects.list();
         const list = res.data.list || [];
         setProjects(list);
+        
+        // 只有当当前没有选择项目，且列表不为空时，才设置默认项目
         if (!projectId && list.length > 0) {
-          const first = list[0].id;
-          setProjectId(first);
+          setProjectId(String(list[0].id));
         }
       } catch {
         setProjects([]);
       }
     };
     load();
-  }, [projectId, setProjectId]);
+    // 移除 [projectId, setProjectId] 依赖，仅在组件挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Select

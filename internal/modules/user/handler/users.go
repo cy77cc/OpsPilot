@@ -66,3 +66,17 @@ func (u *UserHandler) GetUserInfo(c *gin.Context) {
 	}
 	httpx.OK(c, resp)
 }
+
+func (u *UserHandler) ListUsers(c *gin.Context) {
+	var req v1.UserListReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		httpx.Fail(c, xcode.ParamError, err.Error())
+		return
+	}
+	resp, err := userLogic.NewUserLogic(u.svcCtx).ListUsers(c.Request.Context(), req)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, resp)
+}

@@ -94,16 +94,13 @@ const RolesPage: React.FC = () => {
   });
 
   React.useEffect(() => {
-    if (!active) {
-      detailForm.resetFields();
-      setEditingPermissions([]);
-      return;
+    if (active) {
+      detailForm.setFieldsValue({
+        name: active.name,
+        description: active.description,
+      });
+      setEditingPermissions(active.permissions || []);
     }
-    detailForm.setFieldsValue({
-      name: active.name,
-      description: active.description,
-    });
-    setEditingPermissions(active.permissions || []);
   }, [active, detailForm]);
 
   const groupedPermissions = React.useMemo(() => {
@@ -333,7 +330,7 @@ const RolesPage: React.FC = () => {
         title="角色详情与权限编辑"
         open={Boolean(active)}
         onClose={() => setActive(null)}
-        width={760}
+        size="large"
         extra={canWrite ? (
           <Popconfirm
             title="确定更新角色权限？"

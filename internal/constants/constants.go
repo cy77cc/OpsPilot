@@ -10,6 +10,7 @@ const (
 	JwtWhiteListKey = "jwt:blacklist:"   // JWT 黑名单键前缀
 	UserIdKey       = "user:id:"         // 用户 ID 键前缀
 	UserNameKey     = "user:name:"       // 用户名键前缀
+	DeptIdKey       = "dept:id:"         // 部门 ID 键前缀
 	RdbTTL          = time.Hour * 24 * 2 // Redis 默认 TTL（2 天）
 	RdbAddTTL       = time.Minute * 10   // TTL 增量（10 分钟）
 	NodeKey         = "node:id:"         // 节点 ID 键前缀

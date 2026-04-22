@@ -169,9 +169,49 @@ type UserResp struct {
 }
 
 type UserUpdateReq struct {
-	Id     uint64 `path:"id"`     // 用户ID
+	Id     uint64 `path:"id"`     // 用户 ID
 	Email  string `json:"email"`  // 邮箱
 	Phone  string `json:"phone"`  // 手机号
 	Avatar string `json:"avatar"` // 头像地址
 	Status int32  `json:"status"` // 状态：1正常，0禁用
 }
+
+type DepartmentResp struct {
+	Id         int64            `json:"id"`
+	Name       string           `json:"name"`
+	ParentId   int64            `json:"parentId"`
+	LeaderId   int64            `json:"leaderId"`
+	Status     int8             `json:"status"`
+	CreateTime int64            `json:"createTime"`
+	UpdateTime int64            `json:"updateTime"`
+	Children   []DepartmentResp `json:"children,omitempty"`
+}
+
+type DepartmentCreateReq struct {
+	Name     string `json:"name" validate:"required"`
+	ParentId int64  `json:"parentId"`
+	LeaderId int64  `json:"leaderId"`
+}
+
+type DepartmentUpdateReq struct {
+	Id       int64  `path:"id"`
+	Name     string `json:"name"`
+	ParentId int64  `json:"parentId"`
+	LeaderId int64  `json:"leaderId"`
+	Status   int8   `json:"status"`
+}
+
+type MemberTransferReq struct {
+	UserId    int64 `json:"userId" validate:"required"`
+	OldDeptId int64 `json:"oldDeptId"`
+	NewDeptId int64 `json:"newDeptId" validate:"required"`
+}
+
+type DepartmentRolesReq struct {
+	RoleIds []uint64 `json:"roleIds" validate:"required"`
+}
+
+type DepartmentRolesResp struct {
+	RoleIds []uint64 `json:"roleIds"`
+}
+

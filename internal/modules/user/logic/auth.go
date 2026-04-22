@@ -276,9 +276,11 @@ func (l *UserLogic) Logout(ctx context.Context, req v1.LogoutReq) error {
 // loadRolesAndPermissions 加载用户的角色和权限列表。
 //
 // 流程:
-//  1. 通过 user_roles 表查询用户的所有角色
-//  2. 通过 role_permissions 表查询角色关联的所有权限
-//  3. 如果用户是 admin 角色，添加 "*:*" 全局权限
+//  1. 通过 user_roles 表查询用户的所有直接角色
+//  2. 通过 department_roles 表查询用户所属部门的角色
+//  3. 合并并去重所有角色 ID
+//  4. 查询这些角色关联的所有权限
+//  5. 如果用户拥有 admin 角色，添加 "*:*" 全局权限
 //
 // 参数:
 //   - ctx: 上下文
@@ -286,56 +288,83 @@ func (l *UserLogic) Logout(ctx context.Context, req v1.LogoutReq) error {
 //
 // 返回: 角色列表、权限列表、错误
 func (l *UserLogic) loadRolesAndPermissions(ctx context.Context, userID uint64) ([]string, []string, error) {
-	roleRows := make([]struct {
-		Code string `gorm:"column:code"`
-	}, 0)
+	// 1. 获取用户所有角色 ID (直接分配 + 部门分配)
+	var roleIDs []int64
+
+	// 查询直接分配的角色 ID
 	if err := l.svcCtx.DB.WithContext(ctx).
-		Table("roles").
-		Select("roles.code").
-		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ?", userID).
-		Scan(&roleRows).Error; err != nil {
+		Table("user_roles").
+		Where("user_id = ?", userID).
+		Pluck("role_id", &roleIDs).Error; err != nil {
 		return nil, nil, err
 	}
-	roles := make([]string, 0, len(roleRows))
-	roleSet := make(map[string]struct{}, len(roleRows))
-	for _, row := range roleRows {
-		code := strings.TrimSpace(row.Code)
-		if code == "" {
-			continue
-		}
-		if _, ok := roleSet[code]; ok {
-			continue
-		}
-		roleSet[code] = struct{}{}
-		roles = append(roles, code)
+
+	// 查询部门分配的角色 ID
+	var deptRoleIDs []int64
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Table("department_roles").
+		Joins("JOIN department_members ON department_members.dept_id = department_roles.dept_id").
+		Where("department_members.user_id = ?", userID).
+		Pluck("department_roles.role_id", &deptRoleIDs).Error; err != nil {
+		return nil, nil, err
+	}
+	roleIDs = append(roleIDs, deptRoleIDs...)
+
+	if len(roleIDs) == 0 {
+		return []string{}, []string{}, nil
 	}
 
-	permRows := make([]struct {
-		Code string `gorm:"column:code"`
-	}, 0)
+	// 角色 ID 去重
+	roleIDMap := make(map[int64]struct{})
+	uniqueRoleIDs := make([]int64, 0, len(roleIDs))
+	for _, id := range roleIDs {
+		if _, ok := roleIDMap[id]; !ok {
+			roleIDMap[id] = struct{}{}
+			uniqueRoleIDs = append(uniqueRoleIDs, id)
+		}
+	}
+
+	// 2. 加载角色编码
+	var roleCodes []string
+	if err := l.svcCtx.DB.WithContext(ctx).
+		Table("roles").
+		Where("id IN ?", uniqueRoleIDs).
+		Pluck("code", &roleCodes).Error; err != nil {
+		return nil, nil, err
+	}
+
+	roles := make([]string, 0, len(roleCodes))
+	for _, code := range roleCodes {
+		code = strings.TrimSpace(code)
+		if code != "" {
+			roles = append(roles, code)
+		}
+	}
+
+	// 3. 加载权限编码
+	var permCodes []string
 	if err := l.svcCtx.DB.WithContext(ctx).
 		Table("permissions").
-		Select("permissions.code").
+		Select("DISTINCT permissions.code").
 		Joins("JOIN role_permissions ON role_permissions.permission_id = permissions.id").
-		Joins("JOIN user_roles ON user_roles.role_id = role_permissions.role_id").
-		Where("user_roles.user_id = ?", userID).
-		Scan(&permRows).Error; err != nil {
+		Where("role_permissions.role_id IN ?", uniqueRoleIDs).
+		Pluck("permissions.code", &permCodes).Error; err != nil {
 		return roles, nil, err
 	}
-	permissions := make([]string, 0, len(permRows)+1)
-	permSet := make(map[string]struct{}, len(permRows)+1)
-	for _, row := range permRows {
-		code := strings.TrimSpace(row.Code)
-		if code == "" {
-			continue
+
+	permissions := make([]string, 0, len(permCodes)+1)
+	permSet := make(map[string]struct{}, len(permCodes)+1)
+	for _, code := range permCodes {
+		code = strings.TrimSpace(code)
+		if code != "" {
+			if _, ok := permSet[code]; !ok {
+				permSet[code] = struct{}{}
+				permissions = append(permissions, code)
+			}
 		}
-		if _, ok := permSet[code]; ok {
-			continue
-		}
-		permSet[code] = struct{}{}
-		permissions = append(permissions, code)
 	}
+
+	// 4. 处理 admin 特殊权限
 	for _, roleCode := range roles {
 		if strings.EqualFold(roleCode, "admin") {
 			if _, ok := permSet["*:*"]; !ok {

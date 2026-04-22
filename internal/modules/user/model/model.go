@@ -141,3 +141,34 @@ type Permission struct {
 func (Permission) TableName() string {
 	return "permissions"
 }
+
+// Department 是部门表模型。
+type Department struct {
+	ID         UserID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	Name       string `gorm:"column:name;type:varchar(64);not null" json:"name"`
+	ParentID   int64  `gorm:"column:parent_id;not null;default:0" json:"parent_id"`
+	LeaderID   int64  `gorm:"column:leader_id;not null;default:0" json:"leader_id"`
+	Status     int8   `gorm:"column:status;not null;default:1" json:"status"`
+	CreateTime int64  `gorm:"column:create_time;not null;default:0;autoCreateTime" json:"create_time"`
+	UpdateTime int64  `gorm:"column:update_time;not null;default:0;autoUpdateTime" json:"update_time"`
+}
+
+func (Department) TableName() string { return "departments" }
+
+// DepartmentMember 存储用户与部门关联。
+type DepartmentMember struct {
+	ID     UserID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	UserID int64  `gorm:"column:user_id;not null;index" json:"user_id"`
+	DeptID int64  `gorm:"column:dept_id;not null;index" json:"dept_id"`
+}
+
+func (DepartmentMember) TableName() string { return "department_members" }
+
+// DepartmentRole 存储部门与角色关联。
+type DepartmentRole struct {
+	ID     UserID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	DeptID int64  `gorm:"column:dept_id;not null;index" json:"dept_id"`
+	RoleID int64  `gorm:"column:role_id;not null;index" json:"role_id"`
+}
+
+func (DepartmentRole) TableName() string { return "department_roles" }

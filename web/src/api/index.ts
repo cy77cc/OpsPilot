@@ -63,6 +63,9 @@ import { rbacApi } from './modules/rbac';
 export * from './modules/auth';
 import { authApi } from './modules/auth';
 
+export * from './modules/org';
+import { orgApi } from './modules/org';
+
 export * from './modules/projects';
 import { projectApi } from './modules/projects';
 
@@ -112,6 +115,7 @@ export const Api = {
   kubernetes: kubernetesApi,
   monitoring: monitoringApi,
   rbac: rbacApi,
+  org: orgApi,
   auth: authApi,
   projects: projectApi,
   services: serviceApi,

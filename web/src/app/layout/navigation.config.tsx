@@ -78,18 +78,9 @@ export function buildMenuSections({
       key: 'support',
       title: '平台与支持',
       items: [
+        { key: '/org', icon: <UserOutlined />, label: '组织管理' },
         { key: '/settings', icon: <SettingOutlined />, label: '基础设置' },
         { key: '/settings/ai-models', icon: <SettingOutlined />, label: 'AI 模型配置' },
-        ...(!governanceMenuEnabled
-          ? LEGACY_GOVERNANCE_MENU_ITEMS.map(({ key, label }) => ({
-              key,
-              icon: <UserOutlined />,
-              label,
-            }))
-          : []),
-        ...(governanceMenuEnabled && canReadGovernance
-          ? [{ key: '/governance/users', icon: <UserOutlined />, label: '访问治理' }]
-          : []),
         { key: '/tools', icon: <ToolOutlined />, label: t('menu.tools') },
         { key: '/help', icon: <FileTextOutlined />, label: '帮助中心' },
       ],
