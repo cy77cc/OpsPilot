@@ -1,3 +1,15 @@
 groups:
     - name: OpsPilot-alerts
-      rules: []
+      rules:
+        - alert: 告警测试
+          expr: host_cpu_load > 10
+          for: 5m0s
+          labels:
+            rule_id: "19"
+            severity: warning
+            source: custom
+            team: 测试组
+          annotations:
+            description: 这是一条用于测试的告警详情，验证通知格式是否正常。
+            suggestion: 请忽略此条测试信息，无需进行实际排查。
+            summary: 测试告警

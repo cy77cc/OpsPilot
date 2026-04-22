@@ -323,6 +323,9 @@ func (l *Logic) ListRules(ctx context.Context, page, pageSize int) ([]model.Aler
 //
 // 返回: 创建成功的规则和可能的错误
 func (l *Logic) CreateRule(ctx context.Context, rule model.AlertRule) (*model.AlertRule, error) {
+	if strings.TrimSpace(rule.Metric) == "" {
+		return nil, fmt.Errorf("metric is required")
+	}
 	rule.State = boolToRuleState(rule.Enabled)
 	if rule.WindowSec <= 0 {
 		rule.WindowSec = 3600
