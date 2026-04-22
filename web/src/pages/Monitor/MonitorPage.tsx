@@ -8,27 +8,41 @@ import type { Alert, MetricData } from '../../api/modules/monitoring';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const MonitorPage: React.FC = () => {
-  const [loading, setLoading] = useState(false);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [cpuMetrics, setCpuMetrics] = useState<MetricData[]>([]);
   const [memMetrics, setMemMetrics] = useState<MetricData[]>([]);
 
-  const load = async () => {
-    setLoading(true);
+  const loadAlerts = async () => {
+    setLoadingAlerts(true);
+    try {
+      const alertRes = await Api.monitoring.getAlertList({ page: 1, pageSize: 100, status: 'firing' });
+      setAlerts(alertRes.data?.list || []);
+    } finally {
+      setLoadingAlerts(false);
+    }
+  };
+
+  const loadMetrics = async () => {
+    setLoadingMetrics(true);
     try {
       const end = new Date().toISOString();
       const start = dayjs().subtract(24, 'hour').toDate().toISOString();
-      const [alertRes, cpuRes, memRes] = await Promise.all([
-        Api.monitoring.getAlertList({ page: 1, pageSize: 100, status: 'firing' }), // Only active
+      const [cpuRes, memRes] = await Promise.all([
         Api.monitoring.getMetrics({ metric: 'cpu_usage', startTime: start, endTime: end }),
         Api.monitoring.getMetrics({ metric: 'memory_usage', startTime: start, endTime: end }),
       ]);
-      setAlerts(alertRes.data.list || []);
       setCpuMetrics(cpuRes.data?.series || []);
       setMemMetrics(memRes.data?.series || []);
     } finally {
-      setLoading(false);
+      setLoadingMetrics(false);
     }
+  };
+
+  const load = () => {
+    void loadAlerts();
+    void loadMetrics();
   };
 
   useEffect(() => {
@@ -50,10 +64,7 @@ const MonitorPage: React.FC = () => {
     };
   }, [cpuMetrics, memMetrics]);
 
-  const isInitialLoading = loading
-    && alerts.length === 0
-    && cpuMetrics.length === 0
-    && memMetrics.length === 0;
+  const isInitialLoading = loadingAlerts && alerts.length === 0;
 
   if (isInitialLoading) {
     return <PageSkeleton />;
@@ -63,7 +74,7 @@ const MonitorPage: React.FC = () => {
     <div className="space-y-3">
       <div className="flex justify-end">
         <Space>
-          <Button icon={<ReloadOutlined />} loading={loading && !isInitialLoading} onClick={load}>刷新</Button>
+          <Button icon={<ReloadOutlined />} loading={loadingAlerts || loadingMetrics} onClick={load}>刷新</Button>
         </Space>
       </div>
       
@@ -71,7 +82,9 @@ const MonitorPage: React.FC = () => {
         <Col xs={24} md={12}>
           <Card title="CPU 资源使用率趋势 (24h)">
              <div style={{ height: 200 }}>
-              {chartData.cpu.length > 0 ? (
+              {loadingMetrics ? (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">加载中...</div>
+              ) : chartData.cpu.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData.cpu} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
@@ -97,7 +110,9 @@ const MonitorPage: React.FC = () => {
         <Col xs={24} md={12}>
           <Card title="内存资源使用率趋势 (24h)">
              <div style={{ height: 200 }}>
-              {chartData.mem.length > 0 ? (
+              {loadingMetrics ? (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">加载中...</div>
+              ) : chartData.mem.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData.mem} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
@@ -126,7 +141,7 @@ const MonitorPage: React.FC = () => {
         <Table
          
           rowKey="id"
-          loading={loading && !isInitialLoading}
+          loading={loadingAlerts && alerts.length > 0}
           dataSource={alerts}
           pagination={false}
           columns={[
