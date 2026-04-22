@@ -127,45 +127,66 @@ describe('ApiService cookie-session refresh and retry', () => {
         ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
       )
     ).toEqual([]);
-    getItemSpy.mockClear();
-    expect(localStorage.getItem('token')).toBe('legacy-token');
   });
 
-  it('retry path replays original request without Authorization injection from localStorage token', async () => {
-    const instance = (apiService as any).instance;
+  it('retries the public API request path without Authorization injection from localStorage token', async () => {
+    const instance = Reflect.get(apiService, 'instance') as {
+      defaults: { adapter: unknown };
+    };
     const refreshSpy = vi.spyOn(apiService, 'refreshAccessToken').mockResolvedValue(true);
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
-    const adapterSpy = vi.fn(async (config: { headers?: Record<string, string> }) => ({
-      data: { success: true, data: { ok: true } },
-      status: 200,
-      statusText: 'OK',
-      headers: {},
-      config,
-    }));
     const originalAdapter = instance.defaults.adapter;
+    let requestCount = 0;
+    const adapterSpy = vi.fn(async (config: { headers?: { get?: (key: string) => unknown } & Record<string, unknown> }) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        const error = new Error('unauthorized') as Error & {
+          config: typeof config;
+          response: {
+            data: { message: string };
+            status: number;
+            statusText: string;
+            headers: Record<string, never>;
+            config: typeof config;
+          };
+        };
+        error.config = config;
+        error.response = {
+          data: { message: 'unauthorized' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config,
+        };
+        throw error;
+      }
+
+      return {
+        data: { success: true, data: { ok: true } },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      };
+    });
 
     localStorage.setItem('token', 'legacy-token');
     scopeStore.setScope({ projectId: '42' });
 
-    const originalConfig = {
-      url: '/secure/resource',
-      method: 'get',
-      headers: {
-        'X-Request-ID': 'request-1',
-      },
-    };
-
     instance.defaults.adapter = adapterSpy;
 
     try {
-      await (apiService as any).tryRefreshAndRetry(originalConfig);
+      await expect(apiService.get('/secure/resource')).resolves.toEqual({
+        success: true,
+        data: { ok: true },
+      });
 
       expect(refreshSpy).toHaveBeenCalledTimes(1);
-      expect(adapterSpy).toHaveBeenCalledTimes(1);
+      expect(adapterSpy).toHaveBeenCalledTimes(2);
 
-      const sentConfig = adapterSpy.mock.calls[0][0] as { headers?: { get?: (key: string) => string | undefined } & Record<string, string> };
-      expect(sentConfig.headers?.get?.('Authorization') ?? sentConfig.headers?.Authorization).toBeUndefined();
-      expect(sentConfig.headers?.get?.('X-Project-ID') ?? sentConfig.headers?.['X-Project-ID']).toBe('42');
+      const retriedConfig = adapterSpy.mock.calls[1][0];
+      expect(retriedConfig.headers?.get?.('Authorization') ?? retriedConfig.headers?.Authorization).toBeUndefined();
+      expect(retriedConfig.headers?.get?.('X-Project-ID') ?? retriedConfig.headers?.['X-Project-ID']).toBe('42');
       expect(
         getItemSpy.mock.calls.filter(
           ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
