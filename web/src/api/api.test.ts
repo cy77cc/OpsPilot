@@ -133,11 +133,16 @@ describe('ApiService cookie-session refresh and retry', () => {
 
   it('retry path replays original request without Authorization injection from localStorage token', async () => {
     const instance = (apiService as any).instance;
-    const requestSpy = vi.spyOn(instance, 'request').mockResolvedValue({
-      data: { success: true, data: { ok: true } },
-    });
     const refreshSpy = vi.spyOn(apiService, 'refreshAccessToken').mockResolvedValue(true);
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+    const adapterSpy = vi.fn(async (config: { headers?: Record<string, string> }) => ({
+      data: { success: true, data: { ok: true } },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+    const originalAdapter = instance.defaults.adapter;
 
     localStorage.setItem('token', 'legacy-token');
     scopeStore.setScope({ projectId: '42' });
@@ -150,16 +155,24 @@ describe('ApiService cookie-session refresh and retry', () => {
       },
     };
 
-    await (apiService as any).tryRefreshAndRetry(originalConfig);
+    instance.defaults.adapter = adapterSpy;
 
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(requestSpy).toHaveBeenCalledTimes(1);
-    expect(requestSpy).toHaveBeenCalledWith(originalConfig);
-    expect((requestSpy.mock.calls[0][0] as { headers?: Record<string, string> }).headers?.Authorization).toBeUndefined();
-    expect(
-      getItemSpy.mock.calls.filter(
-        ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
-      )
-    ).toEqual([]);
+    try {
+      await (apiService as any).tryRefreshAndRetry(originalConfig);
+
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(adapterSpy).toHaveBeenCalledTimes(1);
+
+      const sentConfig = adapterSpy.mock.calls[0][0] as { headers?: { get?: (key: string) => string | undefined } & Record<string, string> };
+      expect(sentConfig.headers?.get?.('Authorization') ?? sentConfig.headers?.Authorization).toBeUndefined();
+      expect(sentConfig.headers?.get?.('X-Project-ID') ?? sentConfig.headers?.['X-Project-ID']).toBe('42');
+      expect(
+        getItemSpy.mock.calls.filter(
+          ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
+        )
+      ).toEqual([]);
+    } finally {
+      instance.defaults.adapter = originalAdapter;
+    }
   });
 });
