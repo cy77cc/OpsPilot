@@ -76,7 +76,9 @@ describe('AuthContext Cookie Session Flow', () => {
     sessionStorage.clear();
   });
 
-  it('bootstraps authenticated state from cookie session without localStorage token keys', async () => {
+  it('bootstraps authenticated state from /auth/me without localStorage token keys', async () => {
+    localStorage.setItem('token', 'legacy-access-token');
+    localStorage.setItem('refreshToken', 'legacy-refresh-token');
     const { assertNoTokenStorageDependency } = createTokenStorageSpies();
 
     await act(async () => {

@@ -196,4 +196,77 @@ describe('ApiService cookie-session refresh and retry', () => {
       instance.defaults.adapter = originalAdapter;
     }
   });
+
+  it('dispatches tokenExpired and rejects a typed session-expired error when refresh fails after a 401', async () => {
+    const instance = Reflect.get(apiService, 'instance') as {
+      defaults: { adapter: unknown };
+    };
+    const originalAdapter = instance.defaults.adapter;
+    const expiredHandler = vi.fn();
+
+    window.addEventListener(TOKEN_EVENTS.EXPIRED, expiredHandler);
+
+    const adapterSpy = vi.fn(async (config: { url?: string; headers?: { get?: (key: string) => unknown } & Record<string, unknown> }) => {
+      const url = String(config.url || '');
+
+      if (url.includes('/auth/refresh')) {
+        const error = new Error('refresh unauthorized') as Error & {
+          config: typeof config;
+          response: {
+            data: { message: string };
+            status: number;
+            statusText: string;
+            headers: Record<string, never>;
+            config: typeof config;
+          };
+        };
+        error.config = config;
+        error.response = {
+          data: { message: 'refresh unauthorized' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config,
+        };
+        throw error;
+      }
+
+      const error = new Error('unauthorized') as Error & {
+        config: typeof config;
+        response: {
+          data: { message: string };
+          status: number;
+          statusText: string;
+          headers: Record<string, never>;
+          config: typeof config;
+        };
+      };
+      error.config = config;
+      error.response = {
+        data: { message: 'unauthorized' },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+      };
+      throw error;
+    });
+
+    instance.defaults.adapter = adapterSpy;
+
+    try {
+      await expect(apiService.get('/secure/expired')).rejects.toMatchObject({
+        name: 'ApiRequestError',
+        message: '登录已过期，请重新登录',
+        statusCode: 401,
+        businessCode: 4005,
+      });
+
+      expect(adapterSpy).toHaveBeenCalledTimes(2);
+      expect(expiredHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(TOKEN_EVENTS.EXPIRED, expiredHandler);
+      instance.defaults.adapter = originalAdapter;
+    }
+  });
 });

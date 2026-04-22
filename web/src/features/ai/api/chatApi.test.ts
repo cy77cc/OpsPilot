@@ -24,8 +24,8 @@ describe('chatStream', () => {
     );
   });
 
-  it('sends cookie-based request context without localStorage bearer auth', async () => {
-    scopeStore.setScope({ projectId: '42' });
+  it('sends request context headers with cookie credentials and no Authorization header', async () => {
+    scopeStore.setScope({ projectId: '42', teamId: 'team-7' });
 
     await chatStream({ message: 'hello' }, {});
 
@@ -36,6 +36,7 @@ describe('chatStream', () => {
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
           'X-Project-ID': '42',
+          'X-Team-ID': 'team-7',
         }),
       })
     );

@@ -23,8 +23,8 @@ describe('formAssistStream', () => {
     );
   });
 
-  it('sends cookie-based request context without localStorage bearer auth', async () => {
-    scopeStore.setScope({ projectId: '42' });
+  it('sends request context headers with cookie credentials and no Authorization header', async () => {
+    scopeStore.setScope({ projectId: '42', teamId: 'team-7' });
 
     await formAssistStream({ messages: [], form: {} } as never, {});
 
@@ -35,6 +35,7 @@ describe('formAssistStream', () => {
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
           'X-Project-ID': '42',
+          'X-Team-ID': 'team-7',
         }),
       })
     );

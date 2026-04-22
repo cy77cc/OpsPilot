@@ -6,7 +6,7 @@ import {
   dispatchTokenExpired,
   dispatchTokenNeedsRefresh,
 } from '../utils/tokenManager';
-import { getRequestContextHeaders } from './requestContext';
+import { mergeRequestContextHeaders } from './requestContext';
 
 type RawApiPayload = {
   code?: number;
@@ -38,9 +38,15 @@ export class ApiRequestError extends Error {
 }
 
 const AUTH_BUSINESS_CODES = new Set<number>([2003, 4005, 4006]);
+const SESSION_EXPIRED_MESSAGE = '登录已过期，请重新登录';
+const SESSION_EXPIRED_STATUS = 401;
+const SESSION_EXPIRED_CODE = 4005;
 
 export const isAuthBusinessCode = (code: unknown): code is number =>
   typeof code === 'number' && AUTH_BUSINESS_CODES.has(code);
+
+const createSessionExpiredError = () =>
+  new ApiRequestError(SESSION_EXPIRED_MESSAGE, SESSION_EXPIRED_STATUS, SESSION_EXPIRED_CODE);
 
 // 响应数据结构
 export interface ApiResponse<T = unknown> {
@@ -81,7 +87,7 @@ class ApiService {
     this.instance.interceptors.request.use(
       (config) => {
         const headers = AxiosHeaders.from(config.headers);
-        Object.entries(getRequestContextHeaders()).forEach(([key, value]) => {
+        Object.entries(mergeRequestContextHeaders(headers.toJSON() as Record<string, string>)).forEach(([key, value]) => {
           headers.set(key, value);
         });
         config.headers = headers;
@@ -172,7 +178,7 @@ class ApiService {
   private async tryRefreshAndRetry(config: AxiosRequestConfig): Promise<AxiosResponse<RawApiPayload>> {
     const refreshed = await this.refreshAccessToken();
     if (!refreshed) {
-      return Promise.reject(new Error('登录已过期，请重新登录'));
+      return Promise.reject(createSessionExpiredError());
     }
     return this.instance.request<RawApiPayload>(config);
   }

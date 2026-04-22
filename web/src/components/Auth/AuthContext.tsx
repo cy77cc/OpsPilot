@@ -39,10 +39,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     void sessionStore.logout();
   }, []);
 
-  // 处理 token 刷新成功事件
-  const handleTokenRefreshed = useCallback(
+  const handleSessionRefreshed = useCallback(
     (_event: Event) => {
-      console.log('[Auth] Token refreshed successfully');
       void refreshUser().catch(() => {
         sessionStore.clearSession();
       });
@@ -50,37 +48,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     [refreshUser]
   );
 
-  // 处理 token 过期事件
-  const handleTokenExpired = useCallback(() => {
-    console.log('[Auth] Token expired, redirecting to login');
-
-    // 清除状态
+  const handleSessionExpired = useCallback(() => {
     sessionStore.clearSession();
 
-    // 保存当前路径用于登录后重定向
     const currentPath = window.location.pathname + window.location.search;
     if (currentPath && !currentPath.includes('/login')) {
       sessionStorage.setItem('redirectAfterLogin', currentPath);
     }
 
-    // 跳转到登录页
     window.location.href = '/login';
   }, []);
 
-  // 初始化和事件监听
   useEffect(() => {
     void refreshUser().catch(() => undefined);
 
-    // 监听 token 事件
-    window.addEventListener(TOKEN_EVENTS.REFRESHED, handleTokenRefreshed);
-    window.addEventListener(TOKEN_EVENTS.EXPIRED, handleTokenExpired);
+    window.addEventListener(TOKEN_EVENTS.REFRESHED, handleSessionRefreshed);
+    window.addEventListener(TOKEN_EVENTS.EXPIRED, handleSessionExpired);
 
     return () => {
-      // 清理事件监听
-      window.removeEventListener(TOKEN_EVENTS.REFRESHED, handleTokenRefreshed);
-      window.removeEventListener(TOKEN_EVENTS.EXPIRED, handleTokenExpired);
+      window.removeEventListener(TOKEN_EVENTS.REFRESHED, handleSessionRefreshed);
+      window.removeEventListener(TOKEN_EVENTS.EXPIRED, handleSessionExpired);
     };
-  }, [handleTokenRefreshed, handleTokenExpired, refreshUser]);
+  }, [handleSessionRefreshed, handleSessionExpired, refreshUser]);
 
   const value = useMemo(
     () => ({
