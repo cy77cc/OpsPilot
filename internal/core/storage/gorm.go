@@ -1,8 +1,8 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
@@ -14,7 +14,7 @@ import (
 
 // TODO 这里还有可以优化的点，可以支持读写分离的模式
 
-func MustNewDB() *gorm.DB {
+func NewDB() (*gorm.DB, error) {
 	var dialector gorm.Dialector
 	var maxOpenConns, maxIdleConns int
 	var connMaxLifetime time.Duration
@@ -53,20 +53,17 @@ func MustNewDB() *gorm.DB {
 		maxIdleConns = config.CFG.SQLite.MaxIdleConns
 		connMaxLifetime = config.CFG.SQLite.ConnMaxLifetime
 	} else {
-		// If no database is enabled, we might return nil or log error.
-		// For now, let's assume one must be enabled if this is called.
-		return nil
+		return nil, errors.New("no database configured")
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{})
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		return nil, fmt.Errorf("connect database: %w", err)
 	}
 
 	sqlDB, err := db.DB()
-
 	if err != nil {
-		log.Fatalf("failed to get sql db: %v", err)
+		return nil, fmt.Errorf("get sql db: %w", err)
 	}
 
 	sqlDB.SetMaxIdleConns(maxIdleConns)
@@ -76,5 +73,5 @@ func MustNewDB() *gorm.DB {
 	if config.CFG.App.Debug {
 		db = db.Debug()
 	}
-	return db
+	return db, nil
 }

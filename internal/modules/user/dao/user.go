@@ -7,25 +7,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/constants"
-	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	"github.com/cy77cc/OpsPilot/internal/modules/user/model"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
+type userCacheClient interface {
+	SetEx(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
+	Del(ctx context.Context, keys ...string) *redis.IntCmd
+	Get(ctx context.Context, key string) *redis.StringCmd
+	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.StatusCmd
+	TTL(ctx context.Context, key string) *redis.DurationCmd
+	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
+}
+
 // UserDAO 是用户数据访问对象。
 type UserDAO struct {
 	db    *gorm.DB                    // GORM 数据库实例
 	cache *expirable.LRU[string, any] // 本地 LRU 缓存
-	rdb   redis.UniversalClient       // Redis 客户端
+	rdb   userCacheClient             // Redis 客户端
 }
 
 // NewUserDAO 创建用户 DAO 实例。
-func NewUserDAO(db *gorm.DB, cache *expirable.LRU[string, any], rdb redis.UniversalClient) *UserDAO {
+func NewUserDAO(db *gorm.DB, cache *expirable.LRU[string, any], rdb userCacheClient) *UserDAO {
 	return &UserDAO{db: db, cache: cache, rdb: rdb}
 }
 
@@ -45,11 +54,11 @@ func (d *UserDAO) Create(ctx context.Context, user *model.User) error {
 
 // Update 更新用户，使用延迟双删策略保证缓存一致性。
 func (d *UserDAO) Update(ctx context.Context, user *model.User) error {
-	// 先删除redis，再写数据库
-
-	key := fmt.Sprintf("%s%d", constants.UserIdKey, user.ID)
+	var current model.User
 	if d.rdb != nil {
-		if err := d.rdb.Del(ctx, key).Err(); err != nil {
+		if err := d.db.WithContext(ctx).
+			Select("id", "username").
+			First(&current, user.ID).Error; err != nil && err != gorm.ErrRecordNotFound {
 			return err
 		}
 	}
@@ -58,14 +67,7 @@ func (d *UserDAO) Update(ctx context.Context, user *model.User) error {
 		return err
 	}
 
-	time.Sleep(50 * time.Millisecond)
-	// 延迟双删
-	if d.rdb != nil {
-		if err := d.rdb.Del(ctx, key).Err(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return d.invalidateUserCaches(ctx, user.ID, current.Username, user.Username)
 }
 
 // Delete 删除用户并清除缓存。
@@ -87,7 +89,7 @@ func (d *UserDAO) FindOneById(ctx context.Context, id model.UserID) (*model.User
 		if err == nil {
 			if err := json.Unmarshal(buf, &user); err == nil {
 				// 续约，加时间，方式缓存雪崩，穿透
-				utils.ExtendTTL(ctx, d.rdb, key)
+				_ = extendUserCacheTTL(ctx, d.rdb, key)
 				return &user, nil
 			}
 		}
@@ -114,7 +116,7 @@ func (d *UserDAO) FindOneByUsername(ctx context.Context, username string) (*mode
 		if err == nil {
 			if err := json.Unmarshal(buf, &user); err == nil {
 				// 不处理error，可以容忍失败
-				utils.ExtendTTL(ctx, d.rdb, key)
+				_ = extendUserCacheTTL(ctx, d.rdb, key)
 				return &user, nil
 			}
 		}
@@ -130,4 +132,38 @@ func (d *UserDAO) FindOneByUsername(ctx context.Context, username string) (*mode
 	}
 
 	return &user, nil
+}
+
+func (d *UserDAO) invalidateUserCaches(ctx context.Context, id model.UserID, usernames ...string) error {
+	if d.rdb == nil {
+		return nil
+	}
+
+	keys := []string{fmt.Sprintf("%s%d", constants.UserIdKey, id)}
+	seen := map[string]struct{}{keys[0]: {}}
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			continue
+		}
+		key := fmt.Sprintf("%s%s", constants.UserNameKey, username)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+
+	return d.rdb.Del(ctx, keys...).Err()
+}
+
+func extendUserCacheTTL(ctx context.Context, cache userCacheClient, key string) error {
+	ttl, err := cache.TTL(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if ttl < 0 {
+		ttl = 0
+	}
+	return cache.Expire(ctx, key, ttl+constants.RdbAddTTL).Err()
 }

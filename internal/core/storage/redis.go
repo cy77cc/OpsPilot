@@ -2,16 +2,16 @@ package storage
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/redis/go-redis/v9"
 )
 
-func MustNewRdb() redis.UniversalClient {
+func NewRdb() (redis.UniversalClient, error) {
 	if !config.CFG.Redis.Enable {
-		return nil
+		return nil, nil
 	}
 
 	rdb := redis.NewClient(&redis.Options{
@@ -29,8 +29,9 @@ func MustNewRdb() redis.UniversalClient {
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("failed to connect redis: %v", err)
+		_ = rdb.Close()
+		return nil, fmt.Errorf("connect redis: %w", err)
 	}
 
-	return rdb
+	return rdb, nil
 }

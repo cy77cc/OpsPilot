@@ -16,6 +16,15 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
+var newServiceContext = svc.NewServiceContext
+
+func newShutdownContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), 10*time.Second)
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+}
+
 // @title           k8s Manager API
 // @version         1.0
 // @description     devops台后端接口
@@ -93,7 +102,11 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 	}
 	defer listener.Close()
 
-	svcCtx := svc.MustNewServiceContext()
+	svcCtx, err := newServiceContext(ctx)
+	if err != nil {
+		serveErr <- err
+		return
+	}
 	srv.Handler = NewRouter(ctx, svcCtx)
 
 	go func() {
@@ -101,7 +114,7 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 
 		logger.L().Info("http server shutting down")
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := newShutdownContext(ctx)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.L().Error("http shutdown error", logger.Error(err))

@@ -12,7 +12,10 @@ import (
 
 // RunBootstrapMigrations applies versioned and development-only migrations.
 func RunBootstrapMigrations() error {
-	db := storage.MustNewDB()
+	db, err := storage.NewDB()
+	if err != nil {
+		return fmt.Errorf("init database failed: %w", err)
+	}
 	sqlDB, err := db.DB()
 	if err == nil {
 		defer sqlDB.Close()
