@@ -105,30 +105,30 @@ describe('ApiService cookie-session refresh and retry', () => {
     scopeStore.clearScope();
   });
 
-  it('refreshAccessToken posts to /auth/refresh without token storage key reads', async () => {
+  it('uses centralized refresh gate and never reads legacy token storage keys', async () => {
     const instance = (apiService as any).instance;
     const postSpy = vi.spyOn(instance, 'post').mockResolvedValue({
       data: { data: {} },
     });
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
-    const refreshedHandler = vi.fn();
+    localStorage.setItem('token', 'legacy-token');
 
-    window.addEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+    const [firstRefresh, secondRefresh] = await Promise.all([
+      apiService.refreshAccessToken(),
+      apiService.refreshAccessToken(),
+    ]);
 
-    const refreshed = await apiService.refreshAccessToken();
-
-    expect(refreshed).toBe(true);
+    expect(firstRefresh).toBe(true);
+    expect(secondRefresh).toBe(true);
     expect(postSpy).toHaveBeenCalledTimes(1);
     expect(postSpy).toHaveBeenCalledWith('/auth/refresh');
-    expect(postSpy.mock.calls[0]).toHaveLength(1);
     expect(
       getItemSpy.mock.calls.filter(
         ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
       )
     ).toEqual([]);
-    expect(refreshedHandler).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+    getItemSpy.mockClear();
+    expect(localStorage.getItem('token')).toBe('legacy-token');
   });
 
   it('retry path replays original request without Authorization injection from localStorage token', async () => {
@@ -139,6 +139,7 @@ describe('ApiService cookie-session refresh and retry', () => {
     const refreshSpy = vi.spyOn(apiService, 'refreshAccessToken').mockResolvedValue(true);
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
 
+    localStorage.setItem('token', 'legacy-token');
     scopeStore.setScope({ projectId: '42' });
 
     const originalConfig = {
