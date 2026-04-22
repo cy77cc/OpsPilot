@@ -162,4 +162,69 @@ describe('AuthContext Cookie Session Flow', () => {
 
     expect(sessionStorage.getItem('redirectAfterLogin')).toBe(window.location.pathname + window.location.search);
   });
+
+  it('login finalizes session by refetching /auth/me instead of storing returned tokens', async () => {
+    mockLogin.mockResolvedValueOnce({ data: undefined });
+    mockGetMe
+      .mockResolvedValueOnce({
+        data: {
+          id: 0,
+          username: '',
+          name: '',
+          email: '',
+          status: 'inactive',
+          roles: [],
+          permissions: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 2,
+          username: 'alice',
+          name: 'Alice',
+          email: 'alice@example.com',
+          status: 'active',
+          roles: ['user'],
+          permissions: ['svc:view'],
+        },
+      });
+
+    const Consumer = () => {
+      const { login } = useAuth();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            void login({ username: 'alice', password: 'secret' });
+          }}
+        >
+          login
+        </button>
+      );
+    };
+
+    render(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockGetMe).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'login' }).click();
+    });
+
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith({ username: 'alice', password: 'secret' });
+      expect(mockGetMe).toHaveBeenCalledTimes(2);
+    });
+
+    expect(localStorage.getItem('token')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('user')).toBeNull();
+    expect(localStorage.getItem('permissions')).toBeNull();
+  });
 });

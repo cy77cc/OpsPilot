@@ -23,66 +23,15 @@ export interface RegisterParams {
   password: string;
 }
 
-export interface AuthPayload {
-  token: string;
-  refreshToken?: string;
-  user: AuthUser;
-  permissions: string[];
-}
-
 export const authApi = {
-  async login(data: LoginParams): Promise<ApiResponse<AuthPayload>> {
-    const res = await apiService.post<any>('/auth/login', data);
-    const token = res.data?.token || res.data?.accessToken || '';
-    const refreshToken = res.data?.refreshToken || '';
-    const fallbackUser: AuthUser = {
-      id: Number(res.data?.uid || 0),
-      username: data.username,
-      name: data.username,
-      email: '',
-      status: 'active',
-      roles: res.data?.roles || [],
-      permissions: [],
-    };
-    const user = res.data?.user ? ({
-      ...res.data.user,
-      id: Number(res.data.user.id || 0),
-      roles: res.data.user.roles || [],
-      permissions: res.data.user.permissions || [],
-    } as AuthUser) : fallbackUser;
-    return {
-      ...res,
-      data: {
-        token,
-        refreshToken,
-        user,
-        permissions: res.data?.permissions || user.permissions || [],
-      },
-    };
+  async login(data: LoginParams): Promise<ApiResponse<void>> {
+    const res = await apiService.post('/auth/login', data);
+    return { ...res, data: undefined };
   },
 
-  async register(data: RegisterParams): Promise<ApiResponse<AuthPayload>> {
-    const res = await apiService.post<any>('/auth/register', data);
-    const token = res.data?.token || res.data?.accessToken || '';
-    const refreshToken = res.data?.refreshToken || '';
-    const user: AuthUser = {
-      id: Number(res.data?.uid || 0),
-      username: data.username,
-      name: data.name || data.username,
-      email: data.email,
-      status: 'active',
-      roles: res.data?.roles || [],
-      permissions: [],
-    };
-    return {
-      ...res,
-      data: {
-        token,
-        refreshToken,
-        user,
-        permissions: res.data?.permissions || [],
-      },
-    };
+  async register(data: RegisterParams): Promise<ApiResponse<void>> {
+    const res = await apiService.post('/auth/register', data);
+    return { ...res, data: undefined };
   },
 
   async getMe(): Promise<ApiResponse<AuthUser>> {
@@ -101,7 +50,7 @@ export const authApi = {
     };
   },
 
-  async logout(refreshToken?: string): Promise<ApiResponse<void>> {
-    return apiService.post('/auth/logout', refreshToken ? { refreshToken } : {});
+  async logout(): Promise<ApiResponse<void>> {
+    return apiService.post('/auth/logout', {});
   },
 };
