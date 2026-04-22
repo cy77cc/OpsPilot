@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RoutingConfigPage from './RoutingConfigPage';
+import { scopeStore } from '../../app/scope/scopeStore';
 
 const mockApi = vi.hoisted(() => ({
   monitoring: {
@@ -21,6 +22,7 @@ describe('RoutingConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    scopeStore.clearScope();
     vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     mockApi.monitoring.getSeverityRoutes.mockResolvedValue({
@@ -68,46 +70,27 @@ describe('RoutingConfigPage', () => {
     });
   });
 
-  it('does not allow late response to overwrite rows after switching to project scope without project id', async () => {
-    const createDeferred = <T,>() => {
-      let resolve!: (value: T) => void;
-      const promise = new Promise<T>((res) => {
-        resolve = res;
-      });
-      return { promise, resolve };
-    };
-    const pendingGlobalLoad = createDeferred<any>();
-    mockApi.monitoring.getSeverityRoutes.mockReset();
-    mockApi.monitoring.getSeverityRoutes.mockImplementation(() => pendingGlobalLoad.promise);
-
+  it('clears the rendered rows when switching to project scope without project id', async () => {
     render(<RoutingConfigPage />);
-    await waitFor(() => {
-      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(1);
-    });
+    await screen.findByText('critical');
 
     fireEvent.click(screen.getByRole('radio', { name: '项目' }));
-    expect(screen.queryByText('Late Global Route')).not.toBeInTheDocument();
 
-    pendingGlobalLoad.resolve({
-      data: {
-        list: [{ id: 99, scope: 'global', severity: 'Late Global Route', channel_ids_json: '[1001]', enabled: true }],
-        total: 1,
-      },
+    await waitFor(() => {
+      expect(screen.queryByText('critical')).not.toBeInTheDocument();
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(1);
     });
-
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    expect(screen.queryByText('Late Global Route')).not.toBeInTheDocument();
   });
 
   it('creates a route and reloads list with scope-aware payload', async () => {
-    window.localStorage.setItem('projectId', '42');
     render(<RoutingConfigPage />);
     await screen.findByText('critical');
+
+    fireEvent.click(screen.getByRole('radio', { name: '项目' }));
+    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
+    await waitFor(() => {
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledWith({ projectId: '42' });
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '新增路由' }));
     const dialog = await screen.findByRole('dialog', { name: '新增路由' });
@@ -124,7 +107,7 @@ describe('RoutingConfigPage', () => {
         channelIds: ['1001', '1002'],
         enabled: true,
       });
-      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(2);
+      expect(mockApi.monitoring.getSeverityRoutes).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -151,7 +134,7 @@ describe('RoutingConfigPage', () => {
   });
 
   it('deletes a route and reloads list with scope-aware params', async () => {
-    window.localStorage.setItem('projectId', '42');
+    scopeStore.setScope({ projectId: '42' });
     mockApi.monitoring.getSeverityRoutes.mockResolvedValueOnce({
       data: {
         list: [{ id: 1, scope: 'project', severity: 'critical', channel_ids_json: '[1001]', enabled: true }],

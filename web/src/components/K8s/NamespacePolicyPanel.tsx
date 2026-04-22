@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Form, Input, InputNumber, Modal, Space, Table, Tag, message } from 'antd';
 import { Api } from '../../api';
+import { useScope } from '../../app/scope/useScope';
 import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
+  const { teamId, setTeamId } = useScope();
   const [loading, setLoading] = React.useState(false);
   const [namespaces, setNamespaces] = React.useState<any[]>([]);
   const [bindings, setBindings] = React.useState<any[]>([]);
@@ -19,7 +21,6 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const teamId = localStorage.getItem('teamId') || '';
       const [nsRes, bindRes] = await Promise.all([
         Api.kubernetes.getClusterNamespaces(clusterId),
         Api.kubernetes.getNamespaceBindings(clusterId, teamId || undefined),
@@ -31,9 +32,12 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
     } finally {
       setLoading(false);
     }
-  }, [clusterId]);
+  }, [clusterId, teamId]);
 
   React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    bindForm.setFieldValue('team_id', Number(teamId || 1));
+  }, [bindForm, teamId]);
 
   const createNamespace = async () => {
     const v = await nsForm.validateFields();
@@ -49,6 +53,7 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
     await Api.kubernetes.putNamespaceBindings(clusterId, String(v.team_id),
       (v.namespaces || []).map((x: string) => ({ namespace: x.trim() })).filter((x: any) => x.namespace),
     );
+    setTeamId(String(v.team_id));
     message.success('绑定已更新');
     setBindOpen(false);
     bindForm.resetFields();
@@ -105,7 +110,7 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
       </Modal>
 
       <Modal title="更新 Team Namespace 绑定" open={bindOpen} onCancel={() => setBindOpen(false)} onOk={() => void saveBindings()}>
-        <Form form={bindForm} layout="vertical" initialValues={{ team_id: Number(localStorage.getItem('teamId') || 1) }}>
+        <Form form={bindForm} layout="vertical" initialValues={{ team_id: Number(teamId || 1) }}>
           <GuidedFormItem label="Team ID" name="team_id" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
           <GuidedFormItem label="Namespaces" name="namespaces" rules={[{ required: true, message: '至少一个 namespace' }]}>
             <Input placeholder="逗号分隔: default,dev,staging" onBlur={(e) => bindForm.setFieldValue('namespaces', String(e.target.value || '').split(',').map((x) => x.trim()).filter(Boolean))} />

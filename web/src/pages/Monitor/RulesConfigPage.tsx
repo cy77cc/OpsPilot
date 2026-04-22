@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
+import { useScope } from '../../app/scope/useScope';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
 import { monitorFieldGuides } from '../../constants/fieldGuides';
@@ -44,12 +45,6 @@ type RuleChannelBindingFormValues = {
   enabled: boolean;
 };
 
-const readStoredProjectId = (): string | undefined => {
-  if (typeof window === 'undefined') return undefined;
-  const value = window.localStorage.getItem('projectId');
-  return value || undefined;
-};
-
 const normalizeProjectId = (value?: string): string | undefined => {
   const trimmed = (value || '').trim();
   return trimmed || undefined;
@@ -70,7 +65,8 @@ const RulesConfigPage: React.FC = () => {
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingSubmitting, setBindingSubmitting] = useState(false);
   const [editingBindingChannelId, setEditingBindingChannelId] = useState<string | null>(null);
-  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
+  const { projectId: storedProjectId, setProjectId } = useScope();
+  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: storedProjectId });
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
   const bindingLoadSeqRef = useRef(0);
@@ -141,14 +137,19 @@ const RulesConfigPage: React.FC = () => {
   }, [scope.scope, currentProjectId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    setScope((previous) => (
+      previous.projectId === storedProjectId
+        ? previous
+        : { ...previous, projectId: storedProjectId }
+    ));
+  }, [storedProjectId]);
+
+  useEffect(() => {
     const projectId = normalizeProjectId(scope.projectId);
-    if (projectId) {
-      window.localStorage.setItem('projectId', projectId);
-    } else {
-      window.localStorage.removeItem('projectId');
+    if (projectId !== storedProjectId) {
+      setProjectId(projectId);
     }
-  }, [scope.projectId]);
+  }, [scope.projectId, storedProjectId, setProjectId]);
 
   const handleCreate = async () => {
     try {

@@ -19,6 +19,7 @@ import {
   message,
 } from 'antd';
 import { Api } from '../../api';
+import { useScope } from '../../app/scope/useScope';
 import type { Cluster } from '../../api/modules/kubernetes';
 import type { Host } from '../../api/modules/hosts';
 import type { ServiceItem } from '../../api/modules/services';
@@ -70,6 +71,7 @@ const releaseStatusColor = (status?: string): string => {
 };
 
 const DeploymentPage: React.FC = () => {
+  const { projectId, teamId } = useScope();
   const [loading, setLoading] = React.useState(false);
   const [targets, setTargets] = React.useState<DeployTarget[]>([]);
   const [releases, setReleases] = React.useState<DeployRelease[]>([]);
@@ -171,8 +173,8 @@ const DeploymentPage: React.FC = () => {
       target_type: v.target_type,
       runtime_type: v.target_type,
       cluster_id: v.target_type === 'k8s' ? Number(v.cluster_id || 0) : 0,
-      project_id: Number(localStorage.getItem('projectId') || 1),
-      team_id: Number(localStorage.getItem('teamId') || 1),
+      project_id: Number(projectId || 1),
+      team_id: Number(teamId || 1),
       env: v.env || 'staging',
       nodes: (v.host_ids || []).map((id: number) => ({ host_id: Number(id), role: 'worker', weight: 100 })),
     };

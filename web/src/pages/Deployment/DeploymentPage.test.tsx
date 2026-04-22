@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeploymentPage from './DeploymentPage';
+import { scopeStore } from '../../app/scope/scopeStore';
 
 const mockApi = vi.hoisted(() => ({
   deployment: {
@@ -72,6 +73,7 @@ const seed = () => {
 describe('DeploymentPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    scopeStore.clearScope();
     seed();
   });
 
@@ -79,6 +81,24 @@ describe('DeploymentPage', () => {
     render(<DeploymentPage />);
     await screen.findByText('Targets (1)');
     expect(screen.getAllByText('k8s').length).toBeGreaterThan(0);
+  });
+
+  it('submits createTarget with project and team from ScopeStore', async () => {
+    scopeStore.setScope({ projectId: '42', teamId: '7' });
+    render(<DeploymentPage />);
+    await screen.findByText('Targets (1)');
+
+    fireEvent.change(screen.getByLabelText('目标名称'), { target: { value: 'staging-target' } });
+    fireEvent.mouseDown(screen.getByLabelText('K8s 集群'));
+    fireEvent.click(await screen.findByText('c1 (#1)'));
+    fireEvent.click(screen.getAllByRole('button', { name: '创建部署目标' })[0]);
+
+    await waitFor(() => {
+      expect(mockApi.deployment.createTarget).toHaveBeenCalledWith(expect.objectContaining({
+        project_id: 42,
+        team_id: 7,
+      }));
+    });
   });
 
 });

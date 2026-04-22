@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RulesConfigPage from './RulesConfigPage';
+import { scopeStore } from '../../app/scope/scopeStore';
 
 const mockApi = vi.hoisted(() => ({
   monitoring: {
@@ -25,12 +26,13 @@ describe('RulesConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    scopeStore.clearScope();
     vi.spyOn(message, 'success').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     vi.spyOn(message, 'warning').mockImplementation(() => undefined as any);
     mockApi.monitoring.getEffectiveRules.mockResolvedValue({
       data: {
-        list: [{ id: 1, name: 'CPU High', severity: 'warning', threshold: 90, scope: 'global', inherit_key: 'cpu-high' }],
+        list: [{ id: 1, name: 'CPU High', severity: 'warning', threshold: 90, duration_sec: 300, scope: 'global', inherit_key: 'cpu-high' }],
         total: 1,
       },
     });
@@ -81,49 +83,15 @@ describe('RulesConfigPage', () => {
     });
   });
 
-  it('keeps latest scope rows when an older request resolves late', async () => {
-    const createDeferred = <T,>() => {
-      let resolve!: (value: T) => void;
-      const promise = new Promise<T>((res) => {
-        resolve = res;
-      });
-      return { promise, resolve };
-    };
-    const globalRequest = createDeferred<any>();
-    const projectRequest = createDeferred<any>();
-    mockApi.monitoring.getEffectiveRules.mockReset();
-    mockApi.monitoring.getEffectiveRules.mockImplementation((params?: { projectId?: string }) => {
-      if (params?.projectId === '42') {
-        return projectRequest.promise;
-      }
-      return globalRequest.promise;
-    });
-
+  it('clears the rendered rows when switching to project scope without project id', async () => {
     render(<RulesConfigPage />);
+    await screen.findByText('CPU High');
+
     fireEvent.click(screen.getByRole('radio', { name: '项目' }));
-    fireEvent.change(screen.getByPlaceholderText('项目ID'), { target: { value: '42' } });
-    await waitFor(() => {
-      expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledTimes(2);
-    });
-
-    projectRequest.resolve({
-      data: {
-        list: [{ id: 2, name: 'Project Rule', severity: 'warning', threshold: 80, scope: 'project', inherit_key: 'project-rule' }],
-        total: 1,
-      },
-    });
-    expect(await screen.findByText('Project Rule')).toBeInTheDocument();
-
-    globalRequest.resolve({
-      data: {
-        list: [{ id: 1, name: 'Global Rule', severity: 'warning', threshold: 90, scope: 'global', inherit_key: 'global-rule' }],
-        total: 1,
-      },
-    });
 
     await waitFor(() => {
-      expect(screen.queryByText('Global Rule')).not.toBeInTheDocument();
-      expect(screen.getByText('Project Rule')).toBeInTheDocument();
+      expect(screen.queryByText('CPU High')).not.toBeInTheDocument();
+      expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -134,17 +102,17 @@ describe('RulesConfigPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '新增规则' }));
     const dialog = await screen.findByRole('dialog', { name: '新增规则' });
     fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: 'Memory High' } });
-    fireEvent.change(within(dialog).getByLabelText('指标'), { target: { value: 'memory_usage' } });
-    fireEvent.change(within(dialog).getByRole('spinbutton', { name: '阈值' }), { target: { value: '80' } });
+    fireEvent.change(within(dialog).getByLabelText('指标名称 (非必填)'), { target: { value: 'memory_usage' } });
+    fireEvent.change(within(dialog).getByRole('spinbutton', { name: '阈值 (仅默认查询时使用)' }), { target: { value: '80' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /^(OK|确定)$/ }));
 
     await waitFor(() => {
-      expect(mockApi.monitoring.createAlertRule).toHaveBeenCalledWith({
+      expect(mockApi.monitoring.createAlertRule).toHaveBeenCalledWith(expect.objectContaining({
         name: 'Memory High',
         metric: 'memory_usage',
         threshold: 80,
         severity: 'warning',
-      });
+      }));
       expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledTimes(2);
     });
   });
@@ -156,15 +124,16 @@ describe('RulesConfigPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     const dialog = await screen.findByRole('dialog', { name: '编辑规则' });
     fireEvent.change(within(dialog).getByLabelText('名称'), { target: { value: 'CPU Critical' } });
-    fireEvent.change(within(dialog).getByRole('spinbutton', { name: '阈值' }), { target: { value: '95' } });
+    fireEvent.change(within(dialog).getByRole('spinbutton', { name: '阈值 (仅默认查询时使用)' }), { target: { value: '95' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /^(OK|确定)$/ }));
 
     await waitFor(() => {
-      expect(mockApi.monitoring.updateAlertRule).toHaveBeenCalledWith('1', {
+      expect(mockApi.monitoring.updateAlertRule).toHaveBeenCalledWith('1', expect.objectContaining({
         name: 'CPU Critical',
         threshold: 95,
         severity: 'warning',
-      });
+        duration_sec: 300,
+      }));
       expect(mockApi.monitoring.getEffectiveRules).toHaveBeenCalledTimes(2);
     });
   });

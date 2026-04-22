@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, SaveOutlined, SwapOutlined } from '@ant-design/icons
 import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { Api } from '../../api';
+import { useScope } from '../../app/scope/useScope';
 import type { LabelKV, StandardServiceConfig, TemplateVar } from '../../api/modules/services';
 import type { Project } from '../../api/modules/projects';
 import { GuidedFormItem } from '../../components/FormGuidance';
@@ -32,7 +33,7 @@ const ServiceProvisionPage: React.FC = () => {
   // 项目选择相关
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [canSwitchProject, setCanSwitchProject] = React.useState(false);
-  const [currentProjectId, setCurrentProjectId] = React.useState<string>(localStorage.getItem('projectId') || '');
+  const { projectId: scopedProjectId, setProjectId } = useScope();
 
   const mode = Form.useWatch('config_mode', form) || 'standard';
   const valuesSnapshot = Form.useWatch([], form);
@@ -44,8 +45,8 @@ const ServiceProvisionPage: React.FC = () => {
         const res = await Api.projects.list();
         const projectList = res.data.list || [];
         setProjects(projectList);
-        if (!currentProjectId && projectList.length > 0) {
-          setCurrentProjectId(projectList[0].id);
+        if (!scopedProjectId && projectList.length > 0) {
+          setProjectId(projectList[0].id);
         }
       } catch {
         setProjects([]);
@@ -63,8 +64,9 @@ const ServiceProvisionPage: React.FC = () => {
 
     loadProjects();
     checkPermission();
-  }, [currentProjectId]);
+  }, [scopedProjectId, setProjectId]);
 
+  const currentProjectId = scopedProjectId || '';
   const currentProjectName = projects.find(p => p.id === currentProjectId)?.name || '当前项目';
 
   const toLabels = (raw: string[]): LabelKV[] =>
@@ -151,7 +153,7 @@ const ServiceProvisionPage: React.FC = () => {
     setLoading(true);
     try {
       const created = await Api.services.create({
-        project_id: Number(currentProjectId || localStorage.getItem('projectId') || 0) || undefined,
+        project_id: Number(currentProjectId || 0) || undefined,
         name: values.name,
         env: values.env,
         owner: values.owner,
@@ -229,8 +231,7 @@ const ServiceProvisionPage: React.FC = () => {
                           value={currentProjectId}
                           options={projects.map(p => ({ value: p.id, label: p.name }))}
                           onChange={(val) => {
-                            setCurrentProjectId(val);
-                            localStorage.setItem('projectId', val);
+                            setProjectId(String(val));
                           }}
                           placeholder="选择项目"
                         />

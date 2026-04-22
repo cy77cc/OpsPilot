@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
+import { useScope } from '../../app/scope/useScope';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
@@ -21,12 +22,6 @@ type RouteFormValues = {
   enabled: boolean;
 };
 
-const readStoredProjectId = (): string | undefined => {
-  if (typeof window === 'undefined') return undefined;
-  const value = window.localStorage.getItem('projectId');
-  return value || undefined;
-};
-
 const normalizeProjectId = (value?: string): string | undefined => {
   const trimmed = (value || '').trim();
   return trimmed || undefined;
@@ -40,7 +35,8 @@ const RoutingConfigPage: React.FC = () => {
   const [rows, setRows] = useState<RouteRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<RouteRow | null>(null);
-  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: readStoredProjectId() });
+  const { projectId: storedProjectId, setProjectId } = useScope();
+  const [scope, setScope] = useState<ScopeValue>({ scope: 'global', projectId: storedProjectId });
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
   const normalizedProjectId = normalizeProjectId(scope.projectId);
@@ -121,13 +117,18 @@ const RoutingConfigPage: React.FC = () => {
   }, [scope.scope, currentProjectId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (normalizedProjectId) {
-      window.localStorage.setItem('projectId', normalizedProjectId);
-    } else {
-      window.localStorage.removeItem('projectId');
+    setScope((previous) => (
+      previous.projectId === storedProjectId
+        ? previous
+        : { ...previous, projectId: storedProjectId }
+    ));
+  }, [storedProjectId]);
+
+  useEffect(() => {
+    if (normalizedProjectId !== storedProjectId) {
+      setProjectId(normalizedProjectId);
     }
-  }, [normalizedProjectId]);
+  }, [normalizedProjectId, storedProjectId, setProjectId]);
 
   const handleCreate = async () => {
     try {
