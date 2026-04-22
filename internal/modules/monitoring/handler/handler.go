@@ -288,32 +288,46 @@ func (h *Handler) CreateRule(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name           string  `json:"name" binding:"required"`
-		Metric         string  `json:"metric" binding:"required"`
-		Operator       string  `json:"operator"`
-		Threshold      float64 `json:"threshold"`
-		Severity       string  `json:"severity"`
-		Enabled        *bool   `json:"enabled"`
-		WindowSec      int     `json:"window_sec"`
-		GranularitySec int     `json:"granularity_sec"`
-		DimensionsJSON string  `json:"dimensions_json"`
+		Name            string  `json:"name" binding:"required"`
+		Metric          string  `json:"metric"`
+		PromQLExpr      string  `json:"promql_expr"`
+		Operator        string  `json:"operator"`
+		Threshold       float64 `json:"threshold"`
+		DurationSec     int     `json:"duration_sec"`
+		LabelsJSON      string  `json:"labels_json"`
+		AnnotationsJSON string  `json:"annotations_json"`
+		Severity        string  `json:"severity"`
+		Enabled         *bool   `json:"enabled"`
+		WindowSec       int     `json:"window_sec"`
+		GranularitySec  int     `json:"granularity_sec"`
+		DimensionsJSON  string  `json:"dimensions_json"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
+	
+	metric := req.Metric
+	if metric == "" {
+		metric = "custom_expr"
+	}
+	
 	rule, err := h.logic.CreateRule(c.Request.Context(), model.AlertRule{
-		Name:           req.Name,
-		Metric:         req.Metric,
-		Operator:       defaultIfEmpty(req.Operator, "gt"),
-		Threshold:      req.Threshold,
-		Severity:       defaultIfEmpty(req.Severity, "warning"),
-		Enabled:        req.Enabled == nil || *req.Enabled,
-		WindowSec:      positiveOr(req.WindowSec, 3600),
-		GranularitySec: positiveOr(req.GranularitySec, 60),
-		DimensionsJSON: strings.TrimSpace(req.DimensionsJSON),
-		Source:         "custom",
-		Scope:          "global",
+		Name:            req.Name,
+		Metric:          metric,
+		PromQLExpr:      strings.TrimSpace(req.PromQLExpr),
+		Operator:        defaultIfEmpty(req.Operator, "gt"),
+		Threshold:       req.Threshold,
+		DurationSec:     positiveOr(req.DurationSec, 300),
+		LabelsJSON:      strings.TrimSpace(req.LabelsJSON),
+		AnnotationsJSON: strings.TrimSpace(req.AnnotationsJSON),
+		Severity:        defaultIfEmpty(req.Severity, "warning"),
+		Enabled:         req.Enabled == nil || *req.Enabled,
+		WindowSec:       positiveOr(req.WindowSec, 3600),
+		GranularitySec:  positiveOr(req.GranularitySec, 60),
+		DimensionsJSON:  strings.TrimSpace(req.DimensionsJSON),
+		Source:          "custom",
+		Scope:           "global",
 	})
 	if err != nil {
 		httpx.ServerErr(c, err)
@@ -347,14 +361,19 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
 	var req struct {
-		Name           string  `json:"name"`
-		Operator       string  `json:"operator"`
-		Threshold      float64 `json:"threshold"`
-		Severity       string  `json:"severity"`
-		Enabled        *bool   `json:"enabled"`
-		WindowSec      int     `json:"window_sec"`
-		GranularitySec int     `json:"granularity_sec"`
-		DimensionsJSON *string `json:"dimensions_json"`
+		Name            string  `json:"name"`
+		Metric          string  `json:"metric"`
+		PromQLExpr      *string `json:"promql_expr"`
+		Operator        string  `json:"operator"`
+		Threshold       float64 `json:"threshold"`
+		DurationSec     int     `json:"duration_sec"`
+		LabelsJSON      *string `json:"labels_json"`
+		AnnotationsJSON *string `json:"annotations_json"`
+		Severity        string  `json:"severity"`
+		Enabled         *bool   `json:"enabled"`
+		WindowSec       int     `json:"window_sec"`
+		GranularitySec  int     `json:"granularity_sec"`
+		DimensionsJSON  *string `json:"dimensions_json"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
@@ -364,11 +383,26 @@ func (h *Handler) UpdateRule(c *gin.Context) {
 	if strings.TrimSpace(req.Name) != "" {
 		payload["name"] = strings.TrimSpace(req.Name)
 	}
+	if strings.TrimSpace(req.Metric) != "" {
+		payload["metric"] = strings.TrimSpace(req.Metric)
+	}
+	if req.PromQLExpr != nil {
+		payload["promql_expr"] = strings.TrimSpace(*req.PromQLExpr)
+	}
 	if strings.TrimSpace(req.Operator) != "" {
 		payload["operator"] = strings.TrimSpace(req.Operator)
 	}
 	if req.Threshold > 0 {
 		payload["threshold"] = req.Threshold
+	}
+	if req.DurationSec > 0 {
+		payload["duration_sec"] = req.DurationSec
+	}
+	if req.LabelsJSON != nil {
+		payload["labels_json"] = strings.TrimSpace(*req.LabelsJSON)
+	}
+	if req.AnnotationsJSON != nil {
+		payload["annotations_json"] = strings.TrimSpace(*req.AnnotationsJSON)
 	}
 	if strings.TrimSpace(req.Severity) != "" {
 		payload["severity"] = strings.TrimSpace(req.Severity)

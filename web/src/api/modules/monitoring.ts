@@ -224,10 +224,10 @@ export const monitoringApi = {
   async syncAlertRules(): Promise<ApiResponse<{ status: string; synced_count: number; synced_at: string }>> {
     return apiService.post('/alerts/rules/sync');
   },
-  async createAlertRule(payload: { name: string; metric: string; operator?: string; threshold: number; severity?: string; enabled?: boolean }): Promise<ApiResponse<any>> {
+  async createAlertRule(payload: { name: string; metric?: string; promql_expr?: string; operator?: string; threshold?: number; duration_sec?: number; labels_json?: string; annotations_json?: string; severity?: string; enabled?: boolean; window_sec?: number; granularity_sec?: number; dimensions_json?: string }): Promise<ApiResponse<any>> {
     return apiService.post('/alert-rules', payload);
   },
-  async updateAlertRule(id: string, payload: { name?: string; operator?: string; threshold?: number; severity?: string; enabled?: boolean }): Promise<ApiResponse<any>> {
+  async updateAlertRule(id: string, payload: { name?: string; metric?: string; promql_expr?: string; operator?: string; threshold?: number; duration_sec?: number; labels_json?: string; annotations_json?: string; severity?: string; enabled?: boolean; window_sec?: number; granularity_sec?: number; dimensions_json?: string }): Promise<ApiResponse<any>> {
     return apiService.put(`/alert-rules/${encodeURIComponent(id)}`, payload);
   },
   async deleteAlertRule(id: string): Promise<ApiResponse<any>> {

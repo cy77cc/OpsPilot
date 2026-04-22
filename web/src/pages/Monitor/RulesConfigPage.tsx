@@ -10,8 +10,12 @@ type EffectiveRuleRow = {
   id: string;
   name: string;
   metric?: string;
+  promqlExpr?: string;
   severity: string;
   threshold?: number;
+  durationSec?: number;
+  labelsJson?: string;
+  annotationsJson?: string;
   scope?: string;
   inherit_key?: string;
 };
@@ -19,8 +23,12 @@ type EffectiveRuleRow = {
 type RuleFormValues = {
   name: string;
   metric?: string;
+  promqlExpr?: string;
   severity: string;
-  threshold: number;
+  threshold?: number;
+  durationSec?: number;
+  labelsJson?: string;
+  annotationsJson?: string;
 };
 
 type RuleChannelBindingRow = {
@@ -89,8 +97,12 @@ const RulesConfigPage: React.FC = () => {
           id: String(item.id),
           name: item.name || '',
           metric: item.metric || '',
+          promqlExpr: item.promql_expr || '',
           severity: item.severity || '',
           threshold: item.threshold,
+          durationSec: item.duration_sec,
+          labelsJson: item.labels_json,
+          annotationsJson: item.annotations_json,
           scope: item.scope,
           inherit_key: item.inherit_key,
         })),
@@ -145,8 +157,12 @@ const RulesConfigPage: React.FC = () => {
         await Api.monitoring.createAlertRule({
           name: values.name,
           metric: values.metric || '',
+          promql_expr: values.promqlExpr || '',
           severity: values.severity,
           threshold: values.threshold,
+          duration_sec: values.durationSec,
+          labels_json: values.labelsJson,
+          annotations_json: values.annotationsJson,
         });
         message.success('规则创建成功');
         setCreateOpen(false);
@@ -171,8 +187,13 @@ const RulesConfigPage: React.FC = () => {
     setEditing(record);
     editForm.setFieldsValue({
       name: record.name,
+      metric: record.metric,
+      promqlExpr: record.promqlExpr,
       severity: record.severity || 'warning',
       threshold: record.threshold,
+      durationSec: record.durationSec,
+      labelsJson: record.labelsJson,
+      annotationsJson: record.annotationsJson,
     });
   };
 
@@ -184,8 +205,13 @@ const RulesConfigPage: React.FC = () => {
       try {
         await Api.monitoring.updateAlertRule(editing.id, {
           name: values.name,
+          metric: values.metric || '',
+          promql_expr: values.promqlExpr || '',
           severity: values.severity,
           threshold: values.threshold,
+          duration_sec: values.durationSec,
+          labels_json: values.labelsJson,
+          annotations_json: values.annotationsJson,
         });
         message.success('规则更新成功');
         setEditing(null);
@@ -428,19 +454,26 @@ const RulesConfigPage: React.FC = () => {
           <Form
             form={createForm}
             layout="vertical"
-           
+
             initialValues={{
               name: '',
               metric: '',
+              promqlExpr: '',
               severity: 'warning',
               threshold: 0,
+              durationSec: 300,
+              labelsJson: '',
+              annotationsJson: '',
             }}
           >
             <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
               <Input />
             </GuidedFormItem>
-            <GuidedFormItem label="指标" name="metric" rules={[{ required: true, message: '请输入指标' }]}>
-              <Input />
+            <GuidedFormItem label="指标名称 (非必填)" name="metric">
+              <Input placeholder="如果不使用自定义 PromQL，可填此项生成默认查询" />
+            </GuidedFormItem>
+            <GuidedFormItem label="PromQL 表达式" name="promqlExpr">
+              <Input.TextArea rows={2} placeholder='例如: job:request_latency_seconds:mean5m{job="myjob"} > 0.5' />
             </GuidedFormItem>
             <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
               <Select
@@ -451,8 +484,17 @@ const RulesConfigPage: React.FC = () => {
                 ]}
               />
             </Form.Item>
-            <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+            <GuidedFormItem label="阈值 (仅默认查询时使用)" name="threshold">
               <InputNumber style={{ width: '100%' }} />
+            </GuidedFormItem>
+            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} addonAfter="秒" />
+            </GuidedFormItem>
+            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson">
+              <Input.TextArea rows={2} placeholder='例如: {"team": "frontend"}' />
+            </GuidedFormItem>
+            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson">
+              <Input.TextArea rows={2} placeholder='例如: {"summary": "服务响应延迟"}' />
             </GuidedFormItem>
           </Form>
         </Modal>
@@ -469,15 +511,26 @@ const RulesConfigPage: React.FC = () => {
           <Form
             form={editForm}
             layout="vertical"
-           
+
             initialValues={{
               name: '',
+              metric: '',
+              promqlExpr: '',
               severity: 'warning',
               threshold: 0,
+              durationSec: 300,
+              labelsJson: '',
+              annotationsJson: '',
             }}
           >
             <GuidedFormItem label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
               <Input />
+            </GuidedFormItem>
+            <GuidedFormItem label="指标名称 (非必填)" name="metric">
+              <Input placeholder="如果不使用自定义 PromQL，可填此项生成默认查询" />
+            </GuidedFormItem>
+            <GuidedFormItem label="PromQL 表达式" name="promqlExpr">
+              <Input.TextArea rows={2} placeholder='例如: job:request_latency_seconds:mean5m{job="myjob"} > 0.5' />
             </GuidedFormItem>
             <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
               <Select
@@ -488,12 +541,20 @@ const RulesConfigPage: React.FC = () => {
                 ]}
               />
             </Form.Item>
-            <GuidedFormItem label="阈值" name="threshold" rules={[{ required: true, message: '请输入阈值' }]}>
+            <GuidedFormItem label="阈值 (仅默认查询时使用)" name="threshold">
               <InputNumber style={{ width: '100%' }} />
             </GuidedFormItem>
+            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]}>
+              <InputNumber style={{ width: '100%' }} min={0} addonAfter="秒" />
+            </GuidedFormItem>
+            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson">
+              <Input.TextArea rows={2} placeholder='例如: {"team": "frontend"}' />
+            </GuidedFormItem>
+            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson">
+              <Input.TextArea rows={2} placeholder='例如: {"summary": "服务响应延迟"}' />
+            </GuidedFormItem>
           </Form>
-        </Modal>
-        <Drawer
+        </Modal>        <Drawer
           title="规则渠道绑定"
           open={bindingOpen}
           onClose={() => {
