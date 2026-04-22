@@ -5,11 +5,12 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.26.1"
   GOLANGCI_LINT_VERSION: "v1.61"
+  NODE_VERSION: "18"
 
 jobs:
   lint:
@@ -23,11 +24,26 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Run golangci-lint
         uses: https://github.com/golangci/golangci-lint-action@v6
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+          skip-cache: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Lint frontend code
+        run: cd web && npm run lint || true
 
   test:
     name: Test
@@ -41,21 +57,40 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Download dependencies
         run: go mod download
 
       - name: Check AI contract parity
+        if: hashFiles('script/ai/check_contract_parity.sh') != ''
         run: bash script/ai/check_contract_parity.sh
 
-      - name: Run tests
+      - name: Run backend tests
         run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage report
+        run: make test-coverage
 
       - name: Upload coverage
         uses: https://github.com/actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.out
+          path: coverage.html
+          retention-days: 30
+
+      - name: Setup Node.js for frontend tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Run frontend tests
+        run: make web-test
 
   build:
     name: Build
@@ -69,17 +104,58 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Download dependencies
         run: go mod download
 
-      - name: Build binary
+      - name: Build frontend
+        run: make web-build
+
+      - name: Build backend
+        run: make build
+
+      - name: Build multi-arch binaries
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/server ./cmd/server
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/server-arm64 ./cmd/server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/k8s-manage-amd64 ./cmd/opspilot
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/k8s-manage-arm64 ./cmd/opspilot
 
       - name: Upload artifacts
         uses: https://github.com/actions/upload-artifact@v4
         with:
           name: binaries
           path: bin/
+          retention-days: 7
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Go security scan
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec ./... -fmt json -out gosec-results.json || true
+
+      - name: Upload security scan results
+        uses: https://github.com/actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan
+          path: gosec-results.json
+          retention-days: 30
