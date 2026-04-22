@@ -1,9 +1,8 @@
 import { consumeAIStream, type A2UIStreamHandlers, apiService, type AIChatParams } from './shared';
+import { buildContextualFetchInit } from '../../../api/requestContext';
 
 export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandlers, signal?: AbortSignal): Promise<void> {
   const base = import.meta.env.VITE_API_BASE || '/api/v1';
-  const token = localStorage.getItem('token');
-  const projectId = localStorage.getItem('projectId');
   const controller = new AbortController();
   let timedOut = false;
   let toolPending = false;
@@ -36,12 +35,10 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
   const abortFromCaller = () => controller.abort();
   signal?.addEventListener('abort', abortFromCaller, { once: true });
 
-  const response = await fetch(`${base}/ai/chat`, {
+  const response = await fetch(`${base}/ai/chat`, buildContextualFetchInit({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(projectId ? { 'X-Project-ID': projectId } : {}),
       ...(params.lastEventId || params.last_event_id ? { 'Last-Event-ID': String(params.lastEventId || params.last_event_id) } : {}),
     },
     body: JSON.stringify({
@@ -54,7 +51,7 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
       context: params.context,
     }),
     signal: controller.signal,
-  });
+  }));
 
   const wrappedHandlers: A2UIStreamHandlers = {
     ...handlers,

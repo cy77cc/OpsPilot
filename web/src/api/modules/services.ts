@@ -253,15 +253,7 @@ export const serviceApi = {
   },
 
   async create(data: ServiceCreateParams): Promise<ApiResponse<ServiceItem>> {
-    const projectId = data.project_id ?? Number(localStorage.getItem('projectId') || '0');
-    const payload: Record<string, unknown> = { ...data };
-    if (projectId > 0) {
-      payload.project_id = projectId;
-    }
-    if (typeof data.team_id === 'number' && data.team_id > 0) {
-      payload.team_id = data.team_id;
-    }
-    const response = await apiService.post<any>('/services', payload);
+    const response = await apiService.post<any>('/services', data);
     return { ...response, data: mapService(response.data) };
   },
 

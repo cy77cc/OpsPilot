@@ -1,5 +1,6 @@
 import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
+import { buildContextualFetchInit } from '../requestContext';
 
 export interface Host {
   id: string;
@@ -615,10 +616,10 @@ export const hostApi = {
 
   async downloadFile(id: string, filePath: string): Promise<Blob> {
     const base = import.meta.env.VITE_API_BASE || '/api/v1';
-    const token = localStorage.getItem('token');
-    const resp = await fetch(`${base}/hosts/${id}/files/download?path=${encodeURIComponent(filePath)}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
+    const resp = await fetch(
+      `${base}/hosts/${id}/files/download?path=${encodeURIComponent(filePath)}`,
+      buildContextualFetchInit()
+    );
     const contentType = String(resp.headers.get('content-type') || '').toLowerCase();
     if (contentType.includes('application/json')) {
       const payload = await resp.json().catch(() => null);
