@@ -4,6 +4,7 @@ import { SyncOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
+import { monitorFieldGuides } from '../../constants/fieldGuides';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 type EffectiveRuleRow = {
@@ -472,7 +473,7 @@ const RulesConfigPage: React.FC = () => {
             <GuidedFormItem label="指标名称 (非必填)" name="metric">
               <Input placeholder="如果不使用自定义 PromQL，可填此项生成默认查询" />
             </GuidedFormItem>
-            <GuidedFormItem label="PromQL 表达式" name="promqlExpr">
+            <GuidedFormItem label="PromQL 表达式" name="promqlExpr" guide={monitorFieldGuides.promqlExpr}>
               <Input.TextArea rows={2} placeholder='例如: job:request_latency_seconds:mean5m{job="myjob"} > 0.5' />
             </GuidedFormItem>
             <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
@@ -487,13 +488,13 @@ const RulesConfigPage: React.FC = () => {
             <GuidedFormItem label="阈值 (仅默认查询时使用)" name="threshold">
               <InputNumber style={{ width: '100%' }} />
             </GuidedFormItem>
-            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]}>
+            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]} guide={monitorFieldGuides.durationSec}>
               <InputNumber style={{ width: '100%' }} min={0} addonAfter="秒" />
             </GuidedFormItem>
-            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson">
+            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson" guide={monitorFieldGuides.labelsJson}>
               <Input.TextArea rows={2} placeholder='例如: {"team": "frontend"}' />
             </GuidedFormItem>
-            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson">
+            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson" guide={monitorFieldGuides.annotationsJson}>
               <Input.TextArea rows={2} placeholder='例如: {"summary": "服务响应延迟"}' />
             </GuidedFormItem>
           </Form>
@@ -529,7 +530,7 @@ const RulesConfigPage: React.FC = () => {
             <GuidedFormItem label="指标名称 (非必填)" name="metric">
               <Input placeholder="如果不使用自定义 PromQL，可填此项生成默认查询" />
             </GuidedFormItem>
-            <GuidedFormItem label="PromQL 表达式" name="promqlExpr">
+            <GuidedFormItem label="PromQL 表达式" name="promqlExpr" guide={monitorFieldGuides.promqlExpr}>
               <Input.TextArea rows={2} placeholder='例如: job:request_latency_seconds:mean5m{job="myjob"} > 0.5' />
             </GuidedFormItem>
             <Form.Item label="级别" name="severity" rules={[{ required: true, message: '请选择级别' }]}>
@@ -544,13 +545,13 @@ const RulesConfigPage: React.FC = () => {
             <GuidedFormItem label="阈值 (仅默认查询时使用)" name="threshold">
               <InputNumber style={{ width: '100%' }} />
             </GuidedFormItem>
-            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]}>
+            <GuidedFormItem label="持续时间 (For)" name="durationSec" rules={[{ required: true, message: '请输入持续时间 (秒)' }]} guide={monitorFieldGuides.durationSec}>
               <InputNumber style={{ width: '100%' }} min={0} addonAfter="秒" />
             </GuidedFormItem>
-            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson">
+            <GuidedFormItem label="附加标签 (Labels JSON)" name="labelsJson" guide={monitorFieldGuides.labelsJson}>
               <Input.TextArea rows={2} placeholder='例如: {"team": "frontend"}' />
             </GuidedFormItem>
-            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson">
+            <GuidedFormItem label="详情注解 (Annotations JSON)" name="annotationsJson" guide={monitorFieldGuides.annotationsJson}>
               <Input.TextArea rows={2} placeholder='例如: {"summary": "服务响应延迟"}' />
             </GuidedFormItem>
           </Form>

@@ -26,3 +26,30 @@ export const commonFieldGuides: Record<string, FieldGuide> = {
     aiPlaceholder: "例如：'生成一个 3 副本的滚动更新配置'",
   },
 };
+
+export const monitorFieldGuides: Record<string, FieldGuide> = {
+  promqlExpr: {
+    whatToEnter: '输入完整的 Prometheus 查询语句 (PromQL)。',
+    purpose: '定义告警的计算逻辑，支持复杂的数学运算、函数和过滤条件。',
+    example: 'node_cpu_seconds_total{mode="idle"} > 0.9, http_requests_total{status="500"} > 10',
+    aiPlaceholder: "例如：'计算过去5分钟内，5xx请求数超过100的语句'",
+  },
+  durationSec: {
+    whatToEnter: '定义告警持续多久才触发。',
+    purpose: '防止告警抖动，仅在指标持续异常超过该时长后发送通知。',
+    example: '300 (5分钟), 60 (1分钟)',
+    aiPlaceholder: "例如：'告警触发前保持异常状态持续5分钟'",
+  },
+  labelsJson: {
+    whatToEnter: '输入 JSON 格式的附加标签，用于给告警打标。',
+    purpose: '方便告警路由、抑制、聚合以及后续的查询分析。',
+    example: '{"team": "sre", "env": "prod"}',
+    aiPlaceholder: "例如：'为告警添加团队和环境标签'",
+  },
+  annotationsJson: {
+    whatToEnter: '输入 JSON 格式的告警详情注解。',
+    purpose: '提供告警的摘要、详细描述和排查建议，直接显示在通知中。',
+    example: '{"summary": "CPU利用率过高", "description": "节点CPU持续高于90%"}',
+    aiPlaceholder: "例如：'生成告警的摘要和排查建议'",
+  },
+};
