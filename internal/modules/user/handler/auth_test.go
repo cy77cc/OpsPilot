@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
+	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
 )
@@ -18,23 +19,28 @@ import (
 type stubAuthLogic struct {
 	loginResp   v1.TokenResp
 	refreshResp v1.TokenResp
+	loginErr    error
+	refreshErr  error
+	registerErr error
 	logoutErr   error
+	meResp      map[string]any
+	meErr       error
 
 	lastRefreshReq v1.RefreshReq
 	lastLogoutReq  v1.LogoutReq
 }
 
 func (s *stubAuthLogic) Login(context.Context, v1.LoginReq) (v1.TokenResp, error) {
-	return s.loginResp, nil
+	return s.loginResp, s.loginErr
 }
 
 func (s *stubAuthLogic) Register(context.Context, v1.UserCreateReq) (v1.TokenResp, error) {
-	return v1.TokenResp{}, nil
+	return v1.TokenResp{}, s.registerErr
 }
 
 func (s *stubAuthLogic) Refresh(_ context.Context, req v1.RefreshReq) (v1.TokenResp, error) {
 	s.lastRefreshReq = req
-	return s.refreshResp, nil
+	return s.refreshResp, s.refreshErr
 }
 
 func (s *stubAuthLogic) Logout(_ context.Context, req v1.LogoutReq) error {
@@ -43,7 +49,7 @@ func (s *stubAuthLogic) Logout(_ context.Context, req v1.LogoutReq) error {
 }
 
 func (s *stubAuthLogic) GetMe(context.Context, any) (map[string]any, error) {
-	return nil, nil
+	return s.meResp, s.meErr
 }
 
 func useStubAuthLogic(t *testing.T, stub *stubAuthLogic) {
@@ -110,6 +116,19 @@ func decodeResponseData(t *testing.T, recorder *httptest.ResponseRecorder) map[s
 		t.Fatalf("expected object response data, got %T", payload["data"])
 	}
 	return data
+}
+
+func decodeResponseCode(t *testing.T, recorder *httptest.ResponseRecorder) float64 {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+	code, ok := payload["code"].(float64)
+	if !ok {
+		t.Fatalf("expected numeric code in response payload, got %#v", payload["code"])
+	}
+	return code
 }
 
 func assertNoTokenFields(t *testing.T, data map[string]any) {
@@ -263,4 +282,79 @@ func TestRefresh_SetsSecureCookiesWhenForwardedHTTPS(t *testing.T) {
 	rtCookie := findSetCookieHeader(t, recorder, "opspilot_rt")
 	assertCookieSecurityAttrs(t, atCookie, true)
 	assertCookieSecurityAttrs(t, rtCookie, true)
+}
+
+func TestLogin_UsesDomainErrorCodeFromLogic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		loginErr: xcode.NewErrCode(xcode.UserNotExist),
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodPost, "/auth/login", []byte(`{"username":"alice","password":"secret"}`))
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Login(ctx)
+
+	if got := decodeResponseCode(t, recorder); got != float64(xcode.UserNotExist) {
+		t.Fatalf("expected login response code %d, got %.0f", xcode.UserNotExist, got)
+	}
+}
+
+func TestRefresh_UsesDomainErrorCodeFromLogic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		refreshErr: xcode.NewErrCode(xcode.TokenExpired),
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodPost, "/auth/refresh", nil)
+	setCookieHeader(ctx, &http.Cookie{Name: authRefreshCookieName, Value: "cookie-token"})
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Refresh(ctx)
+
+	if got := decodeResponseCode(t, recorder); got != float64(xcode.TokenExpired) {
+		t.Fatalf("expected refresh response code %d, got %.0f", xcode.TokenExpired, got)
+	}
+}
+
+func TestLogout_UsesDomainErrorCodeFromLogic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		logoutErr: xcode.NewErrCode(xcode.CacheError),
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodPost, "/auth/logout", nil)
+	setCookieHeader(ctx, &http.Cookie{Name: authRefreshCookieName, Value: "cookie-token"})
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Logout(ctx)
+
+	if got := decodeResponseCode(t, recorder); got != float64(xcode.CacheError) {
+		t.Fatalf("expected logout response code %d, got %.0f", xcode.CacheError, got)
+	}
+}
+
+func TestMe_UsesDomainErrorCodeFromLogic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		meErr: xcode.NewErrCode(xcode.Forbidden),
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodGet, "/auth/me", nil)
+	ctx.Set("uid", uint64(7))
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Me(ctx)
+
+	if got := decodeResponseCode(t, recorder); got != float64(xcode.Forbidden) {
+		t.Fatalf("expected me response code %d, got %.0f", xcode.Forbidden, got)
+	}
 }

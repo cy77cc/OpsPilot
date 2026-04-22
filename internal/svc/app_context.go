@@ -5,6 +5,7 @@ package svc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/casbin/casbin/v2"
@@ -28,14 +29,25 @@ type ServiceContext struct {
 	MetricsPusher  *prominfra.MetricsPusher    // Prometheus 指标推送器
 }
 
-// MustNewServiceContext 创建服务上下文，如果失败则 panic。
-func MustNewServiceContext() *ServiceContext {
-	ctx := context.Background()
+// NewServiceContext 创建服务上下文，并向上返回初始化错误。
+func NewServiceContext(ctx context.Context) (*ServiceContext, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	db := storage.MustNewDB()
+	db, err := storage.NewDB()
+	if err != nil {
+		return nil, fmt.Errorf("init database: %w", err)
+	}
 	initAIRuntime(ctx, db)
 
-	rdb := storage.MustNewRdb()
+	rdb, err := storage.NewRdb()
+	if err != nil {
+		if sqlDB, sqlErr := db.DB(); sqlErr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, fmt.Errorf("init redis: %w", err)
+	}
 	l1 := expirable.NewLRU[string, any](5_000, nil, 24*time.Hour)
 
 	return &ServiceContext{
@@ -46,7 +58,7 @@ func MustNewServiceContext() *ServiceContext {
 		CasbinEnforcer: newCasbinEnforcer(db),
 		Prometheus:     initPrometheusClient(),
 		MetricsPusher:  initMetricsPusher(),
-	}
+	}, nil
 }
 
 func aiBaseURL() string {

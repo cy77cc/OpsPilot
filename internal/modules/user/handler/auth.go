@@ -84,6 +84,11 @@ func authPublicResp(resp v1.TokenResp) AuthPublicResp {
 	}
 }
 
+func writeAuthLogicError(c *gin.Context, err error) {
+	codeErr := xcode.FromError(err)
+	httpx.Fail(c, codeErr.Code, codeErr.Msg)
+}
+
 // Login 用户登录。
 //
 // @Summary 用户登录
@@ -104,7 +109,7 @@ func (u *UserHandler) Login(c *gin.Context) {
 	}
 	resp, err := newAuthLogic(u.svcCtx).Login(c.Request.Context(), req)
 	if err != nil {
-		httpx.Fail(c, xcode.ServerError, err.Error())
+		writeAuthLogicError(c, err)
 		return
 	}
 	setAuthCookies(c, resp.AccessToken, resp.RefreshToken)
@@ -131,7 +136,7 @@ func (u *UserHandler) Register(c *gin.Context) {
 	}
 	resp, err := newAuthLogic(u.svcCtx).Register(c.Request.Context(), req)
 	if err != nil {
-		httpx.Fail(c, xcode.ServerError, err.Error())
+		writeAuthLogicError(c, err)
 		return
 	}
 	httpx.OK(c, resp)
@@ -156,7 +161,7 @@ func (u *UserHandler) Refresh(c *gin.Context) {
 
 	resp, err := newAuthLogic(u.svcCtx).Refresh(c.Request.Context(), req)
 	if err != nil {
-		httpx.Fail(c, xcode.ServerError, err.Error())
+		writeAuthLogicError(c, err)
 		return
 	}
 	setAuthCookies(c, resp.AccessToken, resp.RefreshToken)
@@ -181,7 +186,7 @@ func (u *UserHandler) Logout(c *gin.Context) {
 
 	if err := newAuthLogic(u.svcCtx).Logout(c.Request.Context(), req); err != nil {
 		clearAuthCookies(c)
-		httpx.Fail(c, xcode.ServerError, err.Error())
+		writeAuthLogicError(c, err)
 		return
 	}
 	clearAuthCookies(c)
@@ -207,7 +212,7 @@ func (u *UserHandler) Me(c *gin.Context) {
 	}
 	resp, err := newAuthLogic(u.svcCtx).GetMe(c.Request.Context(), uid)
 	if err != nil {
-		httpx.Fail(c, xcode.ServerError, err.Error())
+		writeAuthLogicError(c, err)
 		return
 	}
 	httpx.OK(c, resp)

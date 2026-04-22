@@ -30,7 +30,10 @@ var migrateUpCMD = &cobra.Command{
 	Use:   "up",
 	Short: "apply versioned migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		db, cleanup := mustInitMigrationDeps()
+		db, cleanup, err := initMigrationDeps()
+		if err != nil {
+			return err
+		}
 		defer cleanup()
 		return migration.Migrate(db, migration.DirectionUp, upSteps)
 	},
@@ -41,7 +44,10 @@ var migrateDownCMD = &cobra.Command{
 	Use:   "down",
 	Short: "rollback versioned migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		db, cleanup := mustInitMigrationDeps()
+		db, cleanup, err := initMigrationDeps()
+		if err != nil {
+			return err
+		}
 		defer cleanup()
 		return migration.Migrate(db, migration.DirectionDown, downSteps)
 	},
@@ -52,7 +58,10 @@ var migrateStatusCMD = &cobra.Command{
 	Use:   "status",
 	Short: "print migration status",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		db, cleanup := mustInitMigrationDeps()
+		db, cleanup, err := initMigrationDeps()
+		if err != nil {
+			return err
+		}
 		defer cleanup()
 
 		items, err := migration.Status(db)
@@ -74,20 +83,23 @@ var migrateStatusCMD = &cobra.Command{
 	},
 }
 
-// mustInitMigrationDeps 初始化迁移依赖。
+// initMigrationDeps 初始化迁移依赖。
 //
 // 返回数据库连接和清理函数。
-func mustInitMigrationDeps() (*gorm.DB, func()) {
+func initMigrationDeps() (*gorm.DB, func(), error) {
 	config.MustNewConfig()
 	logger.Init(logger.MustNewZapLogger())
-	db := storage.MustNewDB()
+	db, err := storage.NewDB()
+	if err != nil {
+		return nil, func() {}, err
+	}
 	cleanup := func() {
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()
 		}
 	}
-	return db, cleanup
+	return db, cleanup, nil
 }
 
 func init() {
