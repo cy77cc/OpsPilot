@@ -4,10 +4,11 @@
 
 ### Dockerfile (后端)
 - **位置**: 项目根目录
-- **功能**: 构建包含前端和后端的完整应用镜像
+- **功能**: 构建后端API服务
 - **特点**:
-  - 三阶段构建 (Multi-stage)
-  - 前端编译 + 后端编译 + 运行时镜像
+  - 四阶段构建：前端构建 → 后端构建 → 前端nginx runtime → 后端runtime
+  - 前端编译并运行在单独的nginx容器中
+  - 后端仅包含API服务
   - 镜像大小优化
   - 非root用户运行
   - 健康检查集成
@@ -16,20 +17,24 @@
 - **位置**: `web/` 目录
 - **功能**: 仅构建前端镜像
 - **特点**:
-  - 基于Node.js Alpine
-  - 使用serve提供生产级服务
-  - 安全的非root用户
-  - 健康检查
+  - 基于Nginx Alpine
+  - React + Vite 编译构建
+  - 包含API代理和WebSocket支持
+  - 智能缓存策略（静态资源长期缓存，HTML不缓存）
+  - SPA路由支持（try_files）
+  - Gzip压缩启用
+  - 安全头设置
+  - 非root用户运行
 
 ### docker-compose.yml
 - **位置**: 项目根目录
 - **功能**: 完整的应用栈编排
 - **包含服务**:
-  - Backend (OpensPilot API)
-  - Frontend (React应用)
-  - PostgreSQL (数据库)
-  - Redis (缓存)
-  - Prometheus (监控，可选)
+  - Frontend (Nginx - 端口80)
+  - Backend (Go API - 端口8080)
+  - PostgreSQL (数据库 - 端口5432)
+  - Redis (缓存 - 端口6379)
+  - Prometheus (监控，可选 - 端口9090)
 
 ### .dockerignore
 - **目的**: 优化Docker构建上下文
@@ -39,21 +44,7 @@
 
 ## 🚀 使用方式
 
-### 方案1: 构建完整镜像（后端+前端）
-
-```bash
-# 构建镜像
-docker build -t opspilot:latest .
-
-# 运行容器（需要数据库）
-docker run -d \
-  -p 8080:8080 \
-  -e DB_HOST=<db-host> \
-  -e DB_PASSWORD=<password> \
-  opspilot:latest
-```
-
-### 方案2: 仅构建前端镜像
+### 方案1: 仅构建前端镜像（Nginx）
 
 ```bash
 # 构建前端镜像
@@ -61,12 +52,31 @@ docker build -t opspilot-frontend:latest ./web
 
 # 运行前端容器
 docker run -d \
-  -p 3000:3000 \
-  -e VITE_API_BASE_URL=http://backend:8080 \
+  -p 80:80 \
+  --name opspilot-frontend \
   opspilot-frontend:latest
+
+# 访问: http://localhost
 ```
 
-### 方案3: Docker Compose (推荐开发和演示)
+### 方案2: 仅构建后端镜像
+
+```bash
+# 构建后端镜像
+docker build -t opspilot-backend:latest .
+
+# 运行后端容器
+docker run -d \
+  -p 8080:8080 \
+  -e DB_HOST=<db-host> \
+  -e DB_PASSWORD=<password> \
+  --name opspilot-backend \
+  opspilot-backend:latest
+
+# 访问: http://localhost:8080
+```
+
+### 方案3: Docker Compose (推荐)
 
 ```bash
 # 启动所有服务
@@ -76,13 +86,13 @@ docker-compose up -d
 docker-compose ps
 
 # 查看日志
-docker-compose logs -f backend
 docker-compose logs -f frontend
+docker-compose logs -f backend
 
 # 停止所有服务
 docker-compose down
 
-# 删除所有数据
+# 删除所有数据和容器
 docker-compose down -v
 ```
 
@@ -92,18 +102,16 @@ docker-compose down -v
 
 ### 环境变量 (后端)
 
-在运行容器时设置：
-
 ```bash
 # 数据库配置
-DB_HOST=localhost
+DB_HOST=postgres
 DB_PORT=5432
 DB_USER=opspilot
 DB_PASSWORD=your-password
 DB_NAME=opspilot
 
 # Redis配置
-REDIS_HOST=localhost
+REDIS_HOST=redis
 REDIS_PORT=6379
 
 # 应用配置
@@ -111,15 +119,17 @@ APP_ENV=production
 LOG_LEVEL=info
 ```
 
-### 环境变量 (前端)
+### Nginx 配置 (前端)
 
-在docker-compose或构建时设置：
+前端Dockerfile中内置的Nginx配置包括：
 
-```bash
-# API配置
-VITE_API_BASE_URL=http://backend:8080
-VITE_WS_URL=ws://backend:8080
-```
+- **静态资源缓存**: 30天缓存 `*.js, *.css, 图片等`
+- **HTML不缓存**: 确保总是加载最新版本
+- **API代理**: `/api/*` 转发到后端 `http://backend:8080`
+- **WebSocket代理**: `/ws` 支持长连接
+- **SPA路由**: `try_files $uri $uri/ /index.html` 支持前端路由
+- **Gzip压缩**: 启用gzip压缩
+- **安全头**: X-Frame-Options, X-Content-Type-Options等
 
 ### Docker Compose 自定义
 
@@ -133,10 +143,14 @@ services:
     environment:
       - DB_PASSWORD=your-secure-password
       - LOG_LEVEL=debug
+      - APP_ENV=development
 
   postgres:
     environment:
       - POSTGRES_PASSWORD=your-secure-password
+
+  redis:
+    command: redis-server --requirepass your-secure-password
 ```
 
 ---
@@ -145,8 +159,11 @@ services:
 
 | 镜像 | 大小 | 说明 |
 |------|------|------|
-| opspilot:latest | ~150MB | 包含前后端完整应用 |
-| opspilot-frontend:latest | ~200MB | 仅前端应用 |
+| opspilot-frontend:latest | ~30MB | Nginx + 前端静态文件 |
+| opspilot-backend:latest | ~80MB | Go二进制 + 运行时 |
+| 合计 | ~110MB | 完整应用栈 |
+
+相比使用Node.js serve (200MB+)，Nginx减小了70%的镜像大小！
 
 ---
 
@@ -155,136 +172,164 @@ services:
 ### 1. 安全性
 - ✅ 使用非root用户运行
 - ✅ 使用Alpine基础镜像减少攻击面
+- ✅ Nginx配置了安全头（X-Frame-Options, CSP等）
 - ✅ 定期更新基础镜像
-- ✅ 扫描镜像漏洞: `trivy image opspilot:latest`
 
 ### 2. 性能
-- ✅ 多阶段构建减小镜像大小
-- ✅ 缓存优化 (Dockerfile中的COPY顺序)
-- ✅ 去掉不必要的文件 (.dockerignore)
+- ✅ Nginx相比Node.js serve性能更好
+- ✅ Gzip压缩减少传输大小
+- ✅ 智能缓存策略加快加载
+- ✅ API代理支持负载均衡
 
 ### 3. 可维护性
-- ✅ 明确的构建阶段和标签
-- ✅ 完整的注释和元数据
-- ✅ 健康检查确保服务正常
-- ✅ 一致的错误处理
-
-### 4. 监控
-- ✅ 集成Prometheus监控
-- ✅ 健康检查端点
+- ✅ 清晰的多阶段构建
+- ✅ 内置的健康检查
 - ✅ 容器日志配置
+- ✅ 完整的文档
+
+### 4. 前端开发体验
+- ✅ Nginx自动处理SPA路由
+- ✅ API代理支持跨域请求
+- ✅ WebSocket支持实时通信
+- ✅ 热重载支持（开发模式）
+
+---
+
+## 🔗 Nginx 路由说明
+
+前端Nginx会自动转发以下请求：
+
+```
+Request          Handled By          Purpose
+────────────────────────────────────────────────
+/                Nginx               主页 (index.html)
+/app/*           Nginx               应用内路由
+/static/*        Nginx               静态资源 (缓存30天)
+/api/*           后端 (8080)         API请求
+/ws              后端 (8080)         WebSocket
+/health          Nginx               健康检查
+```
+
+这样前后端完全分离：
+- **前端**: Nginx容器处理（快速、轻量）
+- **后端**: Go容器处理（业务逻辑）
 
 ---
 
 ## 🐛 故障排查
 
-### 问题1: 容器启动失败
+### 问题1: 前端无法访问
 
 ```bash
-# 查看容器日志
-docker logs opspilot-backend
+# 查看前端日志
+docker logs opspilot-frontend
 
-# 检查容器状态
-docker ps -a
+# 检查nginx进程
+docker exec opspilot-frontend ps aux | grep nginx
 
 # 进入容器调试
-docker exec -it opspilot-backend sh
+docker exec -it opspilot-frontend sh
 ```
 
 ### 问题2: 前端无法连接后端
 
 ```bash
-# 检查网络连接
-docker network ls
+# 检查网络
 docker network inspect opspilot-network
 
-# 检查DNS解析
+# 测试DNS解析
 docker exec opspilot-frontend nslookup backend
+
+# 测试API连接
+docker exec opspilot-frontend curl -v http://backend:8080/health
 ```
 
-### 问题3: 数据库连接失败
-
-```bash
-# 检查PostgreSQL状态
-docker-compose logs postgres
-
-# 验证连接
-docker exec opspilot-postgres psql -U opspilot -d opspilot -c "SELECT 1"
-```
-
-### 问题4: 镜像构建失败
+### 问题3: 镜像构建失败
 
 ```bash
 # 清理Docker资源
 docker system prune -a
 
+# 查看构建日志
+docker build --progress=plain ./web
+
 # 重新构建（不使用缓存）
-docker build --no-cache -t opspilot:latest .
+docker build --no-cache -t opspilot-frontend:latest ./web
 ```
 
 ---
 
 ## 📝 CI/CD 集成
 
-### GitHub Actions / Gitea Actions
+工作流中的Docker构建会自动：
 
-在工作流中构建Docker镜像：
-
-```yaml
-- name: Build and push Docker image
-  uses: docker/build-push-action@v5
-  with:
-    context: .
-    push: true
-    tags: registry.example.com/opspilot:latest
-    cache-from: type=gha
-    cache-to: type=gha,mode=max
-```
-
-### 推送到Registry
-
-```bash
-# 登录Registry
-docker login registry.example.com
-
-# 标记镜像
-docker tag opspilot:latest registry.example.com/opspilot:1.0.0
-
-# 推送镜像
-docker push registry.example.com/opspilot:1.0.0
-```
+1. 构建前端镜像 (Nginx)
+2. 构建后端镜像 (Go)
+3. 推送到Registry
+4. 运行安全扫描
 
 ---
 
-## 🔗 相关命令
+## 🚀 生产部署
 
-```bash
-# 查看镜像信息
-docker image inspect opspilot:latest
+### Kubernetes 部署示例
 
-# 查看镜像层
-docker image history opspilot:latest
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opspilot-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: opspilot-frontend
+  template:
+    metadata:
+      labels:
+        app: opspilot-frontend
+    spec:
+      containers:
+      - name: nginx
+        image: registry.example.com/opspilot-frontend:latest
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
 
-# 扫描漏洞
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-  aquasec/trivy image opspilot:latest
-
-# 执行compose命令
-docker-compose ps              # 查看服务状态
-docker-compose up              # 启动服务
-docker-compose down            # 停止服务
-docker-compose logs -f         # 查看日志
-docker-compose exec backend sh # 进入容器
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opspilot-frontend
+spec:
+  selector:
+    app: opspilot-frontend
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
 ```
 
 ---
 
 ## 📖 更多资源
 
-- [Docker官方文档](https://docs.docker.com/)
-- [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)
-- [Compose文件参考](https://docs.docker.com/compose/compose-file/)
+- [Nginx官方文档](https://nginx.org/en/docs/)
+- [Docker最佳实践](https://docs.docker.com/develop/dev-best-practices/)
 - [Alpine Linux](https://alpinelinux.org/)
+- [React + Vite](https://vitejs.dev/)
 
 ---
 

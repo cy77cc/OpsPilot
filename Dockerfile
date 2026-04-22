@@ -16,6 +16,7 @@ COPY web/public ./public
 COPY web/*.js ./
 COPY web/*.json ./
 COPY web/*.config.js ./
+COPY web/tsconfig.*.json ./
 
 # Build frontend
 RUN npm run build
@@ -48,24 +49,77 @@ RUN go build \
     ./cmd/opspilot
 
 
-# Stage 3: Runtime image
+# Stage 3: Frontend nginx runtime
+FROM nginx:1.27-alpine AS frontend-runtime
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Create nginx configuration
+RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 100M;
+
+    gzip on;
+    gzip_types text/plain text/css text/javascript application/javascript application/json;
+    gzip_min_length 1000;
+
+    location ~ \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        root /usr/share/nginx/html;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+
+# Copy built frontend from builder
+COPY --from=frontend-builder /app/web/dist /usr/share/nginx/html
+
+# Create non-root user
+RUN addgroup -g 65534 -S appgroup && \
+    adduser -u 65534 -S appuser -G appgroup && \
+    chown -R appuser:appgroup /usr/share/nginx/html /var/cache/nginx /var/log/nginx /run/nginx.pid 2>/dev/null || true
+
+USER appuser
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
+
+
+# Stage 4: Final backend runtime
 FROM alpine:3.23.3
 
 LABEL maintainer="OpsPilot Team"
-LABEL description="OpsPilot - Kubernetes Management Platform"
+LABEL description="OpsPilot - Kubernetes Management Platform with Nginx"
 
 WORKDIR /app
 
 # Install ca-certificates for HTTPS and runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata curl
 
-# Copy built frontend from builder
-COPY --from=frontend-builder /app/web/dist ./web/dist
-
-# Copy built binary from builder
+# Copy built backend binary
 COPY --from=backend-builder /app/bin/opspilot .
 
-# Copy configs and scripts if needed
+# Copy configs if needed
 COPY --chown=65534:65534 configs ./configs 2>/dev/null || true
 
 # Create non-root user for security

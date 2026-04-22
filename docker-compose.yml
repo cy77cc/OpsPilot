@@ -40,23 +40,22 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Frontend Service
+  # Frontend Service (Nginx)
   frontend:
     build:
       context: ./web
       dockerfile: Dockerfile
     container_name: opspilot-frontend
     ports:
-      - "3000:3000"
+      - "80:80"
     environment:
-      - VITE_API_BASE_URL=http://backend:8080
-      - VITE_WS_URL=ws://backend:8080
+      - NGINX_HOST=localhost
     depends_on:
       - backend
     networks:
       - opspilot-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
