@@ -133,8 +133,8 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     if (aiAssist) return aiAssist;
 
     // Check if child is an AI-supported input type
-    const childType = (children as any)?.type?.displayName || (children as any)?.type?.name || '';
-    const isSupportedInput = ['Input', 'TextArea', 'Password'].some(name => childType.includes(name));
+    const childType = (children as any)?.type?.displayName || (children as any)?.type?.name || (children as any)?.type?.render?.name || '';
+    const isSupportedInput = ['Input', 'TextArea', 'Password'].some(name => childType.includes(name)) || (children as any)?.props?.rows !== undefined || (children as any)?.type === 'textarea';
     
     if (isSupportedInput && name) {
       return {
