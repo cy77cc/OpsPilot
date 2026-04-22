@@ -1,0 +1,35 @@
+# Node modules (will be installed fresh)
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build artifacts
+dist
+build
+
+# Development
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Testing
+coverage
+test-results
+playwright-report
+
+# Other
+.DS_Store
+README.md
+.gitea
+.github
+docs

@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+.env.local
+
+# Dependencies
+node_modules
+vendor
+
+# Build artifacts
+bin
+dist
+coverage
+*.out
+
+# Test files
+*.test.go
+*_test.go
+e2e
+
+# CI/CD
+.github
+.gitea
+.gitlab-ci.yml
+
+# Documentation
+docs
+README.md
+CHANGELOG.md
+
+# Temporary files
+tmp
+temp
+.cache
+
+# Environment files (for security)
+.env
+.env.*.local
+
+# Development files
+docker-compose.override.yml
+.dockerignore
