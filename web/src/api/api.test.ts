@@ -38,7 +38,7 @@ describe('request context interaction', () => {
 
     const config = fulfilled({ headers: { 'Content-Type': 'application/json' } });
 
-    expect(config.headers).toEqual({
+    expect((config.headers as { toJSON?: () => Record<string, string> }).toJSON?.() || config.headers).toEqual({
       'Content-Type': 'application/json',
       'X-Project-ID': '123',
       'X-Team-ID': '456',

@@ -2,6 +2,29 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 
+const authScopeBoundaryFiles = [
+  'src/api/api.ts',
+  'src/api/requestContext.ts',
+  'src/api/modules/auth.ts',
+  'src/app/session/**/*.ts',
+  'src/components/Auth/AuthContext.tsx',
+  'src/features/ai/api/chatApi.ts',
+  'src/features/ai/api/assistApi.ts',
+  'src/hooks/useNotificationWebSocket.ts',
+  'src/utils/tokenManager.ts',
+];
+
+const localStorageRestrictedFiles = [
+  'src/api/api.ts',
+  'src/api/modules/auth.ts',
+  'src/app/session/**/*.ts',
+  'src/components/Auth/AuthContext.tsx',
+  'src/features/ai/api/chatApi.ts',
+  'src/features/ai/api/assistApi.ts',
+  'src/hooks/useNotificationWebSocket.ts',
+  'src/utils/tokenManager.ts',
+];
+
 export default [
   {
     ignores: ['dist', 'node_modules'],
@@ -33,8 +56,51 @@ export default [
       },
     },
     plugins: {
+      '@typescript-eslint': tseslint.plugin,
       'react-hooks': reactHooks,
     },
-    rules: {},
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+  {
+    files: authScopeBoundaryFiles,
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'error',
+    },
+  },
+  {
+    files: localStorageRestrictedFiles,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='localStorage'][callee.property.name='getItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='localStorage'][callee.property.name='setItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='localStorage'][callee.property.name='removeItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+        {
+          selector: "CallExpression[callee.object.object.name='window'][callee.object.property.name='localStorage'][callee.property.name='getItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+        {
+          selector: "CallExpression[callee.object.object.name='window'][callee.object.property.name='localStorage'][callee.property.name='setItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+        {
+          selector: "CallExpression[callee.object.object.name='window'][callee.object.property.name='localStorage'][callee.property.name='removeItem']",
+          message: 'Use AuthSessionStore/ScopeStore instead of direct localStorage access in auth and request boundary files.',
+        },
+      ],
+    },
   },
 ];

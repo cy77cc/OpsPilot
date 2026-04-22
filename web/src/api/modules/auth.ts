@@ -35,17 +35,18 @@ export const authApi = {
   },
 
   async getMe(): Promise<ApiResponse<AuthUser>> {
-    const res = await apiService.get<any>('/auth/me');
+    const res = await apiService.get<Record<string, unknown>>('/auth/me');
+    const data = (res.data || {}) as Partial<AuthUser> & Record<string, unknown>;
     return {
       ...res,
       data: {
-        id: Number(res.data?.id || 0),
-        username: res.data?.username || '',
-        name: res.data?.name || res.data?.username || '',
-        email: res.data?.email || '',
-        status: res.data?.status || 'active',
-        roles: res.data?.roles || [],
-        permissions: res.data?.permissions || [],
+        id: Number(data.id || 0),
+        username: String(data.username || ''),
+        name: String(data.name || data.username || ''),
+        email: String(data.email || ''),
+        status: String(data.status || 'active'),
+        roles: Array.isArray(data.roles) ? data.roles.map((role) => String(role)) : [],
+        permissions: Array.isArray(data.permissions) ? data.permissions.map((permission) => String(permission)) : [],
       },
     };
   },

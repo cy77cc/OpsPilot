@@ -1,4 +1,4 @@
-import { consumeAIStream, type A2UIStreamHandlers, apiService, type AIChatParams } from './shared';
+import { consumeAIStream, type A2UIStreamHandlers, type AIChatParams } from './shared';
 import { buildContextualFetchInit } from '../../../api/requestContext';
 
 export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandlers, signal?: AbortSignal): Promise<void> {

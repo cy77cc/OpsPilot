@@ -26,6 +26,7 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
   const statusRef = useRef<WSConnectionStatus>('disconnected');
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const intentionalDisconnectRef = useRef(false);
+  const connectRef = useRef<() => void>(() => undefined);
 
   // 使用 ref 存储回调，避免依赖变化
   const onMessageRef = useRef(onMessage);
@@ -59,6 +60,28 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       });
     }
   }, []);
+
+  // 安排重连
+  const scheduleReconnect = useCallback(() => {
+    if (intentionalDisconnectRef.current) {
+      return;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    const delay = currentReconnectIntervalRef.current;
+    currentReconnectIntervalRef.current = Math.min(
+      currentReconnectIntervalRef.current * 2,
+      maxReconnectInterval
+    );
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.log(`WebSocket: 尝试重连 (延迟 ${delay}ms)`);
+      connectRef.current();
+    }, delay);
+  }, [maxReconnectInterval]);
 
   // 连接 WebSocket
   const connect = useCallback(() => {
@@ -148,29 +171,11 @@ export const useNotificationWebSocket = (options: UseNotificationWebSocketOption
       statusRef.current = 'disconnected';
       scheduleReconnect();
     }
-  }, [reconnectInterval, broadcast]);
+  }, [broadcast, reconnectInterval, scheduleReconnect]);
 
-  // 安排重连
-  const scheduleReconnect = useCallback(() => {
-    if (intentionalDisconnectRef.current) {
-      return;
-    }
-
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    const delay = currentReconnectIntervalRef.current;
-    currentReconnectIntervalRef.current = Math.min(
-      currentReconnectIntervalRef.current * 2,
-      maxReconnectInterval
-    );
-
-    reconnectTimeoutRef.current = setTimeout(() => {
-      console.log(`WebSocket: 尝试重连 (延迟 ${delay}ms)`);
-      connect();
-    }, delay);
-  }, [connect, maxReconnectInterval]);
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   // 断开连接
   const disconnect = useCallback(() => {

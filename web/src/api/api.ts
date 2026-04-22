@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import {
   TOKEN_EVENTS,
@@ -7,6 +7,21 @@ import {
   dispatchTokenNeedsRefresh,
 } from '../utils/tokenManager';
 import { getRequestContextHeaders } from './requestContext';
+
+type RawApiPayload = {
+  code?: number;
+  msg?: string;
+  message?: string;
+  message_key?: string;
+  data_source?: string;
+  data?: unknown;
+  total?: number;
+  success?: boolean;
+  error?: {
+    code?: string;
+    message?: string;
+  };
+};
 
 export class ApiRequestError extends Error {
   statusCode?: number;
@@ -65,10 +80,11 @@ class ApiService {
     // 请求拦截器
     this.instance.interceptors.request.use(
       (config) => {
-        config.headers = {
-          ...(config.headers || {}),
-          ...getRequestContextHeaders(),
-        } as Record<string, string>;
+        const headers = AxiosHeaders.from(config.headers);
+        Object.entries(getRequestContextHeaders()).forEach(([key, value]) => {
+          headers.set(key, value);
+        });
+        config.headers = headers;
         return config;
       },
       (error) => {
@@ -78,7 +94,7 @@ class ApiService {
 
     // 响应拦截器
     this.instance.interceptors.response.use(
-      (response: AxiosResponse<any>) => {
+      (response: AxiosResponse<RawApiPayload>) => {
         const payload = response.data;
         const originalConfig = response.config as AxiosRequestConfig & { _retry?: boolean };
         const requestURL = String(originalConfig.url || '');
@@ -153,12 +169,12 @@ class ApiService {
     return response.data;
   }
 
-  private async tryRefreshAndRetry(config: AxiosRequestConfig): Promise<AxiosResponse<any>> {
+  private async tryRefreshAndRetry(config: AxiosRequestConfig): Promise<AxiosResponse<RawApiPayload>> {
     const refreshed = await this.refreshAccessToken();
     if (!refreshed) {
       return Promise.reject(new Error('登录已过期，请重新登录'));
     }
-    return this.instance.request<ApiResponse<any>>(config);
+    return this.instance.request<RawApiPayload>(config);
   }
 
   /**
@@ -174,7 +190,7 @@ class ApiService {
 
     this.refreshPromise = (async () => {
       try {
-        await this.instance.post<ApiResponse<any>>('/auth/refresh');
+        await this.instance.post<RawApiPayload>('/auth/refresh');
 
         // 触发刷新成功事件
         dispatchTokenRefreshed();
