@@ -6,6 +6,7 @@ package handler
 import (
 	"strconv"
 
+	v1 "github.com/cy77cc/OpsPilot/api/user/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	"github.com/cy77cc/OpsPilot/internal/modules/user/model"

@@ -68,6 +68,17 @@ const AccessControlPage: React.FC = () => {
   const [allRoles, setAllRoles] = useState<any[]>([]);
   const [memberRoles, setMemberRoles] = useState<string[]>([]);
 
+  // Add Member Modal (System Users)
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [systemUsers, setSystemUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [selectedSystemUserIds, setSelectedSystemUserIds] = useState<string[]>([]);
+
+  // Dept Roles Modal
+  const [deptRoleModalOpen, setDeptRoleModalOpen] = useState(false);
+  const [currentDeptRoleIds, setCurrentDeptRoleIds] = useState<number[]>([]);
+
   const fetchDepartments = useCallback(async () => {
     setLoading(true);
     try {
@@ -98,6 +109,18 @@ const AccessControlPage: React.FC = () => {
       setAllRoles(res.data.list || []);
     } catch (err) {
       console.error('Failed to fetch roles');
+    }
+  }, []);
+
+  const fetchSystemUsers = useCallback(async (query: string = '') => {
+    setUsersLoading(true);
+    try {
+      const res = await Api.rbac.getUserList({ page: 1, pageSize: 100, form: query });
+      setSystemUsers(res.data.list || []);
+    } catch (err: any) {
+      message.error('获取用户列表失败');
+    } finally {
+      setUsersLoading(false);
     }
   }, []);
 
@@ -210,6 +233,59 @@ const AccessControlPage: React.FC = () => {
     }
   };
 
+  const handleAddMember = () => {
+    if (!selectedDeptId) {
+      message.warning('请先选择一个部门');
+      return;
+    }
+    fetchSystemUsers();
+    setSelectedSystemUserIds([]);
+    setUserModalOpen(true);
+  };
+
+  const handleUserModalOk = async () => {
+    if (!selectedDeptId || selectedSystemUserIds.length === 0) {
+      setUserModalOpen(false);
+      return;
+    }
+    try {
+      // Use transfer member with oldDeptId=0 to add to new dept
+      for (const userId of selectedSystemUserIds) {
+        await Api.org.transferMember({
+          userId: Number(userId),
+          oldDeptId: 0,
+          newDeptId: Number(selectedDeptId),
+        });
+      }
+      message.success('添加成员成功');
+      setUserModalOpen(false);
+      fetchMembers(selectedDeptId);
+    } catch (err: any) {
+      message.error('添加成员失败');
+    }
+  };
+
+  const handleOpenDeptRoles = async (deptId: string) => {
+    try {
+      const res = await Api.org.getDepartmentRoles(deptId);
+      setCurrentDeptRoleIds(res.data || []);
+      setDeptRoleModalOpen(true);
+    } catch (err) {
+      message.error('获取部门角色失败');
+    }
+  };
+
+  const handleDeptRoleModalOk = async () => {
+    if (!selectedDeptId) return;
+    try {
+      await Api.org.updateDepartmentRoles(selectedDeptId, currentDeptRoleIds);
+      message.success('更新部门角色成功');
+      setDeptRoleModalOpen(false);
+    } catch (err) {
+      message.error('更新部门角色失败');
+    }
+  };
+
   const memberColumns = [
     {
       title: '用户名',
@@ -304,6 +380,12 @@ const AccessControlPage: React.FC = () => {
                         onClick: () => handleEditDept(node.data),
                       },
                       {
+                        key: 'roles',
+                        label: '部门角色',
+                        icon: <ShieldOutlined />,
+                        onClick: () => handleOpenDeptRoles(node.key),
+                      },
+                      {
                         key: 'delete',
                         label: '删除',
                         danger: true,
@@ -334,6 +416,15 @@ const AccessControlPage: React.FC = () => {
           title={selectedDeptId ? `成员列表 - ${departments.find(d => d.id === selectedDeptId)?.name || ''}` : '成员列表'}
           extra={
             <Space>
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                type="primary"
+                disabled={!selectedDeptId}
+                onClick={handleAddMember}
+              >
+                添加成员
+              </Button>
               <Button
                 size="small"
                 icon={<SwapOutlined />}
@@ -466,6 +557,69 @@ const AccessControlPage: React.FC = () => {
             pagination={false}
           />
         </div>
+      </Modal>
+
+      {/* Add System Users Modal */}
+      <Modal
+        title="添加部门成员"
+        open={userModalOpen}
+        onOk={handleUserModalOk}
+        onCancel={() => setUserModalOpen(false)}
+        width={600}
+        destroyOnHidden
+      >
+        <Input
+          placeholder="搜索系统用户 (用户名/邮箱)"
+          prefix={<SearchOutlined />}
+          value={userSearchQuery}
+          onChange={(e) => {
+            setUserSearchQuery(e.target.value);
+            fetchSystemUsers(e.target.value);
+          }}
+          style={{ marginBottom: 16 }}
+        />
+        <Table
+          size="small"
+          rowSelection={{
+            type: 'checkbox',
+            selectedRowKeys: selectedSystemUserIds,
+            onChange: (keys) => setSelectedSystemUserIds(keys as string[]),
+          }}
+          columns={[
+            { title: '用户名', dataIndex: 'username' },
+            { title: '姓名', dataIndex: 'name' },
+            { title: '邮箱', dataIndex: 'email' }
+          ]}
+          dataSource={systemUsers}
+          rowKey="id"
+          loading={usersLoading}
+          pagination={{ pageSize: 5 }}
+        />
+      </Modal>
+
+      {/* Department Roles Modal */}
+      <Modal
+        title="设置部门继承角色"
+        open={deptRoleModalOpen}
+        onOk={handleDeptRoleModalOk}
+        onCancel={() => setDeptRoleModalOpen(false)}
+        destroyOnHidden
+      >
+        <div style={{ marginBottom: 16 }}>
+          赋予该部门的角色将由该部门下所有成员自动继承。
+        </div>
+        <Table
+          size="small"
+          rowSelection={{
+            type: 'checkbox',
+            selectedRowKeys: currentDeptRoleIds.map(id => String(id)),
+            onChange: (keys) => setCurrentDeptRoleIds(keys.map(k => Number(k))),
+          }}
+          columns={[{ title: '角色名', dataIndex: 'name' }, { title: '描述', dataIndex: 'description' }]}
+          dataSource={allRoles}
+          rowKey="id"
+          pagination={false}
+        />
       </Modal>
     </div>
   );

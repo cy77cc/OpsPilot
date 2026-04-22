@@ -62,4 +62,12 @@ export const orgApi = {
   async transferMember(data: TransferMemberParams): Promise<ApiResponse<void>> {
     return apiService.post<void>('/org/members/transfer', data);
   },
+
+  async getDepartmentRoles(id: string): Promise<ApiResponse<number[]>> {
+    return apiService.get<number[]>(`/org/departments/${id}/roles`);
+  },
+
+  async updateDepartmentRoles(id: string, roleIds: number[]): Promise<ApiResponse<void>> {
+    return apiService.post<void>(`/org/departments/${id}/roles`, { roleIds });
+  },
 };

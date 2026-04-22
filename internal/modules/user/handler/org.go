@@ -135,4 +135,3 @@ func (h *OrgHandler) UpdateDepartmentRoles(c *gin.Context) {
 	}
 	httpx.OK(c, nil)
 }
-}
