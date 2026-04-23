@@ -5,6 +5,29 @@ import { GuidedFormItem } from '../FormGuidance';
 
 interface Props {
   clusterId: string;
+  actions?: HPAEditorActions;
+}
+
+interface HPAEditorLoadResult {
+  list: any[];
+}
+
+interface SaveHPAInput {
+  clusterId: string;
+  existing: any[];
+  hpa: any;
+}
+
+interface RemoveHPAInput {
+  clusterId: string;
+  name: string;
+  namespace: string;
+}
+
+interface HPAEditorActions {
+  load: () => Promise<HPAEditorLoadResult>;
+  save: (input: SaveHPAInput) => Promise<void>;
+  remove: (input: RemoveHPAInput) => Promise<void>;
 }
 
 interface HPAEditorViewProps {
@@ -67,7 +90,44 @@ const HPAEditorView: React.FC<HPAEditorViewProps> = ({
   </div>
 );
 
-const HPAEditor: React.FC<Props> = ({ clusterId }) => {
+function useHPAEditorActions(clusterId: string): HPAEditorActions {
+  const load = React.useCallback(async () => {
+    try {
+      const res = await Api.kubernetes.listHPA(clusterId);
+      return { list: res.data.list || [] };
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '加载 HPA 失败');
+      throw err;
+    }
+  }, [clusterId]);
+
+  const save = React.useCallback(async ({ clusterId: targetClusterId, existing, hpa }: SaveHPAInput) => {
+    const found = existing.find((item) => item.name === hpa.name && item.namespace === hpa.namespace);
+    if (found) {
+      await Api.kubernetes.updateHPA(targetClusterId, hpa.name, hpa);
+      message.success('HPA 已更新');
+      return;
+    }
+
+    await Api.kubernetes.createHPA(targetClusterId, hpa);
+    message.success('HPA 已创建');
+  }, []);
+
+  const remove = React.useCallback(async ({ clusterId: targetClusterId, name, namespace }: RemoveHPAInput) => {
+    await Api.kubernetes.deleteHPA(targetClusterId, name, namespace);
+    message.success('HPA 已删除');
+  }, []);
+
+  return React.useMemo(() => ({
+    load,
+    save,
+    remove,
+  }), [load, remove, save]);
+}
+
+const HPAEditor: React.FC<Props> = ({ clusterId, actions: actionsProp }) => {
+  const defaultActions = useHPAEditorActions(clusterId);
+  const actions = actionsProp || defaultActions;
   const [loading, setLoading] = React.useState(false);
   const [list, setList] = React.useState<any[]>([]);
   const [open, setOpen] = React.useState(false);
@@ -76,35 +136,25 @@ const HPAEditor: React.FC<Props> = ({ clusterId }) => {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await Api.kubernetes.listHPA(clusterId);
-      setList(res.data.list || []);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载 HPA 失败');
+      const data = await actions.load();
+      setList(data.list);
     } finally {
       setLoading(false);
     }
-  }, [clusterId]);
+  }, [actions]);
 
   React.useEffect(() => { void load(); }, [load]);
 
   const save = async () => {
     const v = await form.validateFields();
-    const found = list.find((x) => x.name === v.name && x.namespace === v.namespace);
-    if (found) {
-      await Api.kubernetes.updateHPA(clusterId, v.name, v);
-      message.success('HPA 已更新');
-    } else {
-      await Api.kubernetes.createHPA(clusterId, v);
-      message.success('HPA 已创建');
-    }
+    await actions.save({ clusterId, existing: list, hpa: v });
     setOpen(false);
     form.resetFields();
     await load();
   };
 
   const remove = async (name: string, namespace: string) => {
-    await Api.kubernetes.deleteHPA(clusterId, name, namespace);
-    message.success('HPA 已删除');
+    await actions.remove({ clusterId, name, namespace });
     await load();
   };
 
