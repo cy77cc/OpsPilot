@@ -22,17 +22,20 @@ export const KPIOverview: React.FC = () => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
       {kpiData.map((item, index) => (
-        <Card key={index} className="shadow-sm border-none" styles={{ body: { padding: '16px' } }}>
-          <div className="flex justify-between items-start mb-2">
-            <span className="text-gray-500 text-sm">{item.title}</span>
-            <div className={`p-2 rounded-lg ${item.bgColor} flex items-center justify-center`}>
-               {item.icon}
+        <Card key={index} className="shadow-sm border-none" styles={{ body: { padding: '20px' } }}>
+          <div className="flex justify-between items-center">
+            <div className="flex-1 min-w-0">
+              <div className="text-gray-500 text-sm mb-1 truncate">{item.title}</div>
+              <div className="text-3xl font-bold mb-2 text-gray-900">{item.total}</div>
+              <div className="flex text-[11px] text-gray-400 gap-2 whitespace-nowrap">
+                 <span>{item.sub1}</span>
+                 <span className="text-gray-200">|</span>
+                 <span>{item.sub2}</span>
+              </div>
             </div>
-          </div>
-          <div className="text-3xl font-semibold mb-4">{item.total}</div>
-          <div className="flex text-xs text-gray-500 gap-3">
-             <span>{item.sub1}</span>
-             <span>{item.sub2}</span>
+            <div className={`w-12 h-12 rounded-full ${item.bgColor} flex items-center justify-center flex-shrink-0 ml-3`}>
+               {React.cloneElement(item.icon as React.ReactElement, { size: 24 })}
+            </div>
           </div>
         </Card>
       ))}

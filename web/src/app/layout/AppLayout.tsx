@@ -1,21 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Tooltip, Button, Drawer, Switch, Select } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Input, Tooltip, Button, Drawer, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  DashboardOutlined,
-  DesktopOutlined,
-  SettingOutlined,
-  CloudOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  SearchOutlined,
-  UserOutlined,
-  LogoutOutlined,
-  QuestionCircleOutlined,
-  CloudServerOutlined,
-  MenuOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+  LayoutDashboard,
+  HardDrive,
+  Settings,
+  Cloud,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  User,
+  LogOut,
+  HelpCircle,
+  Box,
+  Menu as MenuIcon,
+} from 'lucide-react';
 import SparklesIcon from '../../components/common/SparklesIcon';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/Auth/AuthContext';
@@ -125,10 +124,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const breadcrumbItems = React.useMemo(() => getBreadcrumbItems(menuPath), [menuPath]);
 
   const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
-    { key: 'settings', icon: <SettingOutlined />, label: '系统设置' },
+    { key: 'profile', icon: <User size={16} />, label: '个人中心' },
+    { key: 'settings', icon: <Settings size={16} />, label: '系统设置' },
     { type: 'divider' as const },
-    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+    { key: 'logout', icon: <LogOut size={16} />, label: '退出登录' },
   ];
 
   const handleMenuClick = (key: string) => {
@@ -146,7 +145,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <div className="h-14 flex-shrink-0 flex items-center justify-center border-b border-gray-200 px-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-sm">
-            <CloudOutlined className="text-white text-base" />
+            <Cloud size={18} className="text-white" />
           </div>
           {!collapsed && <span className="text-gray-900 font-semibold text-lg">OpsPilot</span>}
         </div>
@@ -159,7 +158,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           selectedKeys={[activeMenuKey]}
           items={menuItems}
           onClick={({ key }) => handleMenuClick(key)}
-          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-0.5 [&_.ant-menu-item-group-title]:pt-2 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-0 [&_.ant-menu-item]:h-8 [&_.ant-menu-item]:leading-8 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2 [&_.ant-menu-item_.ant-menu-item-icon]:text-sm"
+          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-0.5 [&_.ant-menu-item-group-title]:pt-2 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-1 [&_.ant-menu-item]:h-9 [&_.ant-menu-item]:leading-9 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2 [&_.ant-menu-item_.ant-menu-item-icon]:text-sm [&_.ant-menu-item-selected]:bg-blue-600! [&_.ant-menu-item-selected]:text-white! [&_.ant-menu-item-selected]:rounded-lg"
           style={{ background: 'transparent' }}
         />
       </div>
@@ -169,7 +168,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <div className="flex items-center px-1 py-1">
             <Button
               type="text"
-              icon={<SettingOutlined />}
+              icon={<Settings size={18} />}
               onClick={() => navigate('/settings')}
               className={`flex-1 flex items-center justify-start h-9 text-gray-500 hover:text-gray-900 hover:bg-gray-100 ${collapsed ? 'justify-center px-0' : 'px-3'}`}
             >
@@ -177,7 +176,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             </Button>
             <Button
               type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              icon={collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
               onClick={() => setCollapsed(!collapsed)}
               className="w-10 h-9 text-gray-400 hover:text-gray-900 flex-shrink-0"
             />
@@ -214,7 +213,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           className="fixed left-0 top-0 bottom-0 z-50 shadow-sm"
           style={{
             background: '#ffffff',
-            borderRight: '1px solid #e9ecef',
+            borderRight: '1px solid #f0f0f0',
             height: '100vh',
           }}
         >
@@ -234,14 +233,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             position: 'sticky',
             top: 0,
             zIndex: 40,
-            borderBottom: '1px solid #e9ecef',
+            borderBottom: '1px solid #f0f0f0',
           }}
         >
           <div className="flex items-center gap-4">
             {isMobile && (
               <Button
                 type="text"
-                icon={<MenuOutlined />}
+                icon={<MenuIcon size={20} />}
                 onClick={() => setMobileDrawerOpen(true)}
                 className="text-gray-600"
               />
@@ -276,9 +275,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             {!isMobile && (
               <Input
                 placeholder="搜索资源、应用、文档、命令..."
-                prefix={<SearchOutlined className="text-gray-400" />}
+                prefix={<Search size={18} className="text-gray-400" />}
                 suffix={
-                  <div className="flex items-center gap-1 bg-white border border-gray-200 px-1.5 py-0.5 rounded text-[10px] text-gray-400 font-sans font-medium">
+                  <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded text-[10px] text-gray-400 font-sans font-medium">
                     <span className="text-[12px]">⌘</span> K
                   </div>
                 }
@@ -296,7 +295,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <Tooltip title="帮助文档 <kbd className='ml-1 text-xs'>?</kbd>">
               <Button
                 type="text"
-                icon={<QuestionCircleOutlined />}
+                icon={<HelpCircle size={20} />}
                 className="text-gray-600 hover:text-primary-600"
                 onClick={() => setHelpOpen(true)}
               />
@@ -333,7 +332,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             >
               <Avatar
                 className="bg-primary-500 cursor-pointer hover:bg-primary-600 transition-colors"
-                icon={<UserOutlined />}
+                icon={<User size={18} />}
               />
             </Dropdown>
           </div>
@@ -343,25 +342,25 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 flex items-center justify-around z-50 shadow-lg">
             <Button
               type="text"
-              icon={<DashboardOutlined />}
+              icon={<LayoutDashboard size={20} />}
               onClick={() => navigate('/')}
               className={location.pathname === '/' ? 'text-primary-600' : 'text-gray-600'}
             />
             <Button
               type="text"
-              icon={<CloudServerOutlined />}
+              icon={<Box size={20} />}
               onClick={() => navigate('/services')}
               className={location.pathname.startsWith('/services') ? 'text-primary-600' : 'text-gray-600'}
             />
             <Button
               type="text"
-              icon={<DesktopOutlined />}
+              icon={<HardDrive size={20} />}
               onClick={() => navigate('/hosts')}
               className={location.pathname.startsWith('/hosts') ? 'text-primary-600' : 'text-gray-600'}
             />
             <Button
               type="text"
-              icon={<SettingOutlined />}
+              icon={<Settings size={20} />}
               onClick={() => navigate('/settings')}
               className={location.pathname.startsWith('/settings') ? 'text-primary-600' : 'text-gray-600'}
             />
@@ -374,7 +373,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             minHeight: isMobile ? 'calc(100vh - 128px)' : 'calc(100vh - 64px)',
           }}
         >
-          <div className="flex min-h-full w-full flex-col p-4 md:p-6">
+          <div className="flex min-h-full w-full flex-col p-6">
             <PageTransition>{children}</PageTransition>
           </div>
         </Content>

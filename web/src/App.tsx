@@ -29,7 +29,22 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }
 
 const App: React.FC = () => {
   return (
-    <ConfigProvider>
+    <ConfigProvider
+      theme={{
+        token: {
+          fontFamily: "'Inter', 'PingFang SC', sans-serif",
+          borderRadius: 8,
+          colorPrimary: '#1890ff',
+          colorTextBase: '#1f2329',
+        },
+        components: {
+          Card: {
+            headerFontSize: 16,
+            headerHeight: 48,
+          },
+        },
+      }}
+    >
       <AuthProvider>
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>

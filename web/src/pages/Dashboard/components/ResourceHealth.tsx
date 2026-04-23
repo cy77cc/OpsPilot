@@ -53,9 +53,15 @@ export const ResourceHealth: React.FC = () => {
       <div className="h-64">
          <Pie {...config} />
       </div>
-      <div className="text-right mt-4">
-         <a href="#" className="text-blue-500 text-sm">查看资源拓扑 &gt;</a>
-      </div>
+      <FooterLink />
     </Card>
   );
 };
+
+const FooterLink: React.FC<{ href?: string }> = ({ href = "#" }) => (
+  <div className="text-right mt-4">
+    <a href={href} className="text-blue-500 text-xs hover:text-blue-600 transition-colors">
+      查看详情 &gt;
+    </a>
+  </div>
+);

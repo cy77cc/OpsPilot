@@ -57,6 +57,11 @@ export const ClusterUsage: React.FC = () => {
       <div className="h-64 mt-2">
         <Line {...config} />
       </div>
+      <div className="text-right mt-4">
+        <a href="#" className="text-blue-500 text-xs hover:text-blue-600 transition-colors">
+          查看详情 &gt;
+        </a>
+      </div>
     </Card>
   );
 };

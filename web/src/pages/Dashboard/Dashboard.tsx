@@ -31,11 +31,11 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
       
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3">
         <KPIOverview />
         
         {/* Main Grid Layout */}
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-3">
             <ResourceHealth />
           </div>
@@ -50,7 +50,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-3">
             <DeliveryOverview />
           </div>
@@ -62,7 +62,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-8">
             <RecentAlerts />
           </div>
