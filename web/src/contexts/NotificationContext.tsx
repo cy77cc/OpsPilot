@@ -1,32 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useMemo } from 'react';
 import type {
-  UserNotification,
   UnreadCountResponse,
+  UserNotification,
   WSConnectionStatus,
-  WSMessage,
 } from '../types/notification';
-import { notificationApi } from '../api/modules/notification';
-import { aiApi } from '../api/modules/ai';
-import { ApiRequestError, isAuthBusinessCode } from '../api/api';
-import { useNotificationWebSocket } from '../hooks/useNotificationWebSocket';
-import { playNotificationSound } from '../hooks/useNotificationSound';
-import { notify as sendBrowserNotification } from '../utils/browserNotification';
-import { safeNavigate } from '../utils/safeNavigate';
+import { NotificationDataProvider, useNotificationDataActionsContext, useNotificationDataContext } from './notification/NotificationDataProvider';
+import { NotificationWSProvider, useNotificationWSContext } from './notification/NotificationWSProvider';
+import { ApprovalStateProvider, type ApprovalActionState, useApprovalStateContext } from './notification/ApprovalStateProvider';
 
-type ApprovalActionState = {
-  state: 'submitting' | 'refresh-needed';
-  message?: string;
-};
-
-interface NotificationContextValue {
-  // 状态
+export interface NotificationContextValue {
   notifications: UserNotification[];
   unreadCount: UnreadCountResponse;
   loading: boolean;
   wsStatus: WSConnectionStatus;
   approvalActionStates: Record<string, ApprovalActionState>;
-
-  // 操作
   refresh: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
@@ -35,34 +22,10 @@ interface NotificationContextValue {
   markAllAsRead: () => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextValue | null>(null);
-
-function getApprovalActionKey(notification: UserNotification): string {
-  return notification.notification.source_id || notification.id;
-}
-
-function getApprovalErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error.trim();
-  }
-  return '提交失败，请刷新后重试';
-}
-
-function createApprovalIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return `approval-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 interface NotificationProviderProps {
   children: React.ReactNode;
   userId?: number | string;
-  pollInterval?: number; // 轮询间隔（WebSocket 断开时使用）
+  pollInterval?: number;
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({
@@ -70,409 +33,22 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   userId,
   pollInterval = 30000,
 }) => {
-  const hasAuth = Boolean(userId);
-  const [notifications, setNotifications] = useState<UserNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState<UnreadCountResponse>({
-    total: 0,
-    by_type: { alert: 0, task: 0, system: 0, approval: 0 },
-    by_severity: { critical: 0, warning: 0, info: 0 },
-  });
-  const [loading, setLoading] = useState(false);
-  const [wsStatus, setWsStatus] = useState<WSConnectionStatus>('disconnected');
-  const [approvalActionStates, setApprovalActionStates] = useState<Record<string, ApprovalActionState>>({});
+  return (
+    <NotificationDataProvider userId={userId}>
+      <NotificationWSProvider userId={userId} pollInterval={pollInterval}>
+        <ApprovalStateProvider>{children}</ApprovalStateProvider>
+      </NotificationWSProvider>
+    </NotificationDataProvider>
+  );
+};
 
-  const mountedRef = useRef(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const approvalActionInflightRef = useRef<Record<string, string>>({});
+export const useNotificationContext = (): NotificationContextValue => {
+  const { notifications, unreadCount, loading } = useNotificationDataContext();
+  const { refresh, markAsRead, dismiss, markAllAsRead } = useNotificationDataActionsContext();
+  const { wsStatus } = useNotificationWSContext();
+  const { approvalActionStates, confirm, reject } = useApprovalStateContext();
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, []);
-
-  // 使用 ref 存储加载函数，避免依赖变化
-  const loadNotificationsRef = useRef<(() => Promise<void>) | null>(null);
-
-  loadNotificationsRef.current = async () => {
-    if (!hasAuth || !mountedRef.current) {
-      return;
-    }
-    try {
-      if (mountedRef.current) {
-        setLoading(true);
-      }
-      const [listRes, countRes] = await Promise.all([
-        notificationApi.getNotifications({ pageSize: 20 }),
-        notificationApi.getUnreadCount(),
-      ]);
-      if (!mountedRef.current) {
-        return;
-      }
-      setNotifications(listRes.data.list);
-      setUnreadCount(countRes.data);
-    } catch (error) {
-      if (
-        error instanceof ApiRequestError
-        && (
-          error.statusCode === 401
-          || isAuthBusinessCode(error.businessCode)
-          || /未授权|未认证|登录已过期/.test(error.message)
-        )
-      ) {
-        return;
-      }
-      console.error('加载通知失败:', error);
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-    }
-  };
-
-  // 加载通知数据
-  const loadNotifications = useCallback(async () => {
-    await loadNotificationsRef.current?.();
-  }, []);
-
-  const clearApprovalActionState = useCallback((key: string) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    setApprovalActionStates((prev) => {
-      if (!prev[key]) {
-        return prev;
-      }
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
-
-  const setApprovalActionSubmitting = useCallback((key: string) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    setApprovalActionStates((prev) => ({
-      ...prev,
-      [key]: {
-        state: 'submitting',
-        message: '提交中',
-      },
-    }));
-  }, []);
-
-  const setApprovalActionFailure = useCallback((key: string, error: unknown) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    setApprovalActionStates((prev) => ({
-      ...prev,
-      [key]: {
-        state: 'refresh-needed',
-        message: `提交失败：${getApprovalErrorMessage(error)}`,
-      },
-    }));
-  }, []);
-
-  // 处理 WebSocket 消息
-  const handleWSMessage = useCallback((message: WSMessage) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    if (message.type === 'new' && message.notification) {
-      // 新通知
-      const notif = message.notification;
-      setNotifications((prev) => [notif, ...prev.slice(0, 19)]);
-      setUnreadCount((prev) => ({
-        ...prev,
-        total: prev.total + 1,
-      }));
-
-      // 播放通知声音
-      const severity = notif.notification?.severity;
-      const soundType = severity === 'critical' ? 'error' : severity === 'warning' ? 'warning' : 'default';
-      playNotificationSound(soundType as 'default' | 'warning' | 'error');
-
-      // 发送浏览器通知（仅在页面不可见时）
-      if (typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden')) {
-        sendBrowserNotification(
-          notif.notification?.title || '新通知',
-          notif.notification?.content,
-          {
-            tag: notif.id,
-            onClick: () => {
-              if (notif.notification?.action_url) {
-                safeNavigate(notif.notification.action_url);
-              }
-            },
-          }
-        );
-      }
-    } else if (message.type === 'update') {
-      // 状态更新
-      setNotifications((prev) =>
-        prev.map((n) => {
-          if (n.id.toString() === message.id) {
-            return {
-              ...n,
-              read_at: message.read_at || n.read_at,
-              dismissed_at: message.dismissed_at || n.dismissed_at,
-              confirmed_at: message.confirmed_at || n.confirmed_at,
-            };
-          }
-          return n;
-        })
-      );
-    }
-  }, []);
-
-  // WebSocket 连接
-  const { status: wsConnectionStatus } = useNotificationWebSocket({
-    userId,
-    onMessage: handleWSMessage,
-    onConnect: () => {
-      if (mountedRef.current) {
-        setWsStatus('connected');
-      }
-    },
-    onDisconnect: () => {
-      if (mountedRef.current) {
-        setWsStatus('disconnected');
-      }
-    },
-    reconnectInterval: 1000,
-    maxReconnectInterval: 30000,
-  });
-
-  // 刷新
-  const refresh = useCallback(async () => {
-    await loadNotifications();
-  }, [loadNotifications]);
-
-  // 标记已读
-  const markAsRead = useCallback(async (id: string) => {
-    await notificationApi.markAsRead(id);
-    if (!mountedRef.current) {
-      return;
-    }
-    setNotifications((prev) =>
-      prev.map((n) =>
-        n.id === id ? { ...n, read_at: new Date().toISOString() } : n
-      )
-    );
-    setUnreadCount((prev) => ({
-      ...prev,
-      total: Math.max(0, prev.total - 1),
-    }));
-  }, []);
-
-  // 忽略通知
-  const dismiss = useCallback(async (id: string) => {
-    await notificationApi.dismiss(id);
-    if (!mountedRef.current) {
-      return;
-    }
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    const notification = notifications.find((n) => n.id === id);
-    if (notification && !notification.read_at) {
-      setUnreadCount((prev) => ({
-        ...prev,
-        total: Math.max(0, prev.total - 1),
-      }));
-    }
-  }, [notifications]);
-
-  // 确认告警
-  const confirm = useCallback(async (id: string) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    const target = notifications.find((n) => n.id === id);
-    if (!target) return;
-    if (target.notification.type === 'approval' && target.notification.source_id) {
-      const approvalKey = getApprovalActionKey(target);
-      if (approvalActionInflightRef.current[approvalKey]) {
-        return;
-      }
-      const idempotencyKey = createApprovalIdempotencyKey();
-      approvalActionInflightRef.current[approvalKey] = idempotencyKey;
-      setApprovalActionSubmitting(approvalKey);
-      try {
-        const confirmApproval = (aiApi as unknown as {
-          confirmApproval?: (approvalId: string, approved: boolean) => Promise<unknown>;
-        }).confirmApproval;
-        if (typeof confirmApproval === 'function') {
-          await confirmApproval(target.notification.source_id, true);
-        } else {
-          await (aiApi.submitApproval as unknown as (
-            approvalId: string,
-            payload: { approved: boolean },
-            options?: { idempotencyKey?: string },
-          ) => Promise<unknown>)(target.notification.source_id, { approved: true }, {
-            idempotencyKey,
-          });
-        }
-      } catch (error) {
-        setApprovalActionFailure(approvalKey, error);
-        return;
-      } finally {
-        delete approvalActionInflightRef.current[approvalKey];
-      }
-    } else {
-      await notificationApi.confirm(id);
-    }
-    if (!mountedRef.current) {
-      return;
-    }
-    setNotifications((prev) =>
-      prev.map((n) =>
-        n.id === id
-          ? { ...n, read_at: new Date().toISOString(), confirmed_at: new Date().toISOString() }
-          : n
-      )
-    );
-    if (target.notification.type === 'approval' && target.notification.source_id) {
-      clearApprovalActionState(getApprovalActionKey(target));
-    }
-    setUnreadCount((prev) => ({
-      ...prev,
-      total: Math.max(0, prev.total - 1),
-    }));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'approved' } }));
-    }
-  }, [clearApprovalActionState, notifications, setApprovalActionFailure, setApprovalActionSubmitting]);
-
-  const reject = useCallback(async (id: string) => {
-    if (!mountedRef.current) {
-      return;
-    }
-    const target = notifications.find((n) => n.id === id);
-    if (!target) return;
-    if (target.notification.type === 'approval' && target.notification.source_id) {
-      const approvalKey = getApprovalActionKey(target);
-      if (approvalActionInflightRef.current[approvalKey]) {
-        return;
-      }
-      const idempotencyKey = createApprovalIdempotencyKey();
-      approvalActionInflightRef.current[approvalKey] = idempotencyKey;
-      setApprovalActionSubmitting(approvalKey);
-      try {
-        const confirmApproval = (aiApi as unknown as {
-          confirmApproval?: (approvalId: string, approved: boolean) => Promise<unknown>;
-        }).confirmApproval;
-        if (typeof confirmApproval === 'function') {
-          await confirmApproval(target.notification.source_id, false);
-        } else {
-          await (aiApi.submitApproval as unknown as (
-            approvalId: string,
-            payload: { approved: boolean },
-            options?: { idempotencyKey?: string },
-          ) => Promise<unknown>)(target.notification.source_id, { approved: false }, {
-            idempotencyKey,
-          });
-        }
-      } catch (error) {
-        setApprovalActionFailure(approvalKey, error);
-        return;
-      } finally {
-        delete approvalActionInflightRef.current[approvalKey];
-      }
-      if (!mountedRef.current) {
-        return;
-      }
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      clearApprovalActionState(approvalKey);
-      setUnreadCount((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('ai-approval-updated', { detail: { token: target.notification.source_id, status: 'rejected' } }));
-      }
-      return;
-    }
-    await dismiss(id);
-  }, [clearApprovalActionState, dismiss, notifications, setApprovalActionFailure, setApprovalActionSubmitting]);
-
-  // 全部已读
-  const markAllAsRead = useCallback(async () => {
-    await notificationApi.markAllAsRead();
-    if (!mountedRef.current) {
-      return;
-    }
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
-    );
-    setUnreadCount((prev) => ({ ...prev, total: 0 }));
-  }, []);
-
-  // 初始化 - 只加载一次
-  useEffect(() => {
-    if (!hasAuth) {
-      return;
-    }
-    loadNotifications();
-    // 注意：轮询由 WebSocket 状态变化时自动处理，不在这里启动
-  }, [hasAuth]);
-
-  // 当 WebSocket 状态变化时处理轮询
-  useEffect(() => {
-    if (!hasAuth) {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      return;
-    }
-
-    if (wsStatus === 'connected') {
-      // WebSocket 连接成功，停止轮询
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-        console.log('Notification: WebSocket 已连接，停止轮询');
-      }
-    } else {
-      // WebSocket 断开，启动轮询作为降级
-      if (!pollingRef.current) {
-        pollingRef.current = setInterval(loadNotifications, pollInterval);
-        console.log(`Notification: WebSocket 断开，启动轮询 (间隔 ${pollInterval}ms)`);
-      }
-    }
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [hasAuth, wsStatus, pollInterval]); // 移除 loadNotifications 依赖
-
-  // 更新 wsStatus 状态
-  useEffect(() => {
-    if (mountedRef.current) {
-      setWsStatus(wsConnectionStatus);
-    }
-  }, [wsConnectionStatus]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-    const handler = () => {
-      void loadNotifications();
-    };
-    window.addEventListener('ai-approval-updated', handler);
-    return () => {
-      window.removeEventListener('ai-approval-updated', handler);
-    };
-  }, [loadNotifications]);
-
-  const value: NotificationContextValue = {
+  return useMemo(() => ({
     notifications,
     unreadCount,
     loading,
@@ -484,21 +60,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     confirm,
     reject,
     markAllAsRead,
-  };
-
-  return (
-    <NotificationContext.Provider value={value}>
-      {children}
-    </NotificationContext.Provider>
-  );
+  }), [
+    approvalActionStates,
+    confirm,
+    dismiss,
+    loading,
+    markAllAsRead,
+    markAsRead,
+    notifications,
+    refresh,
+    reject,
+    unreadCount,
+    wsStatus,
+  ]);
 };
 
-export const useNotificationContext = (): NotificationContextValue => {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error('useNotificationContext must be used within NotificationProvider');
-  }
-  return context;
-};
-
-export default NotificationContext;
+export default useNotificationContext;
