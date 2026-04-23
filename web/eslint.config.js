@@ -42,7 +42,13 @@ export default [
     plugins: {
       'react-hooks': reactHooks,
     },
-    rules: {},
+    rules: {
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'all'],
+      'no-var': 'error',
+      'prefer-const': 'error',
+      'no-debugger': 'error',
+    },
   },
   {
     files: ['**/*.{ts,tsx}'],
@@ -60,6 +66,13 @@ export default [
       'react-hooks': reactHooks,
     },
     rules: {
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'all'],
+      'no-var': 'error',
+      'prefer-const': 'error',
+      'no-debugger': 'error',
+      '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },

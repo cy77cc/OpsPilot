@@ -2,7 +2,7 @@ import type { PromptsItemType } from '@ant-design/x';
 import { createEmptyAssistantRuntime } from './replyRuntime';
 import { extractPendingRunFromMessage } from './providers/runReconnectController';
 import { upsertPendingRun } from './pendingRunStore';
-import type { AssistantReplyRuntime } from './types';
+import type { AssistantReplyRuntime, AssistantReplyStatusKind } from './types';
 
 export const NEW_SESSION_KEY = '__new__';
 
@@ -50,6 +50,10 @@ export function buildHistoricalPendingRuntime(
   const statusLabel = pendingRun.status === 'resuming'
     ? '恢复中'
     : '执行中';
+  const statusKind: AssistantReplyStatusKind =
+    pendingRun.status === 'running'
+      ? 'streaming'
+      : pendingRun.status || 'streaming';
 
   return {
     ...(runtime || createEmptyAssistantRuntime()),
@@ -57,7 +61,7 @@ export function buildHistoricalPendingRuntime(
     phase: 'executing',
     phaseLabel: statusLabel,
     status: {
-      kind: pendingRun.status === 'running' ? 'streaming' : pendingRun.status,
+      kind: statusKind,
       label: statusLabel,
     },
   };

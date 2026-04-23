@@ -11,8 +11,12 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
   let softWarned = false;
 
   const clearToolTimer = () => {
-    if (softTimeoutTimer !== null) window.clearTimeout(softTimeoutTimer);
-    if (hardTimeoutTimer !== null) window.clearTimeout(hardTimeoutTimer);
+    if (softTimeoutTimer !== null) {
+      window.clearTimeout(softTimeoutTimer);
+    }
+    if (hardTimeoutTimer !== null) {
+      window.clearTimeout(hardTimeoutTimer);
+    }
     softTimeoutTimer = null;
     hardTimeoutTimer = null;
     softWarned = false;
@@ -21,7 +25,9 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
   const armToolTimeout = () => {
     clearToolTimer();
     softTimeoutTimer = window.setTimeout(() => {
-      if (softWarned) return;
+      if (softWarned) {
+        return;
+      }
       softWarned = true;
       handlers.onError?.({ code: 'tool_timeout_soft', recoverable: true, message: '工具执行较慢，正在继续等待结果…' });
     }, 25000);
@@ -72,18 +78,24 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
     },
     onDelta: (payload) => {
       handlers.onDelta?.(payload);
-      if (toolPending) armToolTimeout();
+      if (toolPending) {
+        armToolTimeout();
+      }
     },
     onRunState: (payload) => {
       handlers.onRunState?.(payload);
-      if (toolPending) armToolTimeout();
+      if (toolPending) {
+        armToolTimeout();
+      }
     },
   };
 
   try {
     await consumeAIStream(response, wrappedHandlers);
   } catch (err) {
-    if (!timedOut) throw err;
+    if (!timedOut) {
+      throw err;
+    }
   } finally {
     clearToolTimer();
     signal?.removeEventListener('abort', abortFromCaller);

@@ -9,8 +9,11 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint .",
+    "lint:baseline": "eslint src/components/AI/copilotSurface.constants.ts src/components/AI/copilotSurface.styles.ts src/components/AI/hooks/useCopilotStream.ts src/contexts/notification/NotificationDataProvider.tsx src/contexts/notification/NotificationWSProvider.tsx src/contexts/notification/ApprovalStateProvider.tsx",
     "lint:auth-scope": "eslint src/api/api.ts src/api/requestContext.ts src/api/modules/auth.ts src/app/session/sessionStore.ts src/app/scope/scopeStore.ts src/app/scope/useScope.ts src/components/Auth/AuthContext.tsx src/features/ai/api/chatApi.ts src/features/ai/api/assistApi.ts src/hooks/useNotificationWebSocket.ts src/utils/tokenManager.ts",
     "typecheck:auth-scope": "tsc -p tsconfig.auth-scope.json --noEmit",
+    "typecheck:strict:phase1": "tsc -p tsconfig.auth-scope.json --noEmit",
+    "typecheck:strict:phase2": "tsc -p tsconfig.strict-phase2.json --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

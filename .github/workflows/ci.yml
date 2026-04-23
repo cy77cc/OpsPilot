@@ -49,5 +49,11 @@ jobs:
       - name: Lint auth scope
         run: npm run lint:auth-scope
 
-      - name: Typecheck auth scope
-        run: npm run typecheck:auth-scope
+      - name: Lint strict phase2 scope
+        run: npm run lint:baseline
+
+      - name: Typecheck strict phase1
+        run: npm run typecheck:strict:phase1
+
+      - name: Typecheck strict phase2
+        run: npm run typecheck:strict:phase2

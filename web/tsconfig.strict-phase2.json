@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/components/AI/copilotSurface.constants.ts",
+    "src/components/AI/copilotSurface.styles.ts",
+    "src/components/AI/hooks/useCopilotStream.ts",
+    "src/contexts/notification/NotificationDataProvider.tsx",
+    "src/contexts/notification/NotificationWSProvider.tsx",
+    "src/contexts/notification/ApprovalStateProvider.tsx"
+  ]
+}
