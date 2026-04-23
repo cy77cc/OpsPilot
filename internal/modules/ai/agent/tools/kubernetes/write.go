@@ -11,6 +11,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ func K8sScaleDeployment(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_scale_deployment", err)
 	}
 	return t
 }
@@ -172,7 +173,7 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_restart_deployment", err)
 	}
 	return t
 }
@@ -224,7 +225,7 @@ func K8sDeletePod(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_delete_pod", err)
 	}
 	return t
 }
@@ -311,7 +312,7 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_rollback_deployment", err)
 	}
 	return t
 }
@@ -353,7 +354,7 @@ func K8sDeleteDeployment(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_delete_deployment", err)
 	}
 	return t
 }

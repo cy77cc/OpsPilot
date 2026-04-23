@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -81,7 +82,7 @@ func PlatformDiscoverResources(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("platform_discover_resources", err)
 	}
 	return t
 }

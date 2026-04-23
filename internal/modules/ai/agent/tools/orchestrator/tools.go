@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -92,7 +93,7 @@ func LoadSessionHistory(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("load_session_history", err)
 	}
 	return t
 }
@@ -122,7 +123,7 @@ func LoadTaskContext(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("load_task_context", err)
 	}
 	return t
 }
@@ -155,7 +156,7 @@ func LoadArtifactContext(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("load_artifact_context", err)
 	}
 	return t
 }
@@ -189,7 +190,7 @@ func ToolSearch(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("tool_search", err)
 	}
 	return t
 }

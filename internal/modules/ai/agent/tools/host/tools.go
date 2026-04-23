@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -191,7 +192,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("host_exec", err)
 	}
 	return t
 }
@@ -345,7 +346,7 @@ func HostListInventory(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("host_list_inventory", err)
 	}
 	return t
 }
@@ -377,7 +378,7 @@ func OSGetCPUMem(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_cpu_mem", err)
 	}
 	return t
 }
@@ -401,7 +402,7 @@ func OSGetDiskFS(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_disk_fs", err)
 	}
 	return t
 }
@@ -430,7 +431,7 @@ func OSGetNetStat(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_net_stat", err)
 	}
 	return t
 }
@@ -466,7 +467,7 @@ func OSGetProcessTop(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_process_top", err)
 	}
 	return t
 }
@@ -512,7 +513,7 @@ func OSGetJournalTail(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_journal_tail", err)
 	}
 	return t
 }
@@ -547,7 +548,7 @@ func OSGetContainerRuntime(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("os_get_container_runtime", err)
 	}
 	return t
 }

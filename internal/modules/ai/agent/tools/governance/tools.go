@@ -10,6 +10,7 @@ package governance
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 	"time"
 
@@ -133,7 +134,7 @@ func UserList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("user_list", err)
 	}
 	return t
 }
@@ -175,16 +176,16 @@ func RoleList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("role_list", err)
 	}
 	return t
 }
 
 type PermissionCheckOutput struct {
-	Allowed            bool               `json:"allowed"`
-	Reason             string             `json:"reason,omitempty"`
+	Allowed            bool                   `json:"allowed"`
+	Reason             string                 `json:"reason,omitempty"`
 	MatchedPermissions []usermodel.Permission `json:"matched_permissions,omitempty"`
-	Checked            map[string]any     `json:"checked"`
+	Checked            map[string]any         `json:"checked"`
 }
 
 func PermissionCheck(ctx context.Context) tool.InvokableTool {
@@ -248,7 +249,7 @@ func PermissionCheck(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("permission_check", err)
 	}
 	return t
 }
@@ -299,13 +300,13 @@ func TopologyGet(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("topology_get", err)
 	}
 	return t
 }
 
 type AuditLogSearchOutput struct {
-	Total int              `json:"total"`
+	Total int                        `json:"total"`
 	List  []governancemodel.AuditLog `json:"list"`
 }
 
@@ -347,7 +348,7 @@ func AuditLogSearch(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("audit_log_search", err)
 	}
 	return t
 }
