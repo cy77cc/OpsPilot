@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Popover, Input, Button, Alert, Typography, Spin } from 'antd';
 import { LoadingOutlined, SendOutlined } from '@ant-design/icons';
 import SparklesIcon from '../common/SparklesIcon';
+import './AIFormAssistantPopover.css';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -113,7 +114,9 @@ const AIFormAssistantPopover: React.FC<AIFormAssistantPopoverProps> = ({
         }
       }}
       overlayClassName="ai-assist-popover"
-      styles={{ 
+      styles={{
+        root: { background: 'transparent', boxShadow: 'none' },
+        container: { background: 'transparent', boxShadow: 'none' },
         content: { padding: 0, background: 'transparent', boxShadow: 'none' }
       }}
     >

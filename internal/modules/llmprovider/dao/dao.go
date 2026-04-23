@@ -93,7 +93,7 @@ func (d *LLMProviderDAO) ListEnabled(ctx context.Context) ([]model.AILLMProvider
 	var providers []model.AILLMProvider
 	err := d.db.WithContext(ctx).
 		Where("is_enabled = ? AND deleted_at IS NULL", true).
-		Order("sort_order DESC, id ASC").
+		Order("is_default DESC, sort_order DESC, id ASC").
 		Find(&providers).Error
 	return providers, err
 }
@@ -105,7 +105,7 @@ func (d *LLMProviderDAO) ListAll(ctx context.Context) ([]model.AILLMProvider, er
 	var providers []model.AILLMProvider
 	err := d.db.WithContext(ctx).
 		Where("deleted_at IS NULL").
-		Order("sort_order DESC, id ASC").
+		Order("is_default DESC, sort_order DESC, id ASC").
 		Find(&providers).Error
 	return providers, err
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cy77cc/OpsPilot/internal/constants"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
@@ -15,6 +16,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -25,14 +27,18 @@ const defaultTemperature = 0.7
 type llmProviderDBCtxKey struct{}
 
 type HTTPHandler struct {
-	db *gorm.DB
+	db  *gorm.DB
+	rdb redis.UniversalClient
 }
 
 func NewHTTPHandler(svcCtx *svc.ServiceContext) *HTTPHandler {
 	if svcCtx == nil {
 		return &HTTPHandler{}
 	}
-	return &HTTPHandler{db: svcCtx.DB}
+	return &HTTPHandler{
+		db:  svcCtx.DB,
+		rdb: svcCtx.Rdb,
+	}
 }
 
 func NewHTTPHandlerWithDB(db *gorm.DB) *HTTPHandler {
@@ -129,6 +135,7 @@ func (h *HTTPHandler) CreateModel(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
+	h.publishConfigChange(c.Request.Context())
 	httpx.OK(c, serializeProvider(*record))
 }
 
@@ -165,6 +172,7 @@ func (h *HTTPHandler) UpdateModel(c *gin.Context) {
 		httpx.ServerErr(c, err)
 		return
 	}
+	h.publishConfigChange(c.Request.Context())
 	httpx.OK(c, serializeProvider(*record))
 }
 
@@ -195,6 +203,7 @@ func (h *HTTPHandler) SetDefaultModel(c *gin.Context) {
 		return
 	}
 	record.IsDefault = true
+	h.publishConfigChange(c.Request.Context())
 	httpx.OK(c, serializeProvider(*record))
 }
 
@@ -225,6 +234,7 @@ func (h *HTTPHandler) DeleteModel(c *gin.Context) {
 		httpx.Fail(c, xcode.LLMProviderNotFound, "")
 		return
 	}
+	h.publishConfigChange(c.Request.Context())
 	httpx.OK(c, gin.H{"id": record.ID, "deleted": true})
 }
 
@@ -292,6 +302,8 @@ func (h *HTTPHandler) ImportModels(c *gin.Context) {
 		return
 	}
 
+	h.publishConfigChange(c.Request.Context())
+
 	created := make([]map[string]any, 0, len(payload.Providers))
 	for _, row := range payload.Providers {
 		created = append(created, serializeProvider(row))
@@ -305,6 +317,12 @@ func (h *HTTPHandler) ImportModels(c *gin.Context) {
 		"count": len(created),
 		"list":  created,
 	})
+}
+
+func (h *HTTPHandler) publishConfigChange(ctx context.Context) {
+	if h.rdb != nil {
+		_ = h.rdb.Publish(ctx, constants.LLMConfigUpdateChannel, "updated").Err()
+	}
 }
 
 func (h *HTTPHandler) resolveDB(ctx context.Context) *gorm.DB {

@@ -27,10 +27,8 @@ func initAIRuntime(ctx context.Context, db *gorm.DB) {
 		initAIMetricsCallback(db)
 	}
 
-	if err := aiclient.CheckModelHealth(ctx); err != nil {
-		logger.L().Warn("Failed to check AI model health",
-			logger.String("base_url", aiBaseURL()),
-			logger.String("model", aiModel()),
+	if err := aiclient.CheckModelHealth(ctx, db); err != nil {
+		logger.L().Warn("Failed to check default AI model health",
 			logger.Error(err),
 		)
 	}

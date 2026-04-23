@@ -10,7 +10,6 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/cy77cc/OpsPilot/internal/core/cache"
-	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -59,12 +58,4 @@ func NewServiceContext(ctx context.Context) (*ServiceContext, error) {
 		Prometheus:     initPrometheusClient(),
 		MetricsPusher:  initMetricsPusher(),
 	}, nil
-}
-
-func aiBaseURL() string {
-	return config.CFG.LLM.BaseURL
-}
-
-func aiModel() string {
-	return config.CFG.LLM.Model
 }

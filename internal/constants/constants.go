@@ -15,4 +15,7 @@ const (
 	RdbAddTTL       = time.Minute * 10   // TTL 增量（10 分钟）
 	NodeKey         = "node:id:"         // 节点 ID 键前缀
 	SSHKey          = "node:ssh:key:id:" // SSH 密钥键前缀
+
+	// LLM 模块常量
+	LLMConfigUpdateChannel = "llm:config:update" // LLM 配置变更通知频道
 )

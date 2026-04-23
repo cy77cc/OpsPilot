@@ -3,8 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
@@ -14,11 +16,13 @@ import (
 	qwenmodel "github.com/cloudwego/eino-ext/components/model/qwen"
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/OpsPilot/internal/constants"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	llmdao "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/dao"
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	"github.com/redis/go-redis/v9"
 	arkruntime "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"gorm.io/gorm"
 )
@@ -28,6 +32,83 @@ type ChatModelConfig struct {
 	Timeout  time.Duration
 	Thinking bool
 	Temp     float32
+}
+
+var (
+	modelCache sync.Map // map[string]einomodel.ToolCallingChatModel
+	healthMap  sync.Map // map[uint64]bool (id -> isHealthy)
+)
+
+// InitCacheWatcher 启动 Redis 订阅，当配置变更时清除本地缓存。
+func InitCacheWatcher(rdb redis.UniversalClient, db *gorm.DB) {
+	if rdb != nil {
+		go func() {
+			pubsub := rdb.Subscribe(context.Background(), constants.LLMConfigUpdateChannel)
+			defer pubsub.Close()
+
+			ch := pubsub.Channel()
+			for range ch {
+				modelCache.Range(func(key, value any) bool {
+					modelCache.Delete(key)
+					return true
+				})
+			}
+		}()
+	}
+
+	if db != nil {
+		go startHealthCheckLoop(db)
+	}
+}
+
+func startHealthCheckLoop(db *gorm.DB) {
+	ticker := time.NewTicker(time.Minute * 5)
+	defer ticker.Stop()
+
+	ctx := context.Background()
+	for range ticker.C {
+		dao := llmdao.NewLLMProviderDAO(db)
+		providers, err := dao.ListEnabled(ctx)
+		if err != nil {
+			log.Printf("llmprovider: health check list providers failed: %v", err)
+			continue
+		}
+
+		for _, p := range providers {
+			p := p
+			go func() {
+				pForUse, _ := decryptProviderAPIKey(&p)
+				if pForUse == nil {
+					return
+				}
+				err := checkProviderHealth(ctx, pForUse)
+				if err != nil {
+					log.Printf("llmprovider: health check failed for %s (%s): %v", p.Name, p.Model, err)
+					healthMap.Store(p.ID, false)
+					// Invalidate cache on failure
+					modelCache.Range(func(key, value any) bool {
+						if strings.HasPrefix(key.(string), fmt.Sprintf("%d:", p.ID)) {
+							modelCache.Delete(key)
+						}
+						return true
+					})
+				} else {
+					healthMap.Store(p.ID, true)
+				}
+			}()
+		}
+	}
+}
+
+func checkProviderHealth(ctx context.Context, p *model.AILLMProvider) error {
+	m, err := NewChatModelFromProvider(ctx, p, ChatModelConfig{
+		Timeout: 10 * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = m.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
+	return err
 }
 
 // NewChatModel 根据配置创建聊天模型实例。
@@ -54,22 +135,43 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 	}
 	if db != nil {
 		dao := llmdao.NewLLMProviderDAO(db)
-		provider, err := dao.GetDefault(ctx)
+		// 按照 is_default, sort_order 排序获取所有启用的供应商
+		providers, err := dao.ListEnabled(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("get default llm provider: %w", err)
+			return nil, fmt.Errorf("list enabled llm providers: %w", err)
 		}
-		if provider == nil {
-			provider, err = dao.GetFirstEnabled(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("get first enabled llm provider: %w", err)
+
+		// 找到第一个健康的（或者还未检测过健康的）
+		var provider *model.AILLMProvider
+		for i := range providers {
+			p := &providers[i]
+			isHealthy, ok := healthMap.Load(p.ID)
+			if !ok || isHealthy.(bool) {
+				provider = p
+				break
 			}
 		}
+
+		// 如果都挂了，由于目前没法完全确信 healthMap，还是尝试用第一个（默认的）作为保底
+		if provider == nil && len(providers) > 0 {
+			provider = &providers[0]
+		}
+
 		if provider != nil {
+			cacheKey := fmt.Sprintf("%d:%v", provider.ID, opts)
+			if val, ok := modelCache.Load(cacheKey); ok {
+				return val.(einomodel.ToolCallingChatModel), nil
+			}
+
 			providerForUse, decErr := decryptProviderAPIKey(provider)
 			if decErr != nil {
 				return nil, fmt.Errorf("decrypt llm provider api key: %w", decErr)
 			}
-			return NewChatModelFromProvider(ctx, providerForUse, opts)
+			m, err := NewChatModelFromProvider(ctx, providerForUse, opts)
+			if err == nil {
+				modelCache.Store(cacheKey, m)
+			}
+			return m, err
 		}
 	}
 
@@ -114,13 +216,14 @@ func newConfiguredChatModel(ctx context.Context, opts ChatModelConfig) (einomode
 				Type: arkruntime.ThinkingTypeDisabled,
 			},
 		})
-	case "openai":
+	case "openai", "deepseek", "moonshot", "zhipu", "google":
 		temp := opts.Temp
 		return openai.NewChatModel(ctx, &openai.ChatModelConfig{
 			APIKey:      config.CFG.LLM.APIKey,
 			BaseURL:     config.CFG.LLM.BaseURL,
 			Model:       config.CFG.LLM.Model,
 			Temperature: &temp,
+			Timeout:     opts.Timeout,
 		})
 	case "minimax":
 		temp := opts.Temp
@@ -158,8 +261,8 @@ func decryptProviderAPIKey(provider *model.AILLMProvider) (*model.AILLMProvider,
 }
 
 // CheckModelHealth 检查模型健康状态。
-func CheckModelHealth(ctx context.Context) error {
-	model, err := NewChatModel(ctx, ChatModelConfig{
+func CheckModelHealth(ctx context.Context, db *gorm.DB) error {
+	m, err := GetDefaultChatModel(ctx, db, ChatModelConfig{
 		Timeout:  10 * time.Second,
 		Thinking: false,
 		Temp:     0,
@@ -167,7 +270,7 @@ func CheckModelHealth(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = model.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
+	_, err = m.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
 	return err
 }
 

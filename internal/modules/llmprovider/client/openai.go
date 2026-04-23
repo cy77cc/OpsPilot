@@ -10,7 +10,12 @@ import (
 )
 
 func init() {
-	Register("openai", &openaiFactory{})
+	factory := &openaiFactory{}
+	Register("openai", factory)
+	Register("deepseek", factory)
+	Register("moonshot", factory)
+	Register("zhipu", factory)
+	Register("google", factory)
 }
 
 type openaiFactory struct{}

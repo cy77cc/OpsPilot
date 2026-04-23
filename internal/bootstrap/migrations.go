@@ -2,11 +2,14 @@ package bootstrap
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	"github.com/cy77cc/OpsPilot/internal/core/storage/migration"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
+	llmprovidermodel "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"gorm.io/gorm"
 )
 
@@ -39,6 +42,53 @@ func RunBootstrapMigrations() error {
 				return fmt.Errorf("fix host unique index failed: %w", err)
 			}
 		}
+	}
+
+	if err := migrateLLMConfig(db); err != nil {
+		return fmt.Errorf("migrate llm config failed: %w", err)
+	}
+
+	return nil
+}
+
+func migrateLLMConfig(db *gorm.DB) error {
+	if !config.CFG.LLM.Enable {
+		return nil
+	}
+
+	var count int64
+	if err := db.Model(&llmprovidermodel.AILLMProvider{}).Count(&count).Error; err != nil {
+		return err
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	// Migrate from config.yaml
+	apiKey := strings.TrimSpace(config.CFG.LLM.APIKey)
+	encryptedKey := ""
+	if apiKey != "" {
+		var err error
+		encryptedKey, err = utils.EncryptText(apiKey, strings.TrimSpace(config.CFG.Security.EncryptionKey))
+		if err != nil {
+			return fmt.Errorf("encrypt api key failed: %w", err)
+		}
+	}
+
+	provider := &llmprovidermodel.AILLMProvider{
+		Name:        "Default (" + config.CFG.LLM.Provider + ")",
+		Provider:    config.CFG.LLM.Provider,
+		Model:       config.CFG.LLM.Model,
+		BaseURL:     config.CFG.LLM.BaseURL,
+		APIKey:      encryptedKey,
+		Temperature: config.CFG.LLM.Temperature,
+		IsDefault:   true,
+		IsEnabled:   true,
+	}
+
+	if err := db.Create(provider).Error; err != nil {
+		return fmt.Errorf("create default llm provider failed: %w", err)
 	}
 
 	return nil

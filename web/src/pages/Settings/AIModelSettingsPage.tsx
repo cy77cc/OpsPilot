@@ -49,13 +49,17 @@ import { aiModelFieldGuides } from './aiModelFieldGuides';
 
 const { Text, Paragraph } = Typography;
 
-type ProviderType = 'qwen' | 'ark' | 'ollama' | 'openai' | 'minimax';
+type ProviderType = 'qwen' | 'ark' | 'ollama' | 'openai' | 'minimax' | 'deepseek' | 'moonshot' | 'zhipu' | 'google';
 
 const providerChoices: Array<{ label: string; value: ProviderType }> = [
-  { label: 'Qwen', value: 'qwen' },
-  { label: 'Ark', value: 'ark' },
+  { label: 'Qwen (通义千问)', value: 'qwen' },
+  { label: 'Ark (火山引擎)', value: 'ark' },
   { label: 'Ollama', value: 'ollama' },
   { label: 'OpenAI', value: 'openai' },
+  { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Moonshot (Kimi)', value: 'moonshot' },
+  { label: 'Zhipu (智谱)', value: 'zhipu' },
+  { label: 'Google Gemini', value: 'google' },
   { label: 'MiniMax', value: 'minimax' },
 ];
 
@@ -392,19 +396,21 @@ const AIModelSettingsPage: React.FC = () => {
             {
               title: '操作',
               key: 'actions',
-              width: 240,
+              width: 180,
               render: (_: unknown, row) => (
-                <Space size={4}>
+                <Space size={8}>
                   <Tooltip title="编辑模型">
                     <Button icon={<EditOutlined />} onClick={() => openEdit(row)} />
                   </Tooltip>
                   <Tooltip title={row.is_default ? '当前已是默认模型' : '设为默认'}>
-                    <Button
-                      type={row.is_default ? 'primary' : 'default'}
-                      icon={row.is_default ? <StarFilled /> : <StarOutlined />}
-                      onClick={() => void setDefault(row)}
-                      disabled={row.is_default}
-                    />
+                    <span className={row.is_default ? 'cursor-not-allowed' : ''}>
+                      <Button
+                        type={row.is_default ? 'primary' : 'default'}
+                        icon={row.is_default ? <StarFilled /> : <StarOutlined />}
+                        onClick={() => void setDefault(row)}
+                        disabled={row.is_default}
+                      />
+                    </span>
                   </Tooltip>
                   <Popconfirm
                     title="确认删除该模型配置？"

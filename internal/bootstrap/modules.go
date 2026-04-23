@@ -25,6 +25,7 @@ import (
 	hostapi "github.com/cy77cc/OpsPilot/internal/modules/host/api"
 	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
 	llmproviderapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
+	llmproviderclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
 	monitoringapi "github.com/cy77cc/OpsPilot/internal/modules/monitoring/api"
 	notificationapi "github.com/cy77cc/OpsPilot/internal/modules/notification/api"
 	projectapi "github.com/cy77cc/OpsPilot/internal/modules/project/api"
@@ -61,6 +62,7 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
 	if appCtx != nil && appCtx.DB != nil {
+		llmproviderclient.InitCacheWatcher(appCtx.Rdb, appCtx.DB)
 		ai := ailogic.NewAILogic(appCtx)
 		approvalWorker := ailogic.NewApprovalWorker(ai)
 		expirer := ailogic.NewApprovalExpirer(ai)
