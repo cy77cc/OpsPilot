@@ -25,7 +25,7 @@ import type {
   StatefulSetInfo, PodInfo, ServiceInfo, IngressInfo,
   ConfigMapInfo, SecretInfo, HPAInfo, ResourceQuotaInfo, LimitRangeInfo,
   ClusterOperationApproval, ClusterOperationResponse, ClusterOperationState,
-  ClusterServiceMutationPayload, ClusterIngressMutationPayload
+  ClusterServiceMutationPayload, ClusterIngressMutationPayload, EventInfo
 } from '../../../api/modules/cluster';
 
 const { Text, Title } = Typography;
@@ -1067,11 +1067,11 @@ const ClusterDetailPage: React.FC = () => {
     },
   ];
 
-  const buildWorkloadColumns = (
+  const buildWorkloadColumns = <T extends DeploymentInfo | StatefulSetInfo>(
     kind: 'deployment' | 'statefulset',
-    onRestart: (record: DeploymentInfo | StatefulSetInfo) => Promise<void> | void,
-    onScale: (record: DeploymentInfo | StatefulSetInfo) => void,
-    onDelete: (record: DeploymentInfo | StatefulSetInfo) => void,
+    onRestart: (record: T) => Promise<void> | void,
+    onScale: (record: T) => void,
+    onDelete: (record: T) => void,
   ) => [
     {
       title: '名称',
@@ -1084,12 +1084,12 @@ const ClusterDetailPage: React.FC = () => {
         </Space>
       ),
     },
-    { title: 'Ready', key: 'ready', render: (_: any, r: DeploymentInfo | StatefulSetInfo) => `${r.ready}/${r.replicas}` },
+    { title: 'Ready', key: 'ready', render: (_: any, r: T) => `${r.ready}/${r.replicas}` },
     { title: 'Age', dataIndex: 'age', key: 'age' },
     {
       title: '操作',
       key: 'actions',
-      render: (_: any, record: DeploymentInfo | StatefulSetInfo) => (
+      render: (_: any, record: T) => (
         <Space size={4} wrap>
           <Button
             size="small"
