@@ -26,7 +26,7 @@ const ClusterSecurityCenterPage: React.FC = () => {
   const [lastContainResult, setLastContainResult] = useState<Phase3OperationResponse | null>(null);
 
   const loadCluster = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const res = await Api.cluster.getClusterDetail(clusterId);
       setCluster(res.data);
@@ -36,7 +36,7 @@ const ClusterSecurityCenterPage: React.FC = () => {
   }, [clusterId]);
 
   const loadAlerts = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const res = await Api.phase3.listSecurityAlerts(clusterId);
@@ -55,7 +55,7 @@ const ClusterSecurityCenterPage: React.FC = () => {
   }, [loadCluster, loadAlerts]);
 
   const handleContain = useCallback(async (alertId: number) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setContainingId(alertId);
     try {
       const res = await Api.phase3.containAlert(clusterId, alertId);

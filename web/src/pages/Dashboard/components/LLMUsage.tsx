@@ -28,18 +28,24 @@ export const LLMUsage: React.FC = () => {
   };
 
   return (
-    <Card title="大模型使用统计" className="h-full shadow-sm border-none">
-      <div className="grid grid-cols-4 gap-4 mb-4">
-        <div><div className="text-xs text-gray-500">总对话数</div><div className="text-xl font-bold">3,285</div><div className="text-xs text-green-500">&uarr; 12.5%</div></div>
-        <div><div className="text-xs text-gray-500">Tokens 消耗</div><div className="text-xl font-bold">2.45M</div><div className="text-xs text-green-500">&uarr; 18.7%</div></div>
-        <div><div className="text-xs text-gray-500">调用工具数</div><div className="text-xl font-bold">1,268</div><div className="text-xs text-green-500">&uarr; 9.3%</div></div>
-        <div><div className="text-xs text-gray-500">审批请求数</div><div className="text-xl font-bold">128</div><div className="text-xs text-red-500">&darr; 4.2%</div></div>
+    <Card 
+      title="大模型使用统计" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <div><div className="text-xs text-gray-500">总对话数</div><div className="text-xl font-bold">3,285</div><div className="text-xs text-green-500">&uarr; 12.5%</div></div>
+          <div><div className="text-xs text-gray-500">Tokens 消耗</div><div className="text-xl font-bold">2.45M</div><div className="text-xs text-green-500">&uarr; 18.7%</div></div>
+          <div><div className="text-xs text-gray-500">调用工具数</div><div className="text-xl font-bold">1,268</div><div className="text-xs text-green-500">&uarr; 9.3%</div></div>
+          <div><div className="text-xs text-gray-500">审批请求数</div><div className="text-xl font-bold">128</div><div className="text-xs text-red-500">&darr; 4.2%</div></div>
+        </div>
+        <div className="h-48">
+          <Line {...config} />
+        </div>
       </div>
-      <div className="h-48">
-        <Line {...config} />
-      </div>
-       <div className="text-right mt-2">
-         <a href="#" className="text-blue-500 text-sm">查看 AI 使用详情 &gt;</a>
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        查看 AI 使用详情 &gt;
       </div>
     </Card>
   );

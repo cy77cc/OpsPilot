@@ -21,10 +21,10 @@ type PolicySimulationDiffPanelProps = {
 };
 
 const getRiskColor = (riskLevel?: string) => {
-  if (riskLevel === 'CRITICAL') return 'red';
-  if (riskLevel === 'HIGH') return 'volcano';
-  if (riskLevel === 'MEDIUM') return 'gold';
-  if (riskLevel === 'LOW') return 'green';
+  if (riskLevel === 'CRITICAL') {return 'red';}
+  if (riskLevel === 'HIGH') {return 'volcano';}
+  if (riskLevel === 'MEDIUM') {return 'gold';}
+  if (riskLevel === 'LOW') {return 'green';}
   return 'default';
 };
 

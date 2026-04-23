@@ -12,17 +12,23 @@ export const SystemStatus: React.FC = () => {
   ];
 
   return (
-    <Card title="系统状态" className="h-full shadow-sm border-none">
-      <div className="flex flex-col gap-4 h-56 justify-between">
-        {services.map((svc, idx) => (
-          <div key={idx} className="flex justify-between items-center text-sm">
-            <span className="text-gray-600">{svc.name}</span>
-            <Badge status={svc.status as any} text={svc.text} />
-          </div>
-        ))}
+    <Card 
+      title="系统状态" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="flex flex-col gap-2">
+          {services.map((svc, idx) => (
+            <div key={idx} className="flex justify-between items-center text-sm py-1 border-b border-gray-50 last:border-0">
+              <span className="text-gray-600">{svc.name}</span>
+              <Badge status={svc.status as any} text={svc.text} />
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="text-right mt-6">
-         <a href="#" className="text-blue-500 text-sm">全部服务状态 &gt;</a>
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        全部服务状态 >
       </div>
     </Card>
   );

@@ -26,7 +26,7 @@ const ClusterConfigStoragePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const loadMeta = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const [clusterRes, nsRes] = await Promise.all([
         Api.cluster.getClusterDetail(clusterId),
@@ -44,7 +44,7 @@ const ClusterConfigStoragePage: React.FC = () => {
   }, [clusterId]);
 
   const loadData = useCallback(async (ns: string) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const [cmRes, secretRes, pvcRes, pvRes] = await Promise.all([
@@ -73,7 +73,7 @@ const ClusterConfigStoragePage: React.FC = () => {
   }, [loadMeta]);
 
   useEffect(() => {
-    if (!namespace) return;
+    if (!namespace) {return;}
     loadData(namespace);
   }, [namespace, loadData]);
 

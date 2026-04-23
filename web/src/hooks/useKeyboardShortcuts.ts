@@ -37,7 +37,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => 
   // 导航快捷键
   const handleNavigation = useCallback(
     (key: string) => {
-      if (!enableNavigation) return false;
+      if (!enableNavigation) {return false;}
 
       const navigationMap: Record<string, string> = {
         h: '/',
@@ -61,7 +61,7 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => 
   // 列表导航快捷键
   const handleListNavigation = useCallback(
     (e: KeyboardEvent) => {
-      if (!enableListNavigation) return false;
+      if (!enableListNavigation) {return false;}
 
       // 检查是否在输入框中
       const target = e.target as HTMLElement;

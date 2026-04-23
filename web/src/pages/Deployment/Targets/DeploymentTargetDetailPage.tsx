@@ -22,7 +22,7 @@ const DeploymentTargetDetailPage: React.FC = () => {
   const [deployHistory, setDeployHistory] = useState<any[]>([]);
 
   const load = async () => {
-    if (!id) return;
+    if (!id) {return;}
     setLoading(true);
     try {
       const res = await Api.deployment.getTargetDetail(Number(id));

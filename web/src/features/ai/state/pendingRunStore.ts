@@ -49,7 +49,7 @@ export function listPendingRuns(): PendingRunMetadata[] {
 }
 
 export function getPendingRun(runId: string): PendingRunMetadata | null {
-  if (!runId) return null;
+  if (!runId) {return null;}
   return store.get(runId);
 }
 
@@ -58,7 +58,7 @@ export function upsertPendingRun(partial: PendingRunMetadata): PendingRunMetadat
 }
 
 export function removePendingRun(runId: string): void {
-  if (!runId) return;
+  if (!runId) {return;}
   store.remove(runId);
 }
 

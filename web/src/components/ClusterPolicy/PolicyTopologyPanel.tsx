@@ -21,9 +21,9 @@ type PolicyTopologyPanelProps = {
 };
 
 const getStatusTagColor = (status?: string) => {
-  if (status === 'active') return 'green';
-  if (status === 'provisioning') return 'blue';
-  if (status === 'error') return 'red';
+  if (status === 'active') {return 'green';}
+  if (status === 'provisioning') {return 'blue';}
+  if (status === 'error') {return 'red';}
   return 'default';
 };
 

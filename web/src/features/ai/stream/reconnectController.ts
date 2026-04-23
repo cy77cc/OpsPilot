@@ -62,9 +62,9 @@ export class RunReconnectController {
   }
 
   begin(params: AIChatParams): void {
-    if (!params.clientRequestId) return;
+    if (!params.clientRequestId) {return;}
     const persisted = this.findPendingRunByClientRequestId(params.clientRequestId);
-    if (!persisted) return;
+    if (!persisted) {return;}
     this.pendingRun = persisted;
     this.onPendingRunChange?.(persisted);
   }
@@ -92,7 +92,7 @@ export class RunReconnectController {
   }
 
   handleEventId(eventId: string): void {
-    if (!this.pendingRun) return;
+    if (!this.pendingRun) {return;}
     this.pendingRun = upsertPendingRun({
       ...this.pendingRun,
       latestEventId: eventId,
@@ -102,7 +102,7 @@ export class RunReconnectController {
   }
 
   handleToolApproval(payload: A2UIToolApprovalEvent): void {
-    if (!this.pendingRun?.runId) return;
+    if (!this.pendingRun?.runId) {return;}
     this.pendingRun = upsertPendingRun({
       ...this.pendingRun,
       approvalId: payload.approval_id || this.pendingRun.approvalId,
@@ -115,12 +115,12 @@ export class RunReconnectController {
   handleApprovalUpdated(detail: { token?: string; status?: string } | null | undefined): void {
     const token = (detail?.token || '').trim();
     const status = (detail?.status || '').trim();
-    if (!token || status !== 'approved' || !this.pendingRun) return;
-    if (this.pendingRun.status !== 'waiting_approval') return;
+    if (!token || status !== 'approved' || !this.pendingRun) {return;}
+    if (this.pendingRun.status !== 'waiting_approval') {return;}
 
     const matchesApprovalID = token === (this.pendingRun.approvalId || '');
     const matchesCallID = token === (this.pendingRun.approvalCallId || '');
-    if (!matchesApprovalID && !matchesCallID) return;
+    if (!matchesApprovalID && !matchesCallID) {return;}
 
     this.approvalResumeRequested = true;
     this.flushApprovalResumeWaiters();
@@ -146,26 +146,26 @@ export class RunReconnectController {
   }
 
   handleTerminalError(_payload: A2UIErrorEvent): void {
-    if (this.pendingRun?.runId) this.clear(this.pendingRun.runId);
+    if (this.pendingRun?.runId) {this.clear(this.pendingRun.runId);}
   }
 
   handleDone(runId?: string): void {
-    if (runId) return this.clear(runId);
-    if (this.pendingRun?.runId) this.clear(this.pendingRun.runId);
+    if (runId) {return this.clear(runId);}
+    if (this.pendingRun?.runId) {this.clear(this.pendingRun.runId);}
   }
 
   async nextAttempt(signal?: AbortSignal): Promise<AIChatParams | null> {
-    if (!this.pendingRun || !this.pendingRun.resumable) return null;
+    if (!this.pendingRun || !this.pendingRun.resumable) {return null;}
     const run = this.pendingRun;
     if (run.status === 'waiting_approval') {
       const approved = await this.waitForApprovalResumeSignal(signal);
-      if (!approved || !this.pendingRun) return null;
+      if (!approved || !this.pendingRun) {return null;}
       this.pendingRun = upsertPendingRun({ ...this.pendingRun, status: 'resuming', resumable: true });
       this.onPendingRunChange?.(this.pendingRun);
       return this.toRetryParams(this.pendingRun);
     }
-    if (run.status === 'resume_failed_retryable') return null;
-    if (run.status !== 'resuming' && run.status !== 'running') return null;
+    if (run.status === 'resume_failed_retryable') {return null;}
+    if (run.status !== 'resuming' && run.status !== 'running') {return null;}
     await this.waitForDelay(signal);
     return this.toRetryParams(run);
   }
@@ -194,11 +194,11 @@ export class RunReconnectController {
       this.approvalResumeRequested = false;
       return true;
     }
-    if (signal?.aborted) return false;
+    if (signal?.aborted) {return false;}
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const complete = (value: boolean) => {
-        if (settled) return;
+        if (settled) {return;}
         settled = true;
         this.approvalResumeWaiters = this.approvalResumeWaiters.filter((waiter) => waiter !== onSignal);
         signal?.removeEventListener('abort', onSignal);
@@ -224,7 +224,7 @@ export class RunReconnectController {
   }
 
   private async waitForDelay(signal?: AbortSignal): Promise<void> {
-    if (signal?.aborted) return;
+    if (signal?.aborted) {return;}
     await new Promise<void>((resolve) => {
       const timer = window.setTimeout(() => {
         signal?.removeEventListener('abort', onAbort);

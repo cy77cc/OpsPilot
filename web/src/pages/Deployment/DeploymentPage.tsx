@@ -41,7 +41,7 @@ type GovernanceForm = {
 
 const parseJSONMap = (raw?: string): Record<string, any> => {
   const content = (raw || '').trim();
-  if (!content) return {};
+  if (!content) {return {};}
   const parsed = JSON.parse(content);
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
     throw new Error('JSON 内容必须是对象');
@@ -51,7 +51,7 @@ const parseJSONMap = (raw?: string): Record<string, any> => {
 
 const parseVariables = (raw?: string): Record<string, string> => {
   const content = (raw || '').trim();
-  if (!content) return {};
+  if (!content) {return {};}
   const parsed = JSON.parse(content);
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
     throw new Error('变量必须是 JSON 对象');
@@ -64,9 +64,9 @@ const parseVariables = (raw?: string): Record<string, string> => {
 };
 
 const releaseStatusColor = (status?: string): string => {
-  if (status === 'applied' || status === 'succeeded' || status === 'rollback' || status === 'rolled_back') return 'success';
-  if (status === 'failed' || status === 'rejected') return 'error';
-  if (status === 'pending_approval') return 'warning';
+  if (status === 'applied' || status === 'succeeded' || status === 'rollback' || status === 'rolled_back') {return 'success';}
+  if (status === 'failed' || status === 'rejected') {return 'error';}
+  if (status === 'pending_approval') {return 'warning';}
   return 'processing';
 };
 
@@ -484,7 +484,7 @@ const DeploymentPage: React.FC = () => {
                         {({ getFieldValue }) => {
                           const targetId = Number(getFieldValue('target_id') || 0);
                           const target = targets.find((t) => t.id === targetId);
-                          if (!target) return null;
+                          if (!target) {return null;}
                           if (target.target_type === 'k8s') {
                             return <GuidedFormItem name="variables_json" label="K8s 变量(JSON)"><Input.TextArea rows={6} placeholder='{"image_tag":"v1.2.3","replicas":"3"}' /></GuidedFormItem>;
                           }

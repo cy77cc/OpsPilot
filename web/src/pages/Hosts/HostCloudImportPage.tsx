@@ -177,7 +177,7 @@ const HostCloudImportPage: React.FC = () => {
     queryForm.setFieldsValue({ zone: undefined });
     setZones([]);
 
-    if (!region || !accountId) return;
+    if (!region || !accountId) {return;}
 
     setLoadingZones(true);
     try {
@@ -284,7 +284,7 @@ const HostCloudImportPage: React.FC = () => {
   // 获取云厂商显示名称
   const getProviderLabel = (name: string) => {
     const found = providers.find((p) => p.name === name);
-    if (found) return found.displayName;
+    if (found) {return found.displayName;}
     const staticOption = providerOptions.find((o) => o.value === name);
     return staticOption?.label || name;
   };
@@ -315,7 +315,7 @@ const HostCloudImportPage: React.FC = () => {
             {({ getFieldValue }) => {
               const provider = getFieldValue('provider');
               const options = productTypeOptions[provider] || [];
-              if (options.length <= 1) return null;
+              if (options.length <= 1) {return null;}
               return (
                 <Form.Item name="productType" rules={[{ required: true, message: '请选择产品类型' }]}>
                   <Select style={{ width: 140 }} placeholder="产品类型" options={options} />
@@ -338,7 +338,7 @@ const HostCloudImportPage: React.FC = () => {
           <Form.Item shouldUpdate>
             {({ getFieldValue }) => {
               const provider = getFieldValue('provider');
-              if (provider !== 'ucloud') return null;
+              if (provider !== 'ucloud') {return null;}
               return (
                 <>
                   <GuidedFormItem name="projectId">

@@ -254,7 +254,7 @@ const AIModelSettingsPage: React.FC = () => {
 
   const previewImport = async () => {
     const payload = parseImportPayload();
-    if (!payload) return;
+    if (!payload) {return;}
 
     setPreviewing(true);
     try {
@@ -270,7 +270,7 @@ const AIModelSettingsPage: React.FC = () => {
 
   const submitImport = async () => {
     const payload = parseImportPayload();
-    if (!payload) return;
+    if (!payload) {return;}
 
     setImporting(true);
     try {

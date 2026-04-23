@@ -47,7 +47,7 @@ const DeploymentDetailPage: React.FC = () => {
   const { getSignal, isCancelled } = useCancelToken();
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id) {return;}
     setLoading(true);
     try {
       const [releaseRes, timelineRes] = await Promise.all([
@@ -106,7 +106,7 @@ const DeploymentDetailPage: React.FC = () => {
 
   // 审批操作
   const handleApprove = async () => {
-    if (!release) return;
+    if (!release) {return;}
     try {
       await Api.deployment.approveRelease(release.id, {});
       message.success(`Release #${release.id} 已审批并执行`);
@@ -117,7 +117,7 @@ const DeploymentDetailPage: React.FC = () => {
   };
 
   const handleReject = async () => {
-    if (!release) return;
+    if (!release) {return;}
     try {
       await Api.deployment.rejectRelease(release.id, {});
       message.success(`Release #${release.id} 已拒绝`);
@@ -128,7 +128,7 @@ const DeploymentDetailPage: React.FC = () => {
   };
 
   const handleRollback = async () => {
-    if (!release) return;
+    if (!release) {return;}
     try {
       await Api.deployment.rollbackRelease(release.id);
       message.success(`回滚任务已提交，来源 Release #${release.id}`);
@@ -157,7 +157,7 @@ const DeploymentDetailPage: React.FC = () => {
 
   // 解析诊断信息
   const diagnostics = (() => {
-    if (!release?.diagnostics_json) return null;
+    if (!release?.diagnostics_json) {return null;}
     try {
       const parsed = JSON.parse(release.diagnostics_json);
       return Array.isArray(parsed) ? parsed : [parsed];
@@ -168,7 +168,7 @@ const DeploymentDetailPage: React.FC = () => {
 
   // 解析验证信息
   const verification = (() => {
-    if (!release?.verification_json) return null;
+    if (!release?.verification_json) {return null;}
     try {
       return JSON.parse(release.verification_json);
     } catch {

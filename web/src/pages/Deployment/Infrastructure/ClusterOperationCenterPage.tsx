@@ -81,7 +81,7 @@ const resourceOptions = [
 ];
 
 function formatDate(value?: string) {
-  if (!value) return '-';
+  if (!value) {return '-';}
   return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
 }
 
@@ -98,7 +98,7 @@ function buildQuery(filters: OperationFilters, page: number, pageSize: number) {
 }
 
 function formatSummaryValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '-';
+  if (value === null || value === undefined || value === '') {return '-';}
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
@@ -113,14 +113,14 @@ function formatSummaryValue(value: unknown): string {
 }
 
 function summarizeObject(payload?: Record<string, unknown> | null) {
-  if (!payload) return '-';
+  if (!payload) {return '-';}
   const entries = Object.entries(payload).filter(([, value]) => value !== undefined);
-  if (entries.length === 0) return '-';
+  if (entries.length === 0) {return '-';}
   return entries.slice(0, 4).map(([key, value]) => `${key}: ${formatSummaryValue(value)}`).join(' | ');
 }
 
 function summarizeDiagnostics(items?: unknown[] | null) {
-  if (!items?.length) return '-';
+  if (!items?.length) {return '-';}
   return items.slice(0, 3).map((item) => {
     if (item && typeof item === 'object' && !Array.isArray(item)) {
       const record = item as Record<string, unknown>;
@@ -222,19 +222,19 @@ const ClusterOperationCenterPage: React.FC = () => {
 
   const buildOperationLink = useCallback((auditId?: string | number, releaseId?: string) => {
     const params = new URLSearchParams();
-    if (searchFilters.resource) params.set('resource', searchFilters.resource);
-    if (searchFilters.status) params.set('status', searchFilters.status);
-    if (searchFilters.operator) params.set('operator', searchFilters.operator);
-    if (searchFilters.from) params.set('from', searchFilters.from);
-    if (searchFilters.to) params.set('to', searchFilters.to);
-    if (releaseId) params.set('release_id', releaseId);
-    if (auditId) params.set('audit_id', String(auditId));
+    if (searchFilters.resource) {params.set('resource', searchFilters.resource);}
+    if (searchFilters.status) {params.set('status', searchFilters.status);}
+    if (searchFilters.operator) {params.set('operator', searchFilters.operator);}
+    if (searchFilters.from) {params.set('from', searchFilters.from);}
+    if (searchFilters.to) {params.set('to', searchFilters.to);}
+    if (releaseId) {params.set('release_id', releaseId);}
+    if (auditId) {params.set('audit_id', String(auditId));}
     const query = params.toString();
     return `/deployment/infrastructure/clusters/${clusterId}/operations${query ? `?${query}` : ''}`;
   }, [clusterId, searchFilters.from, searchFilters.operator, searchFilters.resource, searchFilters.status, searchFilters.to]);
 
   const loadCluster = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const res = await Api.cluster.getClusterDetail(clusterId);
       setCluster(res.data);
@@ -244,7 +244,7 @@ const ClusterOperationCenterPage: React.FC = () => {
   }, [clusterId]);
 
   const loadHistory = useCallback(async (nextPage: number, nextPageSize: number, nextFilters: OperationFilters) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const res = await Api.cluster.getClusterOperations(clusterId, buildQuery(nextFilters, nextPage, nextPageSize));
@@ -267,7 +267,7 @@ const ClusterOperationCenterPage: React.FC = () => {
   }, [clusterId]);
 
   const loadDetail = useCallback(async (auditId: string | number) => {
-    if (!clusterId || !auditId) return;
+    if (!clusterId || !auditId) {return;}
     const auditIDText = String(auditId);
     setSelectedAuditId(auditIDText);
     setDetailLoading(true);
@@ -341,16 +341,16 @@ const ClusterOperationCenterPage: React.FC = () => {
     setFilters(nextFilters);
     setPage(1);
     const nextParams = new URLSearchParams(searchParams);
-    if (nextFilters.resource) nextParams.set('resource', nextFilters.resource);
-    else nextParams.delete('resource');
-    if (nextFilters.status) nextParams.set('status', nextFilters.status);
-    else nextParams.delete('status');
-    if (nextFilters.operator) nextParams.set('operator', nextFilters.operator);
-    else nextParams.delete('operator');
-    if (nextFilters.from) nextParams.set('from', nextFilters.from);
-    else nextParams.delete('from');
-    if (nextFilters.to) nextParams.set('to', nextFilters.to);
-    else nextParams.delete('to');
+    if (nextFilters.resource) {nextParams.set('resource', nextFilters.resource);}
+    else {nextParams.delete('resource');}
+    if (nextFilters.status) {nextParams.set('status', nextFilters.status);}
+    else {nextParams.delete('status');}
+    if (nextFilters.operator) {nextParams.set('operator', nextFilters.operator);}
+    else {nextParams.delete('operator');}
+    if (nextFilters.from) {nextParams.set('from', nextFilters.from);}
+    else {nextParams.delete('from');}
+    if (nextFilters.to) {nextParams.set('to', nextFilters.to);}
+    else {nextParams.delete('to');}
     if (releaseFilterId && nextFilters.resource === POLICY_RELEASE_RESOURCE) {
       nextParams.set('release_id', releaseFilterId);
     } else {

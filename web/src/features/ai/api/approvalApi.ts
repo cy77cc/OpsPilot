@@ -18,10 +18,10 @@ export async function submitApproval(id: string, payload: SubmitApprovalPayload,
   try {
     return await apiService.post(`/ai/approvals/${id}/submit`, payload, requestConfig);
   } catch (error) {
-    if (!isApprovalNotFoundError(error)) throw error;
+    if (!isApprovalNotFoundError(error)) {throw error;}
     const aliasTicket = await resolveApprovalTicket(id);
     const canonicalID = aliasTicket?.approval_id;
-    if (!canonicalID || canonicalID === id) throw error;
+    if (!canonicalID || canonicalID === id) {throw error;}
     return apiService.post(`/ai/approvals/${canonicalID}/submit`, payload, requestConfig);
   }
 }
@@ -31,7 +31,7 @@ export async function retryResumeApproval(id: string, payload: RetryResumeApprov
 }
 
 export async function resolveApprovalTicket(approvalId: string): Promise<ApprovalTicket | null> {
-  if (!approvalId) return null;
+  if (!approvalId) {return null;}
   try {
     const response = await getApproval(approvalId);
     return response.data || null;

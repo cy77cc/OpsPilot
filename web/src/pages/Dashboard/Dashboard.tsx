@@ -16,7 +16,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className="p-0 bg-gray-50 min-h-screen">
       <div className="flex justify-end items-center mb-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-6">
           <Select 
             defaultValue="1h" 
             options={[
@@ -31,11 +31,11 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
       
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-6">
         <KPIOverview />
         
         {/* Main Grid Layout */}
-        <div className="grid grid-cols-12 gap-3">
+        <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-3">
             <ResourceHealth />
           </div>
@@ -50,7 +50,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-3">
+        <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-3">
             <DeliveryOverview />
           </div>
@@ -62,7 +62,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-3">
+        <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 xl:col-span-8">
             <RecentAlerts />
           </div>

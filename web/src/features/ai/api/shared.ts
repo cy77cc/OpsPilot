@@ -386,7 +386,7 @@ export interface A2UIStreamHandlers {
 }
 
 function normalizeTimestampCompat<T extends TimestampCompatFields>(item: T | null | undefined): T | null | undefined {
-  if (!item) return item;
+  if (!item) {return item;}
   const createdAt = item.createdAt ?? item.created_at;
   const updatedAt = item.updatedAt ?? item.updated_at;
   return {
@@ -420,9 +420,9 @@ export function normalizeSession(session: AISession): AISession {
 }
 
 function normalizeRunReport(report?: AIRunReport | null): AIRunReport | undefined {
-  if (!report) return report ?? undefined;
+  if (!report) {return report ?? undefined;}
   const reportId = report.report_id ?? report.id;
-  if (reportId === undefined) return { ...report };
+  if (reportId === undefined) {return { ...report };}
   return { ...report, id: reportId, report_id: reportId };
 }
 
@@ -447,7 +447,7 @@ export function normalizeRunResponse(response: ApiResponse<AIRun>): ApiResponse<
 
 function normalizeErrorEvent(payload: unknown): A2UIErrorEvent {
   const errorPayload = { ...((typeof payload === 'object' && payload ? payload : {}) as A2UIErrorEvent) };
-  if (!errorPayload.code && errorPayload.error_code) errorPayload.code = errorPayload.error_code;
+  if (!errorPayload.code && errorPayload.error_code) {errorPayload.code = errorPayload.error_code;}
   if (errorPayload.code === 'AI_STREAM_CURSOR_EXPIRED' || errorPayload.error_code === 'AI_STREAM_CURSOR_EXPIRED') {
     errorPayload.recoverable = true;
   }
@@ -455,11 +455,11 @@ function normalizeErrorEvent(payload: unknown): A2UIErrorEvent {
 }
 
 function readStreamEventTag(payload: unknown, keys: string[]): string | number | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
+  if (!payload || typeof payload !== 'object') {return undefined;}
   const record = payload as Record<string, unknown>;
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === 'string' || typeof value === 'number') return value;
+    if (typeof value === 'string' || typeof value === 'number') {return value;}
   }
   return undefined;
 }
@@ -482,53 +482,53 @@ function buildUnknownStreamEvent(eventType: string, payload: unknown, eventId?: 
 }
 
 export function dispatchAIStreamEvent(segment: string, handlers: A2UIStreamHandlers): void {
-  if (!segment.trim()) return;
+  if (!segment.trim()) {return;}
   const lines = segment.split('\n');
   let eventType = '';
   let data = '';
   let eventId = '';
   lines.forEach((line) => {
-    if (line.startsWith('event:')) eventType = line.slice(6).trim();
-    else if (line.startsWith('data:')) data += line.slice(5).trim();
-    else if (line.startsWith('id:')) eventId = line.slice(3).trim();
+    if (line.startsWith('event:')) {eventType = line.slice(6).trim();}
+    else if (line.startsWith('data:')) {data += line.slice(5).trim();}
+    else if (line.startsWith('id:')) {eventId = line.slice(3).trim();}
   });
-  if (eventId) handlers.onEventId?.(eventId);
+  if (eventId) {handlers.onEventId?.(eventId);}
   const payload = data ? JSON.parse(data) : {};
-  if (eventType === 'meta') handlers.onMeta?.(payload as A2UIMetaEvent);
-  else if (eventType === 'agent_handoff') handlers.onAgentHandoff?.(payload as A2UIAgentHandoffEvent);
-  else if (eventType === 'plan') handlers.onPlan?.(payload as A2UIPlanEvent);
-  else if (eventType === 'replan') handlers.onReplan?.(payload as A2UIReplanEvent);
-  else if (eventType === 'delta') handlers.onDelta?.(payload as A2UIDeltaEvent);
-  else if (eventType === 'tool_call') handlers.onToolCall?.(payload as A2UIToolCallEvent);
-  else if (eventType === 'tool_approval') handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);
-  else if (eventType === 'tool_result') handlers.onToolResult?.(payload as A2UIToolResultEvent);
-  else if (eventType === 'delegation_node') handlers.onDelegationNode?.(payload as A2UIDelegationNodeEvent);
-  else if (eventType === 'ops.plan.updated' || eventType === 'ops_plan_updated') handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);
-  else if (eventType === 'ai.run.resuming') handlers.onRunResuming?.(payload as A2UIRunResumingEvent);
-  else if (eventType === 'ai.run.resumed') handlers.onRunResumed?.(payload as A2UIRunResumedEvent);
-  else if (eventType === 'ai.run.resume_failed') handlers.onRunResumeFailed?.(payload as A2UIRunResumeFailedEvent);
-  else if (eventType === 'ai.run.completed') handlers.onRunCompleted?.(payload as A2UIRunCompletedEvent);
-  else if (eventType === 'run_state') handlers.onRunState?.(payload as A2UIRunStateEvent);
-  else if (eventType === 'ai.approval.expired') handlers.onApprovalExpired?.(payload as A2UIApprovalExpiredEvent);
-  else if (eventType === 'done') handlers.onDone?.(payload as A2UIDoneEvent);
-  else if (eventType === 'error') handlers.onError?.(normalizeErrorEvent(payload));
-  else handlers.onUnknownEvent?.(buildUnknownStreamEvent(eventType, payload, eventId || undefined));
+  if (eventType === 'meta') {handlers.onMeta?.(payload as A2UIMetaEvent);}
+  else if (eventType === 'agent_handoff') {handlers.onAgentHandoff?.(payload as A2UIAgentHandoffEvent);}
+  else if (eventType === 'plan') {handlers.onPlan?.(payload as A2UIPlanEvent);}
+  else if (eventType === 'replan') {handlers.onReplan?.(payload as A2UIReplanEvent);}
+  else if (eventType === 'delta') {handlers.onDelta?.(payload as A2UIDeltaEvent);}
+  else if (eventType === 'tool_call') {handlers.onToolCall?.(payload as A2UIToolCallEvent);}
+  else if (eventType === 'tool_approval') {handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);}
+  else if (eventType === 'tool_result') {handlers.onToolResult?.(payload as A2UIToolResultEvent);}
+  else if (eventType === 'delegation_node') {handlers.onDelegationNode?.(payload as A2UIDelegationNodeEvent);}
+  else if (eventType === 'ops.plan.updated' || eventType === 'ops_plan_updated') {handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);}
+  else if (eventType === 'ai.run.resuming') {handlers.onRunResuming?.(payload as A2UIRunResumingEvent);}
+  else if (eventType === 'ai.run.resumed') {handlers.onRunResumed?.(payload as A2UIRunResumedEvent);}
+  else if (eventType === 'ai.run.resume_failed') {handlers.onRunResumeFailed?.(payload as A2UIRunResumeFailedEvent);}
+  else if (eventType === 'ai.run.completed') {handlers.onRunCompleted?.(payload as A2UIRunCompletedEvent);}
+  else if (eventType === 'run_state') {handlers.onRunState?.(payload as A2UIRunStateEvent);}
+  else if (eventType === 'ai.approval.expired') {handlers.onApprovalExpired?.(payload as A2UIApprovalExpiredEvent);}
+  else if (eventType === 'done') {handlers.onDone?.(payload as A2UIDoneEvent);}
+  else if (eventType === 'error') {handlers.onError?.(normalizeErrorEvent(payload));}
+  else {handlers.onUnknownEvent?.(buildUnknownStreamEvent(eventType, payload, eventId || undefined));}
 }
 
 export async function consumeAIStream(response: Response, handlers: A2UIStreamHandlers): Promise<void> {
-  if (!response.ok || !response.body) throw new Error(`请求失败: ${response.status}`);
+  if (!response.ok || !response.body) {throw new Error(`请求失败: ${response.status}`);}
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {break;}
     buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '');
     const segments = buffer.split('\n\n');
     buffer = segments.pop() || '';
     segments.forEach((segment) => dispatchAIStreamEvent(segment, handlers));
   }
-  if (buffer.trim()) dispatchAIStreamEvent(buffer, handlers);
+  if (buffer.trim()) {dispatchAIStreamEvent(buffer, handlers);}
 }
 
 export function generateIdempotencyKey(): string {
@@ -540,7 +540,7 @@ export function generateIdempotencyKey(): string {
 
 export function isApprovalConflictError(error: unknown): boolean {
   if (error instanceof ApiRequestError) {
-    if (error.statusCode !== 400 && error.statusCode !== 409) return false;
+    if (error.statusCode !== 400 && error.statusCode !== 409) {return false;}
     return /already\s+(approved|rejected|processed|handled)|conflict/i.test(error.message);
   }
   if (typeof error === 'object' && error && 'statusCode' in error) {

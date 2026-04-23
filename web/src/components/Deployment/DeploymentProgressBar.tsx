@@ -35,8 +35,8 @@ const DeploymentProgressBar: React.FC<DeploymentProgressBarProps> = ({
   };
 
   const getProgressColor = () => {
-    if (progress >= 100) return '#52c41a';
-    if (progress >= 50) return '#1890ff';
+    if (progress >= 100) {return '#52c41a';}
+    if (progress >= 50) {return '#1890ff';}
     return '#f59e0b';
   };
 

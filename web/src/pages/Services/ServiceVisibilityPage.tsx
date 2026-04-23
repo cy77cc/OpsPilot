@@ -15,7 +15,7 @@ const ServiceVisibilityPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {return;}
     void Api.services.getDetail(id).then((resp) => {
       form.setFieldsValue({
         visibility: resp.data.visibility || 'team',
@@ -25,7 +25,7 @@ const ServiceVisibilityPage: React.FC = () => {
   }, [id, form]);
 
   const save = async () => {
-    if (!id) return;
+    if (!id) {return;}
     const values = await form.validateFields();
     setSaving(true);
     try {

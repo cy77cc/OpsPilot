@@ -14,7 +14,7 @@ const ExecutionHistoryPage: React.FC = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
-    if (!jobId) return;
+    if (!jobId) {return;}
     setIsLoading(true);
     try {
       const [execRes, logRes] = await Promise.all([
@@ -43,7 +43,7 @@ const ExecutionHistoryPage: React.FC = () => {
   }, [logs, currentExecution]);
 
   const handleRerun = async () => {
-    if (!jobId) return;
+    if (!jobId) {return;}
     await Api.tasks.startTask(jobId);
     message.success('已触发重新执行');
     await loadData();

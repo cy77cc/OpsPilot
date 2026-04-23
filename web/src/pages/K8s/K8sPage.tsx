@@ -68,14 +68,14 @@ const K8sPage: React.FC = () => {
   };
 
   const previewDeploy = async () => {
-    if (!selectedCluster) return;
+    if (!selectedCluster) {return;}
     const values = await form.validateFields();
     const preview = await Api.kubernetes.previewDeploy(String(selectedCluster.id), values);
     setDeployPreview(preview.data);
   };
 
   const applyDeploy = async () => {
-    if (!selectedCluster) return;
+    if (!selectedCluster) {return;}
     const values = await form.validateFields();
     await Api.kubernetes.applyDeploy(String(selectedCluster.id), values);
     message.success('部署已应用');

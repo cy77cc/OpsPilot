@@ -54,7 +54,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
     [navigate, onOpenChange]
   );
 
-  if (!open) return null;
+  if (!open) {return null;}
 
   return (
     <div className="command-palette-overlay" onClick={() => onOpenChange(false)}>

@@ -91,7 +91,7 @@ const ClusterPolicyCenterPage: React.FC = () => {
   }, []);
 
   const handleSimulate = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
 
     setSimulationLoading(true);
     try {
@@ -126,7 +126,7 @@ const ClusterPolicyCenterPage: React.FC = () => {
   }, [clusterId, draft.baseVersion, draft.candidateVersion, draft.name, draft.namespace]);
 
   const handleCreateRelease = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
 
     setReleaseAction('create');
     try {

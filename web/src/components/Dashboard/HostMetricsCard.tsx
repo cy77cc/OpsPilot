@@ -35,7 +35,7 @@ const HostMetricsCard: React.FC<HostMetricsCardProps> = ({ cpuSeries, memorySeri
 
   // 格式化数值为两位小数
   const formatValue = React.useCallback((val: number | undefined) => {
-    if (val === undefined || val === null) return '0.00';
+    if (val === undefined || val === null) {return '0.00';}
     return val.toFixed(2);
   }, []);
 

@@ -13,7 +13,7 @@ const HelpCenterPage: React.FC = () => {
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return helpDocuments;
+    if (!q) {return helpDocuments;}
     return helpDocuments.filter((item) => {
       return (
         item.title.toLowerCase().includes(q) ||

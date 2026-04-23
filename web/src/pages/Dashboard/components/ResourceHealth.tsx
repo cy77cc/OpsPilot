@@ -49,19 +49,19 @@ export const ResourceHealth: React.FC = () => {
   };
 
   return (
-    <Card title="资源健康状态" className="h-full shadow-sm border-none">
-      <div className="h-64">
-         <Pie {...config} />
+    <Card 
+      title="资源健康状态" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="h-48">
+           <Pie {...config} />
+        </div>
       </div>
-      <FooterLink />
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        查看详情 &gt;
+      </div>
     </Card>
   );
 };
-
-const FooterLink: React.FC<{ href?: string }> = ({ href = "#" }) => (
-  <div className="text-right mt-4">
-    <a href={href} className="text-blue-500 text-xs hover:text-blue-600 transition-colors">
-      查看详情 &gt;
-    </a>
-  </div>
-);

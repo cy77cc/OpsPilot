@@ -100,7 +100,7 @@ const CredentialListPage: React.FC = () => {
       title: '最近测试',
       key: 'last_test',
       render: (_: any, record: ClusterCredential) => {
-        if (!record.last_test_at) return '-';
+        if (!record.last_test_at) {return '-';}
         return (
           <Space direction="vertical" size="small">
             <Space>

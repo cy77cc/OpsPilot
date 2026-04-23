@@ -75,8 +75,8 @@ const RulesConfigPage: React.FC = () => {
   const currentProjectId = scope.scope === 'project' ? normalizeProjectId(scope.projectId) : undefined;
 
   const ensureProjectScopeReady = (): boolean => {
-    if (scope.scope !== 'project') return true;
-    if (currentProjectId) return true;
+    if (scope.scope !== 'project') {return true;}
+    if (currentProjectId) {return true;}
     message.error('项目作用域操作需要先选择项目ID');
     return false;
   };
@@ -88,7 +88,7 @@ const RulesConfigPage: React.FC = () => {
     try {
       const res = await Api.monitoring.getEffectiveRules({ projectId: currentProjectId, page: 1, pageSize: 50 });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
       setRows(
         list.map((item: any) => ({
           id: String(item.id),
@@ -106,7 +106,7 @@ const RulesConfigPage: React.FC = () => {
       );
       return true;
     } catch {
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
       if (showError) {
         message.error('规则列表加载失败');
       }
@@ -200,7 +200,7 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const handleUpdate = async () => {
-    if (!editing) return;
+    if (!editing) {return;}
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
@@ -260,7 +260,7 @@ const RulesConfigPage: React.FC = () => {
     try {
       const res = await Api.monitoring.getRuleChannels(ruleId, { projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current || seq !== bindingLoadSeqRef.current || !bindingOpenRef.current || activeBindingRuleIdRef.current !== ruleId) return false;
+      if (!mountedRef.current || seq !== bindingLoadSeqRef.current || !bindingOpenRef.current || activeBindingRuleIdRef.current !== ruleId) {return false;}
       setBindings(
         list.map((item: any) => ({
           channelId: String(item.channel_id ?? item.channelId ?? item.id ?? ''),
@@ -282,7 +282,7 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const openBindingDrawer = async (record: EffectiveRuleRow) => {
-    if (!ensureProjectScopeReady()) return;
+    if (!ensureProjectScopeReady()) {return;}
     bindingOpenRef.current = true;
     activeBindingRuleIdRef.current = record.id;
     setBindingRule(record);
@@ -297,8 +297,8 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const handleCreateBinding = async () => {
-    if (!bindingRule || bindingSubmitting) return;
-    if (!ensureProjectScopeReady()) return;
+    if (!bindingRule || bindingSubmitting) {return;}
+    if (!ensureProjectScopeReady()) {return;}
     try {
       const values = await bindingForm.validateFields();
       setBindingSubmitting(true);
@@ -326,7 +326,7 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const handlePrepareUpdateBinding = (record: RuleChannelBindingRow) => {
-    if (bindingSubmitting) return;
+    if (bindingSubmitting) {return;}
     setEditingBindingChannelId(record.channelId);
     bindingForm.setFieldsValue({
       channelId: record.channelId,
@@ -336,8 +336,8 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const handleUpdateBinding = async () => {
-    if (!bindingRule || !editingBindingChannelId || bindingSubmitting) return;
-    if (!ensureProjectScopeReady()) return;
+    if (!bindingRule || !editingBindingChannelId || bindingSubmitting) {return;}
+    if (!ensureProjectScopeReady()) {return;}
     try {
       const values = await bindingForm.validateFields();
       setBindingSubmitting(true);
@@ -364,8 +364,8 @@ const RulesConfigPage: React.FC = () => {
   };
 
   const handleDeleteBinding = async (channelId: string) => {
-    if (!bindingRule || bindingSubmitting) return;
-    if (!ensureProjectScopeReady()) return;
+    if (!bindingRule || bindingSubmitting) {return;}
+    if (!ensureProjectScopeReady()) {return;}
     setBindingSubmitting(true);
     try {
       await Api.monitoring.deleteRuleChannelBinding(bindingRule.id, channelId, currentProjectId);

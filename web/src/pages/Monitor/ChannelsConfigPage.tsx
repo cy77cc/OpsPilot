@@ -49,8 +49,8 @@ const ChannelsConfigPage: React.FC = () => {
   const currentProjectId = scope.scope === 'project' ? normalizeProjectId(scope.projectId) : undefined;
 
   const ensureProjectScopeReady = (): boolean => {
-    if (scope.scope !== 'project') return true;
-    if (currentProjectId) return true;
+    if (scope.scope !== 'project') {return true;}
+    if (currentProjectId) {return true;}
     message.error('项目作用域操作需要先选择项目ID');
     return false;
   };
@@ -62,7 +62,7 @@ const ChannelsConfigPage: React.FC = () => {
     try {
       const res = await Api.monitoring.listAlertChannels({ projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
       setRows(
         list.map((item: any) => ({
           id: String(item.id),
@@ -74,8 +74,8 @@ const ChannelsConfigPage: React.FC = () => {
       );
       return true;
     } catch {
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
-      if (showError) message.error('渠道列表加载失败');
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
+      if (showError) {message.error('渠道列表加载失败');}
       return false;
     } finally {
       if (mountedRef.current && seq === loadSeqRef.current) {
@@ -131,7 +131,7 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   const handleCreate = async () => {
-    if (!ensureProjectScopeReady()) return;
+    if (!ensureProjectScopeReady()) {return;}
     try {
       const values = await createForm.validateFields();
       setSubmitting(true);
@@ -147,7 +147,7 @@ const ChannelsConfigPage: React.FC = () => {
         setCreateOpen(false);
         createForm.resetFields();
         const refreshed = await loadChannels(false);
-        if (!refreshed) message.warning('渠道创建成功，但列表刷新失败');
+        if (!refreshed) {message.warning('渠道创建成功，但列表刷新失败');}
       } catch {
         message.error('渠道创建失败');
       } finally {
@@ -169,8 +169,8 @@ const ChannelsConfigPage: React.FC = () => {
   };
 
   const handleUpdate = async () => {
-    if (!editing) return;
-    if (!ensureProjectScopeReady()) return;
+    if (!editing) {return;}
+    if (!ensureProjectScopeReady()) {return;}
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
@@ -185,7 +185,7 @@ const ChannelsConfigPage: React.FC = () => {
         message.success('渠道更新成功');
         setEditing(null);
         const refreshed = await loadChannels(false);
-        if (!refreshed) message.warning('渠道更新成功，但列表刷新失败');
+        if (!refreshed) {message.warning('渠道更新成功，但列表刷新失败');}
       } catch {
         message.error('渠道更新失败');
       } finally {
@@ -202,7 +202,7 @@ const ChannelsConfigPage: React.FC = () => {
       await Api.monitoring.deleteAlertChannel(id);
       message.success('渠道删除成功');
       const refreshed = await loadChannels(false);
-      if (!refreshed) message.warning('渠道删除成功，但列表刷新失败');
+      if (!refreshed) {message.warning('渠道删除成功，但列表刷新失败');}
     } catch (err: any) {
       const code = String(err?.code ?? err?.status ?? err?.response?.status ?? '');
       const blockers = err?.data?.blockers || err?.response?.data?.blockers || [];

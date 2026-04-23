@@ -86,8 +86,8 @@ describe('formAssistStream API', () => {
     globalThis.fetch = fetchMock;
 
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
-      if (key === 'token') return 'test-token';
-      if (key === 'projectId') return 'test-project';
+      if (key === 'token') {return 'test-token';}
+      if (key === 'projectId') {return 'test-project';}
       return null;
     });
 

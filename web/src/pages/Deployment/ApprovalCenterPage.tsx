@@ -53,7 +53,7 @@ const ApprovalCenterPage: React.FC = () => {
   };
 
   const handleSubmitAction = async () => {
-    if (!currentRelease) return;
+    if (!currentRelease) {return;}
     try {
       if (actionType === 'approve') {
         await Api.deployment.approveRelease(currentRelease.id, { comment });

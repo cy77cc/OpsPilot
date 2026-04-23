@@ -35,12 +35,12 @@ const CICDPage: React.FC = () => {
     const svcList = svcRes.data.list || [];
     setServices(svcList);
     setTargets(targetRes.data.list || []);
-    if (!serviceId && svcList.length > 0) setServiceId(Number(svcList[0].id));
-    if (!deploymentId && (targetRes.data.list || []).length > 0) setDeploymentId(Number(targetRes.data.list[0].id));
+    if (!serviceId && svcList.length > 0) {setServiceId(Number(svcList[0].id));}
+    if (!deploymentId && (targetRes.data.list || []).length > 0) {setDeploymentId(Number(targetRes.data.list[0].id));}
   }, [serviceId, deploymentId]);
 
   const loadDetail = React.useCallback(async () => {
-    if (!serviceId) return;
+    if (!serviceId) {return;}
     setLoading(true);
     try {
       const reqs: Promise<any>[] = [
@@ -89,7 +89,7 @@ const CICDPage: React.FC = () => {
   }, [loadDetail]);
 
   const saveCIConfig = async () => {
-    if (!serviceId) return;
+    if (!serviceId) {return;}
     const v = await ciForm.validateFields();
     await Api.cicd.putServiceCIConfig(serviceId, {
       repo_url: String(v.repo_url),
@@ -103,7 +103,7 @@ const CICDPage: React.FC = () => {
   };
 
   const deleteCIConfig = async () => {
-    if (!serviceId) return;
+    if (!serviceId) {return;}
     await Api.cicd.deleteServiceCIConfig(serviceId);
     message.success('CI 配置已删除');
     setCiConfig(null);
@@ -112,14 +112,14 @@ const CICDPage: React.FC = () => {
   };
 
   const triggerRun = async (trigger_type: 'manual' | 'source-event') => {
-    if (!serviceId) return;
+    if (!serviceId) {return;}
     await Api.cicd.triggerCIRun(serviceId, { trigger_type });
     message.success(`CI 已触发: ${trigger_type}`);
     await loadDetail();
   };
 
   const saveCDConfig = async () => {
-    if (!deploymentId) return;
+    if (!deploymentId) {return;}
     const selectedTarget = targets.find((t) => Number(t.id) === Number(deploymentId));
     const runtimeType = (selectedTarget?.runtime_type || selectedTarget?.target_type || 'k8s') as 'k8s' | 'compose';
     const v = await cdForm.validateFields();

@@ -111,11 +111,11 @@ const AuditLogsPage: React.FC = () => {
   };
 
   const getActionTagColor = (actionType: string) => {
-    if (actionType.includes('create') || actionType.includes('apply')) return 'blue';
-    if (actionType.includes('update')) return 'orange';
-    if (actionType.includes('delete')) return 'red';
-    if (actionType.includes('approve')) return 'green';
-    if (actionType.includes('reject')) return 'default';
+    if (actionType.includes('create') || actionType.includes('apply')) {return 'blue';}
+    if (actionType.includes('update')) {return 'orange';}
+    if (actionType.includes('delete')) {return 'red';}
+    if (actionType.includes('approve')) {return 'green';}
+    if (actionType.includes('reject')) {return 'default';}
     return 'default';
   };
 

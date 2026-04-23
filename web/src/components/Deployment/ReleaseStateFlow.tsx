@@ -32,9 +32,9 @@ const ReleaseStateFlow: React.FC<ReleaseStateFlowProps> = ({
   };
 
   const getStepStatus = (state: string): 'wait' | 'process' | 'finish' | 'error' => {
-    if (currentState === 'failed' && state === currentState) return 'error';
-    if (currentState === 'rejected' && state === currentState) return 'error';
-    if (state === currentState) return 'process';
+    if (currentState === 'failed' && state === currentState) {return 'error';}
+    if (currentState === 'rejected' && state === currentState) {return 'error';}
+    if (state === currentState) {return 'process';}
     const currentIndex = states.indexOf(currentState);
     const stateIndex = states.indexOf(state);
     return stateIndex < currentIndex ? 'finish' : 'wait';

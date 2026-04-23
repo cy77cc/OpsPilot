@@ -45,11 +45,11 @@ const RoutingConfigPage: React.FC = () => {
   const parseChannelIDs = (raw: string): string[] => raw.split(',').map((x) => x.trim()).filter(Boolean);
 
   const normalizeChannelIds = (value: unknown): string[] => {
-    if (Array.isArray(value)) return value.map((x) => String(x)).filter(Boolean);
+    if (Array.isArray(value)) {return value.map((x) => String(x)).filter(Boolean);}
     if (typeof value === 'string') {
       try {
         const parsed = JSON.parse(value);
-        if (Array.isArray(parsed)) return parsed.map((x) => String(x)).filter(Boolean);
+        if (Array.isArray(parsed)) {return parsed.map((x) => String(x)).filter(Boolean);}
       } catch {
         return parseChannelIDs(value);
       }
@@ -59,8 +59,8 @@ const RoutingConfigPage: React.FC = () => {
 
   const projectIdForScope = (routeScope: string): string | undefined => (routeScope === 'project' ? normalizedProjectId : undefined);
   const ensureProjectScopeReady = (routeScope: string): boolean => {
-    if (routeScope !== 'project') return true;
-    if (normalizedProjectId) return true;
+    if (routeScope !== 'project') {return true;}
+    if (normalizedProjectId) {return true;}
     message.error('项目作用域操作需要先选择项目ID');
     return false;
   };
@@ -72,7 +72,7 @@ const RoutingConfigPage: React.FC = () => {
     try {
       const res = await Api.monitoring.getSeverityRoutes({ projectId: currentProjectId });
       const list = (res?.data as any)?.list || [];
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
       setRows(
         list.map((item: any) => {
           const channelIds = normalizeChannelIds(item.channel_ids_json ?? item.channel_ids ?? []);
@@ -88,8 +88,8 @@ const RoutingConfigPage: React.FC = () => {
       );
       return true;
     } catch {
-      if (!mountedRef.current || seq !== loadSeqRef.current) return false;
-      if (showError) message.error('路由列表加载失败');
+      if (!mountedRef.current || seq !== loadSeqRef.current) {return false;}
+      if (showError) {message.error('路由列表加载失败');}
       return false;
     } finally {
       if (mountedRef.current && seq === loadSeqRef.current) {
@@ -149,7 +149,7 @@ const RoutingConfigPage: React.FC = () => {
         setCreateOpen(false);
         createForm.resetFields();
         const refreshed = await load(false);
-        if (!refreshed) message.warning('路由创建成功，但列表刷新失败');
+        if (!refreshed) {message.warning('路由创建成功，但列表刷新失败');}
       } catch {
         message.error('路由创建失败');
       } finally {
@@ -171,7 +171,7 @@ const RoutingConfigPage: React.FC = () => {
   };
 
   const handleUpdate = async () => {
-    if (!editing) return;
+    if (!editing) {return;}
     try {
       const values = await editForm.validateFields();
       if (!ensureProjectScopeReady(values.scope)) {
@@ -189,7 +189,7 @@ const RoutingConfigPage: React.FC = () => {
         message.success('路由更新成功');
         setEditing(null);
         const refreshed = await load(false);
-        if (!refreshed) message.warning('路由更新成功，但列表刷新失败');
+        if (!refreshed) {message.warning('路由更新成功，但列表刷新失败');}
       } catch {
         message.error('路由更新失败');
       } finally {
@@ -209,7 +209,7 @@ const RoutingConfigPage: React.FC = () => {
       await Api.monitoring.deleteSeverityRoute(record.id, projectIdForScope(record.scope));
       message.success('路由删除成功');
       const refreshed = await load(false);
-      if (!refreshed) message.warning('路由删除成功，但列表刷新失败');
+      if (!refreshed) {message.warning('路由删除成功，但列表刷新失败');}
     } catch {
       message.error('路由删除失败');
     } finally {

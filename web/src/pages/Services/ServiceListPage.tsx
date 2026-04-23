@@ -62,7 +62,7 @@ const ServiceListPage: React.FC = () => {
   // 视图模式：null 表示让自动逻辑决定
   const [viewMode, setViewMode] = useState<'card' | 'list' | null>(() => {
     const saved = localStorage.getItem(VIEW_MODE_KEY);
-    if (saved === 'card' || saved === 'list') return saved;
+    if (saved === 'card' || saved === 'list') {return saved;}
     return null;
   });
 
@@ -133,7 +133,7 @@ const ServiceListPage: React.FC = () => {
 
   // 过滤后的列表
   const filteredList = useMemo(() => {
-    if (statusFilter === 'all') return list;
+    if (statusFilter === 'all') {return list;}
     return list.filter((item) => item.status === statusFilter);
   }, [list, statusFilter]);
 
@@ -218,8 +218,8 @@ const ServiceListPage: React.FC = () => {
                   { key: 'delete', icon: <DeleteOutlined />, label: '删除服务', danger: true },
                 ],
                 onClick: ({ key }) => {
-                  if (key === 'edit') navigate(`/services/${service.id}?tab=config`);
-                  else message.info(`${key}: ${service.name}`);
+                  if (key === 'edit') {navigate(`/services/${service.id}?tab=config`);}
+                  else {message.info(`${key}: ${service.name}`);}
                 },
               }}
             >
@@ -321,7 +321,7 @@ const ServiceListPage: React.FC = () => {
       dataIndex: 'labels',
       key: 'labels',
       render: (labels: ServiceItem['labels']) => {
-        if (!labels || labels.length === 0) return '-';
+        if (!labels || labels.length === 0) {return '-';}
         return (
           <Space size={[4, 4]} wrap>
             {labels.slice(0, 3).map((l) => (

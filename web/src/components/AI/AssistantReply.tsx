@@ -970,7 +970,7 @@ export function AssistantReply({
 
   // 懒加载场景
   const handleExpand = async () => {
-    if (loading) return;
+    if (loading) {return;}
     setLoading(true);
     setExpanded(true);
     const loaded = await onLoadRuntime(messageId);

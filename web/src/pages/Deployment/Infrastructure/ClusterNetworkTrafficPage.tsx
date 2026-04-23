@@ -17,7 +17,7 @@ const ClusterNetworkTrafficPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const loadMeta = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const [clusterRes, nsRes] = await Promise.all([
         Api.cluster.getClusterDetail(clusterId),
@@ -35,7 +35,7 @@ const ClusterNetworkTrafficPage: React.FC = () => {
   }, [clusterId]);
 
   const loadTraffic = useCallback(async (ns: string) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const [svcRes, ingRes] = await Promise.all([
@@ -58,7 +58,7 @@ const ClusterNetworkTrafficPage: React.FC = () => {
   }, [loadMeta]);
 
   useEffect(() => {
-    if (!namespace) return;
+    if (!namespace) {return;}
     loadTraffic(namespace);
   }, [namespace, loadTraffic]);
 

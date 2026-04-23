@@ -185,7 +185,7 @@ const AccessControlPage: React.FC = () => {
       await Api.org.deleteDepartment(id);
       message.success('删除部门成功');
       fetchDepartments();
-      if (selectedDeptId === id) setSelectedDeptId(null);
+      if (selectedDeptId === id) {setSelectedDeptId(null);}
     } catch (err: any) {
       message.error('删除部门失败: ' + (err.message || '未知错误'));
     }
@@ -204,7 +204,7 @@ const AccessControlPage: React.FC = () => {
       setDeptModalOpen(false);
       fetchDepartments();
     } catch (err: any) {
-      if (err.errorFields) return;
+      if (err.errorFields) {return;}
       message.error('保存部门失败: ' + (err.message || '未知错误'));
     }
   };
@@ -220,9 +220,9 @@ const AccessControlPage: React.FC = () => {
       message.success('划转成员成功');
       setTransferModalOpen(false);
       setSelectedMemberIds([]);
-      if (selectedDeptId) fetchMembers(selectedDeptId);
+      if (selectedDeptId) {fetchMembers(selectedDeptId);}
     } catch (err: any) {
-      if (err.errorFields) return;
+      if (err.errorFields) {return;}
       message.error('划转成员失败: ' + (err.message || '未知错误'));
     }
   };
@@ -234,12 +234,12 @@ const AccessControlPage: React.FC = () => {
   };
 
   const handleRoleModalOk = async () => {
-    if (!editingMember) return;
+    if (!editingMember) {return;}
     try {
       await Api.rbac.updateUser(editingMember.id, { roles: memberRoles });
       message.success('角色分配成功');
       setRoleModalOpen(false);
-      if (selectedDeptId) fetchMembers(selectedDeptId);
+      if (selectedDeptId) {fetchMembers(selectedDeptId);}
     } catch (err: any) {
       message.error('角色分配失败: ' + (err.message || '未知错误'));
     }
@@ -284,7 +284,7 @@ const AccessControlPage: React.FC = () => {
   };
 
   const handleDeptRoleModalOk = async () => {
-    if (!selectedDeptId) return;
+    if (!selectedDeptId) {return;}
     try {
       await Api.org.updateDepartmentRoles(selectedDeptId, currentDeptRoleIds);
       message.success('更新部门角色成功');

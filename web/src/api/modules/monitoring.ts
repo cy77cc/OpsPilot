@@ -2,7 +2,7 @@ import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
 
 const toPositiveIntOrUndefined = (value?: string): number | undefined => {
-  if (!value) return undefined;
+  if (!value) {return undefined;}
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : undefined;
 };

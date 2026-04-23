@@ -206,8 +206,8 @@ const ClusterDetailPage: React.FC = () => {
     navigate,
   });
 
-  if (isInitialLoading) return <DetailSkeleton summaryCards={3} sections={4} />;
-  if (!cluster) return <div className="text-center py-16"><ClusterOutlined className="text-6xl text-gray-300 mb-4" /><p className="text-gray-500">集群不存在</p><Button onClick={() => navigate('/deployment/infrastructure/clusters')}>返回列表</Button></div>;
+  if (isInitialLoading) {return <DetailSkeleton summaryCards={3} sections={4} />;}
+  if (!cluster) {return <div className="text-center py-16"><ClusterOutlined className="text-6xl text-gray-300 mb-4" /><p className="text-gray-500">集群不存在</p><Button onClick={() => navigate('/deployment/infrastructure/clusters')}>返回列表</Button></div>;}
 
   return (
     <div className="space-y-6">

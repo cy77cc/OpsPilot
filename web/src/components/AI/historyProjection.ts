@@ -18,18 +18,18 @@ function isReconnectableStatus(status?: string): boolean {
 }
 
 function pendingStatusLabel(status?: string): string {
-  if (status === 'waiting_approval') return '等待审批';
-  if (status === 'resuming') return '恢复中';
-  if (status === 'resume_failed_retryable') return '恢复失败，可重试';
-  if (status === 'running') return '执行中';
+  if (status === 'waiting_approval') {return '等待审批';}
+  if (status === 'resuming') {return '恢复中';}
+  if (status === 'resume_failed_retryable') {return '恢复失败，可重试';}
+  if (status === 'running') {return '执行中';}
   return '等待恢复';
 }
 
 function reconnectableStatusKind(status?: string): AssistantReplyStatusKind {
-  if (status === 'running') return 'streaming';
-  if (status === 'waiting_approval') return 'waiting_approval';
-  if (status === 'resuming') return 'resuming';
-  if (status === 'resume_failed_retryable') return 'resume_failed_retryable';
+  if (status === 'running') {return 'streaming';}
+  if (status === 'waiting_approval') {return 'waiting_approval';}
+  if (status === 'resuming') {return 'resuming';}
+  if (status === 'resume_failed_retryable') {return 'resume_failed_retryable';}
   return 'interrupted';
 }
 
@@ -80,8 +80,8 @@ export function resetHistoryProjectionCache(): void {
 }
 
 export async function loadRunProjection(runId: string): Promise<AIRunProjection | null> {
-  if (!runId) return null;
-  if (projectionCache.has(runId)) return projectionCache.get(runId) ?? null;
+  if (!runId) {return null;}
+  if (projectionCache.has(runId)) {return projectionCache.get(runId) ?? null;}
   try {
     let cursor = '';
     let projection: AIRunProjection | null = null;
@@ -116,8 +116,8 @@ export async function loadRunProjection(runId: string): Promise<AIRunProjection 
 }
 
 export async function loadRunContent(contentId: string): Promise<AIRunContent | null> {
-  if (!contentId) return null;
-  if (contentCache.has(contentId)) return contentCache.get(contentId) ?? null;
+  if (!contentId) {return null;}
+  if (contentCache.has(contentId)) {return contentCache.get(contentId) ?? null;}
   try {
     const response = await aiApi.getRunContent(contentId);
     const content = response.data || null;
@@ -132,7 +132,7 @@ function mergeProjectionPages(current: AIRunProjection, page: AIRunProjection): 
   const mergedBlocks = [...(current.blocks || [])];
   const seen = new Set(mergedBlocks.map((block) => block.id));
   for (const block of page.blocks || []) {
-    if (seen.has(block.id)) continue;
+    if (seen.has(block.id)) {continue;}
     mergedBlocks.push(block);
     seen.add(block.id);
   }

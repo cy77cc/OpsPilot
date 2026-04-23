@@ -24,7 +24,7 @@ const ClusterWorkloadsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const loadClusterAndNamespaces = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const [clusterRes, nsRes] = await Promise.all([
         Api.cluster.getClusterDetail(clusterId),
@@ -42,7 +42,7 @@ const ClusterWorkloadsPage: React.FC = () => {
   }, [clusterId]);
 
   const loadWorkloads = useCallback(async (ns: string) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const [depRes, stsRes, podRes] = await Promise.all([
@@ -68,7 +68,7 @@ const ClusterWorkloadsPage: React.FC = () => {
   }, [loadClusterAndNamespaces]);
 
   useEffect(() => {
-    if (!namespace) return;
+    if (!namespace) {return;}
     loadWorkloads(namespace);
   }, [namespace, loadWorkloads]);
 

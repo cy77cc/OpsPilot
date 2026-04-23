@@ -37,7 +37,7 @@ const JobListPage: React.FC = () => {
 
   const handleToggleEnable = async (id: string, enabled: boolean) => {
     const target = jobs.find((job) => job.id === id);
-    if (!target) return;
+    if (!target) {return;}
     await Api.tasks.updateTask(id, { status: enabled ? 'pending' : 'stopped' });
     setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, status: enabled ? 'pending' : 'stopped' } : job)));
   };
@@ -48,7 +48,7 @@ const JobListPage: React.FC = () => {
   };
 
   const handleDeleteOk = async () => {
-    if (!jobToDelete) return;
+    if (!jobToDelete) {return;}
     setConfirmLoading(true);
     try {
       await Api.tasks.deleteTask(jobToDelete);

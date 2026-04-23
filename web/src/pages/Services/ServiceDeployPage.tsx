@@ -19,7 +19,7 @@ const ServiceDeployPage: React.FC = () => {
   }, [form]);
 
   const preview = async () => {
-    if (!id) return;
+    if (!id) {return;}
     setPreviewing(true);
     try {
       const values = form.getFieldsValue(true);
@@ -37,7 +37,7 @@ const ServiceDeployPage: React.FC = () => {
   };
 
   const deploy = async () => {
-    if (!id) return;
+    if (!id) {return;}
     setDeploying(true);
     try {
       const values = form.getFieldsValue(true);

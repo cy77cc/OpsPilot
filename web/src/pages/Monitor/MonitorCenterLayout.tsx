@@ -49,12 +49,12 @@ const MonitorCenterLayout: React.FC = () => {
   ];
 
   const getSelectedKey = () => {
-    if (location.pathname.startsWith('/monitor/dashboard')) return '/monitor/dashboard';
-    if (location.pathname.startsWith('/monitor/alerts')) return '/monitor/alerts';
-    if (location.pathname.startsWith('/monitor/rules')) return '/monitor/rules';
-    if (location.pathname.startsWith('/monitor/channels')) return '/monitor/channels';
-    if (location.pathname.startsWith('/monitor/routing')) return '/monitor/routing';
-    if (location.pathname.startsWith('/monitor/deliveries')) return '/monitor/deliveries';
+    if (location.pathname.startsWith('/monitor/dashboard')) {return '/monitor/dashboard';}
+    if (location.pathname.startsWith('/monitor/alerts')) {return '/monitor/alerts';}
+    if (location.pathname.startsWith('/monitor/rules')) {return '/monitor/rules';}
+    if (location.pathname.startsWith('/monitor/channels')) {return '/monitor/channels';}
+    if (location.pathname.startsWith('/monitor/routing')) {return '/monitor/routing';}
+    if (location.pathname.startsWith('/monitor/deliveries')) {return '/monitor/deliveries';}
     return location.pathname;
   };
 

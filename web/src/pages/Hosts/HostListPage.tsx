@@ -220,7 +220,7 @@ const HostListPage: React.FC = () => {
         </Space>
       ),
       onOk: async () => {
-        if (!command.trim()) throw new Error('命令不能为空');
+        if (!command.trim()) {throw new Error('命令不能为空');}
         const res = await Api.hosts.batchExec(selected, command.trim());
         message.success(`批量执行完成: ${Object.keys(res.data || {}).length} 台`);
       },
@@ -454,9 +454,9 @@ const HostListPage: React.FC = () => {
                 { key: 'virt', label: 'KVM 虚拟化创建' },
               ],
               onClick: ({ key }) => {
-                if (key === 'onboarding') navigate('/hosts/onboarding');
-                if (key === 'cloud') navigate('/hosts/cloud-import');
-                if (key === 'virt') navigate('/hosts/virtualization');
+                if (key === 'onboarding') {navigate('/hosts/onboarding');}
+                if (key === 'cloud') {navigate('/hosts/cloud-import');}
+                if (key === 'virt') {navigate('/hosts/virtualization');}
               },
             }}
           >
@@ -648,9 +648,9 @@ const HostListPage: React.FC = () => {
                     { key: 'virt', label: 'KVM 虚拟化' },
                   ],
                   onClick: ({ key }) => {
-                    if (key === 'onboarding') navigate('/hosts/onboarding');
-                    if (key === 'cloud') navigate('/hosts/cloud-import');
-                    if (key === 'virt') navigate('/hosts/virtualization');
+                    if (key === 'onboarding') {navigate('/hosts/onboarding');}
+                    if (key === 'cloud') {navigate('/hosts/cloud-import');}
+                    if (key === 'virt') {navigate('/hosts/virtualization');}
                   },
                 }}
               >

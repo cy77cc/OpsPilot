@@ -121,7 +121,7 @@ const ServiceDetailPage: React.FC = () => {
   const env = Form.useWatch('env', varForm) || 'staging';
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id) {return;}
     setLoading(true);
     try {
       const [detail, eventRes, revRes, relRes, schemaRes] = await Promise.all([
@@ -160,7 +160,7 @@ const ServiceDetailPage: React.FC = () => {
   }, [id, varForm, editForm]);
 
   const loadVarSet = useCallback(async () => {
-    if (!id) return;
+    if (!id) {return;}
     try {
       const resp = await Api.services.getVariableValues(id, env);
       setVarSet(resp.data);
@@ -177,7 +177,7 @@ const ServiceDetailPage: React.FC = () => {
   }, [load]);
 
   useEffect(() => {
-    if (!service || !id) return;
+    if (!service || !id) {return;}
     void loadVarSet();
   }, [service, id, loadVarSet]);
 
@@ -200,7 +200,7 @@ const ServiceDetailPage: React.FC = () => {
   const statusConfig = service ? getStatusConfig(service.status) : null;
 
   const saveVarValues = async () => {
-    if (!id) return;
+    if (!id) {return;}
     const values = await varForm.validateFields();
     const envVal = values.env;
     const vars: Record<string, string> = {};
@@ -219,7 +219,7 @@ const ServiceDetailPage: React.FC = () => {
   };
 
   const deploy = async () => {
-    if (!id) return;
+    if (!id) {return;}
     setDeploying(true);
     try {
       const values = varForm.getFieldsValue(true);
@@ -250,7 +250,7 @@ const ServiceDetailPage: React.FC = () => {
   };
 
   const createRevision = async () => {
-    if (!id || !service) return;
+    if (!id || !service) {return;}
     await Api.services.createRevision(id, {
       config_mode: service.configMode,
       render_target: (service.runtimeType === 'helm' ? 'k8s' : service.runtimeType) as 'k8s' | 'compose',
@@ -263,7 +263,7 @@ const ServiceDetailPage: React.FC = () => {
   };
 
   const startEditing = () => {
-    if (!service) return;
+    if (!service) {return;}
     editForm.setFieldsValue({
       name: service.name,
       env: service.env,
@@ -303,7 +303,7 @@ const ServiceDetailPage: React.FC = () => {
   };
 
   const saveServiceEdit = async () => {
-    if (!id || !service) return;
+    if (!id || !service) {return;}
     const values = await editForm.validateFields();
 
     let standardConfig: StandardServiceConfig | undefined;

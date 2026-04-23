@@ -74,7 +74,7 @@ const UsersPage: React.FC = () => {
   }, [editingUser, editForm]);
 
   const create = async () => {
-    if (!canWrite) return;
+    if (!canWrite) {return;}
     const values = await form.validateFields();
     const startedAt = performance.now();
     await Api.rbac.createUser({
@@ -98,7 +98,7 @@ const UsersPage: React.FC = () => {
   };
 
   const submitEdit = async () => {
-    if (!canWrite || !editingUser) return;
+    if (!canWrite || !editingUser) {return;}
     try {
       const values = await editForm.validateFields();
       const startedAt = performance.now();
@@ -125,7 +125,7 @@ const UsersPage: React.FC = () => {
 
   const filtered = list.filter((item) => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
+    if (!q) {return true;}
     return [item.username, item.name, item.email].some((value) => String(value || '').toLowerCase().includes(q));
   });
 

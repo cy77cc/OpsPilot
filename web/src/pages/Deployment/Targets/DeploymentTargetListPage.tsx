@@ -27,8 +27,8 @@ const DeploymentTargetListPage: React.FC = () => {
     setLoading(true);
     try {
       const params: any = {};
-      if (envFilter !== 'all') params.environment = envFilter;
-      if (runtimeFilter !== 'all') params.runtime_type = runtimeFilter;
+      if (envFilter !== 'all') {params.environment = envFilter;}
+      if (runtimeFilter !== 'all') {params.runtime_type = runtimeFilter;}
       const res = await Api.deployment.listTargets(params);
       setTargets(res.data.list || []);
     } catch (err) {

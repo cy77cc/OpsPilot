@@ -67,7 +67,7 @@ export function useFormAssist(
 
   const submit = useCallback(
     async (userPrompt: string) => {
-      if (!config) return;
+      if (!config) {return;}
 
       setPrompt(userPrompt);
       setPreview('');

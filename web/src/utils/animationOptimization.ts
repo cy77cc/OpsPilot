@@ -53,7 +53,7 @@ export const rafThrottle = (callback: () => void) => {
   let rafId: number | null = null;
 
   return () => {
-    if (rafId !== null) return;
+    if (rafId !== null) {return;}
 
     rafId = requestAnimationFrame(() => {
       callback();
@@ -113,7 +113,7 @@ export class AnimationBatcher {
   }
 
   private scheduleFlush() {
-    if (this.rafId !== null) return;
+    if (this.rafId !== null) {return;}
 
     this.rafId = requestAnimationFrame(() => {
       this.flush();
@@ -160,7 +160,7 @@ export const useIntersectionAnimation = (
   callback: () => void,
   options?: IntersectionObserverInit
 ) => {
-  if (!element) return;
+  if (!element) {return;}
 
   const observer = new IntersectionObserver(
     (entries) => {

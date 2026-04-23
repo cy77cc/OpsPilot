@@ -26,8 +26,17 @@ export const RecentAlerts: React.FC = () => {
   ];
 
   return (
-    <Card title="最近告警" className="h-full shadow-sm border-none" extra={<a href="#" className="text-blue-500 text-sm">查看全部告警 &gt;</a>}>
-      <Table columns={columns} dataSource={data} pagination={false} size="small" />
+    <Card 
+      title="最近告警" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <Table columns={columns} dataSource={data} pagination={false} size="small" />
+      </div>
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        查看全部告警 >
+      </div>
     </Card>
   );
 };

@@ -49,14 +49,14 @@ const formatRelativeTime = (time: string): string => {
 };
 
 const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 1000) {return `${ms}ms`;}
+  if (ms < 60000) {return `${(ms / 1000).toFixed(1)}s`;}
   return `${(ms / 60000).toFixed(1)}m`;
 };
 
 const formatTokens = (count: number): string => {
-  if (count < 1000) return count.toLocaleString();
-  if (count < 1000000) return `${(count / 1000).toFixed(1)}K`;
+  if (count < 1000) {return count.toLocaleString();}
+  if (count < 1000000) {return `${(count / 1000).toFixed(1)}K`;}
   return `${(count / 1000000).toFixed(1)}M`;
 };
 

@@ -206,7 +206,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     document.body.style.cursor = 'col-resize';
 
     const handleMouseMove = (ev: MouseEvent) => {
-      if (!resizeStateRef.current) return;
+      if (!resizeStateRef.current) {return;}
       const delta = resizeStateRef.current.startX - ev.clientX;
       const newWidth = Math.max(320, Math.min(window.innerWidth * 0.9, resizeStateRef.current.startWidth + delta));
       setDrawerWidth(newWidth);

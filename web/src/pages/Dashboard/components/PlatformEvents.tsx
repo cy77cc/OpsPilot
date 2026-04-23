@@ -10,17 +10,26 @@ export const PlatformEvents: React.FC = () => {
   ];
 
   return (
-    <Card title="平台动态" className="h-full shadow-sm border-none" extra={<a href="#" className="text-blue-500 text-sm">查看全部动态 &gt;</a>}>
-      <div className="flex flex-col gap-6">
-        {events.map((evt, idx) => (
-          <div key={idx} className="flex justify-between items-center text-sm">
-            <div className="flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full ${evt.dotColor}`}></div>
-              <span className="text-gray-700">{evt.text}</span>
+    <Card 
+      title="平台动态" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="flex flex-col gap-6">
+          {events.map((evt, idx) => (
+            <div key={idx} className="flex justify-between items-center text-sm">
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full ${evt.dotColor}`}></div>
+                <span className="text-gray-700">{evt.text}</span>
+              </div>
+              <span className="text-gray-400 text-xs">{evt.time}</span>
             </div>
-            <span className="text-gray-400 text-xs">{evt.time}</span>
-          </div>
-        ))}
+          ))}
+        </div>
+      </div>
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        查看全部动态 >
       </div>
     </Card>
   );

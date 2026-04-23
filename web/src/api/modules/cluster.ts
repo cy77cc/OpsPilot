@@ -764,8 +764,8 @@ const coerceBoolean = (value: unknown): boolean | undefined => {
   }
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
-    if (normalized === 'true') return true;
-    if (normalized === 'false') return false;
+    if (normalized === 'true') {return true;}
+    if (normalized === 'false') {return false;}
   }
   return undefined;
 };
@@ -1139,9 +1139,9 @@ const normalizeOperationCode = (state: ClusterOperationState, raw: Record<string
             ? raw.status_code.trim()
             : '';
 
-  if (state === 'completed') return SUCCESS_CODE;
-  if (state === 'approval_required') return APPROVAL_REQUIRED_CODE;
-  if (state === 'rejected') return APPROVAL_REJECTED_CODE;
+  if (state === 'completed') {return SUCCESS_CODE;}
+  if (state === 'approval_required') {return APPROVAL_REQUIRED_CODE;}
+  if (state === 'rejected') {return APPROVAL_REJECTED_CODE;}
   if (state === 'failed') {
     if (code && code !== SUCCESS_CODE && code !== APPROVAL_REQUIRED_CODE && code !== APPROVAL_REJECTED_CODE) {
       return code;
@@ -1599,7 +1599,7 @@ export const clusterApi = {
   // Advanced operations
   getEvents(id: number, namespace?: string): Promise<ApiResponse<PaginatedResponse<EventInfo>>> {
     const params: Record<string, string> = {};
-    if (namespace) params.namespace = namespace;
+    if (namespace) {params.namespace = namespace;}
     return apiService.get(`/clusters/${id}/events`, { params });
   },
 

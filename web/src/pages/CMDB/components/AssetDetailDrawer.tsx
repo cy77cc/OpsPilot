@@ -45,7 +45,7 @@ const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({ ciId, visible, on
   }, [auditRes, auditLoading, assetId, asset?.name]);
 
   const parsedAttrs = useMemo(() => {
-    if (!asset?.attrsJson) return {};
+    if (!asset?.attrsJson) {return {};}
     try {
       return JSON.parse(asset.attrsJson);
     } catch (e) {

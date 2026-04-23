@@ -24,7 +24,7 @@ const I18nContext = createContext<I18nContextValue>({
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLangState] = useState<Lang>(() => {
     const saved = localStorage.getItem('lang');
-    if (saved === 'en-US' || saved === 'zh-CN') return saved;
+    if (saved === 'en-US' || saved === 'zh-CN') {return saved;}
     return 'zh-CN';
   });
   const setLang = (next: Lang) => {

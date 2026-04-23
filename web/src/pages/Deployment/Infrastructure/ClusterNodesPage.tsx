@@ -16,7 +16,7 @@ const ClusterNodesPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     setLoading(true);
     try {
       const [clusterRes, nodeRes] = await Promise.all([

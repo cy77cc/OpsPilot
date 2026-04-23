@@ -42,7 +42,7 @@ const JobCalendarPage: React.FC = () => {
         const job = jobsList[idx];
         (response.data.list || []).forEach((execution: TaskExecution) => {
           const time = execution.startTime || execution.createdAt;
-          if (!time) return;
+          if (!time) {return;}
           allSchedules.push({
             id: `${job.id}-${execution.id}`,
             jobId: job.id,
@@ -69,7 +69,7 @@ const JobCalendarPage: React.FC = () => {
   }, []);
 
   const filteredSchedules = useMemo(() => {
-    if (!dateRange[0] || !dateRange[1]) return schedules;
+    if (!dateRange[0] || !dateRange[1]) {return schedules;}
     const startDate = dateRange[0].startOf('day');
     const endDate = dateRange[1].endOf('day');
     return schedules.filter((schedule) => {

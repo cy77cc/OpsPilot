@@ -26,7 +26,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
   }, [targetId, jobId]);
 
   const loadTarget = async () => {
-    if (!targetId) return;
+    if (!targetId) {return;}
     try {
       const res = await Api.deployment.getTargetDetail(Number(targetId));
       setTarget(res.data);
@@ -36,7 +36,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
   };
 
   const loadBootstrapJob = async () => {
-    if (!jobId) return;
+    if (!jobId) {return;}
     try {
       const res = await Api.deployment.getEnvironmentBootstrapJob(jobId);
       setBootstrapJob(res.data);
@@ -60,7 +60,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
   };
 
   const handleStart = async () => {
-    if (!targetId) return;
+    if (!targetId) {return;}
     try {
       await form.validateFields();
       const values = form.getFieldsValue();

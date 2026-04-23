@@ -82,7 +82,7 @@ const HostDetailPage: React.FC = () => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!id) return;
+    if (!id) {return;}
     setLoading(true);
     try {
       const [hostRes, metricRes, auditRes] = await Promise.all([
@@ -106,12 +106,12 @@ const HostDetailPage: React.FC = () => {
   }, [id, load]);
 
   useEffect(() => {
-    if (!editOpen) return;
+    if (!editOpen) {return;}
     void loadSSHKeys();
   }, [editOpen, loadSSHKeys]);
 
   const latest = useMemo(() => {
-    if (metrics.length === 0) return { cpu: 0, memory: 0, disk: 0, network: 0 };
+    if (metrics.length === 0) {return { cpu: 0, memory: 0, disk: 0, network: 0 };}
     return metrics[0];
   }, [metrics]);
 
@@ -132,7 +132,7 @@ const HostDetailPage: React.FC = () => {
   };
 
   const runHealthCheck = async () => {
-    if (!id) return;
+    if (!id) {return;}
     const operation = async () => {
       const res = await Api.hosts.runHealthCheck(id, true);
       const data: Partial<HostHealthSnapshot> = res.data || {};
@@ -163,7 +163,7 @@ const HostDetailPage: React.FC = () => {
   };
 
   const openEditModal = () => {
-    if (!host) return;
+    if (!host) {return;}
     editForm.setFieldsValue({
       name: host.name,
       status: host.status || 'offline',
@@ -202,7 +202,7 @@ const HostDetailPage: React.FC = () => {
   };
 
   const saveEdit = async () => {
-    if (!id) return;
+    if (!id) {return;}
     const values = await editForm.validateFields();
     const tags = (values.tags || '').split(',').map((x) => x.trim()).filter(Boolean);
 

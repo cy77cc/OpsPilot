@@ -157,7 +157,7 @@ export function useClusterDetailPageOperations(params: {
   const [nodeTaintForm] = Form.useForm();
 
   const buildOperationLink = useCallback((auditId?: string | number) => {
-    if (!auditId) return '';
+    if (!auditId) {return '';}
     return `/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
   }, [clusterId]);
 
@@ -284,7 +284,7 @@ export function useClusterDetailPageOperations(params: {
   }, [buildOperationLink, loadClusterInfo, loadNodes, openApprovalModal, recordOperationFeedback]);
 
   const submitApprovalToken = useCallback(async () => {
-    if (!pendingApprovalOperation) return;
+    if (!pendingApprovalOperation) {return;}
     try {
       const values = await approvalForm.validateFields();
       const token = String(values.approval_token || '').trim();
@@ -520,7 +520,7 @@ export function useClusterDetailPageOperations(params: {
   }, [scaleForm]);
 
   const submitScaleOperation = useCallback(async () => {
-    if (!pendingScaleOperation) return;
+    if (!pendingScaleOperation) {return;}
     try {
       const values = await scaleForm.validateFields();
       const replicas = Number(values.replicas);
@@ -637,7 +637,7 @@ export function useClusterDetailPageOperations(params: {
   }, [ingressForm]);
 
   const submitServiceModal = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const values = await serviceForm.validateFields();
       const payload = buildServicePayload(values);
@@ -674,7 +674,7 @@ export function useClusterDetailPageOperations(params: {
   }, [buildServicePayload, clusterId, executeClusterOperation, pendingServiceModal, refreshSelectedNamespaceResources, selectedNamespace, serviceForm]);
 
   const submitIngressModal = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const values = await ingressForm.validateFields();
       const payload = buildIngressPayload(values);
@@ -711,7 +711,7 @@ export function useClusterDetailPageOperations(params: {
   }, [buildIngressPayload, clusterId, executeClusterOperation, ingressForm, pendingIngressModal, refreshSelectedNamespaceResources, selectedNamespace]);
 
   const handleServiceDelete = useCallback((service: ServiceInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeClusterOperation(
       'service.delete',
       `service:${service.name}:delete`,
@@ -723,7 +723,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
   const handleIngressDelete = useCallback((ingress: IngressInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeClusterOperation(
       'ingress.delete',
       `ingress:${ingress.name}:delete`,
@@ -735,7 +735,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
   const handleTestConnection = async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       const res = await Api.cluster.testCluster(clusterId);
       if (res.data.connected) {
@@ -754,7 +754,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, navigate]);
 
   const handleEdit = async (values: { name: string; description: string }) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       await Api.cluster.updateCluster(clusterId, values);
       message.success('更新成功');
@@ -766,7 +766,7 @@ export function useClusterDetailPageOperations(params: {
   };
 
   const handleDelete = async () => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     try {
       await Api.cluster.deleteCluster(clusterId);
       message.success('集群已删除');
@@ -777,7 +777,7 @@ export function useClusterDetailPageOperations(params: {
   };
 
   const handleAddNodes = async (values: { hostIds: string; role: string }) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     const hostIds = values.hostIds.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
     if (hostIds.length === 0) {
       message.error('请输入有效的 Host ID');
@@ -795,21 +795,21 @@ export function useClusterDetailPageOperations(params: {
   };
 
   const handleNodeCordon = useCallback((node: ClusterNode) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return performNodeOperation('cordon', node, (approvalToken) => (
       Api.cluster.cordonNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
     ));
   }, [clusterId, performNodeOperation]);
 
   const handleNodeUncordon = useCallback((node: ClusterNode) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return performNodeOperation('uncordon', node, (approvalToken) => (
       Api.cluster.uncordonNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
     ));
   }, [clusterId, performNodeOperation]);
 
   const handleNodeDrain = useCallback((node: ClusterNode) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return performNodeOperation('drain', node, (approvalToken) => (
       Api.cluster.drainNode(clusterId, node.name, {
         approval_token: approvalToken,
@@ -823,14 +823,14 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, performNodeOperation]);
 
   const handleNodeRemove = useCallback((node: ClusterNode) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return performNodeOperation('remove', node, (approvalToken) => (
       Api.cluster.removeClusterNode(clusterId, node.name, { approval_token: approvalToken }).then((resp) => resp.data)
     ));
   }, [clusterId, performNodeOperation]);
 
   const handleRenewCertificates = useCallback(() => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeClusterOperation(
       'renew-certificates',
       'cluster:certificates',
@@ -841,7 +841,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeClusterOperation]);
 
   const handleClusterUpgrade = useCallback(() => {
-    if (!clusterId || !upgradePlan) return;
+    if (!clusterId || !upgradePlan) {return;}
     const currentParts = upgradePlan.current_version.replace('v', '').split('.');
     const nextMinor = parseInt(currentParts[1], 10) + 1;
     const targetVersion = `${currentParts[0]}.${nextMinor}.0`;
@@ -859,7 +859,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeClusterOperation, upgradePlan]);
 
   const handleDeploymentRestart = useCallback((deployment: DeploymentInfo) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return executeWorkloadOperation(
       'deployment.restart',
       `deployment:${deployment.name}`,
@@ -869,7 +869,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handleDeploymentScale = useCallback((deployment: DeploymentInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     openScaleOperation(
       'Deployment 扩缩容',
       'deployment.scale',
@@ -883,7 +883,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, openScaleOperation, selectedNamespace]);
 
   const handleDeploymentDelete = useCallback((deployment: DeploymentInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeWorkloadOperation(
       'deployment.delete',
       `deployment:${deployment.name}`,
@@ -893,7 +893,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handleStatefulSetRestart = useCallback((statefulset: StatefulSetInfo) => {
-    if (!clusterId) return Promise.resolve();
+    if (!clusterId) {return Promise.resolve();}
     return executeWorkloadOperation(
       'statefulset.restart',
       `statefulset:${statefulset.name}`,
@@ -903,7 +903,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handleStatefulSetScale = useCallback((statefulset: StatefulSetInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     openScaleOperation(
       'StatefulSet 扩缩容',
       'statefulset.scale',
@@ -917,7 +917,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, openScaleOperation, selectedNamespace]);
 
   const handleStatefulSetDelete = useCallback((statefulset: StatefulSetInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeWorkloadOperation(
       'statefulset.delete',
       `statefulset:${statefulset.name}`,
@@ -927,7 +927,7 @@ export function useClusterDetailPageOperations(params: {
   }, [clusterId, executeWorkloadOperation, selectedNamespace]);
 
   const handlePodDelete = useCallback((pod: PodInfo) => {
-    if (!clusterId) return;
+    if (!clusterId) {return;}
     return executeWorkloadOperation(
       'pod.delete',
       `pod:${pod.name}`,
@@ -944,15 +944,15 @@ export function useClusterDetailPageOperations(params: {
   };
 
   const getNodeStatusBadge = (status: string) => {
-    if (status === 'ready') return <Badge status="success" text="Ready" />;
-    if (status === 'notready') return <Badge status="error" text="NotReady" />;
+    if (status === 'ready') {return <Badge status="success" text="Ready" />;}
+    if (status === 'notready') {return <Badge status="error" text="NotReady" />;}
     return <Badge status="warning" text="Unknown" />;
   };
 
   const runNodeMenuAction = useCallback((record: ClusterNode, key: string) => {
-    if (key === 'cordon') return void handleNodeCordon(record);
-    if (key === 'uncordon') return void handleNodeUncordon(record);
-    if (key === 'drain') return void handleNodeDrain(record);
+    if (key === 'cordon') {return void handleNodeCordon(record);}
+    if (key === 'uncordon') {return void handleNodeUncordon(record);}
+    if (key === 'drain') {return void handleNodeDrain(record);}
     if (key === 'remove') {
       Modal.confirm({
         title: '移除节点',

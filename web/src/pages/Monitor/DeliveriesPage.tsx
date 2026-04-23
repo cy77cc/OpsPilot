@@ -15,10 +15,10 @@ const DeliveriesPage: React.FC = () => {
       try {
         const res = await Api.monitoring.listAlertDeliveries({ page: 1, pageSize: 50 });
         const list = (res?.data as any)?.list || [];
-        if (!mounted) return;
+        if (!mounted) {return;}
         setRows(list);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {setLoading(false);}
       }
     };
     load();

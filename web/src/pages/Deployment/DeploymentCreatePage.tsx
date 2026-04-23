@@ -284,7 +284,7 @@ const DeploymentCreatePage: React.FC = () => {
     try {
       const values = await form.validateFields(['service_id', 'target_id', 'env', 'strategy', 'variables_json']);
 
-      let variables: Record<string, string> = {};
+      const variables: Record<string, string> = {};
       if (values.variables_json) {
         try {
           const parsed = JSON.parse(values.variables_json);
@@ -329,7 +329,7 @@ const DeploymentCreatePage: React.FC = () => {
     try {
       const values = await form.validateFields();
 
-      let variables: Record<string, string> = {};
+      const variables: Record<string, string> = {};
       if (values.variables_json) {
         try {
           const parsed = JSON.parse(values.variables_json);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import G6, { Graph } from '@antv/g6';
+import type { Graph } from '@antv/g6';
+import G6 from '@antv/g6';
 import type { CMDBTopologyData } from '../../../api/modules/cmdb';
 import { transformTopologyData } from '../utils/graph-helper';
 
@@ -20,7 +21,7 @@ const TopologyGraph: React.FC<TopologyGraphProps> = ({
   const graphRef = useRef<Graph | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) {return;}
 
     const width = containerRef.current.scrollWidth;
     const height = containerRef.current.scrollHeight || 500;
@@ -141,8 +142,8 @@ const TopologyGraph: React.FC<TopologyGraphProps> = ({
     graphRef.current = graph;
 
     const handleResize = () => {
-      if (!graph || graph.get('destroyed')) return;
-      if (!containerRef.current) return;
+      if (!graph || graph.get('destroyed')) {return;}
+      if (!containerRef.current) {return;}
       graph.changeSize(containerRef.current.scrollWidth, containerRef.current.scrollHeight || 500);
     };
 

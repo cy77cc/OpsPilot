@@ -11,7 +11,7 @@ const callFocusHandler = (
   handler: React.FocusEventHandler<HTMLElement> | undefined,
   event: React.FocusEvent<HTMLElement>,
 ) => {
-  if (handler) handler(event);
+  if (handler) {handler(event);}
 };
 
 const GuideTooltip: React.FC<{ guide: FieldGuide }> = ({ guide }) => (
@@ -50,12 +50,12 @@ const AIFieldWrapper: React.FC<{
         {React.cloneElement(children, { 
           ...restProps,
           onFocus: (event: React.FocusEvent<HTMLElement>) => {
-            if (restProps.onFocus) restProps.onFocus(event);
-            if (children.props.onFocus) children.props.onFocus(event);
+            if (restProps.onFocus) {restProps.onFocus(event);}
+            if (children.props.onFocus) {children.props.onFocus(event);}
           },
           onBlur: (event: React.FocusEvent<HTMLElement>) => {
-            if (restProps.onBlur) restProps.onBlur(event);
-            if (children.props.onBlur) children.props.onBlur(event);
+            if (restProps.onBlur) {restProps.onBlur(event);}
+            if (children.props.onBlur) {children.props.onBlur(event);}
           },
           style: { ...children.props.style, paddingRight: aiTrigger ? '32px' : children.props.style?.paddingRight, ...restProps.style }
         })}
@@ -85,14 +85,14 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
   
   // Auto-infer guide for common field names if not provided
   const effectiveGuide = React.useMemo(() => {
-    if (guide) return guide;
-    if (!name) return undefined;
+    if (guide) {return guide;}
+    if (!name) {return undefined;}
     
     const nameStr = String(name).toLowerCase();
-    if (nameStr === 'name') return commonFieldGuides.name;
-    if (nameStr === 'description') return commonFieldGuides.description;
-    if (nameStr.includes('schedule') || nameStr.includes('cron')) return commonFieldGuides.cron;
-    if (nameStr.includes('json') || nameStr.includes('policy')) return commonFieldGuides.json;
+    if (nameStr === 'name') {return commonFieldGuides.name;}
+    if (nameStr === 'description') {return commonFieldGuides.description;}
+    if (nameStr.includes('schedule') || nameStr.includes('cron')) {return commonFieldGuides.cron;}
+    if (nameStr.includes('json') || nameStr.includes('policy')) {return commonFieldGuides.json;}
     
     return undefined;
   }, [guide, name]);
@@ -120,7 +120,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
     }
     
     return () => {
-      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+      if (nudgeTimerRef.current) {clearTimeout(nudgeTimerRef.current);}
     };
   }, [isFocused, currentValue, nudgeVisible]);
 
@@ -128,9 +128,9 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
   const effectiveAiAssist = React.useMemo(() => {
     // If global assist is disabled, don't auto-infer or use provided assist
     const globalEnabled = typeof window !== 'undefined' && localStorage.getItem('ai-form-assist-enabled') !== '0';
-    if (!globalEnabled) return undefined;
+    if (!globalEnabled) {return undefined;}
 
-    if (aiAssist) return aiAssist;
+    if (aiAssist) {return aiAssist;}
 
     // Check if child is an AI-supported input type
     const childType = (children as any)?.type?.displayName || (children as any)?.type?.name || (children as any)?.type?.render?.name || '';

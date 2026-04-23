@@ -53,9 +53,9 @@ const BootstrapProgressTracker: React.FC<BootstrapProgressTrackerProps> = ({
 
   const getCurrentStep = () => {
     const runningIndex = phases.findIndex((p) => p.status === 'running');
-    if (runningIndex !== -1) return runningIndex;
+    if (runningIndex !== -1) {return runningIndex;}
     const successIndex = phases.findIndex((p) => p.status === 'success');
-    if (successIndex !== -1) return successIndex + 1;
+    if (successIndex !== -1) {return successIndex + 1;}
     return 0;
   };
 

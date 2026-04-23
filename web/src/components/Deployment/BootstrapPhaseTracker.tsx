@@ -45,7 +45,7 @@ const BootstrapPhaseTracker: React.FC<BootstrapPhaseTrackerProps> = ({ phases, c
 
   const getCurrentStep = () => {
     const runningIndex = phases.findIndex((p) => p.status === 'running');
-    if (runningIndex !== -1) return runningIndex;
+    if (runningIndex !== -1) {return runningIndex;}
     // Find last success index manually
     let lastSuccessIndex = -1;
     for (let i = phases.length - 1; i >= 0; i--) {
@@ -54,7 +54,7 @@ const BootstrapPhaseTracker: React.FC<BootstrapPhaseTrackerProps> = ({ phases, c
         break;
       }
     }
-    if (lastSuccessIndex !== -1) return lastSuccessIndex + 1;
+    if (lastSuccessIndex !== -1) {return lastSuccessIndex + 1;}
     return 0;
   };
 

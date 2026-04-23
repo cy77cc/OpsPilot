@@ -23,9 +23,9 @@ type PolicyReleasePanelProps = {
 };
 
 const getPhaseColor = (phase?: string) => {
-  if (phase === 'applied' || phase === 'rollback_applied') return 'green';
-  if (phase === 'approval_required') return 'orange';
-  if (phase === 'draft') return 'blue';
+  if (phase === 'applied' || phase === 'rollback_applied') {return 'green';}
+  if (phase === 'approval_required') {return 'orange';}
+  if (phase === 'draft') {return 'blue';}
   return 'default';
 };
 

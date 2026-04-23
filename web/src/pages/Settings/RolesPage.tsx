@@ -61,7 +61,7 @@ const RolesPage: React.FC = () => {
   }, [load]);
 
   const create = async () => {
-    if (!canWrite) return;
+    if (!canWrite) {return;}
     const values = await form.validateFields();
     const startedAt = performance.now();
     await Api.rbac.createRole({
@@ -89,7 +89,7 @@ const RolesPage: React.FC = () => {
 
   const filteredRoles = roles.filter((item) => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
+    if (!q) {return true;}
     return [item.name, item.description].some((v) => String(v || '').toLowerCase().includes(q));
   });
 
@@ -145,7 +145,7 @@ const RolesPage: React.FC = () => {
   };
 
   const saveRolePermissions = async () => {
-    if (!active || !canWrite) return;
+    if (!active || !canWrite) {return;}
     try {
       const values = await detailForm.validateFields();
       const startedAt = performance.now();

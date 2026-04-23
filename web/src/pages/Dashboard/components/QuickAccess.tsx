@@ -24,19 +24,25 @@ export const QuickAccess: React.FC = () => {
   ];
 
   return (
-    <Card title="快捷入口" className="h-full shadow-sm border-none">
-      <div className="grid grid-cols-4 gap-4 h-56 content-start">
-        {items.map((item, idx) => (
-          <div key={idx} className="flex flex-col items-center justify-center cursor-pointer group p-2 transition-all">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl mb-2 ${item.bg} ${item.color} shadow-sm group-hover:shadow-md transition-all`}>
-              {item.icon}
+    <Card 
+      title="快捷入口" 
+      className="h-full shadow-sm border-none flex flex-col"
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+    >
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="grid grid-cols-4 gap-4 content-start">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex flex-col items-center justify-center cursor-pointer group p-2 transition-all">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl mb-2 ${item.bg} ${item.color} shadow-sm group-hover:shadow-md transition-all`}>
+                {item.icon}
+              </div>
+              <span className="text-xs text-gray-500 group-hover:text-blue-600 transition-colors whitespace-nowrap">{item.name}</span>
             </div>
-            <span className="text-xs text-gray-500 group-hover:text-blue-600 transition-colors whitespace-nowrap">{item.name}</span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-      <div className="text-right mt-6">
-         <a href="#" className="text-blue-500 text-sm">全部应用 &gt;</a>
+      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+        全部应用 >
       </div>
     </Card>
   );

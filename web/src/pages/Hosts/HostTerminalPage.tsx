@@ -56,8 +56,8 @@ const HostTerminalPage: React.FC = () => {
   } = useHostKeyTrust(id);
 
   const fileColumnMode = React.useMemo<'full' | 'compact' | 'minimal'>(() => {
-    if (filePaneWidth > 0 && filePaneWidth < 420) return 'minimal';
-    if (filePaneWidth > 0 && filePaneWidth < 560) return 'compact';
+    if (filePaneWidth > 0 && filePaneWidth < 420) {return 'minimal';}
+    if (filePaneWidth > 0 && filePaneWidth < 560) {return 'compact';}
     return 'full';
   }, [filePaneWidth]);
   const showMTime = fileColumnMode !== 'minimal';
@@ -69,7 +69,7 @@ const HostTerminalPage: React.FC = () => {
       : 'minmax(140px, 1fr) 88px';
 
   const setupTerminal = React.useCallback(() => {
-    if (!termWrapRef.current || xtermRef.current) return false;
+    if (!termWrapRef.current || xtermRef.current) {return false;}
     if (termWrapRef.current.clientWidth === 0 || termWrapRef.current.clientHeight === 0) {
       return false;
     }
@@ -105,9 +105,9 @@ const HostTerminalPage: React.FC = () => {
     const term = xtermRef.current;
     const fit = fitRef.current;
     const wrap = termWrapRef.current;
-    if (!term || !fit || !wrap || !wrap.isConnected) return;
+    if (!term || !fit || !wrap || !wrap.isConnected) {return;}
     // Skip fit when container is detached/collapsed to avoid xterm internal dimension errors.
-    if (wrap.clientWidth === 0 || wrap.clientHeight === 0) return;
+    if (wrap.clientWidth === 0 || wrap.clientHeight === 0) {return;}
     try {
       fit.fit();
     } catch {
@@ -130,20 +130,20 @@ const HostTerminalPage: React.FC = () => {
     }
     const buffered = inputBufferRef.current;
     inputBufferRef.current = '';
-    if (!buffered) return;
+    if (!buffered) {return;}
     const target = ws ?? wsRef.current;
-    if (!target || target.readyState !== WebSocket.OPEN) return;
+    if (!target || target.readyState !== WebSocket.OPEN) {return;}
     target.send(JSON.stringify({ type: 'input', input: buffered }));
   }, []);
 
   const queueTerminalInput = React.useCallback((ws: WebSocket, data: string) => {
-    if (!data) return;
+    if (!data) {return;}
     inputBufferRef.current += data;
     if (data.includes('\r') || data.includes('\u0003') || data.includes('\u0004')) {
       flushPendingTerminalInput(ws);
       return;
     }
-    if (inputFlushTimerRef.current) return;
+    if (inputFlushTimerRef.current) {return;}
     inputFlushTimerRef.current = setTimeout(() => {
       flushPendingTerminalInput(ws);
     }, TERMINAL_INPUT_BATCH_MS);
@@ -153,7 +153,7 @@ const HostTerminalPage: React.FC = () => {
     let cancelled = false;
     unmountedRef.current = false;
     const tryInit = () => {
-      if (cancelled) return;
+      if (cancelled) {return;}
       if (!setupTerminal()) {
         terminalInitTimerRef.current = setTimeout(tryInit, 50);
       } else {
@@ -190,7 +190,7 @@ const HostTerminalPage: React.FC = () => {
 
   React.useEffect(() => {
     const pane = filePaneRef.current;
-    if (!pane) return;
+    if (!pane) {return;}
     const update = () => setFilePaneWidth(pane.clientWidth);
     update();
     if (typeof ResizeObserver === 'undefined') {
@@ -202,7 +202,7 @@ const HostTerminalPage: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (status !== 'connected' || typeof window === 'undefined') return;
+    if (status !== 'connected' || typeof window === 'undefined') {return;}
     const raf = window.requestAnimationFrame(() => safeFit());
     return () => window.cancelAnimationFrame(raf);
   }, [status, filePaneWidth, safeFit]);
@@ -216,19 +216,19 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const refreshFiles = React.useCallback(async (dirPath: string) => {
-    if (!id || unmountedRef.current) return;
+    if (!id || unmountedRef.current) {return;}
     setFilesLoading(true);
     try {
       retryOperationRef.current = async () => {
         await refreshFiles(dirPath);
       };
       const res = await runWithTrustRetry(() => Api.hosts.listFiles(id, dirPath));
-      if (unmountedRef.current) return;
+      if (unmountedRef.current) {return;}
       setFiles(res.data.list || []);
       setCwd(res.data.path || dirPath);
       setPathInput(res.data.path || dirPath);
     } catch (err) {
-      if (unmountedRef.current) return;
+      if (unmountedRef.current) {return;}
       if (!parseHostKeyTrustError(err)) {
         message.error(err instanceof Error ? err.message : '加载文件列表失败');
       }
@@ -271,7 +271,7 @@ const HostTerminalPage: React.FC = () => {
           Api.hosts.createTerminalSession(id),
         ]));
 
-        if (cancelled || unmountedRef.current) return;
+        if (cancelled || unmountedRef.current) {return;}
 
         setHost(hostResp.data);
         setSessionID(sessResp.data.session_id);
@@ -279,11 +279,11 @@ const HostTerminalPage: React.FC = () => {
         const ws = new WebSocket(wsURLFromPath(sessResp.data.ws_path));
         wsRef.current = ws;
         ws.onopen = () => {
-          if (cancelled || unmountedRef.current) return;
+          if (cancelled || unmountedRef.current) {return;}
           setStatus('connected');
           safeFitRef.current();
           const term = xtermRef.current;
-          if (!term) return;
+          if (!term) {return;}
           term.focus();
           term.writeln(`\x1b[32mConnected to ${hostResp.data.name} (${hostResp.data.ip})\x1b[0m`);
           inputListenerRef.current?.dispose();
@@ -296,19 +296,19 @@ const HostTerminalPage: React.FC = () => {
           if (fit) {
             resizeObserverRef.current?.disconnect();
             const observer = new ResizeObserver(() => {
-              if (xtermRef.current !== term) return;
+              if (xtermRef.current !== term) {return;}
               safeFitRef.current();
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
               }
             });
             resizeObserverRef.current = observer;
-            if (termWrapRef.current) observer.observe(termWrapRef.current);
+            if (termWrapRef.current) {observer.observe(termWrapRef.current);}
           }
         };
         ws.onmessage = (event) => {
           const term = xtermRef.current;
-          if (!term) return;
+          if (!term) {return;}
           try {
             const msg = JSON.parse(String(event.data));
             if (msg.type === 'output' && msg.payload?.data) {
@@ -319,12 +319,12 @@ const HostTerminalPage: React.FC = () => {
           }
         };
         ws.onerror = () => {
-          if (cancelled || unmountedRef.current) return;
+          if (cancelled || unmountedRef.current) {return;}
           setStatus('error');
           xtermRef.current?.writeln('\r\n\x1b[31mTerminal websocket error\x1b[0m');
         };
         ws.onclose = () => {
-          if (cancelled || unmountedRef.current) return;
+          if (cancelled || unmountedRef.current) {return;}
           setStatus('closed');
           resizeObserverRef.current?.disconnect();
           resizeObserverRef.current = null;
@@ -336,7 +336,7 @@ const HostTerminalPage: React.FC = () => {
         };
         await refreshFilesRef.current('.');
       } catch (err) {
-        if (cancelled || unmountedRef.current) return;
+        if (cancelled || unmountedRef.current) {return;}
         if (parseHostKeyTrustError(err)) {
           connectingRef.current = false;
           return;
@@ -363,7 +363,7 @@ const HostTerminalPage: React.FC = () => {
   const connect = React.useCallback(async () => {
     // Manual reconnect - reset the flag first
     connectingRef.current = false;
-    if (!id || unmountedRef.current) return;
+    if (!id || unmountedRef.current) {return;}
 
     connectingRef.current = true;
     setStatus('connecting');
@@ -375,18 +375,18 @@ const HostTerminalPage: React.FC = () => {
         Api.hosts.getHostDetail(id),
         Api.hosts.createTerminalSession(id),
       ]));
-      if (unmountedRef.current) return;
+      if (unmountedRef.current) {return;}
       setHost(hostResp.data);
       setSessionID(sessResp.data.session_id);
 
       const ws = new WebSocket(wsURLFromPath(sessResp.data.ws_path));
       wsRef.current = ws;
       ws.onopen = () => {
-        if (unmountedRef.current) return;
+        if (unmountedRef.current) {return;}
         setStatus('connected');
         safeFitRef.current();
         const term = xtermRef.current;
-        if (!term) return;
+        if (!term) {return;}
         term.focus();
         term.writeln(`\x1b[32mConnected to ${hostResp.data.name} (${hostResp.data.ip})\x1b[0m`);
         inputListenerRef.current?.dispose();
@@ -399,19 +399,19 @@ const HostTerminalPage: React.FC = () => {
         if (fit) {
           resizeObserverRef.current?.disconnect();
           const observer = new ResizeObserver(() => {
-            if (xtermRef.current !== term) return;
+            if (xtermRef.current !== term) {return;}
             safeFitRef.current();
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
             }
           });
           resizeObserverRef.current = observer;
-          if (termWrapRef.current) observer.observe(termWrapRef.current);
+          if (termWrapRef.current) {observer.observe(termWrapRef.current);}
         }
       };
       ws.onmessage = (event) => {
         const term = xtermRef.current;
-        if (!term) return;
+        if (!term) {return;}
         try {
           const msg = JSON.parse(String(event.data));
           if (msg.type === 'output' && msg.payload?.data) {
@@ -422,12 +422,12 @@ const HostTerminalPage: React.FC = () => {
         }
       };
       ws.onerror = () => {
-        if (unmountedRef.current) return;
+        if (unmountedRef.current) {return;}
         setStatus('error');
         xtermRef.current?.writeln('\r\n\x1b[31mTerminal websocket error\x1b[0m');
       };
       ws.onclose = () => {
-        if (unmountedRef.current) return;
+        if (unmountedRef.current) {return;}
         setStatus('closed');
         resizeObserverRef.current?.disconnect();
         resizeObserverRef.current = null;
@@ -439,7 +439,7 @@ const HostTerminalPage: React.FC = () => {
       };
       await refreshFilesRef.current('.');
     } catch (err) {
-      if (unmountedRef.current) return;
+      if (unmountedRef.current) {return;}
       if (parseHostKeyTrustError(err)) {
         connectingRef.current = false;
         return;
@@ -476,7 +476,7 @@ const HostTerminalPage: React.FC = () => {
   }, [flushPendingTerminalInput, id, sessionID]);
 
   const openFile = async (item: HostFileItem) => {
-    if (!id) return;
+    if (!id) {return;}
     if (item.is_dir) {
       await refreshFiles(item.path);
       return;
@@ -499,7 +499,7 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const saveFile = async () => {
-    if (!id || !activeFilePath) return;
+    if (!id || !activeFilePath) {return;}
     setModalSaving(true);
     try {
       const operation = async () => {
@@ -520,7 +520,7 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const handleDeletePath = async (item: HostFileItem) => {
-    if (!id) return;
+    if (!id) {return;}
     try {
       const operation = async () => {
         await Api.hosts.deletePath(id, item.path);
@@ -542,7 +542,7 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const renamePath = (item: HostFileItem) => {
-    if (!id) return;
+    if (!id) {return;}
     let nextName = item.name;
     Modal.confirm({
       title: '重命名',
@@ -566,7 +566,7 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const downloadFile = async (item: HostFileItem) => {
-    if (!id || item.is_dir || typeof document === 'undefined') return;
+    if (!id || item.is_dir || typeof document === 'undefined') {return;}
     try {
       const operation = async () => {
         const blob = await Api.hosts.downloadFile(id, item.path);
@@ -587,16 +587,16 @@ const HostTerminalPage: React.FC = () => {
   };
 
   const toParentPath = React.useCallback((path: string) => {
-    if (path === '.') return '.';
-    if (!path.includes('/')) return '.';
+    if (path === '.') {return '.';}
+    if (!path.includes('/')) {return '.';}
     const parent = path.slice(0, path.lastIndexOf('/'));
     return parent || '.';
   }, []);
 
   const formatLsTime = React.useCallback((value?: string) => {
-    if (!value) return '-';
+    if (!value) {return '-';}
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
+    if (Number.isNaN(date.getTime())) {return '-';}
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
     const hh = String(date.getHours()).padStart(2, '0');
@@ -847,7 +847,7 @@ const HostTerminalPage: React.FC = () => {
         open={newDirOpen}
         title="新建目录"
         onOk={async () => {
-          if (!newDirName.trim()) return;
+          if (!newDirName.trim()) {return;}
           const operation = async () => {
             await Api.hosts.mkdir(id, `${cwd}/${newDirName.trim()}`.replace('//', '/'));
             setNewDirOpen(false);

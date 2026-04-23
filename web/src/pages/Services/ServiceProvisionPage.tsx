@@ -100,7 +100,7 @@ const ServiceProvisionPage: React.FC = () => {
 
   const refreshPreview = React.useCallback(async () => {
     const values = form.getFieldsValue(true);
-    if (!values.name) return;
+    if (!values.name) {return;}
     try {
       setPreviewing(true);
       const targets: Array<'k8s' | 'compose'> = ['k8s', 'compose'];
