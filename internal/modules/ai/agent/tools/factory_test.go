@@ -51,16 +51,27 @@ func TestBuildToolsForSceneWithMode_ReadOnlySpecialistsExcludeWriteTools(t *test
 
 func TestBuildToolsForSceneWithMode_RecoversFromBuilderPanic(t *testing.T) {
 	originalHostReadonly := buildHostReadonlyTools
+	originalReporter := reportToolBuilderDegraded
+	reported := false
+	reportToolBuilderDegraded = func(builderName string, cause any) {
+		if builderName == "host.readonly" && cause != nil {
+			reported = true
+		}
+	}
 	buildHostReadonlyTools = func(context.Context) []tool.InvokableTool {
 		panic("boom")
 	}
 	t.Cleanup(func() {
 		buildHostReadonlyTools = originalHostReadonly
+		reportToolBuilderDegraded = originalReporter
 	})
 
 	tools := BuildToolsForSceneWithMode(context.Background(), "host", true)
 	if len(tools) != 0 {
 		t.Fatalf("expected host builder panic to degrade to empty tool set, got %d tools", len(tools))
+	}
+	if !reported {
+		t.Fatalf("expected panic degradation to be reported")
 	}
 }
 

@@ -246,7 +246,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                       <span className="text-gray-600">{item.title}</span>
                     ) : (
                       <a
-                        onClick={() => navigate(item.path)}
+                        onClick={() => {
+                          if (item.path) {
+                            navigate(item.path);
+                          }
+                        }}
                         className="text-gray-600 hover:text-primary-600 cursor-pointer"
                       >
                         {item.title}

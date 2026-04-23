@@ -80,8 +80,8 @@ const DeploymentDetailPage: React.FC = () => {
   // Auto-refresh with polling - stop when in terminal state
   usePolling(load, {
     interval: 10000,
-    enabled: release ? !isTerminalState(release.state) : false,
-    shouldStop: () => release ? isTerminalState(release.state) : false,
+    enabled: release ? !isTerminalState(release.state ?? '') : false,
+    shouldStop: () => release ? isTerminalState(release.state ?? '') : false,
   });
 
   // 获取状态配置

@@ -197,11 +197,11 @@ const AIModelSettingsPage: React.FC = () => {
           model: basePayload.model || '',
           base_url: basePayload.base_url || '',
           api_key: basePayload.api_key || '',
-          temperature: basePayload.temperature,
-          thinking: basePayload.thinking,
-          is_default: basePayload.is_default,
-          is_enabled: basePayload.is_enabled,
-          sort_order: basePayload.sort_order,
+          temperature: basePayload.temperature ?? 0.7,
+          thinking: basePayload.thinking ?? false,
+          is_default: basePayload.is_default ?? false,
+          is_enabled: basePayload.is_enabled ?? true,
+          sort_order: basePayload.sort_order ?? 0,
         };
         await Api.ai.createAdminModel(createPayload);
         message.success('模型已创建');

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "src/components/K8s/QuotaEditor.tsx",
+    "src/components/K8s/HPAEditor.tsx",
+    "src/components/K8s/RolloutPanel.tsx",
+    "src/components/K8s/hooks/useQuotaEditorActions.ts",
+    "src/components/K8s/hooks/useHPAEditorActions.ts",
+    "src/components/K8s/hooks/useRolloutActions.ts",
+    "src/pages/Deployment/Infrastructure/hooks/useClusterDetail.ts",
+    "src/pages/Deployment/Infrastructure/hooks/useClusterResources.ts",
+    "src/utils/apiErrorHandler.ts"
+  ]
+}

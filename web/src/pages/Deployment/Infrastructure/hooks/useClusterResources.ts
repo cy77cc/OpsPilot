@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { message } from 'antd';
 import { Api } from '../../../../api';
+import { handleApiError } from '../../../../utils/apiErrorHandler';
 import type {
   ClusterServiceInfo,
   ConfigMapInfo,
@@ -64,17 +65,21 @@ export function useClusterResources(clusterId: number): UseClusterResourcesResul
   const [advancedLoading, setAdvancedLoading] = useState(false);
 
   const loadNamespaces = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const res = await Api.cluster.getNamespaces(clusterId);
       setNamespaces(res.data.list || []);
     } catch (err) {
-      console.error('Failed to load namespaces:', err);
+      handleApiError(err, '加载命名空间失败');
     }
   }, [clusterId]);
 
   const loadResources = useCallback(async (namespace: string) => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     setResourceLoading(true);
     try {
       const [depRes, stsRes, dsRes, podRes, svcRes, ingRes, cmRes, secRes, pvcRes] = await Promise.all([
@@ -105,27 +110,33 @@ export function useClusterResources(clusterId: number): UseClusterResourcesResul
   }, [clusterId]);
 
   const loadPVs = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const res = await Api.cluster.getPVs(clusterId);
       setPvs(res.data.list || []);
     } catch (err) {
-      console.error('Failed to load PVs:', err);
+      handleApiError(err, '加载 PersistentVolumes 失败');
     }
   }, [clusterId]);
 
   const loadClusterServices = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const res = await Api.cluster.getClusterServices(clusterId);
       setClusterServices(res.data.list || []);
     } catch (err) {
-      console.error('Failed to load cluster services:', err);
+      handleApiError(err, '加载集群服务失败');
     }
   }, [clusterId]);
 
   const loadAdvancedResources = useCallback(async (namespace: string) => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     setAdvancedLoading(true);
     try {
       const [hpaRes, quotaRes, limitRes] = await Promise.all([
@@ -137,14 +148,16 @@ export function useClusterResources(clusterId: number): UseClusterResourcesResul
       setResourceQuotas(quotaRes.data.list || []);
       setLimitRanges(limitRes.data.list || []);
     } catch (err) {
-      console.error('Failed to load advanced resources:', err);
+      handleApiError(err, '加载策略资源失败');
     } finally {
       setAdvancedLoading(false);
     }
   }, [clusterId]);
 
   const refreshSelectedNamespaceResources = useCallback(async () => {
-    if (!selectedNamespace) return;
+    if (!selectedNamespace) {
+      return;
+    }
     await loadResources(selectedNamespace);
   }, [loadResources, selectedNamespace]);
 
@@ -155,7 +168,9 @@ export function useClusterResources(clusterId: number): UseClusterResourcesResul
   }, [loadClusterServices, loadNamespaces, loadPVs]);
 
   useEffect(() => {
-    if (!selectedNamespace) return;
+    if (!selectedNamespace) {
+      return;
+    }
     void loadResources(selectedNamespace);
     void loadAdvancedResources(selectedNamespace);
   }, [loadAdvancedResources, loadResources, selectedNamespace]);

@@ -55,7 +55,7 @@ const DeploymentTargetListPage: React.FC = () => {
     return targets.filter((t) => {
       const hitSearch =
         t.name.toLowerCase().includes(search.toLowerCase()) ||
-        t.environment.toLowerCase().includes(search.toLowerCase());
+        (t.environment ?? '').toLowerCase().includes(search.toLowerCase());
       return hitSearch;
     });
   }, [targets, search]);
@@ -64,10 +64,11 @@ const DeploymentTargetListPage: React.FC = () => {
   const groupedByEnv = useMemo(() => {
     const groups: Record<string, DeployTarget[]> = {};
     filtered.forEach((t) => {
-      if (!groups[t.environment]) {
-        groups[t.environment] = [];
+      const env = t.environment ?? 'unknown';
+      if (!groups[env]) {
+        groups[env] = [];
       }
-      groups[t.environment].push(t);
+      groups[env].push(t);
     });
     return groups;
   }, [filtered]);
@@ -82,7 +83,7 @@ const DeploymentTargetListPage: React.FC = () => {
   };
 
   const TargetCard: React.FC<{ target: DeployTarget }> = ({ target }) => {
-    const readinessConfig = getReadinessConfig(target.readiness_status);
+    const readinessConfig = getReadinessConfig(target.readiness_status ?? '');
 
     return (
       <Card

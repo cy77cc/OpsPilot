@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { message } from 'antd';
 import { Api } from '../../../../api';
+import { handleApiError } from '../../../../utils/apiErrorHandler';
 import type {
   CertificateInfo,
   Cluster,
@@ -38,7 +39,9 @@ export function useClusterDetail(clusterId: number): UseClusterDetailResult {
   const [upgradePlan, setUpgradePlan] = useState<ClusterUpgradePlan | null>(null);
 
   const loadCluster = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     const firstLoad = initialLoadRef.current;
     if (firstLoad) {
       setIsInitialLoading(true);
@@ -57,7 +60,9 @@ export function useClusterDetail(clusterId: number): UseClusterDetailResult {
   }, [clusterId]);
 
   const loadNodes = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     setNodesLoading(true);
     try {
       const res = await Api.cluster.getClusterNodes(clusterId);
@@ -70,17 +75,21 @@ export function useClusterDetail(clusterId: number): UseClusterDetailResult {
   }, [clusterId]);
 
   const loadEvents = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const res = await Api.cluster.getEvents(clusterId);
       setEvents(res.data.list || []);
     } catch (err) {
-      console.error('Failed to load events:', err);
+      handleApiError(err, '加载事件失败');
     }
   }, [clusterId]);
 
   const loadClusterInfo = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const [versionRes, certRes, planRes] = await Promise.all([
         Api.cluster.getClusterVersion(clusterId),
@@ -91,12 +100,14 @@ export function useClusterDetail(clusterId: number): UseClusterDetailResult {
       setCertificates(certRes.data.list || []);
       setUpgradePlan(planRes.data);
     } catch (err) {
-      console.error('Failed to load cluster info:', err);
+      handleApiError(err, '加载集群运维信息失败');
     }
   }, [clusterId]);
 
   const syncNodes = useCallback(async () => {
-    if (!clusterId) return;
+    if (!clusterId) {
+      return;
+    }
     try {
       const res = await Api.cluster.syncClusterNodes(clusterId);
       setNodes(res.data.list || []);

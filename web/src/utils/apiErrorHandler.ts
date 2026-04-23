@@ -3,13 +3,23 @@ import { message } from 'antd';
 export interface ApiError {
   code?: number;
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 /**
  * Extract error message from various error formats
  */
-export function getErrorMessage(error: any): string {
+export function getErrorMessage(error: unknown): string {
+  const apiError = error as {
+    response?: {
+      status?: number;
+      data?: { message?: string; msg?: string };
+    };
+    code?: string;
+    message?: string;
+    msg?: string;
+  };
+
   if (typeof error === 'string') {
     return error;
   }
@@ -18,20 +28,20 @@ export function getErrorMessage(error: any): string {
     return error.message;
   }
 
-  if (error?.response?.data?.message) {
-    return error.response.data.message;
+  if (apiError?.response?.data?.message) {
+    return apiError.response.data.message;
   }
 
-  if (error?.response?.data?.msg) {
-    return error.response.data.msg;
+  if (apiError?.response?.data?.msg) {
+    return apiError.response.data.msg;
   }
 
-  if (error?.message) {
-    return error.message;
+  if (apiError?.message) {
+    return apiError.message;
   }
 
-  if (error?.msg) {
-    return error.msg;
+  if (apiError?.msg) {
+    return apiError.msg;
   }
 
   return '操作失败，请稍后重试';
@@ -40,15 +50,9 @@ export function getErrorMessage(error: any): string {
 /**
  * Handle API errors with user-friendly messages
  */
-export function handleApiError(error: any, context?: string): void {
+export function handleApiError(error: unknown, context?: string): void {
   const errorMessage = getErrorMessage(error);
   const fullMessage = context ? `${context}: ${errorMessage}` : errorMessage;
-
-  console.error('API Error:', {
-    context,
-    error,
-    message: errorMessage,
-  });
 
   message.error(fullMessage);
 }
@@ -56,51 +60,60 @@ export function handleApiError(error: any, context?: string): void {
 /**
  * Check if error is a network error
  */
-export function isNetworkError(error: any): boolean {
-  return (
-    error?.message === 'Network Error' ||
-    error?.code === 'ECONNABORTED' ||
-    error?.code === 'ERR_NETWORK' ||
-    !error?.response
+export function isNetworkError(error: unknown): boolean {
+  const apiError = error as { message?: string; code?: string; response?: unknown };
+  return Boolean(
+    apiError?.message === 'Network Error' ||
+    apiError?.code === 'ECONNABORTED' ||
+    apiError?.code === 'ERR_NETWORK' ||
+    !apiError?.response
   );
 }
 
 /**
  * Check if error is a timeout error
  */
-export function isTimeoutError(error: any): boolean {
-  return (
-    error?.code === 'ECONNABORTED' ||
-    error?.message?.includes('timeout')
+export function isTimeoutError(error: unknown): boolean {
+  const apiError = error as { code?: string; message?: string };
+  return Boolean(
+    apiError?.code === 'ECONNABORTED' ||
+    apiError?.message?.includes('timeout')
   );
 }
 
 /**
  * Check if error is an authentication error
  */
-export function isAuthError(error: any): boolean {
-  return error?.response?.status === 401;
+export function isAuthError(error: unknown): boolean {
+  const apiError = error as { response?: { status?: number } };
+  return apiError?.response?.status === 401;
 }
 
 /**
  * Check if error is a permission error
  */
-export function isPermissionError(error: any): boolean {
-  return error?.response?.status === 403;
+export function isPermissionError(error: unknown): boolean {
+  const apiError = error as { response?: { status?: number } };
+  return apiError?.response?.status === 403;
 }
 
 /**
  * Check if error is a not found error
  */
-export function isNotFoundError(error: any): boolean {
-  return error?.response?.status === 404;
+export function isNotFoundError(error: unknown): boolean {
+  const apiError = error as { response?: { status?: number } };
+  return apiError?.response?.status === 404;
 }
 
 /**
  * Check if error is a server error
  */
-export function isServerError(error: any): boolean {
-  const status = error?.response?.status;
+export function isServerError(error: unknown): boolean {
+  const apiError = error as { response?: { status?: number } };
+  const status = apiError?.response?.status;
+  if (typeof status !== 'number') {
+    return false;
+  }
   return status >= 500 && status < 600;
 }
 
@@ -108,7 +121,7 @@ export function isServerError(error: any): boolean {
  * Handle long-running operation errors with specific messages
  */
 export function handleLongRunningError(
-  error: any,
+  error: unknown,
   operation: string
 ): void {
   if (isTimeoutError(error)) {

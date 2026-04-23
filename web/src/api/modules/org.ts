@@ -17,6 +17,7 @@ export interface Member {
   name: string;
   email: string;
   departmentId: string;
+  roles?: string[];
   status: string;
   joinedAt: string;
 }

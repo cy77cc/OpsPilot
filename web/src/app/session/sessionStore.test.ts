@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionStore } from './sessionStore';
 import type { AuthUser, LoginParams, RegisterParams } from '../../api/modules/auth';
+import type { ApiResponse } from '../../api/api';
 
 type AuthApiLike = {
-  login: (data: LoginParams) => Promise<{ data: void }>;
-  register: (data: RegisterParams) => Promise<{ data: void }>;
-  getMe: () => Promise<{ data: AuthUser }>;
-  logout: () => Promise<{ data: void }>;
+  login: (data: LoginParams) => Promise<ApiResponse<void>>;
+  register: (data: RegisterParams) => Promise<ApiResponse<void>>;
+  getMe: () => Promise<ApiResponse<AuthUser>>;
+  logout: () => Promise<ApiResponse<void>>;
 };
 
 describe('createSessionStore', () => {
@@ -24,10 +25,10 @@ describe('createSessionStore', () => {
 
   beforeEach(() => {
     authApi = {
-      login: vi.fn().mockResolvedValue({ data: undefined }),
-      register: vi.fn().mockResolvedValue({ data: undefined }),
-      getMe: vi.fn().mockResolvedValue({ data: user }),
-      logout: vi.fn().mockResolvedValue({ data: undefined }),
+      login: vi.fn().mockResolvedValue({ success: true, data: undefined }),
+      register: vi.fn().mockResolvedValue({ success: true, data: undefined }),
+      getMe: vi.fn().mockResolvedValue({ success: true, data: user }),
+      logout: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     };
     localStorage.clear();
   });

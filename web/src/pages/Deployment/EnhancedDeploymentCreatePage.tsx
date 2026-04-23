@@ -69,7 +69,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
     );
     const filteredTargets = targets.filter((t) =>
       t.name.toLowerCase().includes(searchTarget.toLowerCase()) ||
-      t.environment.toLowerCase().includes(searchTarget.toLowerCase())
+      (t.environment ?? '').toLowerCase().includes(searchTarget.toLowerCase())
     );
 
     return (

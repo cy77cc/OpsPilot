@@ -117,8 +117,18 @@ const AccessControlPage: React.FC = () => {
   const fetchSystemUsers = useCallback(async (query: string = '') => {
     setUsersLoading(true);
     try {
-      const res = await Api.rbac.getUserList({ page: 1, pageSize: 100, form: query });
-      setSystemUsers(res.data.list || []);
+      const res = await Api.rbac.getUserList({ page: 1, pageSize: 100 });
+      const keyword = query.trim().toLowerCase();
+      const users = res.data.list || [];
+      setSystemUsers(
+        keyword
+          ? users.filter((user) => (
+            String(user.username || '').toLowerCase().includes(keyword)
+            || String(user.name || '').toLowerCase().includes(keyword)
+            || String(user.email || '').toLowerCase().includes(keyword)
+          ))
+          : users,
+      );
     } catch (err: any) {
       message.error('获取用户列表失败');
     } finally {
@@ -226,7 +236,7 @@ const AccessControlPage: React.FC = () => {
   const handleRoleModalOk = async () => {
     if (!editingMember) return;
     try {
-      await Api.rbac.updateUserRoles(editingMember.id, memberRoles);
+      await Api.rbac.updateUser(editingMember.id, { roles: memberRoles });
       message.success('角色分配成功');
       setRoleModalOpen(false);
       if (selectedDeptId) fetchMembers(selectedDeptId);
@@ -251,14 +261,10 @@ const AccessControlPage: React.FC = () => {
       return;
     }
     try {
-      // Use transfer member with oldDeptId=0 to add to new dept
-      for (const userId of selectedSystemUserIds) {
-        await Api.org.transferMember({
-          userId: Number(userId),
-          oldDeptId: 0,
-          newDeptId: Number(selectedDeptId),
-        });
-      }
+      await Api.org.transferMember({
+        memberIds: selectedSystemUserIds,
+        targetDepartmentId: selectedDeptId,
+      });
       message.success('添加成员成功');
       setUserModalOpen(false);
       fetchMembers(selectedDeptId);

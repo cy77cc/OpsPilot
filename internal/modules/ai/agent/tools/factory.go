@@ -2,9 +2,11 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/cicd"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/deployment"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/governance"
@@ -28,6 +30,7 @@ var (
 	buildDeploymentTools         = deployment.NewDeploymentTools
 	buildInfrastructureTools     = infrastructure.NewInfrastructureTools
 	buildGovernanceTools         = governance.NewGovernanceTools
+	reportToolBuilderDegraded    = logToolBuilderDegraded
 )
 
 func BuildToolsForScene(ctx context.Context, scene string) []tool.BaseTool {
@@ -41,36 +44,36 @@ func BuildToolsForSceneWithMode(ctx context.Context, scene string, readOnly bool
 	switch normalizeScene(scene) {
 	case "kubernetes", "cluster":
 		if readOnly {
-			tools = safeInvokableTools(ctx, buildKubernetesReadonlyTools)
+			tools = safeInvokableTools(ctx, "kubernetes.readonly", buildKubernetesReadonlyTools)
 		} else {
-			tools = safeInvokableTools(ctx, buildKubernetesTools)
+			tools = safeInvokableTools(ctx, "kubernetes", buildKubernetesTools)
 		}
 	case "cicd":
 		if readOnly {
-			tools = safeInvokableTools(ctx, buildCICDReadonlyTools)
+			tools = safeInvokableTools(ctx, "cicd.readonly", buildCICDReadonlyTools)
 		} else {
-			tools = safeInvokableTools(ctx, buildCICDTools)
+			tools = safeInvokableTools(ctx, "cicd", buildCICDTools)
 		}
 	case "monitoring":
-		tools = safeInvokableTools(ctx, buildMonitorReadonlyTools)
+		tools = safeInvokableTools(ctx, "monitoring.readonly", buildMonitorReadonlyTools)
 	case "host":
 		if readOnly {
-			tools = safeInvokableTools(ctx, buildHostReadonlyTools)
+			tools = safeInvokableTools(ctx, "host.readonly", buildHostReadonlyTools)
 		} else {
-			tools = safeInvokableTools(ctx, buildHostTools)
+			tools = safeInvokableTools(ctx, "host", buildHostTools)
 		}
 	case "service":
 		if readOnly {
-			tools = safeInvokableTools(ctx, buildServiceReadonlyTools)
+			tools = safeInvokableTools(ctx, "service.readonly", buildServiceReadonlyTools)
 		} else {
-			tools = safeInvokableTools(ctx, buildServiceTools)
+			tools = safeInvokableTools(ctx, "service", buildServiceTools)
 		}
 	case "deployment":
-		tools = safeInvokableTools(ctx, buildDeploymentTools)
+		tools = safeInvokableTools(ctx, "deployment", buildDeploymentTools)
 	case "infrastructure":
-		tools = safeInvokableTools(ctx, buildInfrastructureTools)
+		tools = safeInvokableTools(ctx, "infrastructure", buildInfrastructureTools)
 	case "governance":
-		tools = safeInvokableTools(ctx, buildGovernanceTools)
+		tools = safeInvokableTools(ctx, "governance", buildGovernanceTools)
 	default:
 		// 默认场景：返回通用只读工具集
 		tools = buildDefaultTools(ctx)
@@ -89,24 +92,33 @@ func buildDefaultTools(ctx context.Context) []tool.InvokableTool {
 	var tools []tool.InvokableTool
 
 	// 添加各模块的只读工具，避免默认路由暴露变更型能力。
-	tools = append(tools, safeInvokableTools(ctx, buildServiceReadonlyTools)...)
-	tools = append(tools, safeInvokableTools(ctx, buildMonitorReadonlyTools)...)
-	tools = append(tools, safeInvokableTools(ctx, buildKubernetesReadonlyTools)...)
-	tools = append(tools, safeInvokableTools(ctx, buildHostReadonlyTools)...)
+	tools = append(tools, safeInvokableTools(ctx, "default.service.readonly", buildServiceReadonlyTools)...)
+	tools = append(tools, safeInvokableTools(ctx, "default.monitoring.readonly", buildMonitorReadonlyTools)...)
+	tools = append(tools, safeInvokableTools(ctx, "default.kubernetes.readonly", buildKubernetesReadonlyTools)...)
+	tools = append(tools, safeInvokableTools(ctx, "default.host.readonly", buildHostReadonlyTools)...)
 
 	return tools
 }
 
-func safeInvokableTools(ctx context.Context, builder func(context.Context) []tool.InvokableTool) (tools []tool.InvokableTool) {
+func safeInvokableTools(ctx context.Context, builderName string, builder func(context.Context) []tool.InvokableTool) (tools []tool.InvokableTool) {
 	if builder == nil {
 		return nil
 	}
 	defer func() {
-		if recover() != nil {
+		if recovered := recover(); recovered != nil {
+			reportToolBuilderDegraded(builderName, recovered)
 			tools = nil
 		}
 	}()
 	return builder(ctx)
+}
+
+func logToolBuilderDegraded(builderName string, cause any) {
+	logger.L().Warn(
+		"ai tool builder degraded to empty set",
+		logger.String("builder", builderName),
+		logger.String("cause", fmt.Sprintf("%v", cause)),
+	)
 }
 
 func normalizeScene(scene string) string {

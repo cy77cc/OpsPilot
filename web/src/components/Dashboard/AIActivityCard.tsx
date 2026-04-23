@@ -5,18 +5,16 @@ import {
   ThunderboltOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  UserOutlined,
-  LayoutOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import type { AIStats, AISession, SceneStats } from '../../api/modules/dashboard';
+import type { AIStatsSummary, AISessionItem } from '../../api/modules/dashboard';
 
 interface AIActivityCardProps {
   data: {
-    stats: AIStats;
-    sessions: AISession[];
-    byScene: SceneStats;
+    stats: AIStatsSummary;
+    sessions: AISessionItem[];
+    byScene: Record<string, number>;
   };
   loading?: boolean;
 }

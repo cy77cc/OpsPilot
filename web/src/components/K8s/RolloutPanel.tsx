@@ -1,13 +1,17 @@
 import React from 'react';
-import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd';
-import { Api } from '../../api';
+import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd';
 import { GuidedFormItem } from '../FormGuidance';
+import { useRolloutActions } from './hooks/useRolloutActions';
+import type { RolloutAction, RolloutActions } from './hooks/useRolloutActions';
 
 interface Props {
   clusterId: string;
+  actions?: RolloutActions;
 }
 
-const RolloutPanel: React.FC<Props> = ({ clusterId }) => {
+const RolloutPanel: React.FC<Props> = ({ clusterId, actions: actionsProp }) => {
+  const defaultActions = useRolloutActions(clusterId);
+  const actions = actionsProp || defaultActions;
   const [loading, setLoading] = React.useState(false);
   const [rollouts, setRollouts] = React.useState<any[]>([]);
   const [modalOpen, setModalOpen] = React.useState(false);
@@ -17,49 +21,39 @@ const RolloutPanel: React.FC<Props> = ({ clusterId }) => {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await Api.kubernetes.listRollouts(clusterId);
-      setRollouts(res.data.list || []);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载 Rollouts 失败');
+      const data = await actions.load();
+      setRollouts(data);
     } finally {
       setLoading(false);
     }
-  }, [clusterId]);
+  }, [actions]);
 
   React.useEffect(() => { void load(); }, [load]);
 
   const doPreview = async () => {
     const values = await form.validateFields();
-    const res = await Api.kubernetes.previewRollout(clusterId, values);
-    setPreview(res.data.manifest || '');
+    const manifest = await actions.preview(values);
+    setPreview(manifest);
   };
 
   const doApply = async () => {
     const values = await form.validateFields();
-    await Api.kubernetes.applyRollout(clusterId, values);
-    message.success('Rollout 已应用');
+    await actions.apply(values);
     setModalOpen(false);
     setPreview('');
     form.resetFields();
     await load();
   };
 
-  const act = async (name: string, namespace: string, action: 'promote' | 'abort' | 'rollback') => {
-    if (action === 'promote') {
-      await Api.kubernetes.promoteRollout(clusterId, name, { namespace });
-    } else if (action === 'abort') {
-      await Api.kubernetes.abortRollout(clusterId, name, { namespace });
-    } else {
-      await Api.kubernetes.rollbackRollout(clusterId, name, { namespace });
-    }
-    message.success(`操作已提交: ${action}`);
+  const act = async (name: string, namespace: string, action: RolloutAction) => {
+    await actions.act(name, namespace, action);
     await load();
   };
 
   return (
     <div>
       <Space style={{ marginBottom: 12 }}>
-        <Button onClick={load} loading={loading}>刷新</Button>
+        <Button onClick={() => void load()} loading={loading}>刷新</Button>
         <Button type="primary" onClick={() => setModalOpen(true)}>新建/更新 Rollout</Button>
       </Space>
       <Table

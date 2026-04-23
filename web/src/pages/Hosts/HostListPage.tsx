@@ -373,7 +373,7 @@ const HostListPage: React.FC = () => {
           </Tag>
           {provider && (
             <Tag style={{ marginRight: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <ProviderLogo provider={host.provider} size={14} />
+              <ProviderLogo provider={host.provider || provider.name} size={14} />
               <span>{provider.name}</span>
             </Tag>
           )}

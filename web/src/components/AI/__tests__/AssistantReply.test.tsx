@@ -41,8 +41,8 @@ vi.mock('../../../api/modules/ai', async (importOriginal) => {
       updatedAt: new Date(0).toISOString(),
     },
   }));
-  actual.aiApi.getRunProjection = vi.fn(async () => ({ success: true, data: null }));
-  actual.aiApi.getRunContent = vi.fn(async () => ({ success: true, data: null }));
+  (actual.aiApi.getRunProjection as any) = vi.fn(async () => ({ success: true, data: null }));
+  (actual.aiApi.getRunContent as any) = vi.fn(async () => ({ success: true, data: null }));
   actual.aiApi.createSession = vi.fn();
   actual.aiApi.chatStream = vi.fn();
   actual.aiApi.submitApproval = vi.fn();

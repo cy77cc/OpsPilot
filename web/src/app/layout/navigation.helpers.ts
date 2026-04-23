@@ -49,9 +49,9 @@ export function getActiveMenuKey(pathname: string): string {
 }
 
 export function getBreadcrumbItems(menuPath: MenuPathEntry[]): Array<{ title: string; path?: string }> {
-  const items = [{ title: '首页', path: '/' }];
+  const items: Array<{ title: string; path?: string }> = [{ title: '首页', path: '/' }];
   for (const entry of menuPath) {
-    items.push({ title: entry.title, path: entry.key });
+    items.push(entry.key ? { title: entry.title, path: entry.key } : { title: entry.title });
   }
   return items;
 }

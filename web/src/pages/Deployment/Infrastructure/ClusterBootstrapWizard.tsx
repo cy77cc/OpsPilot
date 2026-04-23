@@ -6,6 +6,7 @@ import { Api } from '../../../api';
 import type { BootstrapProfile, BootstrapTask, BootstrapVersionItem, BootstrapValidationIssue } from '../../../api/modules/cluster';
 import type { Host } from '../../../api/modules/hosts';
 import { GuidedFormItem } from '../../../components/FormGuidance';
+import { handleApiError } from '../../../utils/apiErrorHandler';
 
 const { TextArea } = Input;
 
@@ -87,7 +88,9 @@ const ClusterBootstrapWizard: React.FC = () => {
 
   // Poll task status when taskId is set
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId) {
+      return;
+    }
 
     const pollInterval = setInterval(async () => {
       try {
@@ -102,7 +105,7 @@ const ClusterBootstrapWizard: React.FC = () => {
           clearInterval(pollInterval);
         }
       } catch (err) {
-        console.error('Failed to poll task status:', err);
+        handleApiError(err, '轮询引导任务状态失败');
       }
     }, 2000);
 

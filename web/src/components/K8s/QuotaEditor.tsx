@@ -1,50 +1,12 @@
 import React from 'react';
-import { Button, Form, Input, Modal, Space, Table, Tabs, message } from 'antd';
-import { Api } from '../../api';
+import { Button, Form, Input, Modal, Space, Table, Tabs } from 'antd';
 import { GuidedFormItem } from '../FormGuidance';
+import { useQuotaEditorActions } from './hooks/useQuotaEditorActions';
+import type { QuotaEditorActions } from './hooks/useQuotaEditorActions';
 
 interface Props {
   clusterId: string;
   actions?: QuotaEditorActions;
-}
-
-interface QuotaEditorLoadResult {
-  quotas: any[];
-  limits: any[];
-}
-
-interface SaveQuotaInput {
-  clusterId: string;
-  quota: {
-    namespace: string;
-    name: string;
-    hard: Record<string, string>;
-  };
-}
-
-interface SaveLimitInput {
-  clusterId: string;
-  limitRange: {
-    namespace: string;
-    name: string;
-    default: Record<string, string>;
-    default_request: Record<string, string>;
-    min: Record<string, string>;
-    max: Record<string, string>;
-  };
-}
-
-interface RemoveQuotaInput {
-  clusterId: string;
-  name: string;
-  namespace: string;
-}
-
-export interface QuotaEditorActions {
-  load: () => Promise<QuotaEditorLoadResult>;
-  saveQuota: (input: SaveQuotaInput) => Promise<void>;
-  saveLimit: (input: SaveLimitInput) => Promise<void>;
-  removeQuota: (input: RemoveQuotaInput) => Promise<void>;
 }
 
 interface QuotaEditorViewProps {
@@ -69,54 +31,17 @@ const parseKV = (raw: string): Record<string, string> => {
   const out: Record<string, string> = {};
   String(raw || '').split('\n').forEach((line) => {
     const trimmed = line.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      return;
+    }
     const [k, ...rest] = trimmed.split('=');
-    if (!k) return;
+    if (!k) {
+      return;
+    }
     out[k.trim()] = rest.join('=').trim();
   });
   return out;
 };
-
-function useQuotaEditorActions(clusterId: string): QuotaEditorActions {
-  const load = React.useCallback(async () => {
-    try {
-      const [qRes, lRes] = await Promise.all([
-        Api.kubernetes.listQuotas(clusterId),
-        Api.kubernetes.listLimitRanges(clusterId),
-      ]);
-
-      return {
-        quotas: qRes.data.list || [],
-        limits: lRes.data.list || [],
-      };
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载配额失败');
-      throw err;
-    }
-  }, [clusterId]);
-
-  const saveQuota = React.useCallback(async ({ clusterId: targetClusterId, quota }: SaveQuotaInput) => {
-    await Api.kubernetes.applyQuota(targetClusterId, quota);
-    message.success('Quota 已应用');
-  }, []);
-
-  const saveLimit = React.useCallback(async ({ clusterId: targetClusterId, limitRange }: SaveLimitInput) => {
-    await Api.kubernetes.createLimitRange(targetClusterId, limitRange);
-    message.success('LimitRange 已应用');
-  }, []);
-
-  const removeQuota = React.useCallback(async ({ clusterId: targetClusterId, name, namespace }: RemoveQuotaInput) => {
-    await Api.kubernetes.deleteQuota(targetClusterId, name, namespace);
-    message.success('Quota 已删除');
-  }, []);
-
-  return React.useMemo(() => ({
-    load,
-    saveQuota,
-    saveLimit,
-    removeQuota,
-  }), [load, removeQuota, saveLimit, saveQuota]);
-}
 
 const QuotaEditorView: React.FC<QuotaEditorViewProps> = ({
   loading,
@@ -286,4 +211,5 @@ const QuotaEditor: React.FC<Props> = ({ clusterId, actions: actionsProp }) => {
   );
 };
 
+export type { QuotaEditorActions };
 export default QuotaEditor;

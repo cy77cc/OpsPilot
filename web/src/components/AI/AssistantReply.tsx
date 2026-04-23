@@ -899,8 +899,8 @@ function AssistantReplyContent({
 
       {shouldRenderSummary ? (
         <div className={styles.summary}>
-          {runtime.summary.title ? <div className={styles.summaryTitle}>{runtime.summary.title}</div> : null}
-          {runtime.summary.items?.length ? (
+          {runtime.summary?.title ? <div className={styles.summaryTitle}>{runtime.summary.title}</div> : null}
+          {runtime.summary?.items?.length ? (
             <div className={styles.summaryGrid}>
               {runtime.summary.items.map((item) => (
                 <div key={`${item.label}:${item.value}`} className={styles.summaryItem}>

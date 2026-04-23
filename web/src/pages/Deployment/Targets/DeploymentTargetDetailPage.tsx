@@ -98,7 +98,7 @@ const DeploymentTargetDetailPage: React.FC = () => {
     );
   }
 
-  const readinessConfig = getReadinessConfig(target.readiness_status);
+  const readinessConfig = getReadinessConfig(target.readiness_status ?? '');
 
   return (
     <div className="space-y-6">
