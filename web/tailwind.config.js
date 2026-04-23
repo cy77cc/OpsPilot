@@ -7,25 +7,30 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 (Primary Colors) - Indigo 色系
+        // 主色调 (Primary Colors) - Blue 色系
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#312e81',
+          50: '#f0f7ff',
+          100: '#e0efff',
+          200: '#bae0ff',
+          300: '#91caff',
+          400: '#69b1ff',
+          500: '#1890ff', // Main Primary
+          600: '#096dd9',
+          700: '#0050b3',
+          800: '#003a8c',
+          900: '#002766',
         },
-        // 中性色 (Neutral Colors) - Gray 色系
+        // 中性色 (Neutral Colors) - Gray 色系 (More Neutral)
         gray: {
-          50: '#fafbfc',
-          100: '#f8f9fa',
+          50: '#f8f9fa',
+          100: '#f1f3f5',
           200: '#e9ecef',
           300: '#dee2e6',
           400: '#ced4da',
-          500: '#6c757d',
+          500: '#adb5bd',
+          600: '#868e96',
           700: '#495057',
+          800: '#343a40',
           900: '#212529',
         },
         // 语义色 (Semantic Colors)
