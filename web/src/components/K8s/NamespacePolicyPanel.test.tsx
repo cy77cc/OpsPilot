@@ -66,12 +66,35 @@ describe('NamespacePolicyPanel', () => {
   });
 
   it('bounds default initial namespace loads to a single fetch cycle', async () => {
+    let resolveNamespaces: ((value: { data: { list: never[] } }) => void) | undefined;
+    let resolveBindings: ((value: { data: { list: never[] } }) => void) | undefined;
+
+    mockApi.kubernetes.getClusterNamespaces.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveNamespaces = resolve;
+    }));
+    mockApi.kubernetes.getNamespaceBindings.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveBindings = resolve;
+    }));
+
     render(<NamespacePolicyPanel clusterId="1" />);
 
     await waitFor(() => {
       expect(mockApi.kubernetes.getClusterNamespaces).toHaveBeenCalledTimes(1);
       expect(mockApi.kubernetes.getNamespaceBindings).toHaveBeenCalledTimes(1);
     });
+
+    resolveNamespaces?.({ data: { list: [] } });
+    resolveBindings?.({ data: { list: [] } });
+
+    await waitFor(() => {
+      expect(document.querySelector('.ant-spin-spinning')).toBeNull();
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockApi.kubernetes.getClusterNamespaces).toHaveBeenCalledTimes(1);
+    expect(mockApi.kubernetes.getNamespaceBindings).toHaveBeenCalledTimes(1);
   });
 
   it('delegates binding saves to injected actions instead of calling the api inline', async () => {
