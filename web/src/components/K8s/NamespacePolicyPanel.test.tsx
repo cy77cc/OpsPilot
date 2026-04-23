@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scopeStore } from '../../app/scope/scopeStore';
-import HPAEditor from './HPAEditor';
+import HPAEditor, { type HPAEditorActions } from './HPAEditor';
 import NamespacePolicyPanel from './NamespacePolicyPanel';
-import QuotaEditor from './QuotaEditor';
+import QuotaEditor, { type QuotaEditorActions } from './QuotaEditor';
+import type { NamespacePolicyActions } from './hooks/useNamespacePolicyActions';
 
 const mockApi = vi.hoisted(() => ({
   kubernetes: {
@@ -64,15 +65,24 @@ describe('NamespacePolicyPanel', () => {
     });
   });
 
+  it('bounds default initial namespace loads to a single fetch cycle', async () => {
+    render(<NamespacePolicyPanel clusterId="1" />);
+
+    await waitFor(() => {
+      expect(mockApi.kubernetes.getClusterNamespaces).toHaveBeenCalledTimes(1);
+      expect(mockApi.kubernetes.getNamespaceBindings).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('delegates binding saves to injected actions instead of calling the api inline', async () => {
-    const actions = {
+    const actions: NamespacePolicyActions = {
       load: vi.fn().mockResolvedValue({ namespaces: [], bindings: [] }),
-      createNamespace: vi.fn(),
+      createNamespace: vi.fn().mockResolvedValue(undefined),
       saveBindings: vi.fn().mockResolvedValue(undefined),
-      removeNamespace: vi.fn(),
+      removeNamespace: vi.fn().mockResolvedValue(undefined),
     };
 
-    render(<NamespacePolicyPanel clusterId="1" actions={actions as any} />);
+    render(<NamespacePolicyPanel clusterId="1" actions={actions} />);
 
     fireEvent.click(screen.getByRole('button', { name: '管理 Team 绑定' }));
     const dialog = await screen.findByRole('dialog', { name: '更新 Team Namespace 绑定' });
@@ -97,14 +107,14 @@ describe('NamespacePolicyPanel', () => {
 
 describe('QuotaEditor', () => {
   it('delegates quota saves to injected actions instead of calling the api inline', async () => {
-    const actions = {
+    const actions: QuotaEditorActions = {
       load: vi.fn().mockResolvedValue({ quotas: [], limits: [] }),
       saveQuota: vi.fn().mockResolvedValue(undefined),
       saveLimit: vi.fn().mockResolvedValue(undefined),
       removeQuota: vi.fn().mockResolvedValue(undefined),
     };
 
-    render(<QuotaEditor clusterId="1" actions={actions as any} />);
+    render(<QuotaEditor clusterId="1" actions={actions} />);
 
     fireEvent.click(screen.getByRole('button', { name: '新增/更新 Quota' }));
     const dialog = await screen.findByRole('dialog', { name: 'Quota' });
@@ -134,13 +144,13 @@ describe('QuotaEditor', () => {
 
 describe('HPAEditor', () => {
   it('delegates hpa saves to injected actions instead of calling the api inline', async () => {
-    const actions = {
+    const actions: HPAEditorActions = {
       load: vi.fn().mockResolvedValue({ list: [] }),
       save: vi.fn().mockResolvedValue(undefined),
       remove: vi.fn().mockResolvedValue(undefined),
     };
 
-    render(<HPAEditor clusterId="1" actions={actions as any} />);
+    render(<HPAEditor clusterId="1" actions={actions} />);
 
     fireEvent.click(screen.getByRole('button', { name: '新增/更新 HPA' }));
     const dialog = await screen.findByRole('dialog', { name: 'HPA 策略' });

@@ -103,6 +103,10 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId, actions: actionsProp
   const { teamId, setTeamId } = useScope();
   const defaultActions = useNamespacePolicyActions({ clusterId, teamId, setTeamId });
   const actions = actionsProp || defaultActions;
+  const loadAction = actions.load;
+  const createNamespaceAction = actions.createNamespace;
+  const saveBindingsAction = actions.saveBindings;
+  const removeNamespaceAction = actions.removeNamespace;
   const [loading, setLoading] = React.useState(false);
   const [namespaces, setNamespaces] = React.useState<any[]>([]);
   const [bindings, setBindings] = React.useState<any[]>([]);
@@ -114,13 +118,13 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId, actions: actionsProp
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const data = await actions.load();
+      const data = await loadAction();
       setNamespaces(data.namespaces);
       setBindings(data.bindings);
     } finally {
       setLoading(false);
     }
-  }, [actions]);
+  }, [loadAction]);
 
   React.useEffect(() => { void load(); }, [load]);
   React.useEffect(() => {
@@ -129,15 +133,15 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId, actions: actionsProp
 
   const createNamespace = React.useCallback(async () => {
     const v = await nsForm.validateFields();
-    await actions.createNamespace({ clusterId, name: v.name, env: v.env });
+    await createNamespaceAction({ clusterId, name: v.name, env: v.env });
     setNsOpen(false);
     nsForm.resetFields();
     await load();
-  }, [actions, clusterId, load, nsForm]);
+  }, [clusterId, createNamespaceAction, load, nsForm]);
 
   const saveBindings = React.useCallback(async () => {
     const v = await bindForm.validateFields();
-    await actions.saveBindings({
+    await saveBindingsAction({
       clusterId,
       teamId: String(v.team_id),
       namespaces: Array.isArray(v.namespaces) ? v.namespaces : [],
@@ -145,12 +149,12 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId, actions: actionsProp
     setBindOpen(false);
     bindForm.resetFields();
     await load();
-  }, [actions, bindForm, clusterId, load]);
+  }, [bindForm, clusterId, load, saveBindingsAction]);
 
   const removeNamespace = React.useCallback(async (name: string) => {
-    await actions.removeNamespace({ clusterId, name });
+    await removeNamespaceAction({ clusterId, name });
     await load();
-  }, [actions, clusterId, load]);
+  }, [clusterId, load, removeNamespaceAction]);
 
   return (
     <NamespacePolicyView

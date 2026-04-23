@@ -24,7 +24,7 @@ interface RemoveHPAInput {
   namespace: string;
 }
 
-interface HPAEditorActions {
+export interface HPAEditorActions {
   load: () => Promise<HPAEditorLoadResult>;
   save: (input: SaveHPAInput) => Promise<void>;
   remove: (input: RemoveHPAInput) => Promise<void>;

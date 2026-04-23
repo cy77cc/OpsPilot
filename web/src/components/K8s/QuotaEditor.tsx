@@ -40,7 +40,7 @@ interface RemoveQuotaInput {
   namespace: string;
 }
 
-interface QuotaEditorActions {
+export interface QuotaEditorActions {
   load: () => Promise<QuotaEditorLoadResult>;
   saveQuota: (input: SaveQuotaInput) => Promise<void>;
   saveLimit: (input: SaveLimitInput) => Promise<void>;

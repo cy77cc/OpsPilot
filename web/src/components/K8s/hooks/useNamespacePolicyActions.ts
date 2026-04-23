@@ -42,11 +42,22 @@ export function useNamespacePolicyActions({
   teamId,
   setTeamId,
 }: UseNamespacePolicyActionsOptions): NamespacePolicyActions {
+  const teamIdRef = React.useRef(teamId);
+  const setTeamIdRef = React.useRef(setTeamId);
+
+  React.useEffect(() => {
+    teamIdRef.current = teamId;
+  }, [teamId]);
+
+  React.useEffect(() => {
+    setTeamIdRef.current = setTeamId;
+  }, [setTeamId]);
+
   const load = React.useCallback(async () => {
     try {
       const [nsRes, bindRes] = await Promise.all([
         Api.kubernetes.getClusterNamespaces(clusterId),
-        Api.kubernetes.getNamespaceBindings(clusterId, teamId || undefined),
+        Api.kubernetes.getNamespaceBindings(clusterId, teamIdRef.current || undefined),
       ]);
 
       return {
@@ -57,7 +68,7 @@ export function useNamespacePolicyActions({
       message.error(err instanceof Error ? err.message : '加载命名空间失败');
       throw err;
     }
-  }, [clusterId, teamId]);
+  }, [clusterId]);
 
   const createNamespace = React.useCallback(async ({ clusterId: targetClusterId, name, env }: CreateNamespaceInput) => {
     await Api.kubernetes.createNamespace(targetClusterId, { name, env });
@@ -72,9 +83,9 @@ export function useNamespacePolicyActions({
         .map((namespace) => ({ namespace: namespace.trim() }))
         .filter((binding) => binding.namespace),
     );
-    setTeamId(nextTeamId);
+    setTeamIdRef.current(nextTeamId);
     message.success('绑定已更新');
-  }, [setTeamId]);
+  }, []);
 
   const removeNamespace = React.useCallback(async ({ clusterId: targetClusterId, name }: RemoveNamespaceInput) => {
     await Api.kubernetes.deleteNamespace(targetClusterId, name);
