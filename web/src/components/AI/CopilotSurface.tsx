@@ -38,6 +38,22 @@ import { useCopilotStyles } from './copilotSurface.styles';
 
 const { Text } = Typography;
 
+type BubbleStatus = 'success' | 'error' | 'abort' | 'loading' | 'local' | 'updating';
+
+function toBubbleStatus(status?: string): BubbleStatus | undefined {
+  switch (status) {
+    case 'success':
+    case 'error':
+    case 'abort':
+    case 'loading':
+    case 'local':
+    case 'updating':
+      return status;
+    default:
+      return undefined;
+  }
+}
+
 function resolveScene(pathname: string): { scene: string; context: SceneContext } {
   const normalized = pathname || '/';
   const segments = normalized.split('/').filter(Boolean);
@@ -589,7 +605,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                     ? <div data-message-anchor={item.renderKey}>{item.message.content}</div>
                     : item.message.content,
                   loading: item.status === 'loading' && !item.message.content,
-                  status: item.status,
+                  status: toBubbleStatus(item.status),
                   extraInfo: {
                     messageId: item.renderKey,
                     runtime: item.message.runtime,

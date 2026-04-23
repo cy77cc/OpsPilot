@@ -11,7 +11,7 @@ const SCROLL_BUTTON_VISIBILITY_THRESHOLD = 120;
 type FollowState = 'following' | 'detached';
 
 interface CopilotMessageItem {
-  id?: string;
+  id?: string | number;
   status?: string;
   message: XChatMessage;
 }
