@@ -5,7 +5,7 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"strings"
 	"time"
 
@@ -268,15 +268,14 @@ func SetConfigFile(path string) {
 	cfgFile = path
 }
 
-// MustNewConfig 加载并解析配置文件。
+// NewConfig 加载并解析配置文件。
 //
 // 使用 viper 读取配置文件，支持环境变量覆盖。
-// 如果加载失败则 panic。
-func MustNewConfig() {
+func NewConfig() error {
 	// load config file
 	viper.SetConfigFile(cfgFile)
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("Error reading config file, %s", err)
+		return fmt.Errorf("read config file: %w", err)
 	}
 
 	replace := strings.NewReplacer(".", "_") // 替换点为下划线
@@ -285,8 +284,9 @@ func MustNewConfig() {
 
 	// unmarshal config
 	if err := viper.Unmarshal(&CFG); err != nil {
-		log.Fatalf("Error reading config file, %s", err)
+		return fmt.Errorf("unmarshal config: %w", err)
 	}
+	return nil
 }
 
 // AppEnv 返回应用环境名称（小写）。

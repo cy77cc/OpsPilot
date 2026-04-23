@@ -6,13 +6,13 @@ package middleware
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -72,13 +72,23 @@ func auditAccessDenied(c *gin.Context, actor, action string) {
 	if resource == "" {
 		resource = c.Request.URL.Path
 	}
+	requestID := c.GetString("request_id")
+	timestamp := time.Now().UTC().Format(time.RFC3339)
 	c.Set("rbac_deny_audit", gin.H{
-		"actor":     actor,
-		"resource":  resource,
-		"action":    action,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"actor":      actor,
+		"resource":   resource,
+		"action":     action,
+		"request_id": requestID,
+		"timestamp":  timestamp,
 	})
-	log.Printf("rbac deny actor=%s resource=%s action=%s timestamp=%s", actor, resource, action, time.Now().UTC().Format(time.RFC3339))
+	logger.L().WithContext(c.Request.Context()).Info(
+		"rbac_access_denied",
+		logger.String("actor", actor),
+		logger.String("resource", resource),
+		logger.String("action", action),
+		logger.String("request_id", requestID),
+		logger.String("timestamp", timestamp),
+	)
 }
 
 // isPrivilegedSubject 检查用户是否为特权角色。

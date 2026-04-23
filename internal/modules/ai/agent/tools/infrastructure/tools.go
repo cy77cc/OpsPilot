@@ -8,6 +8,7 @@ package infrastructure
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -113,7 +114,7 @@ func CredentialList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("credential_list", err)
 	}
 	return t
 }
@@ -154,7 +155,7 @@ func CredentialTest(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("credential_test", err)
 	}
 	return t
 }

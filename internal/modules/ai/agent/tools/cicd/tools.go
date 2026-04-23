@@ -10,6 +10,7 @@ package cicd
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 	"time"
 
@@ -109,7 +110,7 @@ func NewCICDWriteTools(ctx context.Context) []tool.InvokableTool {
 }
 
 type CICDPipelineListOutput struct {
-	Total int                         `json:"total"`
+	Total int                             `json:"total"`
 	List  []cicdmodel.CICDServiceCIConfig `json:"list"`
 }
 
@@ -148,7 +149,7 @@ func CICDPipelineList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("cicd_pipeline_list", err)
 	}
 	return t
 }
@@ -183,7 +184,7 @@ func CICDPipelineStatus(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("cicd_pipeline_status", err)
 	}
 	return t
 }
@@ -234,13 +235,13 @@ func CICDPipelineTrigger(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("cicd_pipeline_trigger", err)
 	}
 	return t
 }
 
 type JobListOutput struct {
-	Total int         `json:"total"`
+	Total int             `json:"total"`
 	List  []jobsmodel.Job `json:"list"`
 }
 
@@ -279,13 +280,13 @@ func JobList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("job_list", err)
 	}
 	return t
 }
 
 type JobExecutionStatusOutput struct {
-	Total int                  `json:"total"`
+	Total int                      `json:"total"`
 	List  []jobsmodel.JobExecution `json:"list"`
 }
 
@@ -316,7 +317,7 @@ func JobExecutionStatus(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("job_execution_status", err)
 	}
 	return t
 }
@@ -363,7 +364,7 @@ func JobRun(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("job_run", err)
 	}
 	return t
 }

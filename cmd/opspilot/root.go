@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,7 +26,9 @@ var (
 		Short:   "OpsPilot is a tool to manage k8s cluster",
 		Version: version.VERSION,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config.MustNewConfig()
+			if err := config.NewConfig(); err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
 			logger.Init(logger.MustNewZapLogger())
 			if err := bootstrap.RunBootstrapMigrations(); err != nil {
 				return err

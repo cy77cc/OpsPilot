@@ -22,13 +22,17 @@ export function getRequestContextHeaders(): Record<string, string> {
   };
 }
 
+export function mergeRequestContextHeaders(headers?: HeadersInit): Record<string, string> {
+  return {
+    ...toHeaderObject(headers),
+    ...getRequestContextHeaders(),
+  };
+}
+
 export function buildContextualFetchInit(init: RequestInit = {}): RequestInit {
   return {
     ...init,
     credentials: 'include',
-    headers: {
-      ...toHeaderObject(init.headers),
-      ...getRequestContextHeaders(),
-    },
+    headers: mergeRequestContextHeaders(init.headers),
   };
 }

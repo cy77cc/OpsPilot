@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -293,7 +294,7 @@ func K8sQuery(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_query", err)
 	}
 	return t
 }
@@ -392,7 +393,7 @@ func K8sListResources(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_list_resources", err)
 	}
 	return t
 }
@@ -452,7 +453,7 @@ func K8sEvents(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_events", err)
 	}
 	return t
 }
@@ -497,7 +498,7 @@ func K8sGetEvents(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_get_events", err)
 	}
 	return t
 }
@@ -548,7 +549,7 @@ func K8sLogs(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_logs", err)
 	}
 	return t
 }
@@ -597,7 +598,7 @@ func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("k8s_get_pod_logs", err)
 	}
 	return t
 }

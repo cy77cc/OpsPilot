@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Card, Tabs, Table, Tag, Button, Space, Descriptions, Spin, message,
   Modal, Form, Input, Popconfirm, Drawer, Badge, Tooltip, Typography,
-  Select, Dropdown, InputNumber, Row, Col
+  Select, Dropdown, InputNumber
 } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, ClusterOutlined,
@@ -16,12 +16,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Api } from '../../../api';
 import { DetailSkeleton } from '../../../components/LoadingSkeleton';
 import { GuidedFormItem } from '../../../components/FormGuidance';
+import ClusterOperationsPanel from './components/ClusterOperationsPanel';
+import ClusterOverviewPanel from './components/ClusterOverviewPanel';
+import { useClusterDetail } from './hooks/useClusterDetail';
+import { useClusterResources } from './hooks/useClusterResources';
 import type {
-  Cluster, ClusterNode, NamespaceInfo, DeploymentInfo,
-  StatefulSetInfo, DaemonSetInfo, PodInfo, ServiceInfo, IngressInfo,
-  ConfigMapInfo, SecretInfo, PVCInfo, PVInfo, ClusterServiceInfo,
-  EventInfo, HPAInfo, ResourceQuotaInfo, LimitRangeInfo,
-  ClusterVersionInfo, CertificateInfo, ClusterUpgradePlan,
+  ClusterNode, DeploymentInfo,
+  StatefulSetInfo, PodInfo, ServiceInfo, IngressInfo,
+  ConfigMapInfo, SecretInfo, HPAInfo, ResourceQuotaInfo, LimitRangeInfo,
   ClusterOperationApproval, ClusterOperationResponse, ClusterOperationState,
   ClusterServiceMutationPayload, ClusterIngressMutationPayload
 } from '../../../api/modules/cluster';
@@ -81,40 +83,45 @@ const ClusterDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const clusterId = Number(id);
-  const initialLoadRef = useRef(true);
 
-  // Basic state
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [cluster, setCluster] = useState<Cluster | null>(null);
-  const [nodes, setNodes] = useState<ClusterNode[]>([]);
-  const [nodesLoading, setNodesLoading] = useState(false);
   const [infoExpanded, setInfoExpanded] = useState(false);
-
-  // Resource state
-  const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
-  const [selectedNamespace, setSelectedNamespace] = useState<string>('default');
-  const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
-  const [statefulsets, setStatefulsets] = useState<StatefulSetInfo[]>([]);
-  const [daemonsets, setDaemonsets] = useState<DaemonSetInfo[]>([]);
-  const [pods, setPods] = useState<PodInfo[]>([]);
-  const [services, setServices] = useState<ServiceInfo[]>([]);
-  const [ingresses, setIngresses] = useState<IngressInfo[]>([]);
-  const [configmaps, setConfigmaps] = useState<ConfigMapInfo[]>([]);
-  const [secrets, setSecrets] = useState<SecretInfo[]>([]);
-  const [pvcs, setPvcs] = useState<PVCInfo[]>([]);
-  const [pvs, setPvs] = useState<PVInfo[]>([]);
-  const [clusterServices, setClusterServices] = useState<ClusterServiceInfo[]>([]);
-  const [resourceLoading, setResourceLoading] = useState(false);
-
-  // Advanced operations state
-  const [events, setEvents] = useState<EventInfo[]>([]);
-  const [hpas, setHPAs] = useState<HPAInfo[]>([]);
-  const [resourceQuotas, setResourceQuotas] = useState<ResourceQuotaInfo[]>([]);
-  const [limitRanges, setLimitRanges] = useState<LimitRangeInfo[]>([]);
-  const [clusterVersion, setClusterVersion] = useState<ClusterVersionInfo | null>(null);
-  const [certificates, setCertificates] = useState<CertificateInfo[]>([]);
-  const [upgradePlan, setUpgradePlan] = useState<ClusterUpgradePlan | null>(null);
-  const [advancedLoading, setAdvancedLoading] = useState(false);
+  const {
+    isInitialLoading,
+    cluster,
+    nodes,
+    nodesLoading,
+    events,
+    clusterVersion,
+    certificates,
+    upgradePlan,
+    loadCluster,
+    loadNodes,
+    loadEvents,
+    loadClusterInfo,
+    syncNodes,
+  } = useClusterDetail(clusterId);
+  const {
+    namespaces,
+    selectedNamespace,
+    setSelectedNamespace,
+    deployments,
+    statefulsets,
+    daemonsets,
+    pods,
+    services,
+    ingresses,
+    configmaps,
+    secrets,
+    pvcs,
+    pvs,
+    clusterServices,
+    resourceLoading,
+    hpas,
+    resourceQuotas,
+    limitRanges,
+    advancedLoading,
+    refreshSelectedNamespaceResources,
+  } = useClusterResources(clusterId);
 
   // Modals
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -167,144 +174,6 @@ const ClusterDetailPage: React.FC = () => {
   const [ingressForm] = Form.useForm();
   const [nodeLabelForm] = Form.useForm();
   const [nodeTaintForm] = Form.useForm();
-
-  const loadCluster = useCallback(async () => {
-    if (!clusterId) return;
-    const firstLoad = initialLoadRef.current;
-    if (firstLoad) {
-      setIsInitialLoading(true);
-    }
-    try {
-      const res = await Api.cluster.getClusterDetail(clusterId);
-      setCluster(res.data);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载集群信息失败');
-    } finally {
-      if (firstLoad) {
-        initialLoadRef.current = false;
-        setIsInitialLoading(false);
-      }
-    }
-  }, [clusterId]);
-
-  const loadNodes = useCallback(async () => {
-    if (!clusterId) return;
-    setNodesLoading(true);
-    try {
-      const res = await Api.cluster.getClusterNodes(clusterId);
-      setNodes(res.data.list || []);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载节点列表失败');
-    } finally {
-      setNodesLoading(false);
-    }
-  }, [clusterId]);
-
-  const loadNamespaces = useCallback(async () => {
-    if (!clusterId) return;
-    try {
-      const res = await Api.cluster.getNamespaces(clusterId);
-      setNamespaces(res.data.list || []);
-    } catch (err) {
-      console.error('Failed to load namespaces:', err);
-    }
-  }, [clusterId]);
-
-  const loadResources = useCallback(async (namespace: string) => {
-    if (!clusterId) return;
-    setResourceLoading(true);
-    try {
-      const [depRes, stsRes, dsRes, podRes, svcRes, ingRes, cmRes, secRes, pvcRes] = await Promise.all([
-        Api.cluster.getDeployments(clusterId, namespace),
-        Api.cluster.getStatefulSets(clusterId, namespace),
-        Api.cluster.getDaemonSets(clusterId, namespace),
-        Api.cluster.getPods(clusterId, namespace),
-        Api.cluster.getServices(clusterId, namespace),
-        Api.cluster.getIngresses(clusterId, namespace),
-        Api.cluster.getConfigMaps(clusterId, namespace),
-        Api.cluster.getSecrets(clusterId, namespace),
-        Api.cluster.getPVCs(clusterId, namespace),
-      ]);
-      setDeployments(depRes.data.list || []);
-      setStatefulsets(stsRes.data.list || []);
-      setDaemonsets(dsRes.data.list || []);
-      setPods(podRes.data.list || []);
-      setServices(svcRes.data.list || []);
-      setIngresses(ingRes.data.list || []);
-      setConfigmaps(cmRes.data.list || []);
-      setSecrets(secRes.data.list || []);
-      setPvcs(pvcRes.data.list || []);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载资源失败');
-    } finally {
-      setResourceLoading(false);
-    }
-  }, [clusterId]);
-
-  const loadPVs = useCallback(async () => {
-    if (!clusterId) return;
-    try {
-      const res = await Api.cluster.getPVs(clusterId);
-      setPvs(res.data.list || []);
-    } catch (err) {
-      console.error('Failed to load PVs:', err);
-    }
-  }, [clusterId]);
-
-  const loadClusterServices = useCallback(async () => {
-    if (!clusterId) return;
-    try {
-      const res = await Api.cluster.getClusterServices(clusterId);
-      setClusterServices(res.data.list || []);
-    } catch (err) {
-      console.error('Failed to load cluster services:', err);
-    }
-  }, [clusterId]);
-
-  const loadEvents = useCallback(async () => {
-    if (!clusterId) return;
-    try {
-      const res = await Api.cluster.getEvents(clusterId);
-      setEvents(res.data.list || []);
-    } catch (err) {
-      console.error('Failed to load events:', err);
-    }
-  }, [clusterId]);
-
-  const loadAdvancedResources = useCallback(async (namespace: string) => {
-    if (!clusterId) return;
-    setAdvancedLoading(true);
-    try {
-      const [hpaRes, quotaRes, limitRes] = await Promise.all([
-        Api.cluster.getHPAs(clusterId, namespace),
-        Api.cluster.getResourceQuotas(clusterId, namespace),
-        Api.cluster.getLimitRanges(clusterId, namespace),
-      ]);
-      setHPAs(hpaRes.data.list || []);
-      setResourceQuotas(quotaRes.data.list || []);
-      setLimitRanges(limitRes.data.list || []);
-    } catch (err) {
-      console.error('Failed to load advanced resources:', err);
-    } finally {
-      setAdvancedLoading(false);
-    }
-  }, [clusterId]);
-
-  const loadClusterInfo = useCallback(async () => {
-    if (!clusterId) return;
-    try {
-      const [versionRes, certRes, planRes] = await Promise.all([
-        Api.cluster.getClusterVersion(clusterId),
-        Api.cluster.getCertificates(clusterId),
-        Api.cluster.getUpgradePlan(clusterId),
-      ]);
-      setClusterVersion(versionRes.data);
-      setCertificates(certRes.data.list || []);
-      setUpgradePlan(planRes.data);
-    } catch (err) {
-      console.error('Failed to load cluster info:', err);
-    }
-  }, [clusterId]);
 
   const buildOperationLink = useCallback((auditId?: string | number) => {
     if (!auditId) return '';
@@ -595,11 +464,6 @@ const ClusterDetailPage: React.FC = () => {
     }
   }, [clusterId, executeClusterOperation, nodeLabelForm, nodeTaintForm]);
 
-  const refreshSelectedNamespaceResources = useCallback(async () => {
-    if (!selectedNamespace) return;
-    await loadResources(selectedNamespace);
-  }, [loadResources, selectedNamespace]);
-
   const renderFeedback = useCallback((feedbackKey: string) => {
     const feedback = operationFeedback[feedbackKey];
     if (!feedback) {
@@ -889,23 +753,6 @@ const ClusterDetailPage: React.FC = () => {
     );
   }, [clusterId, executeClusterOperation, refreshSelectedNamespaceResources, selectedNamespace]);
 
-  useEffect(() => {
-    loadCluster();
-    loadNodes();
-    loadNamespaces();
-    loadPVs();
-    loadClusterServices();
-    loadEvents();
-    loadClusterInfo();
-  }, [loadCluster, loadNodes, loadNamespaces, loadPVs, loadClusterServices, loadEvents, loadClusterInfo]);
-
-  useEffect(() => {
-    if (selectedNamespace) {
-      loadResources(selectedNamespace);
-      loadAdvancedResources(selectedNamespace);
-    }
-  }, [selectedNamespace, loadResources, loadAdvancedResources]);
-
   const handleTestConnection = async () => {
     if (!clusterId) return;
     try {
@@ -920,16 +767,10 @@ const ClusterDetailPage: React.FC = () => {
     }
   };
 
-  const handleSyncNodes = async () => {
-    if (!clusterId) return;
-    try {
-      const res = await Api.cluster.syncClusterNodes(clusterId);
-      setNodes(res.data.list || []);
-      message.success('节点信息已同步');
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '同步失败');
-    }
-  };
+  const handleSyncNodes = syncNodes;
+  const handleOpenOperationCenter = useCallback(() => {
+    navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`);
+  }, [clusterId, navigate]);
 
   const handleEdit = async (values: { name: string; description: string }) => {
     if (!clusterId) return;
@@ -1474,32 +1315,16 @@ const ClusterDetailPage: React.FC = () => {
         </Space>
       </div>
 
-      <Card title="集群作战面板">
-        <Row gutter={16}>
-          <Col xs={24} md={16}>
-            <Space size="middle" wrap>
-              <Tag color={getStatusColor(cluster.status)}>状态: {cluster.status}</Tag>
-              <Tag color="blue">节点: {cluster.node_count}</Tag>
-              <Tag color="geekblue">K8s: {cluster.k8s_version || cluster.version || '-'}</Tag>
-            </Space>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small" title="关键操作台">
-              <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Button block onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`)}>
-                  进入操作中心
-                </Button>
-                <Button block onClick={handleSyncNodes} loading={nodesLoading}>
-                  同步节点
-                </Button>
-                <Link to={`/deployment/infrastructure/clusters/${clusterId}/security`}>进入安全中心</Link>
-                <Link to={`/deployment/infrastructure/clusters/${clusterId}/policies`}>进入策略中心</Link>
-                <Link to={`/deployment/infrastructure/clusters/${clusterId}/operations`}>查看全部操作</Link>
-              </Space>
-            </Card>
-          </Col>
-        </Row>
-      </Card>
+      <ClusterOverviewPanel cluster={cluster} statusColor={getStatusColor(cluster.status)}>
+        <ClusterOperationsPanel
+          operationCenterHref={`/deployment/infrastructure/clusters/${clusterId}/operations`}
+          securityHref={`/deployment/infrastructure/clusters/${clusterId}/security`}
+          policyHref={`/deployment/infrastructure/clusters/${clusterId}/policies`}
+          nodesLoading={nodesLoading}
+          onOpenOperationCenter={handleOpenOperationCenter}
+          onSyncNodes={handleSyncNodes}
+        />
+      </ClusterOverviewPanel>
 
       <div>
         <Button onClick={() => setInfoExpanded((v) => !v)}>

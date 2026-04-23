@@ -23,3 +23,31 @@ jobs:
 
       - name: AI Contract Check
         run: go test ./internal/service/ai/handler -run RouteContract -v
+
+  frontend-auth-scope-governance:
+    name: Frontend Auth Scope Governance
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Lint auth scope
+        run: npm run lint:auth-scope
+
+      - name: Typecheck auth scope
+        run: npm run typecheck:auth-scope

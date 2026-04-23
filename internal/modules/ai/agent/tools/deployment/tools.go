@@ -8,6 +8,7 @@ package deployment
 import (
 	"context"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -149,7 +150,7 @@ func DeploymentTargetList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("deployment_target_list", err)
 	}
 	return t
 }
@@ -184,17 +185,17 @@ func DeploymentTargetDetail(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("deployment_target_detail", err)
 	}
 	return t
 }
 
 type DeploymentBootstrapStatusOutput struct {
-	TargetID        uint                              `json:"target_id"`
-	TargetName      string                            `json:"target_name"`
-	BootstrapJobID  string                            `json:"bootstrap_job_id"`
-	TargetStatus    string                            `json:"target_status"`
-	ReadinessStatus string                            `json:"readiness_status"`
+	TargetID        uint                                        `json:"target_id"`
+	TargetName      string                                      `json:"target_name"`
+	BootstrapJobID  string                                      `json:"bootstrap_job_id"`
+	TargetStatus    string                                      `json:"target_status"`
+	ReadinessStatus string                                      `json:"readiness_status"`
 	BootstrapJob    *deploymentmodel.EnvironmentInstallJob      `json:"bootstrap_job,omitempty"`
 	Steps           []deploymentmodel.EnvironmentInstallJobStep `json:"steps,omitempty"`
 }
@@ -236,7 +237,7 @@ func DeploymentBootstrapStatus(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("deployment_bootstrap_status", err)
 	}
 	return t
 }
@@ -299,7 +300,7 @@ func ClusterListInventory(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("cluster_list_inventory", err)
 	}
 	return t
 }
@@ -372,7 +373,7 @@ func ServiceListInventory(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_list_inventory", err)
 	}
 	return t
 }

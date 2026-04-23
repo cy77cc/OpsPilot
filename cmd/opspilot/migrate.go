@@ -87,7 +87,9 @@ var migrateStatusCMD = &cobra.Command{
 //
 // 返回数据库连接和清理函数。
 func initMigrationDeps() (*gorm.DB, func(), error) {
-	config.MustNewConfig()
+	if err := config.NewConfig(); err != nil {
+		return nil, func() {}, err
+	}
 	logger.Init(logger.MustNewZapLogger())
 	db, err := storage.NewDB()
 	if err != nil {

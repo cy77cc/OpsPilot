@@ -105,60 +105,168 @@ describe('ApiService cookie-session refresh and retry', () => {
     scopeStore.clearScope();
   });
 
-  it('refreshAccessToken posts to /auth/refresh without token storage key reads', async () => {
+  it('uses centralized refresh gate and never reads legacy token storage keys', async () => {
     const instance = (apiService as any).instance;
     const postSpy = vi.spyOn(instance, 'post').mockResolvedValue({
       data: { data: {} },
     });
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
-    const refreshedHandler = vi.fn();
+    localStorage.setItem('token', 'legacy-token');
 
-    window.addEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+    const [firstRefresh, secondRefresh] = await Promise.all([
+      apiService.refreshAccessToken(),
+      apiService.refreshAccessToken(),
+    ]);
 
-    const refreshed = await apiService.refreshAccessToken();
-
-    expect(refreshed).toBe(true);
+    expect(firstRefresh).toBe(true);
+    expect(secondRefresh).toBe(true);
     expect(postSpy).toHaveBeenCalledTimes(1);
     expect(postSpy).toHaveBeenCalledWith('/auth/refresh');
-    expect(postSpy.mock.calls[0]).toHaveLength(1);
     expect(
       getItemSpy.mock.calls.filter(
         ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
       )
     ).toEqual([]);
-    expect(refreshedHandler).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
   });
 
-  it('retry path replays original request without Authorization injection from localStorage token', async () => {
-    const instance = (apiService as any).instance;
-    const requestSpy = vi.spyOn(instance, 'request').mockResolvedValue({
-      data: { success: true, data: { ok: true } },
-    });
+  it('retries the public API request path without Authorization injection from localStorage token', async () => {
+    const instance = Reflect.get(apiService, 'instance') as {
+      defaults: { adapter: unknown };
+    };
     const refreshSpy = vi.spyOn(apiService, 'refreshAccessToken').mockResolvedValue(true);
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
+    const originalAdapter = instance.defaults.adapter;
+    let requestCount = 0;
+    const adapterSpy = vi.fn(async (config: { headers?: { get?: (key: string) => unknown } & Record<string, unknown> }) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        const error = new Error('unauthorized') as Error & {
+          config: typeof config;
+          response: {
+            data: { message: string };
+            status: number;
+            statusText: string;
+            headers: Record<string, never>;
+            config: typeof config;
+          };
+        };
+        error.config = config;
+        error.response = {
+          data: { message: 'unauthorized' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config,
+        };
+        throw error;
+      }
 
+      return {
+        data: { success: true, data: { ok: true } },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      };
+    });
+
+    localStorage.setItem('token', 'legacy-token');
     scopeStore.setScope({ projectId: '42' });
 
-    const originalConfig = {
-      url: '/secure/resource',
-      method: 'get',
-      headers: {
-        'X-Request-ID': 'request-1',
-      },
+    instance.defaults.adapter = adapterSpy;
+
+    try {
+      await expect(apiService.get('/secure/resource')).resolves.toEqual({
+        success: true,
+        data: { ok: true },
+      });
+
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(adapterSpy).toHaveBeenCalledTimes(2);
+
+      const retriedConfig = adapterSpy.mock.calls[1][0];
+      expect(retriedConfig.headers?.get?.('Authorization') ?? retriedConfig.headers?.Authorization).toBeUndefined();
+      expect(retriedConfig.headers?.get?.('X-Project-ID') ?? retriedConfig.headers?.['X-Project-ID']).toBe('42');
+      expect(
+        getItemSpy.mock.calls.filter(
+          ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
+        )
+      ).toEqual([]);
+    } finally {
+      instance.defaults.adapter = originalAdapter;
+    }
+  });
+
+  it('dispatches tokenExpired and rejects a typed session-expired error when refresh fails after a 401', async () => {
+    const instance = Reflect.get(apiService, 'instance') as {
+      defaults: { adapter: unknown };
     };
+    const originalAdapter = instance.defaults.adapter;
+    const expiredHandler = vi.fn();
 
-    await (apiService as any).tryRefreshAndRetry(originalConfig);
+    window.addEventListener(TOKEN_EVENTS.EXPIRED, expiredHandler);
 
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(requestSpy).toHaveBeenCalledTimes(1);
-    expect(requestSpy).toHaveBeenCalledWith(originalConfig);
-    expect((requestSpy.mock.calls[0][0] as { headers?: Record<string, string> }).headers?.Authorization).toBeUndefined();
-    expect(
-      getItemSpy.mock.calls.filter(
-        ([key]) => String(key) === 'token' || String(key) === 'refreshToken'
-      )
-    ).toEqual([]);
+    const adapterSpy = vi.fn(async (config: { url?: string; headers?: { get?: (key: string) => unknown } & Record<string, unknown> }) => {
+      const url = String(config.url || '');
+
+      if (url.includes('/auth/refresh')) {
+        const error = new Error('refresh unauthorized') as Error & {
+          config: typeof config;
+          response: {
+            data: { message: string };
+            status: number;
+            statusText: string;
+            headers: Record<string, never>;
+            config: typeof config;
+          };
+        };
+        error.config = config;
+        error.response = {
+          data: { message: 'refresh unauthorized' },
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config,
+        };
+        throw error;
+      }
+
+      const error = new Error('unauthorized') as Error & {
+        config: typeof config;
+        response: {
+          data: { message: string };
+          status: number;
+          statusText: string;
+          headers: Record<string, never>;
+          config: typeof config;
+        };
+      };
+      error.config = config;
+      error.response = {
+        data: { message: 'unauthorized' },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+      };
+      throw error;
+    });
+
+    instance.defaults.adapter = adapterSpy;
+
+    try {
+      await expect(apiService.get('/secure/expired')).rejects.toMatchObject({
+        name: 'ApiRequestError',
+        message: '登录已过期，请重新登录',
+        statusCode: 401,
+        businessCode: 4005,
+      });
+
+      expect(adapterSpy).toHaveBeenCalledTimes(2);
+      expect(expiredHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(TOKEN_EVENTS.EXPIRED, expiredHandler);
+      instance.defaults.adapter = originalAdapter;
+    }
   });
 });

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strconv"
 	"strings"
 
@@ -148,7 +149,7 @@ func ServiceGetDetail(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_get_detail", err)
 	}
 	return t
 }
@@ -193,7 +194,7 @@ func ServiceStatus(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_status", err)
 	}
 	return t
 }
@@ -224,7 +225,7 @@ func ServiceStatusByTarget(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_status_by_target", err)
 	}
 	return t
 }
@@ -268,7 +269,7 @@ func ServiceDeployPreview(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_deploy_preview", err)
 	}
 	return t
 }
@@ -314,7 +315,7 @@ func ServiceDeployApply(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_deploy_apply", err)
 	}
 	return t
 }
@@ -376,7 +377,7 @@ func ServiceDeploy(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_deploy", err)
 	}
 	return t
 }
@@ -443,7 +444,7 @@ func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_catalog_list", err)
 	}
 	return t
 }
@@ -488,7 +489,7 @@ func ServiceCategoryTree(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_category_tree", err)
 	}
 	return t
 }
@@ -537,7 +538,7 @@ func ServiceVisibilityCheck(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("service_visibility_check", err)
 	}
 	return t
 }

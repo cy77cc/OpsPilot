@@ -321,6 +321,24 @@ func TestRefresh_UsesDomainErrorCodeFromLogic(t *testing.T) {
 	}
 }
 
+func TestLogin_UnknownLogicErrorUsesStableServerErrorCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	stub := &stubAuthLogic{
+		loginErr: errors.New("db connection reset by peer"),
+	}
+	useStubAuthLogic(t, stub)
+
+	ctx, recorder := newAuthTestContext(http.MethodPost, "/auth/login", []byte(`{"username":"alice","password":"secret"}`))
+
+	h := &UserHandler{svcCtx: &svc.ServiceContext{}}
+	h.Login(ctx)
+
+	if got := decodeResponseCode(t, recorder); got != float64(xcode.ServerError) {
+		t.Fatalf("expected login response code %d, got %.0f", xcode.ServerError, got)
+	}
+}
+
 func TestLogout_UsesDomainErrorCodeFromLogic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

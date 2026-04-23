@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,7 +115,7 @@ func depsFromContextOrFallback(ctx context.Context) *svc.ServiceContext {
 }
 
 type MonitorAlertRuleListOutput struct {
-	Total int               `json:"total"`
+	Total int                         `json:"total"`
 	List  []monitoringmodel.AlertRule `json:"list"`
 }
 
@@ -153,13 +154,13 @@ func MonitorAlertRuleList(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("monitor_alert_rule_list", err)
 	}
 	return t
 }
 
 type MonitorAlertOutput struct {
-	Total int                `json:"total"`
+	Total int                          `json:"total"`
 	List  []monitoringmodel.AlertEvent `json:"list"`
 }
 
@@ -197,13 +198,13 @@ func MonitorAlert(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("monitor_alert", err)
 	}
 	return t
 }
 
 type MonitorAlertActiveOutput struct {
-	Total int                `json:"total"`
+	Total int                          `json:"total"`
 	List  []monitoringmodel.AlertEvent `json:"list"`
 }
 
@@ -241,7 +242,7 @@ func MonitorAlertActive(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("monitor_alert_active", err)
 	}
 	return t
 }
@@ -326,7 +327,7 @@ func MonitorMetric(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("monitor_metric", err)
 	}
 	return t
 }
@@ -393,7 +394,7 @@ func MonitorMetricQuery(ctx context.Context) tool.InvokableTool {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return toolutil.UnavailableInvokableTool("monitor_metric_query", err)
 	}
 	return t
 }

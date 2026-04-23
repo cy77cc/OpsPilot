@@ -786,3 +786,21 @@ git commit -m "feat: complete full top10 engineering remediation across frontend
 1. Spec coverage check: all Top 10 themes are mapped to Tasks 1-9; Task 10 handles integrated verification and closeout.
 2. Placeholder scan: no unresolved placeholders or deferred implementation language remains.
 3. Type/signature consistency check: task snippets consistently reference `ScopeStore`, centralized refresh gate, degraded unavailable-tool registration, and split RBAC handler naming.
+
+## Execution Status
+
+- [x] Task 1: frontend governance gates
+- [x] Task 2: auth/scope/request hard-cut boundary
+- [x] Task 3: `ClusterDetailPage` decomposition
+- [x] Task 4: `CopilotSurface` + `NotificationContext` split
+- [x] Task 5: K8s side-effect separation and bounded-load regression guard
+- [x] Task 6: config load error propagation (remove startup `log.Fatalf`)
+- [x] Task 7: AI tools panic removal with degraded unavailable tools
+- [x] Task 8: auth error semantics and casbin structured audit logging
+- [x] Task 9: RBAC handler split by domain
+- [x] Task 10: integration verification and evidence sweep
+
+## Residual Risks
+
+1. `ClusterDetailPage.tsx` remains large after first decomposition pass; the new hook/panel boundaries are in place, but further slicing is still beneficial.
+2. Some touched suites were verified by targeted tests rather than full-repo test matrices due environment/time constraints.

@@ -22,8 +22,6 @@ import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
 import {
   hydrateAssistantHistoryFromProjection,
-  isProjectionHydrationPending,
-  loadStepContent,
   resetHistoryProjectionCache,
 } from './historyProjection';
 import { normalizeMarkdownContent } from './markdownContent';
@@ -32,12 +30,12 @@ import { createEmptyAssistantRuntime } from './replyRuntime';
 import { upsertPendingRun } from './pendingRunStore';
 import { extractPendingRunFromMessage } from './providers/runReconnectController';
 import type { AssistantReplyRuntime, ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
+import { useCopilotSessionReducer } from './hooks/useCopilotSessionReducer';
+import { useCopilotStream } from './hooks/useCopilotStream';
 
 const { Text } = Typography;
 
 const NEW_SESSION_KEY = '__new__';
-const SCROLL_BUTTON_RECOVERY_THRESHOLD = 24;
-const SCROLL_BUTTON_VISIBILITY_THRESHOLD = 120;
 
 /**
  * mapHistoryMessageStatus 将后端消息状态映射为 Bubble 组件状态。
@@ -421,8 +419,6 @@ interface CopilotSurfaceProps {
   onClose: () => void;
 }
 
-type FollowState = 'following' | 'detached';
-
 export function buildAssistantErrorContent(
   previousContent: string | undefined,
   errorMessage: string,
@@ -450,19 +446,27 @@ export async function copyAssistantReplyToClipboard(
 
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
-  const contentRef = React.useRef<HTMLDivElement>(null);
-  const retainedAssistantBodiesRef = React.useRef(new Map<string, string>());
-  const followStateRef = React.useRef<FollowState>('following');
-  const programmaticScrollRef = React.useRef(false);
-  const pendingInitialScrollRef = React.useRef(false);
-  const pendingSendScrollRef = React.useRef(false);
-  const [showScrollBottomBtn, setShowScrollBottomBtn] = React.useState(false);
   const location = useLocation();
   const { scene, context } = React.useMemo(
     () => resolveScene(location.pathname),
     [location.pathname],
   );
-  const [drawerWidth, setDrawerWidth] = React.useState(736);
+  const {
+    state: {
+      attachedFiles,
+      drawerWidth,
+      inputValue,
+      isBootstrapping,
+      promptItems,
+    },
+    addAttachedFiles,
+    clearAttachedFiles,
+    removeAttachedFile,
+    setDrawerWidth,
+    setInputValue,
+    setIsBootstrapping,
+    setPromptItems,
+  } = useCopilotSessionReducer(toPromptItems(scene));
   const resizeStateRef = React.useRef<{ startX: number; startWidth: number } | null>(null);
 
   const handleResizeMouseDown = React.useCallback((e: React.MouseEvent) => {
@@ -489,11 +493,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [drawerWidth]);
-
-  const [inputValue, setInputValue] = React.useState('');
-  const [promptItems, setPromptItems] = React.useState<PromptsItemType[]>(toPromptItems(scene));
-  const [isBootstrapping, setIsBootstrapping] = React.useState(false);
-  const [attachedFiles, setAttachedFiles] = React.useState<File[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const {
@@ -544,7 +543,6 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
   const {
     messages,
-    setMessages,
     onRequest,
     isRequesting,
     queueRequest,
@@ -564,169 +562,19 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       ),
     }),
   });
-
-  const renderedMessages = React.useMemo(
-    () => {
-      const retainedAssistantBodies = retainedAssistantBodiesRef.current;
-      const nextKeys = new Set<string>();
-      const nextMessages = messages.map((item, index) => {
-        const renderKey = String(item.id || `${item.message.role}-${index}`);
-        nextKeys.add(renderKey);
-
-        if (item.message.role !== 'assistant') {
-          return {
-            ...item,
-            renderKey,
-          };
-        }
-
-        const currentContent = item.message.content || '';
-        const retainedContent = retainedAssistantBodies.get(renderKey);
-        const displayContent = isProjectionHydrationPending(item.message) && retainedContent
-          ? retainedContent
-          : currentContent;
-
-        if (currentContent.trim()) {
-          retainedAssistantBodies.set(renderKey, displayContent);
-        }
-
-        return {
-          ...item,
-          message: {
-            ...item.message,
-            content: displayContent,
-          },
-          renderKey,
-        };
-      });
-
-      Array.from(retainedAssistantBodies.keys()).forEach((key) => {
-        if (!nextKeys.has(key)) {
-          retainedAssistantBodies.delete(key);
-        }
-      });
-
-      return nextMessages;
-    },
-    [messages],
-  );
-
-  const buildStepContentLoader = React.useCallback(
-    (runtime?: XChatMessage['runtime']) => async (_stepId: string, stepIndex: number) => {
-      if (!runtime?._executorBlocks) {
-        return null;
-      }
-
-      const executorBlocks = runtime._executorBlocks;
-      if (stepIndex < 0 || stepIndex >= executorBlocks.length) {
-        return null;
-      }
-
-      const block = executorBlocks[stepIndex];
-      if (!block) {
-        return null;
-      }
-
-      return loadStepContent(block, stepIndex);
-    },
-    [],
-  );
-
-  const withProgrammaticScroll = React.useCallback((callback: () => void) => {
-    programmaticScrollRef.current = true;
-    callback();
-    requestAnimationFrame(() => {
-      programmaticScrollRef.current = false;
-    });
-  }, []);
-
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
-    const el = contentRef.current;
-    if (!el || (!force && followStateRef.current !== 'following')) {
-      return;
-    }
-    withProgrammaticScroll(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior });
-    });
-  }, [withProgrammaticScroll]);
-
-  React.useLayoutEffect(() => {
-    followStateRef.current = 'following';
-    pendingInitialScrollRef.current = true;
-  }, [activeConversationKey, open]);
-
-  React.useLayoutEffect(() => {
-    if (!open) return;
-    if (!pendingInitialScrollRef.current && !pendingSendScrollRef.current) {
-      return;
-    }
-    if (pendingInitialScrollRef.current && renderedMessages.length === 0) {
-      return;
-    }
-
-    const frameId = requestAnimationFrame(() => {
-      if (pendingInitialScrollRef.current || pendingSendScrollRef.current) {
-        scrollToBottom('auto', true);
-      }
-      pendingInitialScrollRef.current = false;
-      pendingSendScrollRef.current = false;
-    });
-
-    return () => cancelAnimationFrame(frameId);
-  }, [open, activeConversationKey, renderedMessages.length, scrollToBottom]);
-
-  // 初始化滚动 + 流式响应滚动（使用 ResizeObserver）
-  React.useEffect(() => {
-    if (!open) return;
-
-    const el = contentRef.current;
-    if (!el) return;
-
-    // 创建 ResizeObserver 监听内容区域高度变化
-    const resizeObserver = new ResizeObserver(() => {
-      if (followStateRef.current === 'following') {
-        scrollToBottom('auto');
-      }
-    });
-
-    // 观察内容容器
-    resizeObserver.observe(el);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [open, scrollToBottom]);
-
-  React.useEffect(() => {
-    const el = contentRef.current;
-    if (!el || !open) {
-      return;
-    }
-
-    const updateBtnVisible = () => {
-      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (!programmaticScrollRef.current) {
-        if (distanceToBottom <= SCROLL_BUTTON_RECOVERY_THRESHOLD) {
-          followStateRef.current = 'following';
-        } else {
-          followStateRef.current = 'detached';
-        }
-      }
-      setShowScrollBottomBtn(distanceToBottom > SCROLL_BUTTON_VISIBILITY_THRESHOLD);
-    };
-
-    updateBtnVisible();
-    el.addEventListener('scroll', updateBtnVisible, { passive: true });
-
-    return () => {
-      el.removeEventListener('scroll', updateBtnVisible);
-    };
-  }, [messages.length, open]);
-
-  const handleScrollToBottom = React.useCallback(() => {
-    followStateRef.current = 'following';
-    scrollToBottom('smooth', true);
-  }, [scrollToBottom]);
+  const {
+    buildStepContentLoader,
+    contentRef,
+    handleScrollToBottom,
+    markPendingSend,
+    renderedMessages,
+    scrollToBottom,
+    showScrollBottomBtn,
+  } = useCopilotStream({
+    messages,
+    open,
+    activeConversationKey,
+  });
 
   const bubbleRole = React.useMemo<BubbleListProps['role']>(
     () => ({
@@ -883,13 +731,13 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
   const handleFileChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setAttachedFiles((prev) => [...prev, ...files]);
+    addAttachedFiles(files);
     e.target.value = '';
-  }, []);
+  }, [addAttachedFiles]);
 
   const removeFile = React.useCallback((index: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    removeAttachedFile(index);
+  }, [removeAttachedFile]);
 
   const submitMessage = React.useCallback(
     async (rawMessage?: string) => {
@@ -898,9 +746,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         return;
       }
 
-      // 用户发送消息时，自动回到底部开始跟随
-      followStateRef.current = 'following';
-      pendingSendScrollRef.current = true;
+      markPendingSend();
 
       const targetKey = await ensureSession(message);
       if (targetKey !== activeConversationKey) {
@@ -927,7 +773,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         });
       }
       setInputValue('');
-      setAttachedFiles([]);
+      clearAttachedFiles();
 
       requestAnimationFrame(() => {
         scrollToBottom('auto', true);
@@ -939,11 +785,14 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       ensureSession,
       getConversation,
       inputValue,
+      clearAttachedFiles,
       onRequest,
       queueRequest,
       scene,
       scrollToBottom,
       setConversation,
+      setInputValue,
+      markPendingSend,
     ],
   );
 
