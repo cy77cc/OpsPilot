@@ -1,15 +1,108 @@
 import React from 'react';
-import { Button, Form, Input, InputNumber, Modal, Space, Table, Tag, message } from 'antd';
-import { Api } from '../../api';
+import { Button, Form, Input, InputNumber, Modal, Space, Table, Tag } from 'antd';
+import type { FormInstance } from 'antd';
 import { useScope } from '../../app/scope/useScope';
 import { GuidedFormItem } from '../FormGuidance';
+import { useNamespacePolicyActions } from './hooks/useNamespacePolicyActions';
+import type { NamespacePolicyActions } from './hooks/useNamespacePolicyActions';
 
 interface Props {
   clusterId: string;
+  actions?: NamespacePolicyActions;
 }
 
-const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
+interface NamespacePolicyViewProps {
+  loading: boolean;
+  namespaces: any[];
+  bindings: any[];
+  nsOpen: boolean;
+  bindOpen: boolean;
+  nsForm: FormInstance;
+  bindForm: FormInstance;
+  onRefresh: () => void;
+  onOpenNamespace: () => void;
+  onOpenBindings: () => void;
+  onCloseNamespace: () => void;
+  onCloseBindings: () => void;
+  onCreateNamespace: () => void;
+  onSaveBindings: () => void;
+  onRemoveNamespace: (name: string) => void;
+}
+
+const NamespacePolicyView: React.FC<NamespacePolicyViewProps> = ({
+  loading,
+  namespaces,
+  bindings,
+  nsOpen,
+  bindOpen,
+  nsForm,
+  bindForm,
+  onRefresh,
+  onOpenNamespace,
+  onOpenBindings,
+  onCloseNamespace,
+  onCloseBindings,
+  onCreateNamespace,
+  onSaveBindings,
+  onRemoveNamespace,
+}) => (
+  <div>
+    <Space style={{ marginBottom: 12 }}>
+      <Button onClick={onRefresh} loading={loading}>刷新</Button>
+      <Button type="primary" onClick={onOpenNamespace}>新建 Namespace</Button>
+      <Button onClick={onOpenBindings}>管理 Team 绑定</Button>
+    </Space>
+
+    <Table
+      size="small"
+      rowKey="name"
+      loading={loading}
+      dataSource={namespaces}
+      columns={[
+        { title: 'Namespace', dataIndex: 'name' },
+        { title: '状态', dataIndex: 'status' },
+        { title: '标签', dataIndex: 'labels', render: (labels: Record<string, string>) => Object.entries(labels || {}).slice(0, 3).map(([k, v]) => <Tag key={k}>{k}={v}</Tag>) },
+        { title: '操作', render: (_: any, r: any) => <Button danger type="link" onClick={() => onRemoveNamespace(r.name)}>删除</Button> },
+      ]}
+      pagination={false}
+    />
+
+    <Table
+      style={{ marginTop: 16 }}
+      size="small"
+      rowKey={(r) => `${r.team_id}-${r.namespace}`}
+      dataSource={bindings}
+      columns={[
+        { title: 'TeamID', dataIndex: 'team_id' },
+        { title: 'Namespace', dataIndex: 'namespace' },
+        { title: '环境', dataIndex: 'env', render: (v: string) => v || '-' },
+        { title: '只读', dataIndex: 'readonly', render: (v: boolean) => <Tag color={v ? 'orange' : 'green'}>{v ? 'readonly' : 'rw'}</Tag> },
+      ]}
+      pagination={false}
+    />
+
+    <Modal title="新建 Namespace" open={nsOpen} onCancel={onCloseNamespace} onOk={() => void onCreateNamespace()}>
+      <Form form={nsForm} layout="vertical">
+        <GuidedFormItem label="名称" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
+        <GuidedFormItem label="环境" name="env"><Input placeholder="development/staging/production" /></GuidedFormItem>
+      </Form>
+    </Modal>
+
+    <Modal title="更新 Team Namespace 绑定" open={bindOpen} onCancel={onCloseBindings} onOk={() => void onSaveBindings()}>
+      <Form form={bindForm} layout="vertical">
+        <GuidedFormItem label="Team ID" name="team_id" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
+        <GuidedFormItem label="Namespaces" name="namespaces" rules={[{ required: true, message: '至少一个 namespace' }]}>
+          <Input placeholder="逗号分隔: default,dev,staging" onBlur={(e) => bindForm.setFieldValue('namespaces', String(e.target.value || '').split(',').map((x) => x.trim()).filter(Boolean))} />
+        </GuidedFormItem>
+      </Form>
+    </Modal>
+  </div>
+);
+
+const NamespacePolicyPanel: React.FC<Props> = ({ clusterId, actions: actionsProp }) => {
   const { teamId, setTeamId } = useScope();
+  const defaultActions = useNamespacePolicyActions({ clusterId, teamId, setTeamId });
+  const actions = actionsProp || defaultActions;
   const [loading, setLoading] = React.useState(false);
   const [namespaces, setNamespaces] = React.useState<any[]>([]);
   const [bindings, setBindings] = React.useState<any[]>([]);
@@ -21,103 +114,62 @@ const NamespacePolicyPanel: React.FC<Props> = ({ clusterId }) => {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [nsRes, bindRes] = await Promise.all([
-        Api.kubernetes.getClusterNamespaces(clusterId),
-        Api.kubernetes.getNamespaceBindings(clusterId, teamId || undefined),
-      ]);
-      setNamespaces(nsRes.data.list || []);
-      setBindings(bindRes.data.list || []);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载命名空间失败');
+      const data = await actions.load();
+      setNamespaces(data.namespaces);
+      setBindings(data.bindings);
     } finally {
       setLoading(false);
     }
-  }, [clusterId, teamId]);
+  }, [actions]);
 
   React.useEffect(() => { void load(); }, [load]);
   React.useEffect(() => {
     bindForm.setFieldValue('team_id', Number(teamId || 1));
   }, [bindForm, teamId]);
 
-  const createNamespace = async () => {
+  const createNamespace = React.useCallback(async () => {
     const v = await nsForm.validateFields();
-    await Api.kubernetes.createNamespace(clusterId, { name: v.name, env: v.env });
-    message.success('命名空间已创建');
+    await actions.createNamespace({ clusterId, name: v.name, env: v.env });
     setNsOpen(false);
     nsForm.resetFields();
     await load();
-  };
+  }, [actions, clusterId, load, nsForm]);
 
-  const saveBindings = async () => {
+  const saveBindings = React.useCallback(async () => {
     const v = await bindForm.validateFields();
-    await Api.kubernetes.putNamespaceBindings(clusterId, String(v.team_id),
-      (v.namespaces || []).map((x: string) => ({ namespace: x.trim() })).filter((x: any) => x.namespace),
-    );
-    setTeamId(String(v.team_id));
-    message.success('绑定已更新');
+    await actions.saveBindings({
+      clusterId,
+      teamId: String(v.team_id),
+      namespaces: Array.isArray(v.namespaces) ? v.namespaces : [],
+    });
     setBindOpen(false);
     bindForm.resetFields();
     await load();
-  };
+  }, [actions, bindForm, clusterId, load]);
 
-  const removeNamespace = async (name: string) => {
-    await Api.kubernetes.deleteNamespace(clusterId, name);
-    message.success('命名空间删除请求已提交');
+  const removeNamespace = React.useCallback(async (name: string) => {
+    await actions.removeNamespace({ clusterId, name });
     await load();
-  };
+  }, [actions, clusterId, load]);
 
   return (
-    <div>
-      <Space style={{ marginBottom: 12 }}>
-        <Button onClick={load} loading={loading}>刷新</Button>
-        <Button type="primary" onClick={() => setNsOpen(true)}>新建 Namespace</Button>
-        <Button onClick={() => setBindOpen(true)}>管理 Team 绑定</Button>
-      </Space>
-
-      <Table
-        size="small"
-        rowKey="name"
-        loading={loading}
-        dataSource={namespaces}
-        columns={[
-          { title: 'Namespace', dataIndex: 'name' },
-          { title: '状态', dataIndex: 'status' },
-          { title: '标签', dataIndex: 'labels', render: (labels: Record<string, string>) => Object.entries(labels || {}).slice(0, 3).map(([k, v]) => <Tag key={k}>{k}={v}</Tag>) },
-          { title: '操作', render: (_: any, r: any) => <Button danger type="link" onClick={() => removeNamespace(r.name)}>删除</Button> },
-        ]}
-        pagination={false}
-      />
-
-      <Table
-        style={{ marginTop: 16 }}
-        size="small"
-        rowKey={(r) => `${r.team_id}-${r.namespace}`}
-        dataSource={bindings}
-        columns={[
-          { title: 'TeamID', dataIndex: 'team_id' },
-          { title: 'Namespace', dataIndex: 'namespace' },
-          { title: '环境', dataIndex: 'env', render: (v: string) => v || '-' },
-          { title: '只读', dataIndex: 'readonly', render: (v: boolean) => <Tag color={v ? 'orange' : 'green'}>{v ? 'readonly' : 'rw'}</Tag> },
-        ]}
-        pagination={false}
-      />
-
-      <Modal title="新建 Namespace" open={nsOpen} onCancel={() => setNsOpen(false)} onOk={() => void createNamespace()}>
-        <Form form={nsForm} layout="vertical">
-          <GuidedFormItem label="名称" name="name" rules={[{ required: true }]}><Input /></GuidedFormItem>
-          <GuidedFormItem label="环境" name="env"><Input placeholder="development/staging/production" /></GuidedFormItem>
-        </Form>
-      </Modal>
-
-      <Modal title="更新 Team Namespace 绑定" open={bindOpen} onCancel={() => setBindOpen(false)} onOk={() => void saveBindings()}>
-        <Form form={bindForm} layout="vertical" initialValues={{ team_id: Number(teamId || 1) }}>
-          <GuidedFormItem label="Team ID" name="team_id" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></GuidedFormItem>
-          <GuidedFormItem label="Namespaces" name="namespaces" rules={[{ required: true, message: '至少一个 namespace' }]}>
-            <Input placeholder="逗号分隔: default,dev,staging" onBlur={(e) => bindForm.setFieldValue('namespaces', String(e.target.value || '').split(',').map((x) => x.trim()).filter(Boolean))} />
-          </GuidedFormItem>
-        </Form>
-      </Modal>
-    </div>
+    <NamespacePolicyView
+      loading={loading}
+      namespaces={namespaces}
+      bindings={bindings}
+      nsOpen={nsOpen}
+      bindOpen={bindOpen}
+      nsForm={nsForm}
+      bindForm={bindForm}
+      onRefresh={() => void load()}
+      onOpenNamespace={() => setNsOpen(true)}
+      onOpenBindings={() => setBindOpen(true)}
+      onCloseNamespace={() => setNsOpen(false)}
+      onCloseBindings={() => setBindOpen(false)}
+      onCreateNamespace={() => void createNamespace()}
+      onSaveBindings={() => void saveBindings()}
+      onRemoveNamespace={(name) => void removeNamespace(name)}
+    />
   );
 };
 
