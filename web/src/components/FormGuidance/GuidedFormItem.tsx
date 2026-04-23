@@ -99,7 +99,7 @@ const GuidedFormItem: React.FC<GuidedFormItemProps> = ({
 
   // Watch the current field value for the AI hint logic.
   // Note: Form.useWatch is available in Ant Design 5.x+
-  const currentValue = Form.useWatch(name, form) || '';
+  const currentValue = String(Form.useWatch(name, form) ?? '');
   
   // Proactive nudge logic
   useEffect(() => {

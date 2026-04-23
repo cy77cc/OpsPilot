@@ -23,6 +23,10 @@ func BuildSystemPrompt(meta aiv1.FieldMeta) string {
 	if meta.Rules != "" {
 		builder.WriteString(fmt.Sprintf("Rules: %s\n", meta.Rules))
 	}
+	if meta.CurrentValue != "" {
+		builder.WriteString(fmt.Sprintf("Current Value: %s\n", meta.CurrentValue))
+		builder.WriteString("Note: The user may want to modify, optimize, or extend this existing value.\n")
+	}
 
 	builder.WriteString("\nConstraint: Output ONLY the value. No markdown fences. No explanation.")
 
