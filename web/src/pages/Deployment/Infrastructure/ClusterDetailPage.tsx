@@ -768,6 +768,9 @@ const ClusterDetailPage: React.FC = () => {
   };
 
   const handleSyncNodes = syncNodes;
+  const handleOpenOperationCenter = useCallback(() => {
+    navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`);
+  }, [clusterId, navigate]);
 
   const handleEdit = async (values: { name: string; description: string }) => {
     if (!clusterId) return;
@@ -1314,8 +1317,11 @@ const ClusterDetailPage: React.FC = () => {
 
       <ClusterOverviewPanel cluster={cluster} statusColor={getStatusColor(cluster.status)}>
         <ClusterOperationsPanel
-          clusterId={clusterId}
+          operationCenterHref={`/deployment/infrastructure/clusters/${clusterId}/operations`}
+          securityHref={`/deployment/infrastructure/clusters/${clusterId}/security`}
+          policyHref={`/deployment/infrastructure/clusters/${clusterId}/policies`}
           nodesLoading={nodesLoading}
+          onOpenOperationCenter={handleOpenOperationCenter}
           onSyncNodes={handleSyncNodes}
         />
       </ClusterOverviewPanel>

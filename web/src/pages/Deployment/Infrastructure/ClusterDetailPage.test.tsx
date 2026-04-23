@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { message, Modal } from 'antd';
 import ClusterDetailPage from './ClusterDetailPage';
+import ClusterOverviewPanel from './components/ClusterOverviewPanel';
+import ClusterOperationsPanel from './components/ClusterOperationsPanel';
 
 const mockApi = vi.hoisted(() => ({
   cluster: {
@@ -351,9 +353,55 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('集群作战面板')).toBeInTheDocument();
     expect(screen.getByTestId('cluster-overview-panel')).toBeInTheDocument();
     expect(screen.getByTestId('cluster-operations-panel')).toBeInTheDocument();
+    expect(screen.getByText('状态: active')).toBeInTheDocument();
+    expect(screen.getByText('节点: 1')).toBeInTheDocument();
+    expect(screen.getByText('K8s: -')).toBeInTheDocument();
     expect(screen.getByText('关键操作台')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '展开基础信息' })).toBeInTheDocument();
     expect(screen.queryByText('基本信息')).not.toBeInTheDocument();
+  });
+
+  it('renders extracted panel contracts with prop-driven operation actions', async () => {
+    const user = userEvent.setup();
+    const openOperationCenter = vi.fn();
+    const syncNodes = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ClusterOverviewPanel cluster={defaultCluster as any} statusColor="success">
+          <ClusterOperationsPanel
+            operationCenterHref="/deployment/infrastructure/clusters/42/operations"
+            securityHref="/deployment/infrastructure/clusters/42/security"
+            policyHref="/deployment/infrastructure/clusters/42/policies"
+            nodesLoading={false}
+            onOpenOperationCenter={openOperationCenter}
+            onSyncNodes={syncNodes}
+          />
+        </ClusterOverviewPanel>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('状态: active')).toBeInTheDocument();
+    expect(screen.getByText('节点: 1')).toBeInTheDocument();
+    expect(screen.getByText('K8s: -')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '进入安全中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/security',
+    );
+    expect(screen.getByRole('link', { name: '进入策略中心' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/policies',
+    );
+    expect(screen.getByRole('link', { name: '查看全部操作' })).toHaveAttribute(
+      'href',
+      '/deployment/infrastructure/clusters/42/operations',
+    );
+
+    await user.click(screen.getByRole('button', { name: '进入操作中心' }));
+    expect(openOperationCenter).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '同步节点' }));
+    expect(syncNodes).toHaveBeenCalledTimes(1);
   });
 
   it('renders quick links to security, policy, and operation centers', async () => {
