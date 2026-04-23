@@ -167,7 +167,7 @@ func FromError(err error) *CodeError {
 	if e, ok := err.(*CodeError); ok {
 		return e
 	}
-	return &CodeError{Code: ServerError, Msg: err.Error()}
+	return &CodeError{Code: ServerError, Msg: ServerError.Msg()}
 }
 
 // HttpStatus 将业务错误码转换为 HTTP 状态码。
