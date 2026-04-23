@@ -13,25 +13,24 @@ import (
 	"strings"
 
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
-	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
 )
 
 // Handler 是 RBAC 服务的 HTTP 处理器。
 //
 // 依赖:
-//   - svcCtx: 服务上下文，包含数据库、Casbin 执行器等依赖
+//   - db: 数据库连接
 type Handler struct {
-	svcCtx *svc.ServiceContext
+	db *gorm.DB
 }
 
 // NewHandler 创建 RBAC 处理器实例。
 //
 // 参数:
-//   - svcCtx: 服务上下文
+//   - db: 数据库连接
 //
 // 返回: RBAC 处理器实例
-func NewHandler(svcCtx *svc.ServiceContext) *Handler { return &Handler{svcCtx: svcCtx} }
+func NewHandler(db *gorm.DB) *Handler { return &Handler{db: db} }
 
 // codeValidationError 是代码验证错误。
 //
@@ -52,7 +51,7 @@ func (h *Handler) fetchPermissionsByUserID(userID uint64) ([]string, error) {
 		Code string `gorm:"column:code"`
 	}
 	var rows []row
-	err := h.svcCtx.DB.Table("permissions").
+	err := h.db.Table("permissions").
 		Select("permissions.code").
 		Joins("JOIN role_permissions ON permissions.id = role_permissions.permission_id").
 		Joins("JOIN user_roles ON user_roles.role_id = role_permissions.role_id").
@@ -141,7 +140,7 @@ func (h *Handler) getRoleCodesByUserID(userID uint64) ([]string, error) {
 		Code string `gorm:"column:code"`
 	}
 	var rows []row
-	err := h.svcCtx.DB.Table("roles").
+	err := h.db.Table("roles").
 		Select("roles.code").
 		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
 		Where("user_roles.user_id = ?", userID).
@@ -178,7 +177,7 @@ func (h *Handler) getPermissionCodesByRoleID(roleID uint64) ([]string, error) {
 		Code string `gorm:"column:code"`
 	}
 	var rows []row
-	err := h.svcCtx.DB.Table("permissions").
+	err := h.db.Table("permissions").
 		Select("permissions.code").
 		Joins("JOIN role_permissions ON role_permissions.permission_id = permissions.id").
 		Where("role_permissions.role_id = ?", roleID).

@@ -286,7 +286,41 @@ func NewConfig() error {
 	if err := viper.Unmarshal(&CFG); err != nil {
 		return fmt.Errorf("unmarshal config: %w", err)
 	}
+	if err := ValidateConfig(CFG); err != nil {
+		return err
+	}
 	return nil
+}
+
+// ValidateConfig 对关键配置做启动期 schema 校验，避免运行期隐式失败。
+func ValidateConfig(cfg Config) error {
+	switch {
+	case strings.TrimSpace(cfg.App.Name) == "":
+		return fmt.Errorf("validate config: app.name is required")
+	case cfg.Server.Port <= 0 || cfg.Server.Port > 65535:
+		return fmt.Errorf("validate config: server.port must be in range 1-65535")
+	case cfg.Server.ReadTimeout <= 0:
+		return fmt.Errorf("validate config: server.read_timeout must be > 0")
+	case cfg.Server.WriteTimeout <= 0:
+		return fmt.Errorf("validate config: server.write_timeout must be > 0")
+	case cfg.Server.IdleTimeout <= 0:
+		return fmt.Errorf("validate config: server.idle_timeout must be > 0")
+	case missingSecret(cfg.Server.Salt):
+		return fmt.Errorf("validate config: server.salt is required and must not be an unresolved placeholder")
+	case missingSecret(cfg.JWT.Secret):
+		return fmt.Errorf("validate config: jwt.secret is required and must not be an unresolved placeholder")
+	}
+
+	if cfg.Redis.Enable && strings.TrimSpace(cfg.Redis.Addr) == "" {
+		return fmt.Errorf("validate config: redis.addr is required when redis.enable=true")
+	}
+
+	return nil
+}
+
+func missingSecret(v string) bool {
+	trimmed := strings.TrimSpace(v)
+	return trimmed == "" || strings.Contains(trimmed, "${")
 }
 
 // AppEnv 返回应用环境名称（小写）。

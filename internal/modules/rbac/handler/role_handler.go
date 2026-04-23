@@ -16,7 +16,7 @@ import (
 
 func (h *Handler) ListRoles(c *gin.Context) {
 	var roles []usermodel.Role
-	if err := h.svcCtx.DB.Find(&roles).Error; err != nil {
+	if err := h.db.Find(&roles).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
@@ -49,7 +49,7 @@ func (h *Handler) GetRole(c *gin.Context) {
 		return
 	}
 	var r usermodel.Role
-	if err := h.svcCtx.DB.First(&r, id).Error; err != nil {
+	if err := h.db.First(&r, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "role not found")
 		return
 	}
@@ -84,7 +84,7 @@ func (h *Handler) CreateRole(c *gin.Context) {
 	now := time.Now().Unix()
 	code := strings.TrimSpace(req.Name)
 	r := usermodel.Role{Name: req.Name, Code: code, Description: req.Description, Status: 1, CreateTime: now, UpdateTime: now}
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&r).Error; err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		return
 	}
 
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		updates := map[string]any{"update_time": time.Now().Unix()}
 		if req.Name != nil {
 			updates["name"] = strings.TrimSpace(*req.Name)
@@ -181,7 +181,7 @@ func (h *Handler) DeleteRole(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("role_id = ?", id).Delete(&usermodel.RolePermission{}).Error; err != nil {
 			return err
 		}

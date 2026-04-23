@@ -17,7 +17,7 @@ import (
 
 // RegisterRBACHandlers 注册 RBAC 服务路由到 v1 组。
 func RegisterRBACHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
-	h := rbachandler.NewHandler(svcCtx)
+	h := rbachandler.NewHandler(svcCtx.DB)
 	g := v1.Group("/rbac", middleware.JWTAuth())
 	readOnly := middleware.CasbinAuth(svcCtx.CasbinEnforcer, "rbac:read")
 	writeOnly := middleware.CasbinAuth(svcCtx.CasbinEnforcer, "rbac:write")

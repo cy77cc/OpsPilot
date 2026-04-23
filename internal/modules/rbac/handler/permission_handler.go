@@ -12,7 +12,7 @@ import (
 
 func (h *Handler) ListPermissions(c *gin.Context) {
 	var permissions []usermodel.Permission
-	if err := h.svcCtx.DB.Find(&permissions).Error; err != nil {
+	if err := h.db.Find(&permissions).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
@@ -44,7 +44,7 @@ func (h *Handler) GetPermission(c *gin.Context) {
 		return
 	}
 	var p usermodel.Permission
-	if err := h.svcCtx.DB.First(&p, id).Error; err != nil {
+	if err := h.db.First(&p, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "permission not found")
 		return
 	}

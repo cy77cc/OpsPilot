@@ -23,7 +23,7 @@ func (h *Handler) MyPermissions(c *gin.Context) {
 	}
 	userID := httpx.ToUint64(uid)
 	perms, _ := h.fetchPermissionsByUserID(userID)
-	if httpx.IsAdmin(h.svcCtx.DB, userID) {
+	if httpx.IsAdmin(h.db, userID) {
 		perms = mergePermissions(perms, adminPermissionSet()...)
 	}
 	httpx.OK(c, perms)
@@ -52,7 +52,7 @@ func (h *Handler) Check(c *gin.Context) {
 	uid, _ := c.Get("uid")
 	userID := httpx.ToUint64(uid)
 	perms, _ := h.fetchPermissionsByUserID(userID)
-	if httpx.IsAdmin(h.svcCtx.DB, userID) {
+	if httpx.IsAdmin(h.db, userID) {
 		perms = mergePermissions(perms, adminPermissionSet()...)
 	}
 	has := hasPermission(perms, code, req.Resource)
@@ -73,7 +73,7 @@ func (h *Handler) Check(c *gin.Context) {
 // @Router /rbac/users [get]
 func (h *Handler) ListUsers(c *gin.Context) {
 	var users []usermodel.User
-	if err := h.svcCtx.DB.Find(&users).Error; err != nil {
+	if err := h.db.Find(&users).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
@@ -115,7 +115,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 		return
 	}
 	var u usermodel.User
-	if err := h.svcCtx.DB.First(&u, id).Error; err != nil {
+	if err := h.db.First(&u, id).Error; err != nil {
 		httpx.Fail(c, xcode.NotFound, "user not found")
 		return
 	}
@@ -168,7 +168,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 
 	now := time.Now().Unix()
 	u := usermodel.User{Username: req.Username, PasswordHash: hashed, Email: req.Email, CreateTime: now, UpdateTime: now, Status: toStatusInt(req.Status)}
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&u).Error; err != nil {
 			return err
 		}
@@ -223,7 +223,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		updates := map[string]any{"update_time": time.Now().Unix()}
 		if req.Email != nil {
 			updates["email"] = strings.TrimSpace(*req.Email)
@@ -282,7 +282,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, "invalid id")
 		return
 	}
-	if err := h.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ?", id).Delete(&usermodel.UserRole{}).Error; err != nil {
 			return err
 		}
