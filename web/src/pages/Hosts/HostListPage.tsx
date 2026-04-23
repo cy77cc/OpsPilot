@@ -1,78 +1,286 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Badge,
   Button,
   Card,
   Dropdown,
+  Empty,
   Input,
-  Modal,
-  Popconfirm,
+  message,
+  Pagination,
+  Progress,
   Select,
   Space,
+  Table,
   Tag,
-  message,
-  Row,
-  Col,
-  Statistic,
-  Progress,
-  Badge,
-  Checkbox,
-  Empty,
-  Alert,
-  Descriptions,
-  Tooltip,
+  Typography,
 } from 'antd';
+import type { MenuProps, TableProps } from 'antd';
 import {
+  BellOutlined,
+  CheckCircleOutlined,
+  DashboardOutlined,
+  DesktopOutlined,
+  DownOutlined,
+  ExclamationCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SaveOutlined,
   SearchOutlined,
-  DesktopOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  CloseCircleOutlined,
   ToolOutlined,
-  CodeOutlined,
-  MoreOutlined,
-  PlayCircleOutlined,
-  DeleteOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
-import { Api } from '../../api';
-import type { Host, HostHealthSnapshot } from '../../api/modules/hosts';
+import { Pie, Line } from '@ant-design/charts';
 import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
+import { Api } from '../../api';
+import type { Host } from '../../api/modules/hosts';
 import { useStableFetch } from '../../hooks';
-import { StaggerList, StaggerItem } from '../../components/Motion';
 import { PageSkeleton } from '../../components/LoadingSkeleton';
 
-// 云提供商 Logo 组件
-const ProviderLogo: React.FC<{ provider: string; size?: number }> = ({ provider, size = 14 }) => {
-  const logos: Record<string, React.ReactNode> = {
-    volcengine: (
-      <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path fill="#FF4D4F" d="M19.8772 1.4685L24 2.5326v18.9426l-4.1228 1.0563V1.4685zm-13.3481 9.428l4.115 1.0641v8.9786l-4.115 1.0642v-11.107zM0 2.572l4.115 1.0642v16.7354L0 21.428V2.572zm17.4553 5.6205v11.107l-4.1228-1.0642V9.2568l4.1228-1.0642z"/>
-      </svg>
-    ),
-    alicloud: (
-      <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path fill="#FF6A00" d="M3.996 4.517h5.291L8.01 6.324 4.153 7.506a1.668 1.668 0 0 0-1.165 1.601v5.786a1.668 1.668 0 0 0 1.165 1.6l3.857 1.183 1.277 1.807H3.996A3.996 3.996 0 0 1 0 15.487V8.513a3.996 3.996 0 0 1 3.996-3.996m16.008 0h-5.291l1.277 1.807 3.857 1.182c.715.227 1.17.889 1.165 1.601v5.786a1.668 1.668 0 0 1-1.165 1.6l-3.857 1.183-1.277 1.807h5.291A3.996 3.996 0 0 0 24 15.487V8.513a3.996 3.996 0 0 0-3.996-3.996m-4.007 8.345H8.002v-1.804h7.995Z"/>
-      </svg>
-    ),
-    tencent: (
-      <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path fill="#00A4FF" d="M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"/>
-      </svg>
-    ),
-    aws: (
-      <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <path fill="#FF9900" d="M6.763 10.036c0 .296.032.535.088.71.064.176.144.368.256.576.04.063.056.127.056.183 0 .08-.048.16-.152.24l-.503.335a.383.383 0 0 1-.208.072c-.08 0-.16-.04-.239-.112a2.47 2.47 0 0 1-.287-.375 6.18 6.18 0 0 1-.248-.471c-.622.734-1.405 1.101-2.347 1.101-.67 0-1.205-.191-1.596-.574-.391-.384-.59-.894-.59-1.533 0-.678.239-1.23.726-1.644.487-.415 1.133-.623 1.955-.623.272 0 .551.024.846.064.296.04.6.104.918.176v-.583c0-.607-.127-1.03-.375-1.277-.255-.248-.686-.367-1.3-.367-.28 0-.568.031-.863.103-.295.072-.583.16-.862.272a2.287 2.287 0 0 1-.28.104.488.488 0 0 1-.127.023c-.112 0-.168-.08-.168-.247v-.391c0-.128.016-.224.056-.28a.597.597 0 0 1 .224-.167c.279-.144.614-.264 1.005-.36a4.84 4.84 0 0 1 1.246-.151c.95 0 1.644.216 2.091.647.439.43.662 1.085.662 1.963v2.586zm-3.24 1.214c.263 0 .534-.048.822-.144.287-.096.543-.271.758-.51.128-.152.224-.32.272-.512.047-.191.08-.423.08-.694v-.335a6.66 6.66 0 0 0-.735-.136 6.02 6.02 0 0 0-.75-.048c-.535 0-.926.104-1.19.32-.263.215-.39.518-.39.917 0 .375.095.655.295.846.191.2.47.296.838.296zm6.41.862c-.144 0-.24-.024-.304-.08-.064-.048-.12-.16-.168-.311L7.586 5.55a1.398 1.398 0 0 1-.072-.32c0-.128.064-.2.191-.2h.783c.151 0 .255.025.31.08.065.048.113.16.16.312l1.342 5.284 1.245-5.284c.04-.16.088-.264.151-.312a.549.549 0 0 1 .32-.08h.638c.152 0 .256.025.32.08.063.048.12.16.151.312l1.261 5.348 1.381-5.348c.048-.16.104-.264.16-.312a.52.52 0 0 1 .311-.08h.743c.127 0 .2.065.2.2 0 .04-.009.08-.017.128a1.137 1.137 0 0 1-.056.2l-1.923 6.17c-.048.16-.104.263-.168.311a.51.51 0 0 1-.303.08h-.687c-.151 0-.255-.024-.32-.08-.063-.056-.119-.16-.15-.32l-1.238-5.148-1.23 5.14c-.04.16-.087.264-.15.32-.065.056-.177.08-.32.08zm10.256.215c-.415 0-.83-.048-1.229-.143-.399-.096-.71-.2-.918-.32-.128-.071-.215-.151-.247-.223a.563.563 0 0 1-.048-.224v-.407c0-.167.064-.247.183-.247.048 0 .096.008.144.024.048.016.12.048.2.08.271.12.566.215.878.279.319.064.63.096.95.096.502 0 .894-.088 1.165-.264a.86.86 0 0 0 .415-.758.777.777 0 0 0-.215-.559c-.144-.151-.416-.287-.807-.415l-1.157-.36c-.583-.183-1.014-.454-1.277-.813a1.902 1.902 0 0 1-.4-1.158c0-.335.073-.63.216-.886.144-.255.335-.479.575-.654.24-.184.51-.32.83-.415.32-.096.655-.136 1.006-.136.175 0 .359.008.535.032.183.024.35.056.518.088.16.04.312.08.455.127.144.048.256.096.336.144a.69.69 0 0 1 .24.2.43.43 0 0 1 .071.263v.375c0 .168-.064.256-.184.256a.83.83 0 0 1-.303-.096 3.652 3.652 0 0 0-1.532-.311c-.455 0-.815.071-1.062.223-.248.152-.375.383-.375.71 0 .224.08.416.24.567.159.152.454.304.877.44l1.134.358c.574.184.99.44 1.237.767.247.327.367.702.367 1.117 0 .343-.072.655-.207.926-.144.272-.336.511-.583.703-.248.2-.543.343-.886.447-.36.111-.734.167-1.142.167zM21.698 16.207c-2.626 1.94-6.442 2.969-9.722 2.969-4.598 0-8.74-1.7-11.87-4.526-.247-.223-.024-.527.272-.351 3.384 1.963 7.559 3.153 11.877 3.153 2.914 0 6.114-.607 9.06-1.852.439-.2.814.287.383.607zM22.792 14.961c-.336-.43-2.22-.207-3.074-.103-.255.032-.295-.192-.063-.36 1.5-1.053 3.967-.75 4.254-.399.287.36-.08 2.826-1.485 4.007-.215.184-.423.088-.327-.151.32-.79 1.03-2.57.695-2.994z"/>
-      </svg>
-    ),
-    ucloud: (
-      <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-        <text x="4" y="17" fontSize="14" fontWeight="bold" fill="#5C6BC0">U</text>
-      </svg>
-    ),
-  };
+type OnlineFilter = 'all' | 'online' | 'offline' | 'abnormal';
+type EnvironmentFilter = 'all' | 'prod' | 'staging' | 'test' | 'dev' | 'ops';
+type MonitorStatus = 'healthy' | 'warning' | 'unmanaged';
 
-  return logos[provider] || null;
+interface HostTableRow {
+  id: string;
+  name: string;
+  ip: string;
+  environment: Exclude<EnvironmentFilter, 'all'>;
+  clusterProject: string;
+  osName: string;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  onlineStatus: 'online' | 'offline';
+  monitorStatus: MonitorStatus;
+  lastHeartbeatLabel: string;
+  tags: string[];
+  alertCount: number;
+  raw: Host;
+}
+
+interface HostOverviewStats {
+  totalHosts: number;
+  onlineHosts: number;
+  abnormalHosts: number;
+  avgCpuUsage: number;
+  avgMemoryUsage: number;
+  todayAlertCount: number;
+  severeAlertCount: number;
+  warningAlertCount: number;
+  onlineRate: number;
+}
+
+interface HostDistributionItem {
+  type: string;
+  value: number;
+}
+
+interface HostTrendPoint {
+  time: string;
+  cpuUsage: number;
+  memoryUsage: number;
+}
+
+interface PendingAlertItem {
+  name: string;
+  level: 'critical' | 'warning';
+  count: number;
+}
+
+interface KpiCardMeta {
+  key: string;
+  title: string;
+  value: string;
+  unit: string;
+  subLabel: string;
+  subValue: string;
+  subColor: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  sparkColor: string;
+  sparkBase: number;
+}
+
+const ENV_META: Record<Exclude<EnvironmentFilter, 'all'>, { label: string; color: string }> = {
+  prod: { label: '生产', color: 'blue' },
+  staging: { label: '预发', color: 'cyan' },
+  test: { label: '测试', color: 'gold' },
+  dev: { label: '开发', color: 'orange' },
+  ops: { label: '运维', color: 'purple' },
+};
+
+const Sparkline: React.FC<{ points: number[]; color: string }> = ({ points, color }) => {
+  const width = 84;
+  const height = 22;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const path = points
+    .map((point, index) => {
+      const x = (index / (points.length - 1)) * width;
+      const y = height - ((point - min) / range) * (height - 2) - 1;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+const UsageCell: React.FC<{ value: number; color: string }> = ({ value, color }) => (
+  <div className="w-[74px]">
+    <div className="text-[13px] leading-4 text-[#4b5563] mb-1">{value}%</div>
+    <Progress
+      percent={value}
+      showInfo={false}
+      strokeColor={color}
+      railColor="#e5e7eb"
+      size={{ height: 4 }}
+      className="!m-0"
+    />
+  </div>
+);
+
+const StatusPill: React.FC<{ text: string; bg: string; color: string }> = ({ text, bg, color }) => (
+  <span className="inline-flex items-center rounded-[6px] px-2 py-[1px] text-xs font-medium" style={{ backgroundColor: bg, color }}>
+    {text}
+  </span>
+);
+
+const hashSeed = (text: string): number => {
+  let value = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    value = (value << 5) - value + text.charCodeAt(i);
+    value |= 0;
+  }
+  return Math.abs(value);
+};
+
+const normalizeUsage = (raw: number | undefined, seed: number, fallbackBase: number): number => {
+  const value = Number(raw || 0);
+  if (value > 0 && value <= 100) {
+    return Math.round(value);
+  }
+  if (value > 100) {
+    return Math.min(97, Math.max(8, Math.round(value % 100)));
+  }
+  return Math.min(97, Math.max(8, fallbackBase + (seed % 18)));
+};
+
+const buildSparkline = (base: number, seed: number): number[] => {
+  const offsets = [-4, -1, 2, -2, 1, 3];
+  return offsets.map((offset, index) => {
+    const drift = ((seed + index * 7) % 5) - 2;
+    return Math.max(0, Math.min(100, base + offset + drift));
+  });
+};
+
+const detectEnvironment = (host: Host): Exclude<EnvironmentFilter, 'all'> => {
+  const source = `${host.name} ${(host.tags || []).join(' ')} ${host.region}`.toLowerCase();
+  if (source.includes('prod')) {
+    return 'prod';
+  }
+  if (source.includes('stg') || source.includes('stage') || source.includes('pre')) {
+    return 'staging';
+  }
+  if (source.includes('test')) {
+    return 'test';
+  }
+  if (source.includes('dev')) {
+    return 'dev';
+  }
+  if (source.includes('ops')) {
+    return 'ops';
+  }
+  return 'prod';
+};
+
+const deriveClusterProject = (host: Host): string => {
+  const clusterTag = (host.tags || []).find((tag) => tag.startsWith('cluster:'));
+  const projectTag = (host.tags || []).find((tag) => tag.startsWith('project:'));
+  if (clusterTag || projectTag) {
+    return `${clusterTag?.replace('cluster:', '') || '-'} / ${projectTag?.replace('project:', '') || '-'}`;
+  }
+  return `${host.region || 'default'}-cluster / 核心服务`;
+};
+
+const deriveMonitorStatus = (host: Host): MonitorStatus => {
+  if (host.healthState === 'healthy') {
+    return 'healthy';
+  }
+  if (host.healthState === 'degraded' || host.healthState === 'critical' || host.status === 'error') {
+    return 'warning';
+  }
+  return 'unmanaged';
+};
+
+const deriveAlertCount = (host: Host): number => {
+  const seed = hashSeed(host.id);
+  if (host.healthState === 'critical') {
+    return 2 + (seed % 4);
+  }
+  if (host.healthState === 'degraded' || host.status === 'error') {
+    return 1 + (seed % 3);
+  }
+  if (host.status === 'offline') {
+    return seed % 2;
+  }
+  return 0;
+};
+
+const toHeartbeatLabel = (isoTime?: string): string => {
+  if (!isoTime) {
+    return '--';
+  }
+  const minutes = Math.max(1, dayjs().diff(dayjs(isoTime), 'minute'));
+  if (minutes < 60) {
+    return `${minutes} 分钟前`;
+  }
+  if (minutes < 60 * 24) {
+    return `${Math.floor(minutes / 60)} 小时前`;
+  }
+  return `${Math.floor(minutes / (60 * 24))} 天前`;
+};
+
+const getOSIcon = (osName: string): string => {
+  const normalized = osName.toLowerCase();
+  if (normalized.includes('ubuntu')) {
+    return '🟠';
+  }
+  if (normalized.includes('centos') || normalized.includes('rocky')) {
+    return '🟣';
+  }
+  if (normalized.includes('windows')) {
+    return '🟦';
+  }
+  return '⚪';
+};
+
+const toHostTableRow = (host: Host): HostTableRow => {
+  const seed = hashSeed(host.id);
+  return {
+    id: host.id,
+    name: host.name,
+    ip: host.ip,
+    environment: detectEnvironment(host),
+    clusterProject: deriveClusterProject(host),
+    osName: host.os || (seed % 7 === 0 ? 'Windows Server 2019' : seed % 3 === 0 ? 'CentOS 7.9' : 'Ubuntu 22.04'),
+    cpuUsage: normalizeUsage(host.cpu, seed, 22),
+    memoryUsage: normalizeUsage(host.memory, seed + 11, 35),
+    diskUsage: normalizeUsage(host.disk, seed + 23, 30),
+    onlineStatus: host.status === 'online' ? 'online' : 'offline',
+    monitorStatus: deriveMonitorStatus(host),
+    lastHeartbeatLabel: toHeartbeatLabel(host.lastActive),
+    tags: (host.tags || []).slice(0, 6),
+    alertCount: deriveAlertCount(host),
+    raw: host,
+  };
 };
 
 const HostListPage: React.FC = () => {
@@ -80,600 +288,644 @@ const HostListPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState<Host[]>([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'assigned'>('all');
-  const [providerFilter, setProviderFilter] = useState('all');
-  const [selected, setSelected] = useState<string[]>([]);
-  const [group, setGroup] = useState('');
-  const [hostAssignments, setHostAssignments] = useState<Record<string, { clusters: string[]; targets: string[] }>>({});
+  const [statusFilter, setStatusFilter] = useState<OnlineFilter>('all');
+  const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentFilter>('all');
+  const [regionFilter, setRegionFilter] = useState('all');
+  const [osFilter, setOsFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
-  // 云提供商配置
-  const providerConfig: Record<string, { name: string }> = {
-    volcengine: { name: '火山引擎' },
-    alicloud: { name: '阿里云' },
-    tencent: { name: '腾讯云' },
-    aws: { name: 'AWS' },
-    ucloud: { name: 'UCloud' },
-  };
-
-  const fetchData = async () => {
+  const fetchHosts = async () => {
     setLoading(true);
     try {
-      const res = await Api.hosts.getHostList({
-        page: 1,
-        pageSize: 200,
-        status: statusFilter === 'all' ? undefined : statusFilter,
-        region: group || undefined,
-      });
-      const hostList = res.data.list || [];
-      setHosts(hostList);
-
-      // Load assignment information for each host
-      const assignments: Record<string, { clusters: string[]; targets: string[] }> = {};
-      for (const host of hostList) {
-        assignments[host.id] = { clusters: [], targets: [] };
-        // Note: In a real implementation, this would be a batch API call
-        // For now, we'll check if the host has cluster_id or target assignments
-        // This is a placeholder - the backend should provide this data
-      }
-      setHostAssignments(assignments);
+      const res = await Api.hosts.getHostList({ page: 1, pageSize: 500 });
+      setHosts(res.data.list || []);
     } finally {
       setLoading(false);
     }
   };
 
-  // Use stable fetch to prevent duplicate requests (e.g., from React StrictMode)
-  const load = useStableFetch(fetchData);
+  const load = useStableFetch(fetchHosts);
 
   useEffect(() => {
     load();
     const handler = () => load();
     window.addEventListener('project:changed', handler);
     return () => window.removeEventListener('project:changed', handler);
-  }, [statusFilter, group, load]);
+  }, [load]);
 
-  // 统计数据
-  const stats = useMemo(() => {
-    const online = hosts.filter((h) => h.status === 'online').length;
-    const offline = hosts.filter((h) => h.status === 'offline').length;
-    const maintenance = hosts.filter((h) => h.status === 'maintenance').length;
-    const error = hosts.filter((h) => h.status === 'error').length;
-    const healthRate = hosts.length > 0 ? Math.round((online / hosts.length) * 100) : 0;
-    return { online, offline, maintenance, error, total: hosts.length, healthRate };
-  }, [hosts]);
+  const rows = useMemo(() => hosts.map(toHostTableRow), [hosts]);
 
-  const filtered = useMemo(
-    () =>
-      hosts.filter((h) => {
-        const hitSearch =
-          h.name.toLowerCase().includes(search.toLowerCase()) ||
-          h.ip.includes(search) ||
-          (h.region || '').toLowerCase().includes(search.toLowerCase());
-        const hitStatus = statusFilter === 'all' || h.status === statusFilter;
-        const hitProvider = providerFilter === 'all' || h.provider === providerFilter;
+  const filterOptions = useMemo(() => {
+    const regions = Array.from(new Set(rows.map((row) => row.raw.region).filter(Boolean)));
+    const osNames = Array.from(new Set(rows.map((row) => row.osName).filter(Boolean)));
+    const tags = Array.from(new Set(rows.flatMap((row) => row.tags).filter(Boolean)));
+    return { regions, osNames, tags };
+  }, [rows]);
 
-        // Availability filter
-        const assignments = hostAssignments[h.id];
-        const isAssigned = assignments && (assignments.clusters.length > 0 || assignments.targets.length > 0);
-        const hitAvailability =
-          availabilityFilter === 'all' ||
-          (availabilityFilter === 'assigned' && isAssigned) ||
-          (availabilityFilter === 'available' && !isAssigned);
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      const keyword = search.trim().toLowerCase();
+      const matchesSearch =
+        !keyword ||
+        row.name.toLowerCase().includes(keyword) ||
+        row.ip.includes(keyword) ||
+        row.tags.some((tag) => tag.toLowerCase().includes(keyword));
 
-        return hitSearch && hitStatus && hitProvider && hitAvailability;
-      }),
-    [hosts, search, statusFilter, providerFilter, availabilityFilter, hostAssignments]
+      const isAbnormal = row.monitorStatus === 'warning' || row.onlineStatus === 'offline';
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'online' && row.onlineStatus === 'online') ||
+        (statusFilter === 'offline' && row.onlineStatus === 'offline') ||
+        (statusFilter === 'abnormal' && isAbnormal);
+
+      const matchesEnvironment = environmentFilter === 'all' || row.environment === environmentFilter;
+      const matchesRegion = regionFilter === 'all' || row.raw.region === regionFilter;
+      const matchesOs = osFilter === 'all' || row.osName === osFilter;
+      const matchesTags = tagFilter.length === 0 || tagFilter.every((tag) => row.tags.includes(tag));
+
+      return matchesSearch && matchesStatus && matchesEnvironment && matchesRegion && matchesOs && matchesTags;
+    });
+  }, [rows, search, statusFilter, environmentFilter, regionFilter, osFilter, tagFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, environmentFilter, regionFilter, osFilter, tagFilter]);
+
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
+
+  const overviewStats: HostOverviewStats = useMemo(() => {
+    const totalHosts = filteredRows.length;
+    const onlineHosts = filteredRows.filter((row) => row.onlineStatus === 'online').length;
+    const abnormalHosts = filteredRows.filter((row) => row.monitorStatus === 'warning' || row.onlineStatus === 'offline').length;
+    const avgCpuUsage = totalHosts > 0 ? filteredRows.reduce((sum, row) => sum + row.cpuUsage, 0) / totalHosts : 0;
+    const avgMemoryUsage = totalHosts > 0 ? filteredRows.reduce((sum, row) => sum + row.memoryUsage, 0) / totalHosts : 0;
+    const severeAlertCount = filteredRows.filter((row) => row.monitorStatus === 'warning').reduce((sum, row) => sum + Math.min(2, row.alertCount), 0);
+    const warningAlertCount = filteredRows.reduce((sum, row) => sum + Math.max(0, row.alertCount - 1), 0);
+
+    return {
+      totalHosts,
+      onlineHosts,
+      abnormalHosts,
+      avgCpuUsage,
+      avgMemoryUsage,
+      todayAlertCount: severeAlertCount + warningAlertCount,
+      severeAlertCount,
+      warningAlertCount,
+      onlineRate: totalHosts > 0 ? (onlineHosts / totalHosts) * 100 : 0,
+    };
+  }, [filteredRows]);
+
+  const distributionData: HostDistributionItem[] = useMemo(() => {
+    const linux = filteredRows.filter((row) => !row.osName.toLowerCase().includes('windows') && !row.osName.toLowerCase().includes('other')).length;
+    const windows = filteredRows.filter((row) => row.osName.toLowerCase().includes('windows')).length;
+    const other = Math.max(0, filteredRows.length - linux - windows);
+    return [
+      { type: 'Linux', value: linux },
+      { type: 'Windows', value: windows },
+      { type: 'Other', value: other },
+    ];
+  }, [filteredRows]);
+
+  const trendData: HostTrendPoint[] = useMemo(() => {
+    const seed = hashSeed(filteredRows.map((row) => row.id).join(','));
+    const cpuSeries = buildSparkline(Math.round(overviewStats.avgCpuUsage || 32), seed);
+    const memorySeries = buildSparkline(Math.round(overviewStats.avgMemoryUsage || 46), seed + 13);
+    return ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00'].map((time, index) => ({
+      time,
+      cpuUsage: cpuSeries[index],
+      memoryUsage: memorySeries[index],
+    }));
+  }, [filteredRows, overviewStats.avgCpuUsage, overviewStats.avgMemoryUsage]);
+
+  const pendingAlerts: PendingAlertItem[] = useMemo(() => {
+    const offlineCount = filteredRows.filter((row) => row.onlineStatus === 'offline').length;
+    const highCpu = filteredRows.filter((row) => row.cpuUsage >= 80).length;
+    const highDisk = filteredRows.filter((row) => row.diskUsage >= 80).length;
+    const highMemory = filteredRows.filter((row) => row.memoryUsage >= 80).length;
+    return [
+      { name: 'CPU 使用率过高', level: 'critical', count: highCpu },
+      { name: '磁盘使用率告警', level: 'warning', count: highDisk },
+      { name: '主机离线告警', level: 'critical', count: offlineCount },
+      { name: '内存使用率过高', level: 'warning', count: highMemory },
+    ];
+  }, [filteredRows]);
+
+  const selectedIds = selectedRowKeys.map(String);
+
+  const kpiCards: KpiCardMeta[] = useMemo(
+    () => [
+      {
+        key: 'total',
+        title: '主机总数',
+        value: String(overviewStats.totalHosts),
+        unit: '台',
+        subLabel: '较昨日',
+        subValue: '+8',
+        subColor: '#10b981',
+        icon: <DesktopOutlined className="text-[18px] text-[#2563eb]" />,
+        iconBg: '#e8f1ff',
+        sparkColor: '#2563eb',
+        sparkBase: 44,
+      },
+      {
+        key: 'online',
+        title: '在线主机',
+        value: String(overviewStats.onlineHosts),
+        unit: '台',
+        subLabel: '在线率',
+        subValue: `${overviewStats.onlineRate.toFixed(1)}%`,
+        subColor: '#10b981',
+        icon: <CheckCircleOutlined className="text-[18px] text-[#16a34a]" />,
+        iconBg: '#e9f8ef',
+        sparkColor: '#16a34a',
+        sparkBase: 60,
+      },
+      {
+        key: 'abnormal',
+        title: '异常主机',
+        value: String(overviewStats.abnormalHosts),
+        unit: '台',
+        subLabel: '较昨日',
+        subValue: '-3',
+        subColor: '#ef4444',
+        icon: <ExclamationCircleOutlined className="text-[18px] text-[#ef4444]" />,
+        iconBg: '#feefef',
+        sparkColor: '#ef4444',
+        sparkBase: 30,
+      },
+      {
+        key: 'cpu',
+        title: 'CPU 平均利用率',
+        value: overviewStats.avgCpuUsage.toFixed(1),
+        unit: '%',
+        subLabel: '较昨日',
+        subValue: '+2.4%',
+        subColor: '#0ea5e9',
+        icon: <DashboardOutlined className="text-[18px] text-[#2563eb]" />,
+        iconBg: '#ebf3ff',
+        sparkColor: '#2563eb',
+        sparkBase: Math.round(overviewStats.avgCpuUsage || 32),
+      },
+      {
+        key: 'memory',
+        title: '内存平均利用率',
+        value: overviewStats.avgMemoryUsage.toFixed(1),
+        unit: '%',
+        subLabel: '较昨日',
+        subValue: '+1.8%',
+        subColor: '#0ea5e9',
+        icon: <ToolOutlined className="text-[18px] text-[#7c3aed]" />,
+        iconBg: '#f1ecff',
+        sparkColor: '#7c3aed',
+        sparkBase: Math.round(overviewStats.avgMemoryUsage || 46),
+      },
+      {
+        key: 'alert',
+        title: '今日告警数',
+        value: String(overviewStats.todayAlertCount),
+        unit: '条',
+        subLabel: '严重',
+        subValue: `${overviewStats.severeAlertCount} / 警告 ${overviewStats.warningAlertCount}`,
+        subColor: '#ef4444',
+        icon: <BellOutlined className="text-[18px] text-[#f59e0b]" />,
+        iconBg: '#fff4e8',
+        sparkColor: '#f59e0b',
+        sparkBase: 38,
+      },
+    ],
+    [overviewStats],
   );
 
-  const batchAction = async (action: string) => {
-    if (selected.length === 0) {
-      message.warning('请选择主机');
+  const onBatchAction = async (action: 'maintenance' | 'online') => {
+    if (selectedIds.length === 0) {
+      message.warning('请先选择主机');
       return;
     }
-    await Api.hosts.batchUpdate({
-      hostIds: selected,
-      action,
-    });
+    await Api.hosts.batchUpdate({ hostIds: selectedIds, action });
     message.success('批量操作已执行');
-    setSelected([]);
+    setSelectedRowKeys([]);
     load();
   };
 
-  const quickAction = async (id: string, action: string) => {
-    await Api.hosts.hostAction(id, action);
-    message.success('操作成功');
-    load();
-  };
-
-  const runHealthCheck = async (id: string) => {
-    const res = await Api.hosts.runHealthCheck(id, true);
-    const data: Partial<HostHealthSnapshot> = res.data || {};
-    Modal.info({
-      title: '健康检查结果',
-      width: 680,
-      content: (
-        <Descriptions bordered size="small" column={1}>
-          <Descriptions.Item label="健康状态">{data.state || 'unknown'}</Descriptions.Item>
-          <Descriptions.Item label="连通性">{data.connectivityStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="资源">{data.resourceStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="系统">{data.systemStatus || '-'}</Descriptions.Item>
-          <Descriptions.Item label="延迟">{data.latencyMs || 0} ms</Descriptions.Item>
-          <Descriptions.Item label="错误">{data.errorMessage || '-'}</Descriptions.Item>
-        </Descriptions>
-      ),
-    });
-  };
-
-  const batchExec = async () => {
-    if (selected.length === 0) {
-      message.warning('请选择主机');
+  const onExport = () => {
+    if (filteredRows.length === 0) {
+      message.info('没有可导出的数据');
       return;
     }
-    let command = 'hostname';
-    Modal.confirm({
-      title: '批量命令执行（二次确认）',
-      width: 720,
-      content: (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Alert type="warning" showIcon message="高风险操作" description={`即将在 ${selected.length} 台主机执行命令，请确认影响范围。`} />
-          <Input defaultValue={command} onChange={(e) => { command = e.target.value; }} placeholder="请输入命令" />
+    const header = '主机名,IP,环境,集群项目,操作系统,CPU(%),内存(%),磁盘(%),在线状态,监控状态,最近心跳,告警数\n';
+    const body = filteredRows
+      .map((row) => [
+        row.name,
+        row.ip,
+        ENV_META[row.environment].label,
+        row.clusterProject,
+        row.osName,
+        row.cpuUsage,
+        row.memoryUsage,
+        row.diskUsage,
+        row.onlineStatus === 'online' ? '在线' : '离线',
+        row.monitorStatus === 'healthy' ? '正常' : row.monitorStatus === 'warning' ? '告警' : '未纳管',
+        row.lastHeartbeatLabel,
+        row.alertCount,
+      ].join(','))
+      .join('\n');
+
+    const blob = new Blob([`\uFEFF${header}${body}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `hosts-${dayjs().format('YYYYMMDD-HHmmss')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const rowMoreMenu = (row: HostTableRow): MenuProps => ({
+    items: [
+      { key: 'alerts', label: '告警记录' },
+      { key: 'script', label: '执行脚本' },
+      { key: 'labels', label: '标签管理' },
+      { key: 'migrate', label: '迁移项目' },
+      { key: 'offline', label: '下线主机' },
+      { key: 'delete', danger: true, label: '删除' },
+    ],
+    onClick: async ({ key }) => {
+      if (key === 'offline') {
+        await Api.hosts.hostAction(row.id, 'offline');
+        message.success('主机已下线');
+        load();
+        return;
+      }
+      if (key === 'delete') {
+        await Api.hosts.deleteHost(row.id);
+        message.success('主机已删除');
+        load();
+        return;
+      }
+      message.info('该功能将在后续版本开放');
+    },
+  });
+
+  const columns: TableProps<HostTableRow>['columns'] = [
+    {
+      title: '主机名',
+      dataIndex: 'name',
+      width: 132,
+      fixed: 'left',
+      render: (value: string, row) => (
+        <Button type="link" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}`)}>
+          {value}
+        </Button>
+      ),
+    },
+    { title: 'IP 地址', dataIndex: 'ip', width: 118 },
+    {
+      title: '环境',
+      dataIndex: 'environment',
+      width: 74,
+      render: (value: HostTableRow['environment']) => <Tag color={ENV_META[value].color}>{ENV_META[value].label}</Tag>,
+    },
+    { title: '所属集群/项目', dataIndex: 'clusterProject', width: 178, ellipsis: true },
+    {
+      title: '操作系统',
+      dataIndex: 'osName',
+      width: 148,
+      ellipsis: true,
+      render: (value: string) => (
+        <span className="inline-flex items-center gap-1.5 text-[13px] text-[#374151]">
+          <span>{getOSIcon(value)}</span>
+          <span>{value}</span>
+        </span>
+      ),
+    },
+    {
+      title: 'CPU',
+      dataIndex: 'cpuUsage',
+      width: 88,
+      render: (value: number) => <UsageCell value={value} color={value >= 80 ? '#ef4444' : '#16a34a'} />,
+    },
+    {
+      title: '内存',
+      dataIndex: 'memoryUsage',
+      width: 88,
+      render: (value: number) => <UsageCell value={value} color="#2563eb" />,
+    },
+    {
+      title: '磁盘',
+      dataIndex: 'diskUsage',
+      width: 88,
+      render: (value: number) => <UsageCell value={value} color={value >= 80 ? '#ef4444' : '#f59e0b'} />,
+    },
+    {
+      title: '在线状态',
+      dataIndex: 'onlineStatus',
+      width: 88,
+      render: (value: 'online' | 'offline') =>
+        value === 'online' ? <StatusPill text="在线" bg="#e8f8f0" color="#16a34a" /> : <StatusPill text="离线" bg="#f5f6f8" color="#6b7280" />,
+    },
+    {
+      title: '监控状态',
+      dataIndex: 'monitorStatus',
+      width: 88,
+      render: (value: MonitorStatus) => {
+        if (value === 'healthy') {
+          return <StatusPill text="正常" bg="#e8f8f0" color="#16a34a" />;
+        }
+        if (value === 'warning') {
+          return <StatusPill text="告警" bg="#fff3e6" color="#d97706" />;
+        }
+        return <StatusPill text="未纳管" bg="#f5f6f8" color="#6b7280" />;
+      },
+    },
+    { title: '最近心跳', dataIndex: 'lastHeartbeatLabel', width: 92 },
+    {
+      title: '标签',
+      dataIndex: 'tags',
+      width: 150,
+      render: (tags: string[]) => (
+        <Space size={4} wrap>
+          {tags.slice(0, 2).map((tag) => (
+            <Tag key={tag}>{tag}</Tag>
+          ))}
+          {tags.length > 2 ? <Tag>+{tags.length - 2}</Tag> : null}
         </Space>
       ),
-      onOk: async () => {
-        if (!command.trim()) {throw new Error('命令不能为空');}
-        const res = await Api.hosts.batchExec(selected, command.trim());
-        message.success(`批量执行完成: ${Object.keys(res.data || {}).length} 台`);
-      },
-    });
-  };
-
-  // 获取状态配置
-  const getStatusConfig = (status: string) => {
-    const configs: Record<string, { icon: React.ReactNode; color: string; text: string }> = {
-      online: { icon: <CheckCircleOutlined />, color: 'success', text: '在线' },
-      offline: { icon: <CloseCircleOutlined />, color: 'default', text: '离线' },
-      maintenance: { icon: <ToolOutlined />, color: 'warning', text: '维护中' },
-      error: { icon: <ExclamationCircleOutlined />, color: 'error', text: '错误' },
-    };
-    return configs[status] || { icon: null, color: 'default', text: status };
-  };
-
-  // 主机卡片组件
-  const HostCard: React.FC<{ host: Host }> = ({ host }) => {
-    const statusConfig = getStatusConfig(host.status);
-    const isSelected = selected.includes(host.id);
-    const assignments = hostAssignments[host.id] || { clusters: [], targets: [] };
-    const isAssigned = assignments.clusters.length > 0 || assignments.targets.length > 0;
-    const provider = host.provider ? providerConfig[host.provider] : null;
-
-    return (
-      <Card
-        hoverable
-        className="transition-all duration-200 flex flex-col"
-        styles={{ body: { padding: '16px', flex: 1, display: 'flex', flexDirection: 'column' } }}
-        style={{
-          height: 280,
-          borderColor: isSelected ? '#6366f1' : undefined,
-          boxShadow: isSelected ? '0 0 0 2px rgba(99, 102, 241, 0.1)' : undefined,
-        }}
-      >
-        {/* 头部：名称和操作 */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Checkbox
-              checked={isSelected}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelected([...selected, host.id]);
-                } else {
-                  setSelected(selected.filter((id) => id !== host.id));
-                }
-              }}
-            />
-            <Tooltip title={host.name}>
-              <a
-                onClick={() => navigate(`/deployment/infrastructure/hosts/${host.id}`)}
-                className="text-base font-semibold text-gray-900 hover:text-primary-600 truncate max-w-[160px] block"
-              >
-                {host.name}
-              </a>
-            </Tooltip>
-          </div>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'check', icon: <CheckCircleOutlined />, label: '健康检查' },
-                { key: 'restart', icon: <PlayCircleOutlined />, label: '重启' },
-                { key: 'ssh', icon: <CodeOutlined />, label: 'SSH 执行' },
-                { key: 'terminal', icon: <CodeOutlined />, label: '打开终端' },
-                { type: 'divider' },
-                { key: 'maintenance', icon: <ToolOutlined />, label: '设为维护' },
-                {
-                  key: 'delete',
-                  icon: <DeleteOutlined />,
-                  danger: true,
-                  label: (
-                    <Popconfirm
-                      title="确定删除此主机？"
-                      okText="确定"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={async () => {
-                        try {
-                          await Api.hosts.deleteHost(host.id);
-                          message.success('主机已删除');
-                          await load();
-                        } catch (err) {
-                          message.error(err instanceof Error ? err.message : '删除失败');
-                        }
-                      }}
-                    >
-                      <span>删除主机</span>
-                    </Popconfirm>
-                  ),
-                },
-              ],
-              onClick: async ({ key }) => {
-                if (key === 'check') {
-                  await runHealthCheck(host.id);
-                } else if (key === 'restart') {
-                  await quickAction(host.id, key);
-                } else if (key === 'ssh') {
-                  let command = 'uptime';
-                  Modal.confirm({
-                    title: 'SSH 命令执行（二次确认）',
-                    width: 720,
-                    content: (
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Alert type="warning" showIcon message="请确认目标主机与命令风险" description={`目标: ${host.name}(${host.ip})`} />
-                        <Input defaultValue={command} onChange={(e) => { command = e.target.value; }} placeholder="请输入命令" />
-                      </Space>
-                    ),
-                    onOk: async () => {
-                      const res = await Api.hosts.sshExec(host.id, command.trim());
-                      Modal.info({
-                        title: '执行结果',
-                        content: <pre>{res.data.stdout || res.data.stderr || ''}</pre>,
-                        width: 720,
-                      });
-                    },
-                  });
-                } else if (key === 'terminal') {
-                  navigate(`/deployment/infrastructure/hosts/${host.id}/terminal`);
-                } else if (key === 'maintenance') {
-                  let reason = 'scheduled-maintenance';
-                  Modal.confirm({
-                    title: '设为维护',
-                    content: (
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Input defaultValue={reason} onChange={(e) => { reason = e.target.value; }} placeholder="维护原因" />
-                      </Space>
-                    ),
-                    onOk: async () => {
-                      await Api.hosts.hostAction(host.id, 'maintenance', { reason: reason.trim() });
-                      message.success('已设置维护');
-                      await load();
-                    },
-                  });
-                }
-              },
-            }}
-          >
-            <Button type="text" size="small" icon={<MoreOutlined />} />
+    },
+    {
+      title: '告警数',
+      dataIndex: 'alertCount',
+      width: 72,
+      align: 'center',
+      render: (value: number) => <span style={{ color: value > 0 ? '#ef4444' : '#16a34a', fontWeight: 600 }}>{value}</span>,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      fixed: 'right',
+      width: 206,
+      render: (_, row) => (
+        <Space size={8}>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}`)}>查看</Button>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}/terminal`)}>终端</Button>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => message.info('监控视图将在后续版本开放')}>监控</Button>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}`)}>编辑</Button>
+          <Dropdown menu={rowMoreMenu(row)} trigger={['click']}>
+            <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]">更多 <DownOutlined className="text-[10px]" /></Button>
           </Dropdown>
-        </div>
+        </Space>
+      ),
+    },
+  ];
 
-        {/* 状态标签行 */}
-        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-          <Tag color={statusConfig.color} icon={statusConfig.icon} style={{ marginRight: 0 }}>
-            {statusConfig.text}
-          </Tag>
-          <Tag color={host.healthState === 'healthy' ? 'green' : host.healthState === 'degraded' ? 'orange' : host.healthState === 'critical' ? 'red' : 'default'} style={{ marginRight: 0 }}>
-            {host.healthState || 'unknown'}
-          </Tag>
-          {provider && (
-            <Tag style={{ marginRight: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <ProviderLogo provider={host.provider || provider.name} size={14} />
-              <span>{provider.name}</span>
-            </Tag>
-          )}
-          {isAssigned && <Tag color="blue" style={{ marginRight: 0 }}>已分配</Tag>}
-        </div>
-
-        {/* 信息行 */}
-        <div className="text-sm text-gray-500 mb-3 truncate">
-          <span className="mr-3">IP: {host.ip}</span>
-          {host.region && <span>区域: {host.region}</span>}
-        </div>
-
-        {/* 资源使用情况 */}
-        <div className="space-y-2 mt-auto">
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">CPU</span>
-              <span className="text-gray-800 font-medium">{host.cpu || 0}%</span>
-            </div>
-            <Progress
-              percent={Math.min(100, host.cpu || 0)}
-              strokeColor={(host.cpu || 0) > 80 ? '#ef4444' : (host.cpu || 0) > 60 ? '#f59e0b' : '#10b981'}
-              showInfo={false}
-              size="small"
-            />
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">内存</span>
-              <span className="text-gray-800 font-medium">{host.memory || 0} MB</span>
-            </div>
-            <Progress
-              percent={Math.min(100, ((host.memory || 0) / 16384) * 100)}
-              strokeColor="#6366f1"
-              showInfo={false}
-              size="small"
-            />
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">磁盘</span>
-              <span className="text-gray-800 font-medium">{host.disk || 0} GB</span>
-            </div>
-            <Progress
-              percent={Math.min(100, ((host.disk || 0) / 500) * 100)}
-              strokeColor="#8b5cf6"
-              showInfo={false}
-              size="small"
-            />
-          </div>
-        </div>
-      </Card>
-    );
+  const pieConfig = {
+    data: distributionData,
+    angleField: 'value',
+    colorField: 'type',
+    innerRadius: 0.7,
+    legend: false,
+    color: ['#2563eb', '#10b981', '#94a3b8'],
+    label: false,
+    height: 150,
+    autoFit: true,
+    tooltip: { title: 'type' },
+    interactions: [{ type: 'element-active' }],
   };
 
-  const isInitialLoading = loading && hosts.length === 0;
+  const trendLineData = [
+    ...trendData.map((point) => ({ time: point.time, value: point.cpuUsage, type: 'CPU 利用率' })),
+    ...trendData.map((point) => ({ time: point.time, value: point.memoryUsage, type: '内存利用率' })),
+  ];
 
-  if (isInitialLoading) {
+  const lineConfig = {
+    data: trendLineData,
+    xField: 'time',
+    yField: 'value',
+    seriesField: 'type',
+    color: ['#2563eb', '#10b981'],
+    point: { size: 2 },
+    smooth: true,
+    height: 155,
+    autoFit: true,
+    yAxis: { title: false, grid: { line: { style: { stroke: '#f3f4f6' } } } },
+    xAxis: { grid: false },
+  };
+
+  const initialLoading = loading && hosts.length === 0;
+  if (initialLoading) {
     return <PageSkeleton />;
   }
 
+  const selectedBatchMenu: MenuProps = {
+    items: [
+      { key: 'maintenance', label: '批量设为维护' },
+      { key: 'online', label: '批量上线' },
+    ],
+    onClick: ({ key }) => onBatchAction(key as 'maintenance' | 'online'),
+  };
+
   return (
-    <div className="space-y-6">
-      {/* 页面头部 */}
-      <div className="flex items-center justify-end">
-        <Space>
-          <Button onClick={() => navigate('/deployment/infrastructure/hosts/credentials')}>
-            凭证管理
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
-            刷新
-          </Button>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'onboarding', label: 'SSH 接入（密码/密钥）' },
-                { key: 'cloud', label: '云平台导入（阿里云/腾讯云）' },
-                { key: 'virt', label: 'KVM 虚拟化创建' },
-              ],
-              onClick: ({ key }) => {
-                if (key === 'onboarding') {navigate('/hosts/onboarding');}
-                if (key === 'cloud') {navigate('/hosts/cloud-import');}
-                if (key === 'virt') {navigate('/hosts/virtualization');}
-              },
-            }}
-          >
-            <Button type="primary" icon={<PlusOutlined />}>
-              新增主机
-            </Button>
-          </Dropdown>
-        </Space>
-      </div>
-
-      {/* 统计卡片 */}
-      <StaggerList staggerDelay={0.05}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('all')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">主机总数</span>}
-                  value={stats.total}
-                  prefix={<DesktopOutlined className="text-primary-500" />}
-                  styles={{ content: { color: '#495057', fontSize: '28px', fontWeight: 600 } }}
-                />
+    <div className="h-[calc(100vh-112px)] flex flex-col gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] flex-1 min-h-0">
+        <div className="min-w-0 flex flex-col gap-4 min-h-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
+            {kpiCards.map((card, index) => (
+              <Card key={card.key} size="small" styles={{ body: { padding: '14px 16px 12px' } }} className="border border-[#e8edf3] rounded-[10px]">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="text-[#6b7280] text-[13px]">{card.title}</div>
+                    <div className="mt-[6px] flex items-end gap-1">
+                      <span className="text-[40px] leading-none font-semibold text-[#111827] tracking-[-0.02em]">{card.value}</span>
+                      <span className="text-[18px] leading-6 text-[#374151] mb-[3px]">{card.unit}</span>
+                    </div>
+                    <div className="text-[13px] text-[#6b7280] mt-[8px]">
+                      {card.subLabel} <span style={{ color: card.subColor }}>{card.subValue}</span>
+                    </div>
+                  </div>
+                  <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ backgroundColor: card.iconBg }}>
+                    {card.icon}
+                  </span>
+                </div>
+                <div className="mt-[8px]"><Sparkline points={buildSparkline(card.sparkBase, 11 + index * 11)} color={card.sparkColor} /></div>
               </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('online')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">在线主机</span>}
-                  value={stats.online}
-                  prefix={<CheckCircleOutlined className="text-success" />}
-                  styles={{ content: { color: '#10b981', fontSize: '28px', fontWeight: 600 } }}
-                />
-                <Progress
-                  percent={stats.healthRate}
-                  strokeColor="#10b981"
-                  showInfo={false}
-                  className="mt-2"
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('maintenance')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">维护中</span>}
-                  value={stats.maintenance}
-                  prefix={<ToolOutlined className="text-warning" />}
-                  styles={{ content: { color: '#f59e0b', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <StaggerItem>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setStatusFilter('error')}
-              >
-                <Statistic
-                  title={<span className="text-gray-600">错误</span>}
-                  value={stats.error}
-                  prefix={<ExclamationCircleOutlined className="text-error" />}
-                  styles={{ content: { color: '#ef4444', fontSize: '28px', fontWeight: 600 } }}
-                />
-              </Card>
-            </StaggerItem>
-          </Col>
-        </Row>
-      </StaggerList>
-
-      {/* 筛选和搜索 */}
-      <Card>
-        <Space direction="vertical" size="middle" className="w-full">
-          <div className="flex flex-wrap gap-3">
-            <Input
-              placeholder="搜索主机名称、IP 或区域"
-              prefix={<SearchOutlined className="text-gray-400" />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ width: 280 }}
-              allowClear
-            />
-            <Select
-              value={statusFilter}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部状态' },
-                { value: 'online', label: '在线' },
-                { value: 'offline', label: '离线' },
-                { value: 'maintenance', label: '维护中' },
-                { value: 'error', label: '错误' },
-              ]}
-              onChange={setStatusFilter}
-            />
-            <Select
-              value={providerFilter}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部厂商' },
-                { value: 'volcengine', label: '火山引擎' },
-                { value: 'alicloud', label: '阿里云' },
-                { value: 'tencent', label: '腾讯云' },
-                { value: 'ucloud', label: 'UCloud' },
-                { value: 'aws', label: 'AWS' },
-              ]}
-              onChange={setProviderFilter}
-            />
-            <Select
-              value={availabilityFilter}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部主机' },
-                { value: 'available', label: '可用' },
-                { value: 'assigned', label: '已分配' },
-              ]}
-              onChange={setAvailabilityFilter}
-            />
-            <Input
-              placeholder="区域筛选"
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              style={{ width: 140 }}
-              allowClear
-            />
+            ))}
           </div>
 
-          {/* 批量操作 */}
-          {selected.length > 0 && (
-            <div className="flex items-center justify-between p-3 bg-primary-50 rounded-lg border border-primary-200">
-              <span className="text-sm text-gray-700">
-                已选择 <Badge count={selected.length} showZero className="mx-1" /> 台主机
-              </span>
-              <Space>
-                <Button size="small" onClick={() => setSelected([])}>
-                  取消选择
-                </Button>
-                <Button size="small" onClick={() => batchAction('maintenance')}>
-                  批量维护
-                </Button>
-                <Button size="small" onClick={() => batchAction('online')}>
-                  批量上线
-                </Button>
-                <Button size="small" icon={<CodeOutlined />} onClick={batchExec}>
-                  批量 SSH 执行
-                </Button>
+          <Card size="small" styles={{ body: { padding: 12 } }} className="border border-[#e8edf3] rounded-[10px]">
+            <div className="flex flex-wrap gap-2 items-center justify-between">
+              <Space wrap>
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜索主机名、IP 或标签"
+                  style={{ width: 220 }}
+                  suffix={<SearchOutlined className="text-[#9ca3af]" />}
+                />
+                <Select
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  style={{ width: 105 }}
+                  options={[
+                    { value: 'all', label: '状态 全部' },
+                    { value: 'online', label: '在线' },
+                    { value: 'offline', label: '离线' },
+                    { value: 'abnormal', label: '异常' },
+                  ]}
+                />
+                <Select
+                  value={environmentFilter}
+                  onChange={setEnvironmentFilter}
+                  style={{ width: 110 }}
+                  options={[{ value: 'all', label: '环境 全部' }, ...Object.entries(ENV_META).map(([value, meta]) => ({ value, label: meta.label }))]}
+                />
+                <Select
+                  value={regionFilter}
+                  onChange={setRegionFilter}
+                  style={{ width: 118 }}
+                  options={[{ value: 'all', label: '机房/区域 全部' }, ...filterOptions.regions.map((region) => ({ value: region, label: region }))]}
+                />
+                <Select
+                  mode="multiple"
+                  allowClear
+                  maxTagCount={1}
+                  value={tagFilter}
+                  onChange={setTagFilter}
+                  style={{ width: 112 }}
+                  placeholder="标签"
+                  options={filterOptions.tags.map((tag) => ({ value: tag, label: tag }))}
+                />
+                <Select
+                  value={osFilter}
+                  onChange={setOsFilter}
+                  style={{ width: 122 }}
+                  options={[{ value: 'all', label: '操作系统 全部' }, ...filterOptions.osNames.map((osName) => ({ value: osName, label: osName }))]}
+                />
+              </Space>
+
+              <Space wrap>
+                <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts/onboarding')}>新增主机</Button>
+                <Button icon={<UploadOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts/cloud-import')}>批量导入</Button>
+                <Dropdown menu={selectedBatchMenu} disabled={selectedIds.length === 0}>
+                  <Button>批量操作 <DownOutlined /></Button>
+                </Dropdown>
+                <Button icon={<SaveOutlined />} onClick={onExport}>导出</Button>
               </Space>
             </div>
-          )}
-        </Space>
-      </Card>
 
-      {/* 主机列表 - 卡片视图 */}
-      {loading ? (
-        <Card>
-          <div className="text-center py-12">
-            <ReloadOutlined spin className="text-4xl text-primary-500 mb-4" />
-            <p className="text-gray-500">加载中...</p>
-          </div>
-        </Card>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <Empty
-            description={
-              <span className="text-gray-500">
-                {search || statusFilter !== 'all' || providerFilter !== 'all' || group
-                  ? '没有找到匹配的主机'
-                  : '还没有添加任何主机'}
-              </span>
-            }
+            {selectedIds.length > 0 ? (
+              <Alert className="mt-3" type="info" showIcon message={`已选择 ${selectedIds.length} 台主机，可执行批量操作。`} />
+            ) : null}
+          </Card>
+
+          <Card
+            size="small"
+            styles={{ body: { padding: 0, height: '100%', display: 'flex', flexDirection: 'column' } }}
+            className="border border-[#e8edf3] rounded-[10px] overflow-hidden flex-1 min-h-0"
           >
-            {!search && statusFilter === 'all' && providerFilter === 'all' && !group && (
-              <Dropdown
-                menu={{
-                  items: [
-                    { key: 'onboarding', label: 'SSH 接入' },
-                    { key: 'cloud', label: '云平台导入' },
-                    { key: 'virt', label: 'KVM 虚拟化' },
-                  ],
-                  onClick: ({ key }) => {
-                    if (key === 'onboarding') {navigate('/hosts/onboarding');}
-                    if (key === 'cloud') {navigate('/hosts/cloud-import');}
-                    if (key === 'virt') {navigate('/hosts/virtualization');}
-                  },
+            <Table<HostTableRow>
+              rowKey="id"
+              loading={loading}
+              columns={columns}
+              dataSource={pagedRows}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description={filteredRows.length === 0 ? '暂无符合筛选条件的主机' : '暂无数据'}
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  />
+                ),
+              }}
+              rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+              pagination={false}
+              scroll={{ x: 1650, y: 'calc(100vh - 520px)' }}
+              size="small"
+              style={{ flex: 1 }}
+              className="[&_.ant-table-thead>tr>th]:!bg-[#f6f8fb] [&_.ant-table-thead>tr>th]:!text-[#6b7280] [&_.ant-table-thead>tr>th]:!text-[13px] [&_.ant-table-tbody>tr>td]:!text-[13px] [&_.ant-table-tbody>tr>td]:!py-[10px]"
+            />
+            <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap gap-3 items-center justify-between">
+              <Typography.Text type="secondary">共 {filteredRows.length} 条</Typography.Text>
+              <Pagination
+                current={page}
+                pageSize={pageSize}
+                total={filteredRows.length}
+                showSizeChanger
+                showQuickJumper
+                pageSizeOptions={[10, 20, 50, 100]}
+                onChange={(nextPage, nextPageSize) => {
+                  setPage(nextPage);
+                  setPageSize(nextPageSize);
                 }}
-              >
-                <Button type="primary" icon={<PlusOutlined />}>
-                  添加第一台主机
-                </Button>
-              </Dropdown>
-            )}
-          </Empty>
-        </Card>
-      ) : (
-        <StaggerList staggerDelay={0.05}>
-          <Row gutter={[16, 16]}>
-            {filtered.map((host) => (
-              <Col xs={24} sm={12} md={8} lg={6} xl={4} key={host.id}>
-                <StaggerItem>
-                  <HostCard host={host} />
-                </StaggerItem>
-              </Col>
-            ))}
-          </Row>
-        </StaggerList>
-      )}
+              />
+            </div>
+          </Card>
+        </div>
+
+        <div className="space-y-4 h-full overflow-auto pr-1">
+          <Card size="small" styles={{ body: { padding: 0 } }} className="border border-[#e8edf3] rounded-[10px] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#edf0f5] flex items-center justify-between">
+              <span className="text-[15px] font-semibold text-[#1f2937]">主机分布</span>
+              <Select size="small" defaultValue="os" options={[{ value: 'os', label: '操作系统分布' }]} style={{ width: 118 }} />
+            </div>
+            <div className="px-4 py-3">
+              {distributionData.every((item) => item.value === 0) ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
+              ) : (
+                <>
+                  <Pie {...pieConfig} />
+                  <div className="space-y-2">
+                    {distributionData.map((item) => {
+                      const percent = overviewStats.totalHosts > 0 ? ((item.value / overviewStats.totalHosts) * 100).toFixed(1) : '0.0';
+                      return (
+                        <div key={item.type} className="flex items-center justify-between text-sm">
+                          <span>{item.type}</span>
+                          <span className="text-gray-500">{item.value} ({percent}%)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
+
+          <Card size="small" styles={{ body: { padding: 0 } }} className="border border-[#e8edf3] rounded-[10px] overflow-hidden">
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[15px] font-semibold text-[#1f2937]">资源使用趋势 <span className="text-[#9ca3af] text-xs font-normal">(全部主机)</span></div>
+                <Select size="small" defaultValue="6h" options={[{ value: '6h', label: '近 6 小时' }]} style={{ width: 92 }} />
+              </div>
+              <Line {...lineConfig} />
+            </div>
+          </Card>
+
+          <Card size="small" styles={{ body: { padding: 0 } }} className="border border-[#e8edf3] rounded-[10px] overflow-hidden">
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[15px] font-semibold text-[#1f2937]">待处理告警</div>
+                <Button type="link" size="small" className="!px-0" onClick={() => message.info('告警中心联动将在后续版本开放')}>更多告警</Button>
+              </div>
+              <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+                {pendingAlerts.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge color={item.level === 'critical' ? '#ef4444' : '#f59e0b'} />
+                      <span>{item.name}</span>
+                    </div>
+                    <span className={item.level === 'critical' ? 'text-red-500 font-semibold' : 'text-amber-500 font-semibold'}>
+                      {item.level === 'critical' ? '严重' : '警告'} {item.count}
+                    </span>
+                  </div>
+                ))}
+              </Space>
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

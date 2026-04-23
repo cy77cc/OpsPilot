@@ -158,7 +158,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           selectedKeys={[activeMenuKey]}
           items={menuItems}
           onClick={({ key }) => handleMenuClick(key)}
-          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-0.5 [&_.ant-menu-item-group-title]:pt-2 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-1 [&_.ant-menu-item]:h-9 [&_.ant-menu-item]:leading-9 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2 [&_.ant-menu-item_.ant-menu-item-icon]:text-sm [&_.ant-menu-item-selected]:bg-blue-600! [&_.ant-menu-item-selected]:text-white! [&_.ant-menu-item-selected]:rounded-lg"
+          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-0.5 [&_.ant-menu-item-group-title]:pt-2 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-0 [&_.ant-menu-item]:h-8 [&_.ant-menu-item]:leading-8 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-1.5 [&_.ant-menu-item_.ant-menu-item-icon]:text-sm [&_.ant-menu-item-selected]:bg-blue-600! [&_.ant-menu-item-selected]:text-white! [&_.ant-menu-item-selected]:rounded-lg"
           style={{ background: 'transparent' }}
         />
       </div>
