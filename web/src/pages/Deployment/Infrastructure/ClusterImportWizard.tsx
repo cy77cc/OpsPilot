@@ -638,14 +638,10 @@ const ClusterImportWizard: React.FC = () => {
   return (
     <div className="space-y-6">
       {messageContextHolder}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-start">
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
           返回
         </Button>
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">导入集群</h1>
-          <p className="text-sm text-gray-500 mt-1">导入已存在的 Kubernetes 集群进行统一管理</p>
-        </div>
       </div>
 
       {currentStep < 5 && (

@@ -374,16 +374,10 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
-            返回
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">创建发布</h1>
-            <p className="text-sm text-gray-500 mt-1">配置并部署服务到目标环境</p>
-          </div>
-        </div>
+      <div className="flex items-center justify-end">
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
+          返回
+        </Button>
       </div>
 
       <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />

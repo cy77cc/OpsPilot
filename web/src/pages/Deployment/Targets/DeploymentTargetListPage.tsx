@@ -136,11 +136,7 @@ const DeploymentTargetListPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">部署目标</h1>
-          <p className="text-sm text-gray-500 mt-1">管理应用部署的目标环境</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Space>
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
             刷新

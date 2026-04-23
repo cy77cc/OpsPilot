@@ -188,11 +188,7 @@ const DeploymentListPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">部署管理</h1>
-          <p className="text-sm text-gray-500 mt-1">管理和监控所有部署发布</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Space>
           <Button icon={<ReloadOutlined />} onClick={load} loading={isRefreshing}>
             刷新

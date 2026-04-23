@@ -192,11 +192,10 @@ const ServiceProvisionPage: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* 页面顶部导航 */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-start">
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/services')}>
           返回
         </Button>
-        <h1 className="text-xl font-semibold text-gray-900">服务工作室</h1>
       </div>
 
       <Card style={{ background: '#0b0f16', border: '1px solid #1f2937' }}>

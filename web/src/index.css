@@ -29,7 +29,7 @@
 }
 
 body {
-  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background: radial-gradient(circle at top right, #ebf3ff 0%, #f4f7fb 45%, #f4f7fb 100%);
   color: var(--color-text-primary);
   min-height: 100vh;

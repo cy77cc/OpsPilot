@@ -521,20 +521,11 @@ const ServiceDetailPage: React.FC = () => {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/services')}>
             返回
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-gray-900">{service?.name || '服务详情'}</h1>
-              {statusConfig && (
-                <Tag color={statusConfig.color} icon={statusConfig.icon} className="text-sm">
-                  {statusConfig.text}
-                </Tag>
-              )}
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {service?.env && <span>环境: {service.env}</span>}
-              {service?.owner && <span className="ml-4">负责人: {service.owner}</span>}
-            </p>
-          </div>
+          {statusConfig && (
+            <Tag color={statusConfig.color} icon={statusConfig.icon} className="text-sm">
+              {statusConfig.text}
+            </Tag>
+          )}
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>

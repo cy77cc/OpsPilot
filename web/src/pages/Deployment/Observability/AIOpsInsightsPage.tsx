@@ -87,11 +87,7 @@ const AIOpsInsightsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">AIOps 洞察</h1>
-          <p className="text-sm text-gray-500 mt-1">智能运维分析与优化建议</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Space>
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading && !isInitialLoading}>
             刷新

@@ -399,11 +399,7 @@ const DeploymentCreatePage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">创建部署</h1>
-          <p className="text-sm text-gray-500 mt-1">按照步骤完成部署配置</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
           返回列表
         </Button>

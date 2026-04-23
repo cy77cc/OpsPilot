@@ -106,11 +106,7 @@ const DeploymentTopologyPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">部署拓扑</h1>
-          <p className="text-sm text-gray-500 mt-1">可视化服务部署状态和依赖关系</p>
-        </div>
+      <div className="flex justify-end">
         <Space>
           <Select
             value={envFilter}

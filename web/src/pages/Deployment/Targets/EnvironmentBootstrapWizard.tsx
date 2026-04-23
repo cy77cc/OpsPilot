@@ -107,16 +107,10 @@ const EnvironmentBootstrapWizard: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
-              返回
-            </Button>
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">环境初始化</h1>
-              <p className="text-sm text-gray-500 mt-1">Job ID: {jobId}</p>
-            </div>
-          </div>
+        <div className="flex items-center justify-start">
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
+            返回
+          </Button>
         </div>
 
         <Row gutter={[16, 16]}>
@@ -152,16 +146,10 @@ const EnvironmentBootstrapWizard: React.FC = () => {
   // Otherwise, show the start form
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
-            返回
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">环境初始化</h1>
-            <p className="text-sm text-gray-500 mt-1">为部署目标初始化运行时环境</p>
-          </div>
-        </div>
+      <div className="flex items-center justify-start">
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
+          返回
+        </Button>
       </div>
 
       <Card title="选择运行时包">

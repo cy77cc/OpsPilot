@@ -184,21 +184,11 @@ const DeploymentDetailPage: React.FC = () => {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
             返回列表
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Release #{release?.id || id}
-              </h1>
-              {statusConfig && (
-                <Tag color={statusConfig.color} icon={statusConfig.icon} className="text-sm">
-                  {statusConfig.text}
-                </Tag>
-              )}
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {release?.created_at && new Date(release.created_at).toLocaleString()}
-            </p>
-          </div>
+          {statusConfig && (
+            <Tag color={statusConfig.color} icon={statusConfig.icon} className="text-sm">
+              {statusConfig.text}
+            </Tag>
+          )}
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>

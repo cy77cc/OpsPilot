@@ -438,11 +438,7 @@ const HostListPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">主机管理</h1>
-          <p className="text-sm text-gray-500 mt-1">管理和监控所有主机资源</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Space>
           <Button onClick={() => navigate('/deployment/infrastructure/hosts/credentials')}>
             凭证管理

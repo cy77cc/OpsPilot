@@ -360,11 +360,7 @@ const ServiceListPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">服务管理</h1>
-          <p className="text-sm text-gray-500 mt-1">管理和监控所有服务实例</p>
-        </div>
+      <div className="flex justify-end mb-6">
         <Space>
           <Segmented
             value={viewMode || 'card'}

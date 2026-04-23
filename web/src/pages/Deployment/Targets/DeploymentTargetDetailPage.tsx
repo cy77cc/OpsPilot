@@ -108,15 +108,11 @@ const DeploymentTargetDetailPage: React.FC = () => {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/targets')}>
             返回
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <CloudServerOutlined className="text-2xl text-blue-500" />
-              <h1 className="text-2xl font-semibold text-gray-900">{target.name}</h1>
-              <Tag color={readinessConfig.color} icon={readinessConfig.icon}>
-                {readinessConfig.text}
-              </Tag>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">部署目标详情</p>
+          <div className="flex items-center gap-3">
+            <CloudServerOutlined className="text-2xl text-blue-500" />
+            <Tag color={readinessConfig.color} icon={readinessConfig.icon}>
+              {readinessConfig.text}
+            </Tag>
           </div>
         </div>
         <Space>

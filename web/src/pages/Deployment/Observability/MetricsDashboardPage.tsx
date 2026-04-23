@@ -127,11 +127,7 @@ const MetricsDashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">指标仪表板</h1>
-          <p className="text-sm text-gray-500 mt-1">查看部署相关的关键指标和趋势</p>
-        </div>
+      <div className="flex justify-end">
         <Space>
           <Select
             value={timeRange}

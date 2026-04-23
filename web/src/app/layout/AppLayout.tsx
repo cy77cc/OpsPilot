@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Tooltip, Button, Drawer, Switch } from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Tooltip, Button, Drawer, Switch, Select } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -14,6 +14,7 @@ import {
   QuestionCircleOutlined,
   CloudServerOutlined,
   MenuOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import SparklesIcon from '../../components/common/SparklesIcon';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -158,19 +159,29 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           selectedKeys={[activeMenuKey]}
           items={menuItems}
           onClick={({ key }) => handleMenuClick(key)}
-          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-1 [&_.ant-menu-item-group-title]:pt-2.5 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0.5 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-0 [&_.ant-menu-item]:h-9 [&_.ant-menu-item]:leading-9 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2.5"
+          className="border-none mt-0 [&_.ant-menu-item-group-title]:px-3 [&_.ant-menu-item-group-title]:pb-0.5 [&_.ant-menu-item-group-title]:pt-2 [&_.ant-menu-item-group-title]:text-[10px] [&_.ant-menu-item-group-title]:font-semibold [&_.ant-menu-item-group-title]:uppercase [&_.ant-menu-item-group-title]:tracking-[0.08em] [&_.ant-menu-item-group-title]:text-gray-400 [&_.ant-menu-item-group-list]:space-y-0 [&_.ant-menu-item]:mx-2 [&_.ant-menu-item]:my-0 [&_.ant-menu-item]:h-8 [&_.ant-menu-item]:leading-8 [&_.ant-menu-item]:px-3 [&_.ant-menu-item_.ant-menu-item-icon]:mr-2 [&_.ant-menu-item_.ant-menu-item-icon]:text-sm"
           style={{ background: 'transparent' }}
         />
       </div>
 
       {!isMobile && (
-        <div className="flex-shrink-0 px-3 py-2.5 border-t border-gray-200">
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            className="w-full text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-          />
+        <div className="flex-shrink-0 border-t border-gray-200">
+          <div className="flex items-center px-1 py-1">
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => navigate('/settings')}
+              className={`flex-1 flex items-center justify-start h-9 text-gray-500 hover:text-gray-900 hover:bg-gray-100 ${collapsed ? 'justify-center px-0' : 'px-3'}`}
+            >
+              {!collapsed && <span className="ml-2 text-sm font-medium">系统设置</span>}
+            </Button>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              className="w-10 h-9 text-gray-400 hover:text-gray-900 flex-shrink-0"
+            />
+          </div>
         </div>
       )}
     </div>
@@ -236,29 +247,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               />
             )}
 
-            {!isMobile && (
-              <Breadcrumb
-                items={breadcrumbItems.map((item, index) => ({
-                  title:
-                    index === breadcrumbItems.length - 1 ? (
-                      <span className="text-gray-900 font-medium">{item.title}</span>
-                    ) : !item.path ? (
-                      <span className="text-gray-600">{item.title}</span>
-                    ) : (
-                      <a
-                        onClick={() => {
-                          if (item.path) {
-                            navigate(item.path);
-                          }
-                        }}
-                        className="text-gray-600 hover:text-primary-600 cursor-pointer"
-                      >
-                        {item.title}
-                      </a>
-                    ),
-                }))}
-                separator="/"
-              />
+            {!isMobile && breadcrumbItems.length > 0 && (
+              <div className="flex items-baseline gap-2">
+                <h1 className="text-xl font-semibold text-gray-900 m-0">
+                  {breadcrumbItems[breadcrumbItems.length - 1].title}
+                </h1>
+                <span className="text-xs font-normal text-gray-400 whitespace-nowrap">
+                  | {menuPath.map(m => m.title).join(' / ')}
+                </span>
+              </div>
             )}
           </div>
 
@@ -278,9 +275,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             {!isMobile && (
               <Input
-                placeholder="搜索..."
+                placeholder="搜索资源、应用、文档、命令..."
                 prefix={<SearchOutlined className="text-gray-400" />}
-                className="w-48 lg:w-64"
+                suffix={
+                  <div className="flex items-center gap-1 bg-white border border-gray-200 px-1.5 py-0.5 rounded text-[10px] text-gray-400 font-sans font-medium">
+                    <span className="text-[12px]">⌘</span> K
+                  </div>
+                }
+                className="w-80 cursor-pointer"
+                readOnly
+                onClick={() => setCommandPaletteOpen(true)}
                 style={{
                   background: '#f8f9fa',
                   border: '1px solid #e9ecef',

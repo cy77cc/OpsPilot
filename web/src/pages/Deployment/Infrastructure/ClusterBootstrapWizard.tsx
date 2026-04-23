@@ -732,14 +732,10 @@ const ClusterBootstrapWizard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-start">
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
           返回
         </Button>
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">创建 Kubernetes 集群</h1>
-          <p className="text-sm text-gray-500 mt-1">通过自动化 Bootstrap 创建新集群</p>
-        </div>
       </div>
 
       {currentStep < 5 && (

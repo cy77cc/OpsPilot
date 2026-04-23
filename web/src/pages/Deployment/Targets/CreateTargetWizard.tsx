@@ -294,11 +294,6 @@ const CreateTargetWizard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">创建部署目标</h1>
-        <p className="text-sm text-gray-500 mt-1">配置应用部署的目标环境</p>
-      </div>
-
       <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />
 
       <div className="flex justify-between">
