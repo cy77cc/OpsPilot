@@ -1,7 +1,7 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { NotificationProvider } from './NotificationContext';
+import { NotificationProvider, useNotificationContext } from './NotificationContext';
 import { useNotificationDataContext } from './notification/NotificationDataProvider';
 import { useApprovalStateContext } from './notification/ApprovalStateProvider';
 import type { WSMessage } from '../types/notification';
@@ -82,6 +82,25 @@ function createApprovalNotification() {
   };
 }
 
+function createAlertNotification() {
+  return {
+    id: 'alert-user-1',
+    user_id: '1',
+    notification_id: 'alert-1',
+    notification: {
+      id: 'alert-1',
+      type: 'alert' as const,
+      title: '普通告警',
+      content: '需要确认',
+      severity: 'warning' as const,
+      source: 'monitor',
+      source_id: 'alert-token-1',
+      action_type: 'confirm' as const,
+      created_at: new Date().toISOString(),
+    },
+  };
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -98,6 +117,17 @@ function DataOnlyProbe({ onRender }: { onRender: () => void }) {
   return <div data-testid="data-total">{unreadCount.total}</div>;
 }
 
+function FacadeDataOnlyProbe({ onRender }: { onRender: () => void }) {
+  const { unreadCount, notifications } = useNotificationContext();
+  onRender();
+  return (
+    <div>
+      <div data-testid="facade-total">{unreadCount.total}</div>
+      <div data-testid="facade-notifications">{notifications.length}</div>
+    </div>
+  );
+}
+
 function ApprovalStateProbe({ onRender }: { onRender: () => void }) {
   const { approvalActionStates } = useApprovalStateContext();
   onRender();
@@ -110,6 +140,16 @@ function ApprovalTrigger() {
   return (
     <button type="button" onClick={() => void confirm('approval-user-1')}>
       trigger approval
+    </button>
+  );
+}
+
+function FacadeConfirmTrigger({ id }: { id: string }) {
+  const { confirm } = useNotificationContext();
+
+  return (
+    <button type="button" onClick={() => void confirm(id)}>
+      {`trigger confirm ${id}`}
     </button>
   );
 }
@@ -139,6 +179,7 @@ describe('NotificationProvider browser notification click', () => {
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     if (originalHidden) {
       Object.defineProperty(document, 'hidden', originalHidden);
@@ -235,5 +276,140 @@ describe('NotificationProvider browser notification click', () => {
     expect(dataRenders).toHaveLength(dataRenderBaseline);
 
     deferredConfirm.resolve({ success: true });
+  });
+
+  it('keeps approval updates from re-rendering facade data-only consumers', async () => {
+    const approvalNotification = createApprovalNotification();
+    const deferredConfirm = createDeferred<{ success: boolean }>();
+    const facadeRenders: number[] = [];
+    const approvalRenders: number[] = [];
+
+    getNotificationsMock.mockResolvedValue({
+      data: { list: [approvalNotification], total: 1 },
+    });
+    getUnreadCountMock.mockResolvedValue({
+      data: createUnreadCount(1),
+    });
+    confirmApprovalMock.mockReturnValue(deferredConfirm.promise);
+
+    render(
+      <NotificationProvider userId="1">
+        <FacadeDataOnlyProbe onRender={() => facadeRenders.push(Date.now())} />
+        <ApprovalStateProbe onRender={() => approvalRenders.push(Date.now())} />
+        <FacadeConfirmTrigger id="approval-user-1" />
+      </NotificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('facade-total')).toHaveTextContent('1');
+      expect(screen.getByTestId('facade-notifications')).toHaveTextContent('1');
+      expect(facadeRenders.length).toBeGreaterThan(1);
+    });
+
+    const facadeRenderBaseline = facadeRenders.length;
+    const approvalRenderBaseline = approvalRenders.length;
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'trigger confirm approval-user-1' }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(confirmApprovalMock).toHaveBeenCalledWith('approval-token-1', true);
+      expect(approvalRenders.length).toBeGreaterThan(approvalRenderBaseline);
+    });
+
+    expect(facadeRenders).toHaveLength(facadeRenderBaseline);
+
+    deferredConfirm.resolve({ success: true });
+  });
+
+  it('reconciles plain alert confirm with refreshed server state', async () => {
+    const alertNotification = createAlertNotification();
+
+    getNotificationsMock
+      .mockResolvedValueOnce({
+        data: { list: [alertNotification], total: 1 },
+      })
+      .mockResolvedValueOnce({
+        data: { list: [], total: 0 },
+      });
+    getUnreadCountMock
+      .mockResolvedValueOnce({
+        data: {
+          total: 1,
+          by_type: { alert: 1, task: 0, system: 0, approval: 0 },
+          by_severity: { critical: 0, warning: 1, info: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: createUnreadCount(0),
+      });
+
+    render(
+      <NotificationProvider userId="1">
+        <FacadeDataOnlyProbe onRender={() => undefined} />
+        <FacadeConfirmTrigger id="alert-user-1" />
+      </NotificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('facade-notifications')).toHaveTextContent('1');
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'trigger confirm alert-user-1' }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith('alert-user-1');
+      expect(getNotificationsMock).toHaveBeenCalledTimes(2);
+      expect(getUnreadCountMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('facade-total')).toHaveTextContent('0');
+      expect(screen.getByTestId('facade-notifications')).toHaveTextContent('0');
+    });
+  });
+
+  it('clears approval action state after approval confirm resolves', async () => {
+    const approvalNotification = createApprovalNotification();
+    const deferredConfirm = createDeferred<{ success: boolean }>();
+
+    getNotificationsMock.mockResolvedValue({
+      data: { list: [approvalNotification], total: 1 },
+    });
+    getUnreadCountMock.mockResolvedValue({
+      data: createUnreadCount(1),
+    });
+    confirmApprovalMock.mockReturnValue(deferredConfirm.promise);
+
+    render(
+      <NotificationProvider userId="1">
+        <ApprovalStateProbe onRender={() => undefined} />
+        <FacadeConfirmTrigger id="approval-user-1" />
+      </NotificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('approval-total')).toHaveTextContent('0');
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'trigger confirm approval-user-1' }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('approval-total')).toHaveTextContent('1');
+    });
+
+    await act(async () => {
+      deferredConfirm.resolve({ success: true });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('approval-total')).toHaveTextContent('0');
+    });
   });
 });

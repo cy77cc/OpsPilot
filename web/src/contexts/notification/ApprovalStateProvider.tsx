@@ -168,11 +168,13 @@ export const ApprovalStateProvider: React.FC<ApprovalStateProviderProps> = ({
 
     await notificationApi.confirm(id);
     confirmNotificationLocally(id);
+    await refresh();
   }, [
     clearApprovalActionState,
     confirmNotificationLocally,
     dispatchApprovalUpdate,
     notifications,
+    refresh,
     setApprovalActionFailure,
     setApprovalActionSubmitting,
   ]);
