@@ -157,14 +157,43 @@ AI 做证据驱动诊断，输出结构化 Action Plan（禁止纯文本 Shell�
 - 提供内置、版本化的能力插件（如 `ServiceManager`, `LogTailer`, `FileCleaner`）。
 - 本地强 Schema 校验输入参数，限制单一动作的爆炸半径。
 
+### 4.9 agent-installer（独立安装模块）
+
+职责：
+
+- 将 Agent 作为“可选安装插件”接入主机添加流程，而非强制安装。
+- 独立维护安装编排、包分发、版本选择、安装回执与卸载回滚。
+- 按目标主机 `os/arch` 自动选择对应安装包与安装脚本。
+
+接口：
+
+- `ResolvePackage(os, arch, version, channel) -> package_ref`
+- `InstallAgent(node_id, package_ref, mode)` (`mode`: optional/required)
+- `UninstallAgent(node_id)`
+- `QueryInstallStatus(node_id)`
+
+编译与发布矩阵（最小集合）：
+
+- Linux: `amd64`, `arm64`
+- Windows: `amd64`
+- Darwin: `arm64`, `amd64`（如有运维终端接入需求）
+
+发布要求：
+
+- 每个构建产物必须带版本号、SHA256、签名信息。
+- `asset-registry` 保存节点实际 `os/arch` 与已安装 agent 版本。
+- 安装失败必须可重试，可回滚到上一稳定版本。
+
 ## 5. 端到端流程
 
 ### 5.1 采集主链路
 
-1. Agent 周期采集与事件触发采集
-2. 数据经 Gateway 入总线
-3. Pipeline 标准化后写入时序/日志/事件存储
-4. AI 与运维界面统一读取观测事实源
+1. 添加主机时，用户可选择“安装 Agent”或“暂不安装（仅 SSH/受限模式）”
+2. 若选择安装，`agent-installer` 根据 `os/arch` 解析安装包并执行安装
+3. Agent 周期采集与事件触发采集
+4. 数据经 Gateway 入总线
+5. Pipeline 标准化后写入时序/日志/事件存储
+6. AI 与运维界面统一读取观测事实源
 
 ### 5.2 AI 排障主链路
 
@@ -244,6 +273,7 @@ AI 做证据驱动诊断，输出结构化 Action Plan（禁止纯文本 Shell�
 - 资源限制：通过 `systemd`/`cgroups` 设定严格的 CPU/Mem 使用上限（例如 Max CPU 0.5 core, Max RAM 256MB）。
 - 自恢复：内置 Watchdog 监控核心线程，因采集任务或高优并发导致资源 OOM 时，主动 Kill 泄漏任务并自愈重启。
 - OTA 升级：由 Orchestrator 支持内置的 `Upgrade_Agent` 插件动作，支持分批灰度更新与健康探测。
+- 多版本治理：Installer 与 OTA 使用同一版本清单，按 OS/Arch 选择升级包并支持分平台回滚。
 
 ## 7. 安全与治理
 
@@ -283,6 +313,7 @@ AI 做证据驱动诊断，输出结构化 Action Plan（禁止纯文本 Shell�
 - 混沌测试：消息堆积、区域抖动、批量失联、组件降级
 - 安全测试：越权、跨租户、重放、过期证书、SSH 滥用
 - 沙箱测试：网络隔离、资源配额、超时终止、输出脱敏、容器逃逸防护基线
+- 安装测试：主机接入时可选安装、跨 OS/Arch 包选择、安装失败重试、卸载与版本回滚
 
 ### 8.2 验收指标
 
@@ -297,12 +328,15 @@ AI 做证据驱动诊断，输出结构化 Action Plan（禁止纯文本 Shell�
 
 - 上线 agent-gateway、asset-registry、audit-ledger 基础能力
 - SSH 仍为主链路，新增审计统一口径
+- 新建独立 `agent-installer` 模块与制品清单规范（版本、签名、checksum）
 
 ### Phase 1（4-6 周）：采集链路切主
 
 - Agent 接管 metrics/log 主采集
 - 引入能力插件化架构，禁止任意 Shell
 - SSH 采集降级为兜底
+- 在“添加主机”流程上线可选安装开关，按 OS/Arch 自动匹配安装包
+- 完成首批多平台构建流水线（Linux amd64/arm64，Windows amd64）
 
 ### Phase 2（4-8 周）：AI 受控动作闭环
 
@@ -338,6 +372,9 @@ AI 做证据驱动诊断，输出结构化 Action Plan（禁止纯文本 Shell�
 
 - 团队沿用 SSH 运维习惯难改  
   缓解：提供可观测收益对比看板，将 SSH 使用率纳入治理指标
+
+- 多平台安装包维护复杂度上升  
+  缓解：统一构建矩阵与制品清单，强制签名与 checksum 校验，Installer/OTA 共用版本元数据
 
 ## 12. 决策结论
 
