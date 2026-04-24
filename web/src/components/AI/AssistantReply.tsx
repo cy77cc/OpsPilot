@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CodeHighlighter } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ComponentProps } from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
 import { normalizeMarkdownContent } from './markdownContent';
 import type {
   AssistantReplyActivity,
@@ -329,6 +330,34 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
       text-align: left;
     }
   `,
+  codeBlockContainer: css`
+    position: relative;
+    margin: 0.85em 0;
+    border-radius: 8px;
+    background: ${token.colorFillQuaternary};
+    border: 1px solid ${token.colorBorderSecondary};
+    overflow: hidden;
+
+    &:hover .code-block-header {
+      opacity: 1;
+    }
+  `,
+  codeBlockHeader: css`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: ${token.colorFillSecondary};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+  `,
+  codeBlockLang: css`
+    font-size: 11px;
+    font-family: ${token.fontFamilyCode};
+    color: ${token.colorTextSecondary};
+    text-transform: lowercase;
+  `,
   footer: css`
     font-size: 12px;
     line-height: 18px;
@@ -397,13 +426,40 @@ interface AssistantReplyProps {
 
 const MarkdownCode: React.FC<ComponentProps> = (props) => {
   const { className, children } = props;
+  const { styles } = useAssistantReplyStyles();
+  const [copied, setCopied] = useState(false);
   const lang = className?.match(/language-(\w+)/)?.[1] || '';
 
   if (typeof children !== 'string') {
     return null;
   }
 
-  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>;
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(children);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
+  };
+
+  return (
+    <div className={styles.codeBlockContainer}>
+      <div className={`code-block-header ${styles.codeBlockHeader}`}>
+        <span className={styles.codeBlockLang}>{lang || 'code'}</span>
+        <Button
+          type="text"
+          size="small"
+          icon={copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />}
+          onClick={handleCopy}
+        >
+          {copied ? '已复制' : '复制'}
+        </Button>
+      </div>
+      <CodeHighlighter lang={lang}>{children}</CodeHighlighter>
+    </div>
+  );
 };
 
 const markdownComponents = {
@@ -434,11 +490,12 @@ function MarkdownViewportContent({
 }) {
   const normalizedContent = normalizeMarkdownContent(content);
   const shouldDefer = isLargeMarkdown(normalizedContent);
-  const [isVisible, setIsVisible] = useState(!shouldDefer);
+  // If streaming, always keep visible to avoid jumps.
+  const [isVisible, setIsVisible] = useState(isStreaming || !shouldDefer);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!shouldDefer) {
+    if (isStreaming || !shouldDefer) {
       setIsVisible(true);
       return;
     }
@@ -458,7 +515,7 @@ function MarkdownViewportContent({
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [normalizedContent, shouldDefer]);
+  }, [normalizedContent, shouldDefer, isStreaming]);
 
   if (!normalizedContent) {
     return null;
@@ -473,6 +530,7 @@ function MarkdownViewportContent({
       <XMarkdown
         content={normalizedContent}
         components={markdownComponents}
+        remarkPlugins={[remarkGfm]}
         streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
       />
     </div>

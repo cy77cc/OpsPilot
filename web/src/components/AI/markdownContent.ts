@@ -5,12 +5,7 @@ export function normalizeMarkdownContent(content: string): string {
   }
 
   // Historical runs may persist escaped line breaks as literal "\n".
-  // Normalize them before markdown render/copy, but avoid touching content
-  // that already contains real line breaks.
-  if (value.includes('\n') || value.includes('\r')) {
-    return value;
-  }
-
+  // Normalize them before markdown render/copy.
   return value
     .replace(/\\r\\n/g, '\n')
     .replace(/\\n/g, '\n')

@@ -165,9 +165,45 @@ export function buildAssistantErrorContent(
 
 export async function copyAssistantReplyToClipboard(
   finalMarkdownBody: string,
-  _runtime?: XChatMessage['runtime'],
+  runtime?: XChatMessage['runtime'],
 ): Promise<void> {
-  const copyContent = normalizeMarkdownContent(finalMarkdownBody || '').trim();
+  const parts: string[] = [];
+
+  // 1. Add Plan Steps (completed steps only or all if done)
+  if (runtime?.plan?.steps) {
+    runtime.plan.steps.forEach((step, index) => {
+      if (step.status === 'done' || runtime?.status?.kind === 'completed') {
+        parts.push(`## 步骤 ${index + 1}: ${step.title}`);
+        if (step.content) {
+          parts.push(step.content);
+        }
+        if (step.segments) {
+          step.segments.forEach(seg => {
+            if (seg.type === 'text' && seg.text) {
+              parts.push(seg.text);
+            }
+          });
+        }
+        parts.push('\n---\n');
+      }
+    });
+  }
+
+  // 2. Add Summary items
+  if (runtime?.summary?.items && runtime.summary.items.length > 0) {
+    parts.push(`### ${runtime.summary.title || 'Summary'}`);
+    runtime.summary.items.forEach(item => {
+      parts.push(`- **${item.label}**: ${item.value}`);
+    });
+    parts.push('\n');
+  }
+
+  // 3. Add Final Body
+  if (finalMarkdownBody) {
+    parts.push(finalMarkdownBody);
+  }
+
+  const copyContent = normalizeMarkdownContent(parts.join('\n\n')).trim();
   if (!copyContent || !navigator?.clipboard?.writeText) {
     return;
   }
