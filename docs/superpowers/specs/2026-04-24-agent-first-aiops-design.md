@@ -147,6 +147,37 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 - `AppendAuditRecord(record)`
 - `QueryAuditTrail(scope, time_range)`
 
+### 4.8 capability-runtime（Agent 能力插件运行时）
+
+职责：
+
+- 以“能力插件”替代“任意 shell 命令下发”
+- 对动作参数做本地 Schema 校验、权限校验与速率限制
+- 限制动作爆炸半径，确保可预测执行边界
+
+约束：
+
+- 禁止通用 `shell` 类型动作作为主链路执行载体
+- 允许的动作必须映射到版本化插件，例如：
+  - `ServiceManager.restart`
+  - `LogTailer.tail`
+  - `FileCleaner.cleanup_temp`
+  - `NetworkTracer.capture_summary`
+
+标准 Action Schema（示例）：
+
+```json
+{
+  "action_id": "act_01",
+  "target": {"node_id": "n-1001"},
+  "plugin": {"name": "ServiceManager", "version": "1.2.0", "method": "restart"},
+  "args": {"service_name": "nginx"},
+  "risk_level": "L1",
+  "ttl_sec": 120,
+  "rollback_hint": {"plugin": "ServiceManager", "method": "start", "args": {"service_name": "nginx"}}
+}
+```
+
 ## 5. 端到端流程
 
 ### 5.1 采集主链路
@@ -167,7 +198,27 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 5. 执行后自动验证 SLI，失败触发回滚或升级人工
 6. 输出复盘摘要并归档审计
 
-### 5.3 SSH 兜底链路
+### 5.3 只读诊断 Fast-Path（低延迟链路）
+
+目的：
+
+- 避免所有排障查询都走重状态机，降低 MTTR
+
+范围：
+
+- 仅允许只读诊断动作，例如进程快照、最近日志片段、连接状态摘要
+- 明确禁止任何会改变系统状态的操作进入 Fast-Path
+
+执行路径：
+
+- AI Runtime -> Orchestrator（ReadOnly 模式）-> Gateway RPC -> Agent -> 同步返回
+
+控制要求：
+
+- 仍需最小权限校验与租户作用域校验
+- 记录轻量审计（请求、目标、耗时、结果摘要），不进入重审批流
+
+### 5.4 SSH 兜底链路
 
 触发条件：
 
@@ -223,6 +274,16 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 - 审批、策略、审计在租户命名空间内独立
 - AI 检索与动作作用域必须携带租户上下文并强校验
 
+### 6.6 操作系统层幂等保护
+
+- 区分“消息幂等”和“系统动作幂等”，两者分别治理
+- 每个高风险动作执行前必须做前置探测（pre-check），确认当前状态是否已满足目标
+- 执行中断或回执丢失时，重试前先做状态再确认（reconcile）而不是直接重放动作
+- 对不可天然幂等动作（如有状态服务重启、磁盘清理）要求：
+  - 强制 dry-run 或影响面预估
+  - 强制 cooldown 窗口，避免短时间重复触发
+  - 达到重试阈值后自动升级人工处理
+
 ## 7. 安全与治理
 
 ### 7.1 身份与信任
@@ -242,6 +303,36 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 - L3 双人审批或指定角色审批
 - 支持变更冻结窗与紧急豁免流程（豁免必须审计）
 
+### 7.4 上下文感知策略（Context-Aware Policy）
+
+- Policy Engine 接入全局健康上下文（AZ 健康度、故障节点比例、变更窗口）
+- 支持动态熔断规则，例如：
+  - 当某可用区故障节点比例超过阈值时，自动禁止重启类 L1 动作，提升为 L3
+- 策略决策输出必须包含上下文快照摘要，便于审批人与审计追溯
+
+### 7.5 Dry-run 与影响面预估
+
+- L2/L3 动作提交时，除 Action Plan 外必须提交 Verification Plan
+- 审批前可执行 dry-run 或预检，输出：
+  - 预期影响对象列表
+  - 资源变更估算
+  - 失败回退路径可行性
+- 审批界面应展示上述结果，支持“有证据审批”
+
+### 7.6 Agent 资源治理与生命周期
+
+- Agent 运行必须设置硬资源上限（systemd/cgroups）：
+  - CPU 上限
+  - 内存上限
+  - 任务并发上限
+- Agent 需要 watchdog 与自恢复：
+  - 子任务超时自动终止并上报
+  - 进程异常自动拉起
+- 控制面内置 `Upgrade_Agent` 标准动作：
+  - 分批灰度升级
+  - 可回滚版本
+  - 升级前后健康探测与失败熔断
+
 ## 8. 测试与验收
 
 ### 8.1 测试分层
@@ -250,6 +341,9 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 - 集成测试：注册、证书轮换、动作下发、回执、DLQ 重放
 - 混沌测试：消息堆积、区域抖动、批量失联、组件降级
 - 安全测试：越权、跨租户、重放、过期证书、SSH 滥用
+- 插件测试：Action Schema 校验、插件参数边界、插件版本兼容
+- 性能测试：ReadOnly Fast-Path P95 延迟与高并发稳定性
+- 生命周期测试：Agent 灰度升级、回滚、watchdog 与资源超限保护
 
 ### 8.2 验收指标
 
@@ -269,12 +363,15 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 
 - Agent 接管 metrics/log 主采集
 - SSH 采集降级为兜底
+- 引入能力插件运行时基础框架与首批只读插件
 
 ### Phase 2（4-8 周）：AI 受控动作闭环
 
 - AI 输出结构化 Action Plan
 - L1 自动，L2/L3 审批
 - 引入执行后 SLI 验证与回滚
+- 上线 ReadOnly Fast-Path，分流高频诊断请求
+- 上线 Dry-run/影响面预估与上下文感知策略
 
 ### Phase 3（持续）：规模化与治理优化
 
@@ -287,6 +384,7 @@ AI 做证据驱动诊断，输出结构化 Action Plan，经策略裁决后执�
 - 不做“完全去 SSH”的硬切换
 - 不做 AI 全自动高风险动作（无审批）
 - 不在本阶段引入跨云统一 CMDB 大改造
+- 不提供“任意 shell 透传执行”作为常态化能力
 
 ## 11. 风险与缓解
 
