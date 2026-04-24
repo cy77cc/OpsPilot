@@ -11,6 +11,10 @@ vi.mock('@ant-design/charts', () => ({
 const mockApi = vi.hoisted(() => ({
   hosts: {
     getHostList: vi.fn(),
+    getHostOverview: vi.fn(),
+    getHostDistribution: vi.fn(),
+    getHostUsageTrend: vi.fn(),
+    getHostPendingAlerts: vi.fn(),
     batchUpdate: vi.fn(),
     runHealthCheck: vi.fn(),
     hostAction: vi.fn(),
@@ -59,6 +63,37 @@ describe('HostListPage', () => {
         ],
       },
     });
+    mockApi.hosts.getHostOverview.mockResolvedValue({
+      data: {
+        totalHosts: 2,
+        onlineHosts: 1,
+        abnormalHosts: 1,
+        avgCpuUsage: 23,
+        avgMemoryUsage: 39,
+        todayAlertCount: 3,
+        severeAlertCount: 1,
+        warningAlertCount: 2,
+        onlineRate: 50,
+      },
+    });
+    mockApi.hosts.getHostDistribution.mockResolvedValue({
+      data: [
+        { name: '生产', value: 1, percent: 50 },
+        { name: '测试', value: 1, percent: 50 },
+      ],
+    });
+    mockApi.hosts.getHostUsageTrend.mockResolvedValue({
+      data: [
+        { time: '10:00', cpuUsage: 20, memoryUsage: 35 },
+        { time: '11:00', cpuUsage: 23, memoryUsage: 39 },
+      ],
+    });
+    mockApi.hosts.getHostPendingAlerts.mockResolvedValue({
+      data: [
+        { name: 'prod-app-01', level: 'warning', count: 2 },
+        { name: 'test-win-01', level: 'critical', count: 1 },
+      ],
+    });
   });
 
   it('renders KPI cards, table rows and right-side charts', async () => {
@@ -72,8 +107,8 @@ describe('HostListPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('主机总数')).toBeInTheDocument();
-      expect(screen.getByText('prod-app-01')).toBeInTheDocument();
-      expect(screen.getByText('test-win-01')).toBeInTheDocument();
+      expect(screen.getAllByText('prod-app-01').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('test-win-01').length).toBeGreaterThan(0);
     });
 
     expect(screen.getByTestId('mock-pie-chart')).toBeInTheDocument();
@@ -90,8 +125,8 @@ describe('HostListPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('prod-app-01')).toBeInTheDocument();
-      expect(screen.getByText('test-win-01')).toBeInTheDocument();
+      expect(screen.getAllByText('prod-app-01').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('test-win-01').length).toBeGreaterThan(0);
     });
 
     const searchInputs = screen.getAllByPlaceholderText('搜索主机名、IP 或标签');

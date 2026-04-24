@@ -47,6 +47,10 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 
 		// 主机 CRUD
 		g.GET("", h.List)
+		g.GET("/overview", h.Overview)
+		g.GET("/distribution", h.Distribution)
+		g.GET("/usage-trend", h.UsageTrend)
+		g.GET("/pending-alerts", h.PendingAlerts)
 		g.POST("/probe", h.Probe)
 		g.POST("", h.Create)
 		g.POST("/batch", h.Batch)

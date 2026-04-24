@@ -129,3 +129,4 @@ interview/
 .cache/
 .superpowers/
 design/
+.gocache/

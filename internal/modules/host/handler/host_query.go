@@ -4,11 +4,12 @@ package handler
 import (
 	"encoding/json"
 	"math"
-	"time"
+	"strconv"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,12 +26,33 @@ import (
 // @Failure 500 {object} httpx.Response
 // @Router /hosts [get]
 func (h *Handler) List(c *gin.Context) {
-	list, err := h.hostService.List(c.Request.Context())
+	rows, err := h.queryHostDashboardRows(c)
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	httpx.OK(c, gin.H{"list": list, "total": len(list)})
+	total := len(rows)
+	page := 1
+	pageSize := total
+	if raw := c.Query("page"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if raw := c.Query("page_size"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			pageSize = n
+		}
+	}
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	httpx.OK(c, gin.H{"list": enrichHostListRows(rows[start:end]), "total": total})
 }
 
 // Get 获取单个主机详情。
@@ -84,7 +106,15 @@ func (h *Handler) Facts(c *gin.Context) {
 		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
-	httpx.OK(c, gin.H{"os": node.OS, "arch": node.Arch, "kernel": node.Kernel, "cpu_cores": node.CpuCores, "memory_mb": node.MemoryMB, "disk_gb": node.DiskGB, "source": "node"})
+	httpx.OK(c, gin.H{
+		"os":        node.OS,
+		"arch":      node.Arch,
+		"kernel":    node.Kernel,
+		"cpu_cores": node.CpuCores,
+		"memory_mb": node.MemoryMB,
+		"disk_gb":   node.DiskGB,
+		"source":    "node",
+	})
 }
 
 // Tags 获取主机标签列表。
@@ -207,6 +237,28 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 // @Failure 401 {object} httpx.Response
 // @Router /hosts/{id}/audits [get]
 func (h *Handler) Audits(c *gin.Context) {
-	rows := []gin.H{{"id": 1, "action": "query", "operator": "system", "detail": "host detail viewed", "created_at": time.Now()}}
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var events []hostmodel.NodeEvent
+	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
+		Where("node_id = ?", id).
+		Order("created_at DESC").
+		Limit(50).
+		Find(&events).Error; err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	rows := make([]gin.H, 0, len(events))
+	for _, event := range events {
+		rows = append(rows, gin.H{
+			"id":         event.ID,
+			"action":     event.Type,
+			"operator":   "system",
+			"detail":     event.Message,
+			"created_at": event.CreatedAt,
+		})
+	}
 	httpx.OK(c, rows)
 }

@@ -8,15 +8,23 @@ export interface Host {
   ip: string;
   status: string;
   healthState?: 'healthy' | 'degraded' | 'critical' | 'unknown';
+  monitorStatus?: 'healthy' | 'warning' | 'unmanaged';
   cpu: number;
   memory: number;
   disk: number;
+  cpuUsagePct?: number;
+  memoryUsagePct?: number;
+  diskUsagePct?: number;
   network: number;
   tags: string[];
+  environment?: 'prod' | 'staging' | 'test' | 'dev' | 'ops';
+  alertCount?: number;
   region: string;
   createdAt: string;
   lastActive: string;
+  lastHeartbeatAt?: string;
   os?: string;
+  osVersion?: string;
   username?: string;
   port?: number;
   description?: string;
@@ -34,9 +42,12 @@ export interface Host {
 export interface HostListParams {
   page?: number;
   pageSize?: number;
+  keyword?: string;
   status?: string;
+  environment?: string;
   region?: string;
   tags?: string[];
+  os?: string;
 }
 
 export interface HostCreateParams {
@@ -55,6 +66,7 @@ export interface HostCreateParams {
   port?: number;
   password?: string;
   sshKeyId?: number;
+  credentialTemplateId?: number;
   source?: 'manual_ssh' | 'cloud_import' | 'kvm_provision';
   provider?: string;
   providerInstanceId?: string;
@@ -114,6 +126,36 @@ export interface HostHealthSnapshot {
   checkedAt: string;
 }
 
+export interface HostOverviewStats {
+  totalHosts: number;
+  onlineHosts: number;
+  abnormalHosts: number;
+  avgCpuUsage: number;
+  avgMemoryUsage: number;
+  todayAlertCount: number;
+  severeAlertCount: number;
+  warningAlertCount: number;
+  onlineRate: number;
+}
+
+export interface HostDistributionData {
+  name: string;
+  value: number;
+  percent: number;
+}
+
+export interface HostTrendDataPoint {
+  time: string;
+  cpuUsage: number;
+  memoryUsage: number;
+}
+
+export interface HostPendingAlert {
+  name: string;
+  level: 'critical' | 'warning';
+  count: number;
+}
+
 export interface SSHExecResult {
   stdout: string;
   stderr: string;
@@ -141,10 +183,11 @@ export interface HostProbeParams {
   name: string;
   ip: string;
   port?: number;
-  authType: 'password' | 'key';
-  username: string;
+  authType?: 'password' | 'key';
+  username?: string;
   password?: string;
   sshKeyId?: number;
+  credentialTemplateId?: number;
 }
 
 export interface HostProbeResult {
@@ -318,21 +361,34 @@ export const hostApi = {
       params: {
         page: params?.page,
         page_size: params?.pageSize,
+        keyword: params?.keyword,
+        status: params?.status,
+        environment: params?.environment,
+        region: params?.region,
+        tags: params?.tags?.join(','),
+        os: params?.os,
       },
     });
     const rawData = response.data as any;
     const items = Array.isArray(rawData) ? rawData : (rawData?.list || []);
+    const total = Array.isArray(rawData) ? (response.total || items.length) : Number(rawData?.total || response.total || items.length);
     const list = items.map((item: any) => ({
       id: String(item.id),
       name: item.name,
       ip: item.ip,
       status: item.status,
       healthState: item.health_state || 'unknown',
+      monitorStatus: item.monitor_status || undefined,
       cpu: item.cpu_cores ?? item.cpu ?? 0,
       memory: item.memory_mb ?? item.memory ?? 0,
       disk: item.disk_gb ?? item.disk ?? 0,
+      cpuUsagePct: Number(item.cpu_usage_pct || 0),
+      memoryUsagePct: Number(item.memory_usage_pct || 0),
+      diskUsagePct: Number(item.disk_usage_pct || 0),
       network: item.network ?? 0,
       tags: item.tags ?? parseLabels(item.labels),
+      environment: item.environment || undefined,
+      alertCount: Number(item.alert_count || 0),
       region: item.region ?? '',
       source: item.source,
       provider: item.provider,
@@ -342,15 +398,104 @@ export const hostApi = {
       maintenanceBy: Number(item.maintenance_by || 0),
       maintenanceStartedAt: item.maintenance_started_at || undefined,
       maintenanceUntil: item.maintenance_until || undefined,
+      os: item.os || item.os_name || item.osName || '',
+      osVersion: item.os_version || item.osVersion || '',
       createdAt: item.created_at ?? item.createdAt,
       lastActive: item.updated_at ?? item.lastActive,
+      lastHeartbeatAt: item.last_heartbeat_at || item.lastHeartbeatAt || undefined,
     }));
     return {
       ...response,
       data: {
         list,
-        total: response.total || 0,
+        total,
       },
+    };
+  },
+
+  async getHostOverview(params?: HostListParams): Promise<ApiResponse<HostOverviewStats>> {
+    const response = await apiService.get<any>('/hosts/overview', {
+      params: {
+        keyword: params?.keyword,
+        status: params?.status,
+        environment: params?.environment,
+        region: params?.region,
+        tags: params?.tags?.join(','),
+        os: params?.os,
+      },
+    });
+    const d = response.data || {};
+    return {
+      ...response,
+      data: {
+        totalHosts: Number(d.total_hosts || 0),
+        onlineHosts: Number(d.online_hosts || 0),
+        abnormalHosts: Number(d.abnormal_hosts || 0),
+        avgCpuUsage: Number(d.avg_cpu_usage || 0),
+        avgMemoryUsage: Number(d.avg_memory_usage || 0),
+        todayAlertCount: Number(d.today_alert_count || 0),
+        severeAlertCount: Number(d.severe_alert_count || 0),
+        warningAlertCount: Number(d.warning_alert_count || 0),
+        onlineRate: Number(d.online_rate || 0),
+      },
+    };
+  },
+
+  async getHostDistribution(params?: HostListParams): Promise<ApiResponse<HostDistributionData[]>> {
+    const response = await apiService.get<any>('/hosts/distribution', {
+      params: {
+        keyword: params?.keyword,
+        status: params?.status,
+        environment: params?.environment,
+        region: params?.region,
+        tags: params?.tags?.join(','),
+        os: params?.os,
+      },
+    });
+    const rows = Array.isArray(response.data) ? response.data : (response.data?.list || []);
+    return {
+      ...response,
+      data: rows.map((x: any) => ({
+        name: String(x.name || ''),
+        value: Number(x.value || 0),
+        percent: Number(x.percent || 0),
+      })),
+    };
+  },
+
+  async getHostUsageTrend(params?: HostListParams & { hours?: number }): Promise<ApiResponse<HostTrendDataPoint[]>> {
+    const response = await apiService.get<any>('/hosts/usage-trend', {
+      params: {
+        keyword: params?.keyword,
+        status: params?.status,
+        environment: params?.environment,
+        region: params?.region,
+        tags: params?.tags?.join(','),
+        os: params?.os,
+        hours: params?.hours,
+      },
+    });
+    const rows = Array.isArray(response.data) ? response.data : (response.data?.list || []);
+    return {
+      ...response,
+      data: rows.map((x: any) => ({
+        time: String(x.time || ''),
+        cpuUsage: Number(x.cpu_usage || 0),
+        memoryUsage: Number(x.memory_usage || 0),
+      })),
+    };
+  },
+
+  async getHostPendingAlerts(): Promise<ApiResponse<HostPendingAlert[]>> {
+    const response = await apiService.get<any>('/hosts/pending-alerts');
+    const rows = Array.isArray(response.data) ? response.data : (response.data?.list || []);
+    return {
+      ...response,
+      data: rows.map((x: any) => ({
+        name: String(x.name || ''),
+        level: String(x.level || 'warning') === 'critical' ? 'critical' : 'warning',
+        count: Number(x.count || 0),
+      })),
     };
   },
 
@@ -373,7 +518,8 @@ export const hostApi = {
         region: item.region ?? '',
         createdAt: item.created_at ?? item.createdAt,
         lastActive: item.updated_at ?? item.lastActive,
-        os: item.os,
+        os: item.os || item.os_name || item.osName || '',
+        osVersion: item.os_version || item.osVersion || '',
         username: item.ssh_user ?? item.username,
         port: item.port,
         description: item.description,
@@ -400,6 +546,7 @@ export const hostApi = {
       auth_type: data.authType || 'password',
       password: data.password,
       ssh_key_id: data.sshKeyId,
+      credential_template_id: data.credentialTemplateId,
       port: data.port || 22,
       labels: data.tags || [],
       role: data.role || '',
@@ -422,6 +569,7 @@ export const hostApi = {
       username: data.username,
       password: data.password,
       ssh_key_id: data.sshKeyId,
+      credential_template_id: data.credentialTemplateId,
     });
     const d = res.data || {};
     throwHostKeyTrustRequired(d);

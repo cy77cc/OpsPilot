@@ -163,6 +163,26 @@ func (s *HostService) createFromLegacyReq(ctx context.Context, req CreateReq) (*
 	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.IP) == "" {
 		return nil, errors.New("name and ip are required")
 	}
+	if req.CredentialTemplateID != nil && *req.CredentialTemplateID > 0 {
+		probeReq := ProbeReq{
+			Name:                 req.Name,
+			IP:                   req.IP,
+			Port:                 req.Port,
+			AuthType:             req.AuthType,
+			Username:             req.Username,
+			Password:             req.Password,
+			SSHKeyID:             req.SSHKeyID,
+			CredentialTemplateID: req.CredentialTemplateID,
+		}
+		if err := s.applyProbeCredentialTemplate(ctx, &probeReq); err != nil {
+			return nil, err
+		}
+		req.Port = probeReq.Port
+		req.AuthType = probeReq.AuthType
+		req.Username = probeReq.Username
+		req.Password = probeReq.Password
+		req.SSHKeyID = probeReq.SSHKeyID
+	}
 	if req.Port <= 0 {
 		req.Port = DefaultSSHPort
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Probe 执行 SSH 连接探测。
@@ -32,6 +33,9 @@ import (
 // 返回: 探测响应，包含系统信息和探测令牌
 func (s *HostService) Probe(ctx context.Context, userID uint64, req ProbeReq) (*ProbeResp, error) {
 	normalizeProbeReq(&req)
+	if err := s.applyProbeCredentialTemplate(ctx, &req); err != nil {
+		return &ProbeResp{Reachable: false, ErrorCode: "validation_error", Message: err.Error()}, nil
+	}
 	if err := validateProbeReq(req); err != nil {
 		return &ProbeResp{Reachable: false, ErrorCode: "validation_error", Message: err.Error()}, nil
 	}
@@ -317,6 +321,50 @@ func normalizeProbeReq(req *ProbeReq) {
 	if req.Username == "" {
 		req.Username = "root"
 	}
+}
+
+// applyProbeCredentialTemplate 在探测前将认证预设解析为真实 SSH 凭据。
+func (s *HostService) applyProbeCredentialTemplate(ctx context.Context, req *ProbeReq) error {
+	if req == nil || req.CredentialTemplateID == nil || *req.CredentialTemplateID == 0 {
+		return nil
+	}
+	template, err := s.GetCredentialTemplate(ctx, *req.CredentialTemplateID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("credential template not found")
+		}
+		return err
+	}
+
+	authType := strings.ToLower(strings.TrimSpace(template.AuthType))
+	req.AuthType = authType
+	req.Username = strings.TrimSpace(template.SSHUser)
+	if req.Username == "" {
+		req.Username = "root"
+	}
+	if template.Port > 0 {
+		req.Port = template.Port
+	}
+
+	switch authType {
+	case "password":
+		password := strings.TrimSpace(s.decryptNodeSSHPassword(template.Password))
+		if password == "" {
+			return errors.New("credential template password is empty")
+		}
+		req.Password = password
+		req.SSHKeyID = nil
+	case "key":
+		if template.SSHKeyID == nil || *template.SSHKeyID == 0 {
+			return errors.New("credential template ssh_key_id is invalid")
+		}
+		keyID := *template.SSHKeyID
+		req.SSHKeyID = &keyID
+		req.Password = ""
+	default:
+		return errors.New("credential template auth_type must be password or key")
+	}
+	return nil
 }
 
 // normalizeCredentialReq 规范化凭证更新请求参数。

@@ -85,8 +85,7 @@ export function buildMenuSections({
       key: 'governance',
       title: '治理安全',
       items: [
-        { key: '/governance/users', icon: <Users size={18} />, label: '用户管理' },
-        { key: '/governance/permissions', icon: <ShieldCheck size={18} />, label: '权限管理' },
+        { key: '/org', icon: <Users size={18} />, label: '部门管理' },
         { key: '/approvals', icon: <FileSearch size={18} />, label: '审批管理' },
         { key: '/deployment/observability/audit-logs', icon: <History size={18} />, label: '审计日志' },
       ],

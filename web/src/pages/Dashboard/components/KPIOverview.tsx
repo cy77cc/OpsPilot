@@ -8,17 +8,23 @@ import {
   Rocket, 
   AlertCircle 
 } from 'lucide-react';
+import type { HealthOverview } from '../../../api/modules/dashboard';
 
-const kpiData = [
-  { title: '主机总数', total: 128, sub1: '在线 102', sub2: '离线 26', icon: <Server size={22} color="#1890ff" />, bgColor: 'bg-[#e6f7ff]' },
-  { title: '集群总数', total: 12, sub1: '正常 10', sub2: '异常 2', icon: <Layers size={22} color="#52c41a" />, bgColor: 'bg-[#f6ffed]' },
-  { title: '项目总数', total: 35, sub1: '运行中 28', sub2: '已停用 7', icon: <Folder size={22} color="#722ed1" />, bgColor: 'bg-[#f9f0ff]' },
-  { title: '服务总数', total: 256, sub1: '运行中 214', sub2: '异常 42', icon: <Component size={22} color="#1890ff" />, bgColor: 'bg-[#e6f7ff]' },
-  { title: '部署总数', total: 512, sub1: '成功 478', sub2: '失败 34', icon: <Rocket size={22} color="#13c2c2" />, bgColor: 'bg-[#e6fffb]' },
-  { title: '告警总数', total: 23, sub1: '严重 5', sub2: '警告 18', icon: <AlertCircle size={22} color="#ff4d4f" />, bgColor: 'bg-[#fff1f0]' },
-];
+interface KPIOverviewProps {
+  data?: HealthOverview;
+  alerts?: number;
+}
 
-export const KPIOverview: React.FC = () => {
+export const KPIOverview: React.FC<KPIOverviewProps> = ({ data, alerts = 0 }) => {
+  const kpiData = [
+    { title: '主机总数', total: data?.hosts?.total || 0, sub1: `正常 ${data?.hosts?.healthy || 0}`, sub2: `离线 ${data?.hosts?.offline || 0}`, icon: <Server size={22} color="#1890ff" />, bgColor: 'bg-[#e6f7ff]' },
+    { title: '集群总数', total: data?.clusters?.total || 0, sub1: `正常 ${data?.clusters?.healthy || 0}`, sub2: `离线 ${data?.clusters?.offline || 0}`, icon: <Layers size={22} color="#52c41a" />, bgColor: 'bg-[#f6ffed]' },
+    { title: '项目总数', total: data?.applications?.total || 0, sub1: `运行中 ${data?.applications?.healthy || 0}`, sub2: `异常 ${data?.applications?.unhealthy || 0}`, icon: <Folder size={22} color="#722ed1" />, bgColor: 'bg-[#f9f0ff]' },
+    { title: '服务总数', total: data?.workloads?.services || 0, sub1: '正常', sub2: '活跃', icon: <Component size={22} color="#1890ff" />, bgColor: 'bg-[#e6f7ff]' },
+    { title: '发布中心', total: data?.workloads?.deployments?.total || 0, sub1: `正常 ${data?.workloads?.deployments?.healthy || 0}`, sub2: '待审批', icon: <Rocket size={22} color="#13c2c2" />, bgColor: 'bg-[#e6fffb]' },
+    { title: '告警总数', total: alerts, sub1: '正在发生', sub2: '等待处理', icon: <AlertCircle size={22} color="#ff4d4f" />, bgColor: 'bg-[#fff1f0]' },
+  ];
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
       {kpiData.map((item, index) => (

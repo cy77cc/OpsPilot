@@ -51,20 +51,22 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f8f9fa;
+  background: transparent; /* Keep track transparent so it doesn't cut into the header */
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 10px;
-  border: 2px solid #f8f9fa; /* Creates a padding effect */
+  background-clip: padding-box; /* Crucial: ensures background only fills the area inside the border */
+  border: 2px solid transparent; /* Acts as a margin while keeping the bar 'floating' */
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.25);
+  background-clip: padding-box;
 }
 
-/* Component Level Scrollbar (for cards, menus, tables) */
+/* Component Level Scrollbar */
 .ant-card-body::-webkit-scrollbar,
 .ant-menu-inline::-webkit-scrollbar,
 .ant-table-body::-webkit-scrollbar,

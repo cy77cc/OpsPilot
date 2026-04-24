@@ -30,7 +30,7 @@ func newHostLogicTestService(t *testing.T) (*HostService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&model.HostProbeSession{}, &model.Node{}, &model.TrustedHostKey{}); err != nil {
+	if err := db.AutoMigrate(&model.HostProbeSession{}, &model.Node{}, &model.TrustedHostKey{}, &model.SSHCredentialTemplate{}); err != nil {
 		t.Fatalf("auto migrate host tables: %v", err)
 	}
 
@@ -199,6 +199,70 @@ func TestProbe_PersistsEncryptedPassword(t *testing.T) {
 		t.Fatalf("load persisted probe session: %v", err)
 	}
 	assertCipherRoundTrip(t, probe.PasswordCipher, plainPassword)
+}
+
+func TestProbe_UsesCredentialTemplatePassword(t *testing.T) {
+	hostSvc, db := newHostLogicTestService(t)
+
+	const (
+		sshUser   = "ops"
+		sshPass   = "Template-Password-Task"
+		hostName  = "template-probe-node"
+		wrongUser = "root"
+	)
+	host, port, hostKey, shutdown := startTestPasswordSSHServer(t, sshUser, sshPass)
+	defer shutdown()
+
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	knownHostsLine := knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, hostKey)
+	if err := os.WriteFile(knownHostsPath, []byte(knownHostsLine+"\n"), 0o600); err != nil {
+		t.Fatalf("write known_hosts file: %v", err)
+	}
+	t.Setenv("OPS_KNOWN_HOSTS_PATH", knownHostsPath)
+
+	cipher, err := utils.EncryptText(sshPass, config.CFG.Security.EncryptionKey)
+	if err != nil {
+		t.Fatalf("encrypt template password: %v", err)
+	}
+	template := &model.SSHCredentialTemplate{
+		Name:      "task-template-password",
+		AuthType:  "password",
+		SSHUser:   sshUser,
+		Port:      port,
+		Password:  cipher,
+		CreatedBy: 1001,
+	}
+	if err := db.WithContext(context.Background()).Create(template).Error; err != nil {
+		t.Fatalf("seed credential template: %v", err)
+	}
+
+	resp, err := hostSvc.Probe(context.Background(), 1001, ProbeReq{
+		Name:                 hostName,
+		IP:                   host,
+		Port:                 22,
+		AuthType:             "password",
+		Username:             wrongUser,
+		Password:             "wrong-password",
+		CredentialTemplateID: &template.ID,
+	})
+	if err != nil {
+		t.Fatalf("probe returned error: %v", err)
+	}
+	if resp == nil || !resp.Reachable {
+		t.Fatalf("expected probe reachable, got %#v", resp)
+	}
+
+	var probe model.HostProbeSession
+	if err := db.WithContext(context.Background()).Where("name = ?", hostName).First(&probe).Error; err != nil {
+		t.Fatalf("load persisted probe session: %v", err)
+	}
+	if probe.Username != sshUser {
+		t.Fatalf("expected username from template %q, got %q", sshUser, probe.Username)
+	}
+	if probe.Port != port {
+		t.Fatalf("expected port from template %d, got %d", port, probe.Port)
+	}
+	assertCipherRoundTrip(t, probe.PasswordCipher, sshPass)
 }
 
 func TestCreateWithProbe_LegacyRequestEncryptsPassword(t *testing.T) {

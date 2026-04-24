@@ -5,13 +5,14 @@ import "time"
 // ProbeReq is the request body for the Probe endpoint (POST /hosts/probe).
 // It carries SSH connectivity parameters used to test access before registering a host.
 type ProbeReq struct {
-	Name     string  `json:"name"`
-	IP       string  `json:"ip"`
-	Port     int     `json:"port"`
-	AuthType string  `json:"auth_type"` // "password" or "key"
-	Username string  `json:"username"`
-	Password string  `json:"password"`
-	SSHKeyID *uint64 `json:"ssh_key_id"`
+	Name                 string  `json:"name"`
+	IP                   string  `json:"ip"`
+	Port                 int     `json:"port"`
+	AuthType             string  `json:"auth_type"` // "password" or "key"
+	Username             string  `json:"username"`
+	Password             string  `json:"password"`
+	SSHKeyID             *uint64 `json:"ssh_key_id"`
+	CredentialTemplateID *uint64 `json:"credential_template_id"`
 }
 
 // ProbeFacts holds the system facts collected during an SSH probe.
@@ -40,24 +41,25 @@ type ProbeResp struct {
 // CreateReq is the request body for creating a new host (POST /hosts).
 // A valid ProbeToken obtained from the Probe endpoint is required.
 type CreateReq struct {
-	ProbeToken   string   `json:"probe_token"`
-	Name         string   `json:"name"`
-	IP           string   `json:"ip"`
-	Port         int      `json:"port"`
-	AuthType     string   `json:"auth_type"`
-	Username     string   `json:"username"`
-	Password     string   `json:"password"`
-	SSHKeyID     *uint64  `json:"ssh_key_id"`
-	Description  string   `json:"description"`
-	Labels       []string `json:"labels"`
-	Role         string   `json:"role"`
-	ClusterID    uint     `json:"cluster_id"`
-	Source       string   `json:"source"`
-	Provider     string   `json:"provider"`
-	ProviderID   string   `json:"provider_instance_id"`
-	ParentHostID *uint64  `json:"parent_host_id"`
-	Force        bool     `json:"force"`
-	Status       string   `json:"status"`
+	ProbeToken           string   `json:"probe_token"`
+	Name                 string   `json:"name"`
+	IP                   string   `json:"ip"`
+	Port                 int      `json:"port"`
+	AuthType             string   `json:"auth_type"`
+	Username             string   `json:"username"`
+	Password             string   `json:"password"`
+	SSHKeyID             *uint64  `json:"ssh_key_id"`
+	CredentialTemplateID *uint64  `json:"credential_template_id"`
+	Description          string   `json:"description"`
+	Labels               []string `json:"labels"`
+	Role                 string   `json:"role"`
+	ClusterID            uint     `json:"cluster_id"`
+	Source               string   `json:"source"`
+	Provider             string   `json:"provider"`
+	ProviderID           string   `json:"provider_instance_id"`
+	ParentHostID         *uint64  `json:"parent_host_id"`
+	Force                bool     `json:"force"`
+	Status               string   `json:"status"`
 }
 
 // UpdateCredentialsReq is the request body for updating SSH credentials of an existing host
@@ -100,6 +102,40 @@ type HealthSnapshot struct {
 	SummaryJSON        string    `json:"summary_json"`
 	ErrorMessage       string    `json:"error_message"`
 	CheckedAt          time.Time `json:"checked_at"`
+}
+
+// HostOverviewResp is the response payload for GET /hosts/overview.
+type HostOverviewResp struct {
+	TotalHosts        int     `json:"total_hosts"`
+	OnlineHosts       int     `json:"online_hosts"`
+	AbnormalHosts     int     `json:"abnormal_hosts"`
+	AvgCPUUsage       float64 `json:"avg_cpu_usage"`
+	AvgMemoryUsage    float64 `json:"avg_memory_usage"`
+	TodayAlertCount   int64   `json:"today_alert_count"`
+	SevereAlertCount  int64   `json:"severe_alert_count"`
+	WarningAlertCount int64   `json:"warning_alert_count"`
+	OnlineRate        float64 `json:"online_rate"`
+}
+
+// HostDistributionItem is a distribution row in GET /hosts/distribution.
+type HostDistributionItem struct {
+	Name    string  `json:"name"`
+	Value   int     `json:"value"`
+	Percent float64 `json:"percent"`
+}
+
+// HostTrendPoint is an hourly resource trend point from GET /hosts/usage-trend.
+type HostTrendPoint struct {
+	Time        string  `json:"time"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	MemoryUsage float64 `json:"memory_usage"`
+}
+
+// HostPendingAlertItem is an aggregated pending alert row from GET /hosts/pending-alerts.
+type HostPendingAlertItem struct {
+	Name  string `json:"name"`
+	Level string `json:"level"`
+	Count int64  `json:"count"`
 }
 
 // BatchReq is the request body for batch host operations (POST /hosts/batch).

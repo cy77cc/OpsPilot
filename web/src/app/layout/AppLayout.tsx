@@ -50,6 +50,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+
+  // Expose setCopilotOpen globally for QuickAccess and other components
+  useEffect(() => {
+    (window as any).openCopilot = () => setCopilotOpen(true);
+    return () => {
+      delete (window as any).openCopilot;
+    };
+  }, []);
+
   const [aiFormAssistEnabled, setAiFormAssistEnabled] = useState(
     typeof window !== 'undefined' ? localStorage.getItem('ai-form-assist-enabled') !== '0' : true
   );

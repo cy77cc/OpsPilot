@@ -25,6 +25,7 @@
     "@ant-design/x-sdk": "^2.3.0",
     "@antv/g6": "^4.8.25",
     "@faker-js/faker": "^10.3.0",
+    "@lobehub/icons": "^5.5.4",
     "@monaco-editor/react": "^4.7.0",
     "@types/react-window": "^1.8.8",
     "ahooks": "^3.9.6",

@@ -22,38 +22,38 @@ type NodeID uint
 //   - HealthState: healthy/unhealthy/unknown
 //   - Source: manual_ssh/imported/cloud
 type Node struct {
-	ID                   NodeID     `gorm:"primaryKey;column:id" json:"id"`                                                                              // 节点 ID
-	Name                 string     `gorm:"column:name;type:varchar(64);not null" json:"name"`                                                           // 节点名称
-	Hostname             string     `gorm:"column:hostname;type:varchar(64)" json:"hostname"`                                                            // 主机名
-	Labels               string     `gorm:"column:labels;type:json" json:"labels"`                                                                       // 标签 (JSON)
-	Description          string     `gorm:"column:description;type:varchar(256)" json:"description"`                                                     // 描述
-	IP                   string     `gorm:"column:ip;type:varchar(45);not null" json:"ip"`                                                               // IP 地址
-	Port                 int        `gorm:"column:port;default:22" json:"port"`                                                                          // SSH 端口
-	SSHUser              string     `gorm:"column:ssh_user;type:varchar(64);not null;default:root" json:"ssh_user"`                                      // SSH 用户名
-	SSHPassword          string     `gorm:"column:ssh_password;type:text" json:"-"`                                                                      // SSH 密码 (加密存储)
-	SSHKeyID             *NodeID    `gorm:"column:ssh_key_id" json:"ssh_key_id"`                                                                         // SSH 密钥 ID
-	OS                   string     `gorm:"column:os;type:varchar(64)" json:"os"`                                                                        // 操作系统
-	Arch                 string     `gorm:"column:arch;type:varchar(32)" json:"arch"`                                                                    // 架构: amd64/arm64
-	Kernel               string     `gorm:"column:kernel;type:varchar(64)" json:"kernel"`                                                                // 内核版本
-	CpuCores             int        `gorm:"column:cpu_cores" json:"cpu_cores"`                                                                           // CPU 核数
-	MemoryMB             int        `gorm:"column:memory_mb" json:"memory_mb"`                                                                           // 内存 (MB)
-	DiskGB               int        `gorm:"column:disk_gb" json:"disk_gb"`                                                                               // 磁盘 (GB)
-	Status               string     `gorm:"column:status;type:varchar(32);not null" json:"status"`                                                       // 状态: active/inactive/error/maintenance
-	Role                 string     `gorm:"column:role;type:varchar(32)" json:"role"`                                                                    // 角色: master/worker
-	ClusterID            uint       `gorm:"column:cluster_id" json:"cluster_id"`                                                                         // 所属集群 ID
-	Source               string     `gorm:"column:source;type:varchar(32);default:manual_ssh" json:"source"`                                             // 来源: manual_ssh/imported/cloud
+	ID                   NodeID     `gorm:"primaryKey;column:id" json:"id"`                                                                                                                            // 节点 ID
+	Name                 string     `gorm:"column:name;type:varchar(64);not null" json:"name"`                                                                                                         // 节点名称
+	Hostname             string     `gorm:"column:hostname;type:varchar(64)" json:"hostname"`                                                                                                          // 主机名
+	Labels               string     `gorm:"column:labels;type:json" json:"labels"`                                                                                                                     // 标签 (JSON)
+	Description          string     `gorm:"column:description;type:varchar(256)" json:"description"`                                                                                                   // 描述
+	IP                   string     `gorm:"column:ip;type:varchar(45);not null" json:"ip"`                                                                                                             // IP 地址
+	Port                 int        `gorm:"column:port;default:22" json:"port"`                                                                                                                        // SSH 端口
+	SSHUser              string     `gorm:"column:ssh_user;type:varchar(64);not null;default:root" json:"ssh_user"`                                                                                    // SSH 用户名
+	SSHPassword          string     `gorm:"column:ssh_password;type:text" json:"-"`                                                                                                                    // SSH 密码 (加密存储)
+	SSHKeyID             *NodeID    `gorm:"column:ssh_key_id" json:"ssh_key_id"`                                                                                                                       // SSH 密钥 ID
+	OS                   string     `gorm:"column:os;type:varchar(64)" json:"os"`                                                                                                                      // 操作系统
+	Arch                 string     `gorm:"column:arch;type:varchar(32)" json:"arch"`                                                                                                                  // 架构: amd64/arm64
+	Kernel               string     `gorm:"column:kernel;type:varchar(64)" json:"kernel"`                                                                                                              // 内核版本
+	CpuCores             int        `gorm:"column:cpu_cores" json:"cpu_cores"`                                                                                                                         // CPU 核数
+	MemoryMB             int        `gorm:"column:memory_mb" json:"memory_mb"`                                                                                                                         // 内存 (MB)
+	DiskGB               int        `gorm:"column:disk_gb" json:"disk_gb"`                                                                                                                             // 磁盘 (GB)
+	Status               string     `gorm:"column:status;type:varchar(32);not null" json:"status"`                                                                                                     // 状态: active/inactive/error/maintenance
+	Role                 string     `gorm:"column:role;type:varchar(32)" json:"role"`                                                                                                                  // 角色: master/worker
+	ClusterID            uint       `gorm:"column:cluster_id" json:"cluster_id"`                                                                                                                       // 所属集群 ID
+	Source               string     `gorm:"column:source;type:varchar(32);default:manual_ssh" json:"source"`                                                                                           // 来源: manual_ssh/imported/cloud
 	Provider             *string    `gorm:"column:provider;type:varchar(32);uniqueIndex:idx_provider_instance,where:provider IS NOT NULL AND provider != ''" json:"provider"`                          // 云厂商: aliyun/aws/tencent
 	ProviderID           *string    `gorm:"column:provider_instance_id;type:varchar(128);uniqueIndex:idx_provider_instance,where:provider IS NOT NULL AND provider != ''" json:"provider_instance_id"` // 云厂商实例 ID
-	Region               string     `gorm:"column:region;type:varchar(64)" json:"region"`                                                                // 区域
-	ParentHostID         *NodeID    `gorm:"column:parent_host_id" json:"parent_host_id"`                                                                 // 父主机 ID (虚拟机场景)
-	HealthState          string     `gorm:"column:health_state;type:varchar(32);default:unknown" json:"health_state"`                                    // 健康状态: healthy/unhealthy/unknown
-	MaintenanceReason    string     `gorm:"column:maintenance_reason;type:varchar(512)" json:"maintenance_reason"`                                       // 维护原因
-	MaintenanceBy        uint64     `gorm:"column:maintenance_by;default:0" json:"maintenance_by"`                                                       // 维护操作人 ID
-	MaintenanceStartedAt *time.Time `gorm:"column:maintenance_started_at" json:"maintenance_started_at"`                                                 // 维护开始时间
-	MaintenanceUntil     *time.Time `gorm:"column:maintenance_until" json:"maintenance_until"`                                                           // 维护截止时间
-	LastCheckAt          time.Time  `gorm:"column:last_check_at" json:"last_check_at"`                                                                   // 最后检查时间
-	CreatedAt            time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                                          // 创建时间
-	UpdatedAt            time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                                          // 更新时间
+	Region               string     `gorm:"column:region;type:varchar(64)" json:"region"`                                                                                                              // 区域
+	ParentHostID         *NodeID    `gorm:"column:parent_host_id" json:"parent_host_id"`                                                                                                               // 父主机 ID (虚拟机场景)
+	HealthState          string     `gorm:"column:health_state;type:varchar(32);default:unknown" json:"health_state"`                                                                                  // 健康状态: healthy/unhealthy/unknown
+	MaintenanceReason    string     `gorm:"column:maintenance_reason;type:varchar(512)" json:"maintenance_reason"`                                                                                     // 维护原因
+	MaintenanceBy        uint64     `gorm:"column:maintenance_by;default:0" json:"maintenance_by"`                                                                                                     // 维护操作人 ID
+	MaintenanceStartedAt *time.Time `gorm:"column:maintenance_started_at" json:"maintenance_started_at"`                                                                                               // 维护开始时间
+	MaintenanceUntil     *time.Time `gorm:"column:maintenance_until" json:"maintenance_until"`                                                                                                         // 维护截止时间
+	LastCheckAt          time.Time  `gorm:"column:last_check_at" json:"last_check_at"`                                                                                                                 // 最后检查时间
+	CreatedAt            time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`                                                                                                        // 创建时间
+	UpdatedAt            time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`                                                                                                        // 更新时间
 }
 
 // TableName 返回节点表名。

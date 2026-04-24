@@ -19,7 +19,7 @@ import {
 import { ArrowLeftOutlined, CheckCircleOutlined, CloudUploadOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
-import type { HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
+import type { CredentialTemplate, HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
 import { useAuth } from '../../components/Auth/AuthContext';
 import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
@@ -29,6 +29,7 @@ interface StepOneForm {
   name: string;
   ip: string;
   port: number;
+  credentialTemplateId?: number;
   authType: 'password' | 'key';
   username: string;
   password?: string;
@@ -51,7 +52,9 @@ const HostOnboardingPage: React.FC = () => {
   const [probeResult, setProbeResult] = useState<HostProbeResult | null>(null);
   const [stepOneValues, setStepOneValues] = useState<StepOneForm | null>(null);
   const [sshKeys, setSshKeys] = useState<SSHKeyItem[]>([]);
+  const [credentialTemplates, setCredentialTemplates] = useState<CredentialTemplate[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [keyCreating, setKeyCreating] = useState(false);
   const [form] = Form.useForm<StepOneForm & StepThreeForm>();
@@ -79,9 +82,22 @@ const HostOnboardingPage: React.FC = () => {
     }
   }, []);
 
+  const loadCredentialTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const res = await Api.hosts.listCredentialTemplates();
+      setCredentialTemplates(res.data || []);
+    } catch {
+      // ignore
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSSHKeys();
-  }, [loadSSHKeys]);
+    void loadCredentialTemplates();
+  }, [loadCredentialTemplates, loadSSHKeys]);
 
   const quickCreateKey = async () => {
     const values = await keyForm.validateFields();
@@ -105,7 +121,12 @@ const HostOnboardingPage: React.FC = () => {
   };
 
   const doProbe = async () => {
-    const values = await form.validateFields(['name', 'ip', 'port', 'authType', 'username', 'password', 'sshKeyId']);
+    const selectedTemplateId = form.getFieldValue('credentialTemplateId') as number | undefined;
+    const values = await form.validateFields(
+      selectedTemplateId
+        ? ['name', 'ip', 'credentialTemplateId']
+        : ['name', 'ip', 'port', 'authType', 'username', 'password', 'sshKeyId'],
+    );
     setLoading(true);
     try {
       const operation = async () => {
@@ -117,6 +138,7 @@ const HostOnboardingPage: React.FC = () => {
           username: values.username,
           password: values.password,
           sshKeyId: values.sshKeyId,
+          credentialTemplateId: values.credentialTemplateId,
         });
         setStepOneValues(values);
         setProbeResult(result.data);
@@ -156,6 +178,7 @@ const HostOnboardingPage: React.FC = () => {
         username: stepOneValues.username,
         password: stepOneValues.password,
         sshKeyId: stepOneValues.sshKeyId,
+        credentialTemplateId: stepOneValues.credentialTemplateId,
         description: values.description,
         role: values.role,
         clusterId: values.clusterId,
@@ -216,6 +239,41 @@ const HostOnboardingPage: React.FC = () => {
               <GuidedFormItem name="ip" label="主机 IP" rules={[{ required: true, message: '请输入主机IP' }]}>
                 <Input placeholder="例如: 10.0.0.21" />
               </GuidedFormItem>
+              <GuidedFormItem
+                name="credentialTemplateId"
+                label={(
+                  <Space size={8}>
+                    <span>认证预设（可选）</span>
+                    <Button size="small" type="link" onClick={() => navigate('/deployment/infrastructure/hosts/credentials')} style={{ paddingInline: 0 }}>
+                      管理预设
+                    </Button>
+                  </Space>
+                )}
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  loading={templatesLoading}
+                  placeholder="选择后将优先使用预设认证信息"
+                  options={credentialTemplates.map((template) => ({
+                    value: Number(template.id),
+                    label: `${template.name} · ${template.authType === 'key' ? '密钥' : '密码'} · ${template.sshUser}@${template.port}`,
+                  }))}
+                  onChange={(value) => {
+                    const selected = credentialTemplates.find((item) => Number(item.id) === Number(value));
+                    if (!selected) {
+                      return;
+                    }
+                    form.setFieldsValue({
+                      authType: selected.authType,
+                      username: selected.sshUser || 'root',
+                      port: selected.port || 22,
+                      sshKeyId: selected.authType === 'key' && selected.sshKeyId ? Number(selected.sshKeyId) : undefined,
+                    });
+                  }}
+                />
+              </GuidedFormItem>
               <Space style={{ width: '100%' }} size={16}>
                 <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]} style={{ minWidth: 150 }}>
                   <InputNumber min={1} max={65535} style={{ width: '100%' }} />
@@ -230,11 +288,15 @@ const HostOnboardingPage: React.FC = () => {
                   <Radio.Button value="key">SSH 密钥</Radio.Button>
                 </Radio.Group>
               </Form.Item>
-              <Form.Item noStyle shouldUpdate={(prev, next) => prev.authType !== next.authType}>
+              <Form.Item noStyle shouldUpdate={(prev, next) => prev.authType !== next.authType || prev.credentialTemplateId !== next.credentialTemplateId}>
                 {({ getFieldValue }) =>
                   getFieldValue('authType') === 'password' ? (
-                    <GuidedFormItem name="password" label="SSH 密码" rules={[{ required: true, message: '请输入 SSH 密码' }]}>
-                      <Input.Password />
+                    <GuidedFormItem
+                      name="password"
+                      label="SSH 密码"
+                      rules={getFieldValue('credentialTemplateId') ? [] : [{ required: true, message: '请输入 SSH 密码' }]}
+                    >
+                      <Input.Password disabled={!!getFieldValue('credentialTemplateId')} placeholder={getFieldValue('credentialTemplateId') ? '使用认证预设中的密码' : ''} />
                     </GuidedFormItem>
                   ) : (
                     <Form.Item
@@ -247,10 +309,11 @@ const HostOnboardingPage: React.FC = () => {
                           </Button>
                         </Space>
                       )}
-                      rules={[{ required: true, message: '请选择 SSH 密钥' }]}
+                      rules={getFieldValue('credentialTemplateId') ? [] : [{ required: true, message: '请选择 SSH 密钥' }]}
                     >
                       <Select
                         placeholder="请选择系统中的 SSH 密钥"
+                        disabled={!!getFieldValue('credentialTemplateId')}
                         loading={keysLoading}
                         showSearch
                         optionFilterProp="label"

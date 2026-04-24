@@ -18,12 +18,12 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
-	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/logic/cloud"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/logic/cloud/alicloud"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/logic/cloud/ucloud"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/logic/cloud/ucloud/ulighthost"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/logic/cloud/volcengine"
+	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 )
 
 // CloudAccountReq 创建云账号请求参数。

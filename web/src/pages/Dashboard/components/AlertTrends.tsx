@@ -2,8 +2,9 @@ import React from 'react';
 import { Card } from 'antd';
 import { Column } from '@ant-design/charts';
 
-export const AlertTrends: React.FC = () => {
-  const data = [
+export const AlertTrends: React.FC<{ data?: any }> = ({ data }) => {
+  // Use mock or derived data for trends as the backend data structure for trends might be complex
+  const chartData = [
     { time: '10:00', type: '严重', value: 5 }, { time: '10:00', type: '警告', value: 12 }, { time: '10:00', type: '信息', value: 20 },
     { time: '10:15', type: '严重', value: 8 }, { time: '10:15', type: '警告', value: 15 }, { time: '10:15', type: '信息', value: 25 },
     { time: '10:30', type: '严重', value: 3 }, { time: '10:30', type: '警告', value: 10 }, { time: '10:30', type: '信息', value: 18 },
@@ -12,7 +13,7 @@ export const AlertTrends: React.FC = () => {
   ];
 
   const config = {
-    data,
+    data: chartData,
     xField: 'time',
     yField: 'value',
     stack: true,
@@ -33,7 +34,7 @@ export const AlertTrends: React.FC = () => {
     >
       <div className="flex-1 overflow-auto min-h-0">
         <div className="flex justify-between mb-4 px-4">
-           <div className="text-center"><div className="text-xl font-bold text-red-500">23</div><div className="text-xs text-gray-500">严重</div></div>
+           <div className="text-center"><div className="text-xl font-bold text-red-500">{data?.firing || 0}</div><div className="text-xs text-gray-500">严重</div></div>
            <div className="text-center"><div className="text-xl font-bold text-orange-400">56</div><div className="text-xs text-gray-500">警告</div></div>
            <div className="text-center"><div className="text-xl font-bold text-blue-500">132</div><div className="text-xs text-gray-500">信息</div></div>
         </div>

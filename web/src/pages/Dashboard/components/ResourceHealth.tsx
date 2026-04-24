@@ -1,17 +1,18 @@
 import React from 'react';
 import { Card } from 'antd';
 import { Pie } from '@ant-design/charts';
+import type { HealthOverview } from '../../../api/modules/dashboard';
 
-export const ResourceHealth: React.FC = () => {
-  const data = [
-    { type: '正常', value: 118 },
-    { type: '警告', value: 30 },
-    { type: '异常', value: 14 },
-    { type: '未知', value: 10 },
+export const ResourceHealth: React.FC<{ data?: HealthOverview }> = ({ data }) => {
+  const chartData = [
+    { type: '正常', value: data?.hosts?.healthy || 0 },
+    { type: '降级', value: data?.hosts?.degraded || 0 },
+    { type: '异常', value: data?.hosts?.unhealthy || 0 },
+    { type: '离线', value: data?.hosts?.offline || 0 },
   ];
 
   const config = {
-    data,
+    data: chartData,
     angleField: 'value',
     colorField: 'type',
     innerRadius: 0.75,
@@ -22,27 +23,17 @@ export const ResourceHealth: React.FC = () => {
     },
     label: {
       text: 'value',
-      style: {
-        fontWeight: 'bold',
-      },
+      style: { fontWeight: 'bold' },
     },
     legend: {
-      color: {
-        title: false,
-        position: 'right',
-        rowPadding: 5,
-      },
+      color: { position: 'right', rowPadding: 5 },
     },
     annotations: [
       {
         type: 'text',
         style: {
-          text: '172\n总资源',
-          x: '50%',
-          y: '50%',
-          textAlign: 'center',
-          fontSize: 20,
-          fontStyle: 'bold',
+          text: `${data?.hosts?.total || 0}\n总主机`,
+          x: '50%', y: '50%', textAlign: 'center', fontSize: 20, fontStyle: 'bold',
         },
       },
     ],
@@ -50,7 +41,7 @@ export const ResourceHealth: React.FC = () => {
 
   return (
     <Card 
-      title="资源健康状态" 
+      title="主机健康状态" 
       className="h-full shadow-sm border-none flex flex-col"
       styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
     >
@@ -60,7 +51,7 @@ export const ResourceHealth: React.FC = () => {
         </div>
       </div>
       <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
-        查看详情 &gt;
+        查看拓扑 &gt;
       </div>
     </Card>
   );
