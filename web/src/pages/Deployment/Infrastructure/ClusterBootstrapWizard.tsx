@@ -7,6 +7,7 @@ import type { BootstrapProfile, BootstrapTask, BootstrapVersionItem, BootstrapVa
 import type { Host } from '../../../api/modules/hosts';
 import { GuidedFormItem } from '../../../components/FormGuidance';
 import { handleApiError } from '../../../utils/apiErrorHandler';
+import { FormSkeleton } from '../../../components/LoadingSkeleton';
 
 const { TextArea } = Input;
 
@@ -672,28 +673,9 @@ const ClusterBootstrapWizard: React.FC = () => {
               ]}
             />
           )}
-
-          {taskStatus.status === 'failed' && (
-            <Result
-              status="error"
-              title="集群创建失败"
-              subTitle={taskStatus.error_message || '请查看步骤详情了解失败原因'}
-              extra={[
-                <Button type="primary" key="retry" onClick={() => { setTaskId(null); setTaskStatus(null); setCurrentStep(4); }}>
-                  重试
-                </Button>,
-                <Button key="list" onClick={() => navigate('/deployment/infrastructure/clusters')}>
-                  返回列表
-                </Button>,
-              ]}
-            />
-          )}
         </div>
       ) : (
-        <div className="text-center py-8">
-          <Spin size="large" />
-          <p className="mt-4 text-gray-500">正在初始化...</p>
-        </div>
+        <FormSkeleton title={false} groups={2} actions={false} />
       )}
     </Card>
   );

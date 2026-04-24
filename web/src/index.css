@@ -310,24 +310,6 @@ h1, h2, h3, h4, h5, h6 {
   color: #2d3a4f !important;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 5px var(--color-theme); }
-  50% { box-shadow: 0 0 20px var(--color-theme), 0 0 30px var(--color-theme); }
-}
-
-.pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.fade-in {
-  animation: fade-in 0.3s ease-out;
-}
-
 .host-terminal-page .host-terminal-xterm .xterm-viewport {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -337,9 +319,3 @@ h1, h2, h3, h4, h5, h6 {
   width: 0;
   height: 0;
 }
-
-.stagger-1 { animation-delay: 0.1s; }
-.stagger-2 { animation-delay: 0.2s; }
-.stagger-3 { animation-delay: 0.3s; }
-.stagger-4 { animation-delay: 0.4s; }
-.stagger-5 { animation-delay: 0.5s; }

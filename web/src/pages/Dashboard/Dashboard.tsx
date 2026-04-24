@@ -13,6 +13,8 @@ import { Select, Button, Spin, message } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { dashboardApi, type OverviewResponseV2, type TimeRange } from '../../api/modules/dashboard';
 
+import { PageSkeleton } from '../../components/LoadingSkeleton';
+
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<OverviewResponseV2 | null>(null);
@@ -40,11 +42,7 @@ const Dashboard: React.FC = () => {
   }, [timeRange]);
 
   if (loading && !data) {
-    return (
-      <div className="h-[calc(100vh-120px)] flex items-center justify-center bg-gray-50">
-        <Spin size="large" description="加载概览数据中..." />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (

@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import React from 'react';
 
 interface AnimatedButtonProps {
@@ -17,21 +16,14 @@ const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   disabled = false,
 }) => {
   return (
-    <motion.button
+    <button
       type={type}
       className={className}
       onClick={onClick}
       disabled={disabled}
-      whileHover={!disabled ? { scale: 1.02 } : undefined}
-      whileTap={!disabled ? { scale: 0.94 } : undefined}
-      transition={{
-        type: 'spring',
-        stiffness: 400,
-        damping: 17,
-      }}
     >
       {children}
-    </motion.button>
+    </button>
   );
 };
 

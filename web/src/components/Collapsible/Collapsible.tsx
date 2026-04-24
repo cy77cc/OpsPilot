@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState } from 'react';
 
 interface CollapsibleProps {
@@ -9,12 +8,7 @@ interface CollapsibleProps {
 }
 
 /**
- * 可折叠组件
- *
- * 特性:
- * - 平滑的展开/折叠动画
- * - 高度自适应
- * - 旋转箭头指示器
+ * 可折叠组件 (静态)
  */
 const Collapsible: React.FC<CollapsibleProps> = ({
   children,
@@ -26,52 +20,18 @@ const Collapsible: React.FC<CollapsibleProps> = ({
 
   return (
     <div className={className}>
-      <motion.div
+      <div
         onClick={() => setIsOpen(!isOpen)}
         className="cursor-pointer"
-        whileHover={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}
-        transition={{ duration: 0.2 }}
       >
         {trigger}
-      </motion.div>
+      </div>
 
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{
-              height: 'auto',
-              opacity: 1,
-              transition: {
-                height: {
-                  duration: 0.3,
-                  ease: [0.4, 0, 0.2, 1],
-                },
-                opacity: {
-                  duration: 0.25,
-                  delay: 0.05,
-                },
-              },
-            }}
-            exit={{
-              height: 0,
-              opacity: 0,
-              transition: {
-                height: {
-                  duration: 0.25,
-                  ease: [0.4, 0, 1, 1],
-                },
-                opacity: {
-                  duration: 0.2,
-                },
-              },
-            }}
-            style={{ overflow: 'hidden' }}
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isOpen && (
+        <div style={{ overflow: 'hidden' }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 };

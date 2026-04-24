@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { CloudAccount, CloudInstance, CloudProviderInfo, CredentialTemplate } from '../../api/modules/hosts';
 import { GuidedFormItem } from '../../components/FormGuidance';
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 // 云厂商选项
 const providerOptions = [
@@ -41,6 +42,8 @@ interface ZoneInfo {
   zoneId: string;
   localName: string;
 }
+
+import { PageSkeleton } from '../../components/LoadingSkeleton';
 
 const HostCloudImportPage: React.FC = () => {
   const navigate = useNavigate();
@@ -106,6 +109,10 @@ const HostCloudImportPage: React.FC = () => {
     loadProviders();
     loadCredentialTemplates();
   }, []);
+
+  if (loading && accounts.length === 0) {
+    return <PageSkeleton />;
+  }
 
   // 创建云账号
   const createAccount = async () => {
