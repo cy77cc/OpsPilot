@@ -650,7 +650,7 @@ const HostListPage: React.FC = () => {
     {
       title: '主机名',
       dataIndex: 'name',
-      width: 160,
+      width: 140,
       fixed: 'left',
       ellipsis: false,
       onCell: () => ({
@@ -1065,7 +1065,7 @@ const HostListPage: React.FC = () => {
                 scroll={{ x: 1650, y: tableScrollY }}
                 size="small"
                 style={{ height: '100%' }}
-                className="[&_.ant-table-thead>tr>th]:!bg-[#f6f8fb] [&_.ant-table-thead>tr>th]:!text-[#6b7280] [&_.ant-table-thead>tr>th]:!text-[13px] [&_.ant-table-thead>tr>th]:!overflow-hidden [&_.ant-table-tbody>tr>td]:!text-[13px] [&_.ant-table-tbody>tr>td]:!py-[10px] [&_.ant-table-tbody>tr>td]:!overflow-hidden"
+                className="[&_.ant-table-thead>tr>th]:!bg-[#f6f8fb] [&_.ant-table-thead>tr>th]:!text-[#6b7280] [&_.ant-table-thead>tr>th]:!text-[13px] [&_.ant-table-thead>tr>th]:!overflow-hidden [&_.ant-table-tbody>tr>td]:!text-[13px] [&_.ant-table-tbody>tr>td]:!py-[10px] [&_.ant-table-tbody>tr>td]:!overflow-hidden [&_.ant-table-body]:!scrollbar-thin [&_.ant-table-content]:!scrollbar-thin [&_.ant-table-body::-webkit-scrollbar]:!w-1.5 [&_.ant-table-body::-webkit-scrollbar]:!h-1.5 [&_.ant-table-content::-webkit-scrollbar]:!w-1.5 [&_.ant-table-content::-webkit-scrollbar]:!h-1.5"
               />
             </div>
             <div ref={paginationRef} className="px-4 py-3 border-t border-gray-100 flex flex-wrap gap-3 items-center justify-between">

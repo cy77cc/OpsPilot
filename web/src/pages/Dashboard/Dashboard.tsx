@@ -66,11 +66,11 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
       
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3">
         <KPIOverview data={data?.health} alerts={data?.alerts?.firing} />
         
         {/* Main Grid Layout - Charts Row */}
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-3">
             <ResourceHealth data={data?.health} />
           </div>
@@ -86,7 +86,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* AI & Delivery Row */}
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-3">
             <DeliveryOverview data={data?.operations} />
           </div>
@@ -98,7 +98,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 xl:col-span-8">
             <RecentAlerts data={data?.alerts?.recent} />
           </div>

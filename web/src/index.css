@@ -50,8 +50,14 @@ h1, h2, h3, h4, h5, h6 {
   height: 10px;
 }
 
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 ::-webkit-scrollbar-track {
-  background: transparent; /* Keep track transparent so it doesn't cut into the header */
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -67,38 +73,60 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Component Level Scrollbar */
+.ant-card-body,
+.ant-menu-inline,
+.ant-table-body,
+.ant-table-content,
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+}
+
 .ant-card-body::-webkit-scrollbar,
 .ant-menu-inline::-webkit-scrollbar,
 .ant-table-body::-webkit-scrollbar,
+.ant-table-content::-webkit-scrollbar,
 .overflow-auto::-webkit-scrollbar,
-.overflow-y-auto::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
 .ant-card-body::-webkit-scrollbar-track,
 .ant-menu-inline::-webkit-scrollbar-track,
 .ant-table-body::-webkit-scrollbar-track,
+.ant-table-content::-webkit-scrollbar-track,
 .overflow-auto::-webkit-scrollbar-track,
-.overflow-y-auto::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-x-auto::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .ant-card-body::-webkit-scrollbar-thumb,
 .ant-menu-inline::-webkit-scrollbar-thumb,
 .ant-table-body::-webkit-scrollbar-thumb,
+.ant-table-content::-webkit-scrollbar-thumb,
 .overflow-auto::-webkit-scrollbar-thumb,
-.overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-  border: none;
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  background-clip: padding-box;
+  border: 1px solid transparent;
 }
 
 .ant-card-body::-webkit-scrollbar-thumb:hover,
 .ant-menu-inline::-webkit-scrollbar-thumb:hover,
 .ant-table-body::-webkit-scrollbar-thumb:hover,
+.ant-table-content::-webkit-scrollbar-thumb:hover,
 .overflow-auto::-webkit-scrollbar-thumb:hover,
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+  background-clip: padding-box;
 }
 
 .ant-card {
