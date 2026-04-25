@@ -1,16 +1,48 @@
 import React from 'react';
-import { Table, Tag, Space, Dropdown, Button } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { Table, Tag, Space, Dropdown, Modal, message } from 'antd';
+import { DownOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { hostApi } from '../../../../api/modules/hosts';
 import type { CredentialItem } from '../../../../api/modules/hosts';
 
 interface Props {
   data: CredentialItem[];
   loading: boolean;
   onRowClick: (record: CredentialItem) => void;
+  onRefresh: () => void;
 }
 
-export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) => {
+export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick, onRefresh }) => {
+  const handleComingSoon = () => message.info('功能开发中');
+
+  const handleDelete = (record: CredentialItem) => {
+    const realId = record.id.replace(/^(key|tpl)-/, '');
+    Modal.confirm({
+      title: '确认删除凭证',
+      icon: <ExclamationCircleOutlined />,
+      content: `确定要删除凭证 "${record.name}" 吗？此操作不可撤销。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          let res;
+          if (record.id.startsWith('key-')) {
+            res = await hostApi.deleteSSHKey(realId);
+          } else {
+            res = await hostApi.deleteCredentialTemplate(realId);
+          }
+          if (res.success) {
+            message.success('凭证已删除');
+            onRefresh();
+          }
+        } catch (err: any) {
+          message.error(err.message || '删除失败');
+        }
+      },
+    });
+  };
+
   const columns: ColumnsType<CredentialItem> = [
     {
       title: '凭证名称',
@@ -20,7 +52,7 @@ export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) 
           className="cursor-pointer"
           onClick={() => onRowClick(record)}
         >
-          <div className="text-blue-500 hover:text-blue-700">{record.name}</div>
+          <div className="text-blue-500 hover:text-blue-700 font-medium">{record.name}</div>
           <div className="text-xs text-gray-400">{record.description}</div>
         </div>
       ),
@@ -29,7 +61,7 @@ export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) 
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      render: (text) => <Tag color={text === 'ssh_key' ? 'blue' : 'geekblue'} bordered={false}>{text}</Tag>,
+      render: (text) => <Tag color={text === 'ssh_key' ? 'blue' : 'geekblue'} variant="filled">{text}</Tag>,
     },
     {
       title: '认证方式',
@@ -47,7 +79,7 @@ export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) 
       render: (_, record) => (
         <Space size={4} wrap>
           {record.tags?.map(tag => (
-            <Tag key={tag} bordered={false}>{tag}</Tag>
+            <Tag key={tag} variant="filled">{tag}</Tag>
           ))}
         </Space>
       ),
@@ -67,7 +99,7 @@ export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) 
         if (status === 'expired') text = '已过期';
         if (status === 'disabled') text = '禁用';
         
-        return <Tag color={color} bordered={false}>{text}</Tag>;
+        return <Tag color={color} variant="filled">{text}</Tag>;
       },
     },
     {
@@ -91,8 +123,18 @@ export const CredentialTable: React.FC<Props> = ({ data, loading, onRowClick }) 
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
-          <a className="text-gray-600 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); onRowClick(record); }}>编辑</a>
-          <Dropdown menu={{ items: [{ key: '1', label: '查看详情' }, { key: '2', label: '复制配置' }, { key: '3', label: '轮换密钥' }, { key: '4', label: '删除', danger: true }] }}>
+          <a className="text-gray-600 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); onRowClick(record); }}>详情</a>
+          <Dropdown 
+            menu={{ 
+              items: [
+                { key: 'edit', label: '编辑', onClick: handleComingSoon }, 
+                { key: 'copy', label: '复制配置', onClick: handleComingSoon }, 
+                { key: 'rotate', label: '轮换密钥', onClick: handleComingSoon }, 
+                { type: 'divider' },
+                { key: 'delete', label: '删除', danger: true, onClick: () => handleDelete(record) }
+              ] 
+            }}
+          >
             <a className="text-gray-600 hover:text-blue-500" onClick={e => e.preventDefault()}>
               更多 <DownOutlined />
             </a>

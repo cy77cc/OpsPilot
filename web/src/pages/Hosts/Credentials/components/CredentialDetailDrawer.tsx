@@ -11,9 +11,10 @@ import { CredentialQuickActions } from './CredentialQuickActions';
 interface Props {
   credentialId?: string;
   onClose: () => void;
+  onRefresh: () => void;
 }
 
-export const CredentialDetailDrawer: React.FC<Props> = ({ credentialId, onClose }) => {
+export const CredentialDetailDrawer: React.FC<Props> = ({ credentialId, onClose, onRefresh }) => {
   const [detail, setDetail] = useState<CredentialDetail | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -34,9 +35,10 @@ export const CredentialDetailDrawer: React.FC<Props> = ({ credentialId, onClose 
     <Drawer
       title="凭证详情"
       placement="right"
-      width={600}
+      size="large"
       onClose={onClose}
       open={!!credentialId}
+      destroyOnClose
     >
       <Spin spinning={loading}>
         {detail && (
@@ -49,7 +51,7 @@ export const CredentialDetailDrawer: React.FC<Props> = ({ credentialId, onClose 
             <Divider className="my-0" />
             <CredentialUsageStats detail={detail} />
             <Divider className="my-0" />
-            <CredentialQuickActions detail={detail} />
+            <CredentialQuickActions detail={detail} onRefresh={onRefresh} onClose={onClose} />
           </div>
         )}
       </Spin>

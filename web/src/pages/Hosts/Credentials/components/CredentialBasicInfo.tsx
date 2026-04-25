@@ -15,7 +15,7 @@ export const CredentialBasicInfo: React.FC<{ detail: CredentialDetail }> = ({ de
         <Descriptions.Item label="更新时间">{detail.updatedAt}</Descriptions.Item>
         <Descriptions.Item label="更新人">{detail.updatedBy}</Descriptions.Item>
         <Descriptions.Item label="标签" span={2}>
-          {detail.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
+          {detail.tags?.map(tag => <Tag key={tag} variant="filled">{tag}</Tag>)}
         </Descriptions.Item>
         <Descriptions.Item label="描述" span={2}>{detail.description}</Descriptions.Item>
       </Descriptions>
