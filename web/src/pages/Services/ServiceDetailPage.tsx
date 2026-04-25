@@ -518,7 +518,7 @@ const ServiceDetailPage: React.FC = () => {
       {/* 页面头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/services')}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/services')}>
             返回
           </Button>
           {statusConfig && (
@@ -534,10 +534,10 @@ const ServiceDetailPage: React.FC = () => {
           <Button icon={<SaveOutlined />} onClick={createRevision}>
             创建 Revision
           </Button>
-          <Button icon={<CloudUploadOutlined />} onClick={() => navigate(`/services/${id}/deploy`)}>
+          <Button icon={<CloudUploadOutlined />} onClick={() => navigate(`/delivery/services/${id}/deploy`)}>
             部署向导
           </Button>
-          <Button icon={<SettingOutlined />} onClick={() => navigate(`/services/${id}/visibility`)}>
+          <Button icon={<SettingOutlined />} onClick={() => navigate(`/delivery/services/${id}/visibility`)}>
             可见性设置
           </Button>
           <Button type="primary" loading={deploying} onClick={deploy}>快速部署</Button>

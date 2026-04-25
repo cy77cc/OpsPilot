@@ -172,7 +172,7 @@ const ServiceListPage: React.FC = () => {
           borderColor: isSelected ? '#6366f1' : undefined,
           boxShadow: isSelected ? '0 0 0 2px rgba(99, 102, 241, 0.1)' : undefined,
         }}
-        onClick={() => navigate(`/services/${service.id}`)}
+        onClick={() => navigate(`/delivery/services/${service.id}`)}
       >
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-start gap-3 flex-1">
@@ -218,7 +218,7 @@ const ServiceListPage: React.FC = () => {
                   { key: 'delete', icon: <DeleteOutlined />, label: '删除服务', danger: true },
                 ],
                 onClick: ({ key }) => {
-                  if (key === 'edit') {navigate(`/services/${service.id}?tab=config`);}
+                  if (key === 'edit') {navigate(`/delivery/services/${service.id}?tab=config`);}
                   else {message.info(`${key}: ${service.name}`);}
                 },
               }}
@@ -265,7 +265,7 @@ const ServiceListPage: React.FC = () => {
       key: 'name',
       sorter: (a: ServiceItem, b: ServiceItem) => a.name.localeCompare(b.name, 'zh-CN'),
       render: (text: string, record: ServiceItem) => (
-        <a onClick={() => navigate(`/services/${record.id}`)} className="font-medium">
+        <a onClick={() => navigate(`/delivery/services/${record.id}`)} className="font-medium">
           {text}
         </a>
       ),
@@ -340,7 +340,7 @@ const ServiceListPage: React.FC = () => {
       width: 200,
       render: (_: unknown, record: ServiceItem) => (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate(`/services/${record.id}?tab=config`)}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate(`/delivery/services/${record.id}?tab=config`)}>
             编辑
           </Button>
           <Button type="link" size="small" icon={<PlayCircleOutlined />} onClick={() => message.info(`启动: ${record.name}`)}>
@@ -373,7 +373,7 @@ const ServiceListPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={load} loading={isRefreshing}>
             刷新
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/services/provision')}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/services/provision')}>
             创建服务
           </Button>
         </Space>
@@ -542,7 +542,7 @@ const ServiceListPage: React.FC = () => {
                 }
               >
                 {!query && env === 'all' && runtime === 'all' && statusFilter === 'all' && (
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/services/provision')}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/services/provision')}>
                     创建第一个服务
                   </Button>
                 )}

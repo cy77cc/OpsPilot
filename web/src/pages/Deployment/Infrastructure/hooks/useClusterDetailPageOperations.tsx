@@ -158,7 +158,7 @@ export function useClusterDetailPageOperations(params: {
 
   const buildOperationLink = useCallback((auditId?: string | number) => {
     if (!auditId) {return '';}
-    return `/deployment/infrastructure/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
+    return `/resources/clusters/${clusterId}/operations?audit_id=${encodeURIComponent(String(auditId))}`;
   }, [clusterId]);
 
   const buildPolicyReleaseTraceLink = useCallback((releaseId?: string | number, auditId?: string | number) => {
@@ -170,7 +170,7 @@ export function useClusterDetailPageOperations(params: {
     if (auditId) {
       params.set('audit_id', String(auditId));
     }
-    return `/deployment/infrastructure/clusters/${clusterId}/operations?${params.toString()}`;
+    return `/resources/clusters/${clusterId}/operations?${params.toString()}`;
   }, [clusterId]);
 
   const recordOperationFeedback = useCallback((resourceKey: string, feedback: {
@@ -750,7 +750,7 @@ export function useClusterDetailPageOperations(params: {
 
   const handleSyncNodes = syncNodes;
   const handleOpenOperationCenter = useCallback(() => {
-    navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`);
+    navigate(`/resources/clusters/${clusterId}/operations`);
   }, [clusterId, navigate]);
 
   const handleEdit = async (values: { name: string; description: string }) => {
@@ -770,7 +770,7 @@ export function useClusterDetailPageOperations(params: {
     try {
       await Api.cluster.deleteCluster(clusterId);
       message.success('集群已删除');
-      navigate('/deployment/infrastructure/clusters');
+      navigate('/resources/clusters');
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败');
     }

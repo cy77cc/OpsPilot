@@ -29,10 +29,11 @@ describe('renderObservabilityRoutes', () => {
     const paths = collectRoutePaths(routes);
 
     expect(paths).toEqual(expect.arrayContaining([
-      '/monitor/rules',
-      '/monitor/channels',
-      '/monitor/routing',
-      '/monitor/deliveries',
+      '/observability/monitor',
+      'rules',
+      'channels',
+      'routing',
+      'deliveries',
     ]));
   });
 });

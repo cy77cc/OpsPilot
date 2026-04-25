@@ -105,11 +105,11 @@ function mockBaselineLoads() {
   });
 }
 
-function renderPage(initialEntry = '/deployment/infrastructure/clusters/42/operations') {
+function renderPage(initialEntry = '/resources/clusters/42/operations') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id/operations" element={<ClusterOperationCenterPage />} />
+        <Route path="/resources/clusters/:id/operations" element={<ClusterOperationCenterPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -126,7 +126,7 @@ describe('ClusterOperationCenterPage', () => {
   });
 
   it('loads the deep-linked audit detail and shows approval and summary sections', async () => {
-    renderPage('/deployment/infrastructure/clusters/42/operations?audit_id=501');
+    renderPage('/resources/clusters/42/operations?audit_id=501');
 
     await waitFor(() => {
       expect(mockApi.cluster.getClusterOperationDetail).toHaveBeenCalledWith(42, '501');
@@ -208,7 +208,7 @@ describe('ClusterOperationCenterPage', () => {
       },
     });
 
-    renderPage('/deployment/infrastructure/clusters/42/operations?resource=policy_release&release_id=501');
+    renderPage('/resources/clusters/42/operations?resource=policy_release&release_id=501');
 
     await waitFor(() => {
       expect(mockApi.cluster.getClusterOperations).toHaveBeenCalledWith(42, expect.objectContaining({

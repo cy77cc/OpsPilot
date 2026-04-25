@@ -1,7 +1,7 @@
 import type { MenuPathEntry, MenuSection } from './navigation.types';
 
 export const menuRouteOverrides: Record<string, string> = {
-  '/services/all': '/services',
+  '/delivery/services/all': '/delivery/services',
 };
 
 export function findSectionPath(sections: MenuSection[], targetKey: string): MenuPathEntry[] {
@@ -15,36 +15,48 @@ export function findSectionPath(sections: MenuSection[], targetKey: string): Men
 }
 
 export function getActiveMenuKey(pathname: string): string {
-  if (pathname.startsWith('/jobs')) {return '/tasks';}
-  if (pathname.startsWith('/k8s')) {return '/deployment';}
-  if (pathname.startsWith('/deployment/overview')) {return '/deployment';}
-  if (pathname.startsWith('/deployment/create')) {return '/deployment';}
-  if (pathname.startsWith('/deployment/approvals')) {return '/deployment';}
-  if (pathname.startsWith('/deployment/targets')) {return '/deployment/targets';}
-  if (pathname.startsWith('/deployment/infrastructure/clusters')) {return '/deployment/infrastructure/clusters';}
-  if (pathname.startsWith('/deployment/infrastructure/credentials')) {return '/deployment/infrastructure/clusters';}
-  if (pathname.startsWith('/deployment/infrastructure/hosts')) {return '/deployment/infrastructure/hosts';}
-  if (pathname.startsWith('/hosts')) {return '/deployment/infrastructure/hosts';}
-  if (pathname.startsWith('/deployment/observability/metrics')) {return '/monitor';}
-  if (pathname.startsWith('/deployment/observability/topology')) {return '/deployment/observability/topology';}
-  if (pathname.startsWith('/deployment/observability/audit-logs')) {return '/deployment/observability/audit-logs';}
-  if (pathname.startsWith('/deployment/observability/policies')) {return '/deployment/observability/policies';}
-  if (pathname.startsWith('/deployment/observability/aiops')) {return '/deployment/observability/aiops';}
-  if (pathname.startsWith('/monitoring')) {return '/monitor';}
-  if (pathname.startsWith('/monitor')) {return '/monitor';}
-  if (pathname.startsWith('/automation')) {return '/automation';}
-  if (pathname.startsWith('/cicd')) {return '/cicd';}
-  if (pathname.startsWith('/cmdb')) {return '/cmdb';}
-  if (pathname.startsWith('/tools')) {return '/tools';}
-  if (pathname.startsWith('/services')) {return '/services';}
-  if (pathname.startsWith('/settings/ai-models')) {return '/settings/ai-models';}
-  if (pathname.startsWith('/governance')) {return '/governance/users';}
-  if (pathname.startsWith('/settings/users')) {return '/settings/users';}
-  if (pathname.startsWith('/settings/roles')) {return '/settings/roles';}
-  if (pathname.startsWith('/settings/permissions')) {return '/settings/permissions';}
-  if (pathname.startsWith('/settings')) {return '/settings';}
-  if (pathname.startsWith('/help')) {return '/help';}
-  if (pathname.startsWith('/deployment/') && pathname !== '/deployment/targets') {return '/deployment';}
+  // Observability
+  if (pathname.startsWith('/observability/jobs')) return '/observability/tasks';
+  if (pathname.startsWith('/observability/tasks')) return '/observability/tasks';
+  if (pathname.startsWith('/observability/monitor')) return '/observability/monitor';
+  if (pathname.startsWith('/observability/metrics')) return '/observability/metrics';
+  if (pathname.startsWith('/observability/topology')) return '/observability/topology';
+  if (pathname.startsWith('/observability/cmdb')) return '/observability/cmdb';
+  if (pathname.startsWith('/observability/aiops')) return '/observability/aiops';
+
+  // Delivery
+  if (pathname.startsWith('/delivery/deployments')) return '/delivery/deployments';
+  if (pathname.startsWith('/delivery/services')) return '/delivery/services';
+  if (pathname.startsWith('/delivery/targets')) return '/delivery/targets';
+  if (pathname.startsWith('/delivery/automation')) return '/delivery/automation';
+  if (pathname.startsWith('/delivery/cicd')) return '/delivery/cicd';
+
+  // Resources
+  if (pathname.startsWith('/resources/clusters')) return '/resources/clusters';
+  if (pathname.startsWith('/resources/hosts')) return '/resources/hosts';
+  if (pathname.startsWith('/resources/credentials')) return '/resources/clusters';
+  if (pathname.startsWith('/resources/projects')) return '/resources/projects';
+  if (pathname.startsWith('/resources/nodes')) return '/resources/nodes';
+
+  // Governance
+  if (pathname.startsWith('/governance/org')) return '/governance/org';
+  if (pathname.startsWith('/governance/approvals')) return '/governance/approvals';
+  if (pathname.startsWith('/governance/audit-logs')) return '/governance/audit-logs';
+  if (pathname.startsWith('/governance/users')) return '/governance/users';
+  if (pathname.startsWith('/governance/roles')) return '/governance/roles';
+  if (pathname.startsWith('/governance/permissions')) return '/governance/permissions';
+
+  // AI
+  if (pathname.startsWith('/ai/chat')) return '/ai/chat';
+  if (pathname.startsWith('/ai/settings/models')) return '/ai/settings/models';
+  if (pathname.startsWith('/ai/models')) return '/ai/models';
+  if (pathname.startsWith('/ai/usage')) return '/ai/usage';
+
+  // Legacy/Common
+  if (pathname.startsWith('/tools')) return '/tools';
+  if (pathname.startsWith('/settings')) return '/settings';
+  if (pathname.startsWith('/help')) return '/help';
+  
   return pathname;
 }
 

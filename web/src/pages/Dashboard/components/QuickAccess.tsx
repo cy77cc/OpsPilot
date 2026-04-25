@@ -18,12 +18,12 @@ export const QuickAccess: React.FC = () => {
   const items = [
     { icon: <MessageSquare size={20} />, name: 'AI 对话', bg: 'bg-blue-50', color: 'text-blue-500', onClick: () => (window as any).openCopilot?.() },
     { icon: <PlusSquare size={20} />, name: '创建项目', bg: 'bg-indigo-50', color: 'text-indigo-500', path: '/projects' },
-    { icon: <HardDrive size={20} />, name: '主机管理', bg: 'bg-emerald-50', color: 'text-emerald-600', path: '/deployment/infrastructure/hosts' },
-    { icon: <Layers size={20} />, name: '集群管理', bg: 'bg-purple-50', color: 'text-purple-500', path: '/deployment/infrastructure/clusters' },
-    { icon: <Rocket size={20} />, name: '部署应用', bg: 'bg-rose-50', color: 'text-rose-500', path: '/deployment' },
-    { icon: <Bell size={20} />, name: '告警中心', bg: 'bg-orange-50', color: 'text-orange-500', path: '/monitor' },
+    { icon: <HardDrive size={20} />, name: '主机管理', bg: 'bg-emerald-50', color: 'text-emerald-600', path: '/resources/hosts' },
+    { icon: <Layers size={20} />, name: '集群管理', bg: 'bg-purple-50', color: 'text-purple-500', path: '/resources/clusters' },
+    { icon: <Rocket size={20} />, name: '部署应用', bg: 'bg-rose-50', color: 'text-rose-500', path: '/delivery/deployments' },
+    { icon: <Bell size={20} />, name: '告警中心', bg: 'bg-orange-50', color: 'text-orange-500', path: '/observability/monitor' },
     { icon: <CheckCircle size={20} />, name: '审批中心', bg: 'bg-blue-50', color: 'text-blue-500', path: '/approvals' },
-    { icon: <Users size={20} />, name: '部门管理', bg: 'bg-cyan-50', color: 'text-cyan-600', path: '/org' },
+    { icon: <Users size={20} />, name: '部门管理', bg: 'bg-cyan-50', color: 'text-cyan-600', path: '/governance/org' },
   ];
 
   return (

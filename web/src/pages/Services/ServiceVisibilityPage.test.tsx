@@ -27,9 +27,9 @@ describe('ServiceVisibilityPage', () => {
 
   it('loads and submits visibility settings', async () => {
     render(
-      <MemoryRouter initialEntries={['/services/8/visibility']}>
+      <MemoryRouter initialEntries={['/delivery/services/8/visibility']}>
         <Routes>
-          <Route path="/services/:id/visibility" element={<ServiceVisibilityPage />} />
+          <Route path="/delivery/services/:id/visibility" element={<ServiceVisibilityPage />} />
         </Routes>
       </MemoryRouter>
     );

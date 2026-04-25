@@ -75,7 +75,7 @@ const AlertsPage: React.FC = () => {
             title: '告警消息',
             dataIndex: 'title',
             render: (_value: string, record) => (
-              <Link to={`/monitor/alerts/${record.id}`}>
+              <Link to={`/observability/monitor/alerts/${record.id}`}>
                 <Typography.Text style={{ color: '#1677ff' }}>{record.title || '-'}</Typography.Text>
               </Link>
             ),

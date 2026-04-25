@@ -56,7 +56,7 @@ const DeploymentTargetDetailPage: React.FC = () => {
       title: '发布 ID',
       dataIndex: 'id',
       key: 'id',
-      render: (id: number) => <a onClick={() => navigate(`/deployment/${id}`)}>{id}</a>,
+      render: (id: number) => <a onClick={() => navigate(`/delivery/deployments/${id}`)}>{id}</a>,
     },
     {
       title: '服务',
@@ -105,7 +105,7 @@ const DeploymentTargetDetailPage: React.FC = () => {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/targets')}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/targets')}>
             返回
           </Button>
           <div className="flex items-center gap-3">

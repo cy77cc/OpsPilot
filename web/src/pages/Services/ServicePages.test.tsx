@@ -56,9 +56,9 @@ describe('Service pages interaction regression coverage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/services']}>
+      <MemoryRouter initialEntries={['/delivery/services']}>
         <Routes>
-          <Route path="/services" element={<ServiceListPage />} />
+          <Route path="/delivery/services" element={<ServiceListPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -79,9 +79,9 @@ describe('Service pages interaction regression coverage', () => {
     mockCheckPermission.mockResolvedValue({ data: { hasPermission: true } });
 
     render(
-      <MemoryRouter initialEntries={['/services/provision']}>
+      <MemoryRouter initialEntries={['/delivery/services/provision']}>
         <Routes>
-          <Route path="/services/provision" element={<ServiceProvisionPage />} />
+          <Route path="/delivery/services/provision" element={<ServiceProvisionPage />} />
         </Routes>
       </MemoryRouter>
     );

@@ -98,9 +98,9 @@ describe('HostListPage', () => {
 
   it('renders KPI cards, table rows and right-side charts', async () => {
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts']}>
+      <MemoryRouter initialEntries={['/resources/hosts']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts" element={<HostListPage />} />
+          <Route path="/resources/hosts" element={<HostListPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -117,9 +117,9 @@ describe('HostListPage', () => {
 
   it('filters table rows by search keyword', async () => {
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts']}>
+      <MemoryRouter initialEntries={['/resources/hosts']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts" element={<HostListPage />} />
+          <Route path="/resources/hosts" element={<HostListPage />} />
         </Routes>
       </MemoryRouter>
     );

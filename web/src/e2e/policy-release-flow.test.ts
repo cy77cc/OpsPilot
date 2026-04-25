@@ -133,13 +133,13 @@ function mockBaselineLoads() {
 function renderPage() {
   const pageElement = React.createElement(ClusterPolicyCenterPage);
   const routeElement = React.createElement(Route, {
-    path: '/deployment/infrastructure/clusters/:id/policies',
+    path: '/resources/clusters/:id/policies',
     element: pageElement,
   });
   const routesElement = React.createElement(Routes, null, routeElement);
   const routerElement = React.createElement(
     MemoryRouter,
-    { initialEntries: ['/deployment/infrastructure/clusters/42/policies'] },
+    { initialEntries: ['/resources/clusters/42/policies'] },
     routesElement,
   );
 

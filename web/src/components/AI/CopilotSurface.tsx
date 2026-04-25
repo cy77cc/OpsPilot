@@ -58,7 +58,7 @@ function resolveScene(pathname: string): { scene: string; context: SceneContext 
   const normalized = pathname || '/';
   const segments = normalized.split('/').filter(Boolean);
 
-  if (normalized.startsWith('/deployment/infrastructure/hosts') || normalized.startsWith('/hosts')) {
+  if (normalized.startsWith('/resources/hosts') || normalized.startsWith('/hosts')) {
     return {
       scene: 'host',
       context: {
@@ -79,7 +79,7 @@ function resolveScene(pathname: string): { scene: string; context: SceneContext 
     };
   }
 
-  if (normalized.startsWith('/deployment/infrastructure/clusters') || normalized.startsWith('/k8s')) {
+  if (normalized.startsWith('/resources/clusters') || normalized.startsWith('/k8s')) {
     return {
       scene: 'cluster',
       context: {
@@ -90,7 +90,7 @@ function resolveScene(pathname: string): { scene: string; context: SceneContext 
     };
   }
 
-  if (normalized.startsWith('/services')) {
+  if (normalized.startsWith('/delivery/services')) {
     return {
       scene: 'service',
       context: {

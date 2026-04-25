@@ -17,11 +17,11 @@ vi.mock('../../../api', () => ({
   Api: mockApi,
 }));
 
-function renderPage(initialEntry = '/deployment/infrastructure/clusters/42/nodes') {
+function renderPage(initialEntry = '/resources/clusters/42/nodes') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id/nodes" element={<ClusterNodesPage />} />
+        <Route path="/resources/clusters/:id/nodes" element={<ClusterNodesPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -60,8 +60,8 @@ describe('ClusterNodesPage', () => {
   });
 
   it('registers /deployment/infrastructure/clusters/:id/nodes route', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/app/routes/infrastructure.routes.tsx'), 'utf8');
-    expect(source).toContain('/deployment/infrastructure/clusters/:id/nodes');
+    const source = readFileSync(resolve(process.cwd(), 'src/app/routes/resource.routes.tsx'), 'utf8');
+    expect(source).toContain('/resources/clusters/:id/nodes');
   });
 
   it('loads node list with compact table and namespace-independent toolbar', async () => {
@@ -72,7 +72,7 @@ describe('ClusterNodesPage', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '进入操作中心' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations',
+      '/resources/clusters/42/operations',
     );
   });
 });

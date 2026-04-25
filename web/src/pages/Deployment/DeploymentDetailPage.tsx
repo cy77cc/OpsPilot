@@ -142,7 +142,7 @@ const DeploymentDetailPage: React.FC = () => {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/deployments')}>
             返回列表
           </Button>
         </div>
@@ -181,7 +181,7 @@ const DeploymentDetailPage: React.FC = () => {
       {/* 页面头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/deployments')}>
             返回列表
           </Button>
           {statusConfig && (
@@ -321,7 +321,7 @@ const DeploymentDetailPage: React.FC = () => {
             description={
               <div>
                 此发布是从 Release{' '}
-                <a onClick={() => navigate(`/deployment/${release.source_release_id}`)}>
+                <a onClick={() => navigate(`/delivery/deployments/${release.source_release_id}`)}>
                   #{release.source_release_id}
                 </a>{' '}
                 回滚而来。

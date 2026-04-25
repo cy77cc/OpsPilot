@@ -565,11 +565,11 @@ const ClusterImportWizard: React.FC = () => {
         <Button
           type="primary"
           key="detail"
-          onClick={() => navigate(`/deployment/infrastructure/clusters/${importedCluster?.id}`)}
+          onClick={() => navigate(`/resources/clusters/${importedCluster?.id}`)}
         >
           查看集群
         </Button>,
-        <Button key="list" onClick={() => navigate('/deployment/infrastructure/clusters')}>
+        <Button key="list" onClick={() => navigate('/resources/clusters')}>
           返回列表
         </Button>,
         <Button key="importAnother" onClick={() => {
@@ -639,7 +639,7 @@ const ClusterImportWizard: React.FC = () => {
     <div className="space-y-6">
       {messageContextHolder}
       <div className="flex items-center justify-start">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/resources/clusters')}>
           返回
         </Button>
       </div>
@@ -654,7 +654,7 @@ const ClusterImportWizard: React.FC = () => {
 
       {currentStep < 5 && (
         <div className="flex justify-between">
-          <Button onClick={() => navigate('/deployment/infrastructure/clusters')}>
+          <Button onClick={() => navigate('/resources/clusters')}>
             取消
           </Button>
           <Space>

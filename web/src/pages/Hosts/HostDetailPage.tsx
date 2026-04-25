@@ -258,12 +258,12 @@ const HostDetailPage: React.FC = () => {
       />
 
       <Card
-        title={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts')}>返回</Button><span>{host?.name || '主机详情'}</span></Space>}
+        title={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/resources/hosts')}>返回</Button><span>{host?.name || '主机详情'}</span></Space>}
         extra={(
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading && !isInitialLoading}>刷新</Button>
             <Button icon={<EditOutlined />} onClick={openEditModal}>编辑主机</Button>
-            <Button onClick={() => navigate(`/deployment/infrastructure/hosts/${id}/terminal`)}>终端</Button>
+            <Button onClick={() => navigate(`/resources/hosts/${id}/terminal`)}>终端</Button>
             <Button onClick={() => void runHealthCheck()}>健康检查</Button>
             <Button onClick={() => runAction('restart', true)}>重启</Button>
             <Button danger onClick={() => runAction('shutdown', true)}>关机</Button>
@@ -275,7 +275,7 @@ const HostDetailPage: React.FC = () => {
               onConfirm={async () => {
                 await Api.hosts.deleteHost(id);
                 message.success('主机已删除');
-                navigate('/deployment/infrastructure/hosts');
+                navigate('/resources/hosts');
               }}
             >
               <Button danger icon={<DeleteOutlined />}>删除</Button>

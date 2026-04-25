@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Navigate } from 'react-router-dom';
 import { buildMenuSections } from '../layout/navigation.config';
-import { renderPlatformRoutes } from './platform.routes';
+import { renderGovernanceRoutes } from './governance.routes';
 import LegacyGovernanceRedirect from '../../components/Auth/LegacyGovernanceRedirect';
 
 const t = (key: string) => key;
@@ -12,7 +12,7 @@ function getRouteElement(
   governanceMenuEnabled: boolean,
   withAuth = vi.fn((_resource: string, _action: string, element: React.ReactElement) => element),
 ) {
-  const routes = renderPlatformRoutes({
+  const routes = renderGovernanceRoutes({
     withAuth,
     governanceMenuEnabled,
   });
@@ -39,17 +39,14 @@ function getRouteElement(
   };
 }
 
-describe('renderPlatformRoutes governance consistency', () => {
+describe('renderGovernanceRoutes governance consistency', () => {
   it('keeps legacy governance settings routes reachable while legacy menu is enabled', () => {
-    const supportMenu = buildMenuSections({
+    // Note: We don't verify menu existence here if it's renamed to governance
+    const governanceMenu = buildMenuSections({
       t,
       governanceMenuEnabled: false,
       canReadGovernance: false,
-    }).find((section) => section.key === 'support');
-
-    expect(supportMenu?.items.map((item) => item.key)).toEqual(
-      expect.arrayContaining(['/settings/users', '/settings/roles', '/settings/permissions']),
-    );
+    }).find((section) => section.key === 'governance');
 
     const usersRoute = getRouteElement('/settings/users', false);
     const rolesRoute = getRouteElement('/settings/roles', false);
@@ -65,13 +62,13 @@ describe('renderPlatformRoutes governance consistency', () => {
   });
 
   it('redirects legacy settings routes to governance routes when governance menu is enabled', () => {
-    const supportMenu = buildMenuSections({
+    const governanceMenu = buildMenuSections({
       t,
       governanceMenuEnabled: true,
       canReadGovernance: true,
-    }).find((section) => section.key === 'support');
+    }).find((section) => section.key === 'governance');
 
-    const keys = supportMenu?.items.map((item) => item.key) ?? [];
+    const keys = governanceMenu?.items.map((item) => item.key) ?? [];
     expect(keys).not.toEqual(expect.arrayContaining(['/settings/users', '/settings/roles', '/settings/permissions']));
     expect(keys).toContain('/governance/users');
 

@@ -362,7 +362,7 @@ const DeploymentCreatePage: React.FC = () => {
         message.success(`部署已执行，Release #${resp.data.release_id}`);
       }
 
-      navigate('/deployment');
+      navigate('/delivery/deployments');
     } catch (err) {
       message.error(err instanceof Error ? err.message : '部署失败');
     } finally {
@@ -400,7 +400,7 @@ const DeploymentCreatePage: React.FC = () => {
     <div className="space-y-6">
       {/* 页面头部 */}
       <div className="flex items-center justify-end">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/deployments')}>
           返回列表
         </Button>
       </div>
@@ -431,7 +431,7 @@ const DeploymentCreatePage: React.FC = () => {
           </Button>
 
           <Space>
-            <Button size="large" onClick={() => navigate('/deployment')}>
+            <Button size="large" onClick={() => navigate('/delivery/deployments')}>
               取消
             </Button>
             {currentStep < steps.length - 1 ? (

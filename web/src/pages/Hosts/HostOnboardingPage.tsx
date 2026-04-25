@@ -244,7 +244,7 @@ const HostOnboardingPage: React.FC = () => {
                 label={(
                   <Space size={8}>
                     <span>认证预设（可选）</span>
-                    <Button size="small" type="link" onClick={() => navigate('/deployment/infrastructure/hosts/credentials')} style={{ paddingInline: 0 }}>
+                    <Button size="small" type="link" onClick={() => navigate('/resources/hosts/credentials')} style={{ paddingInline: 0 }}>
                       管理预设
                     </Button>
                   </Space>

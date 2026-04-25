@@ -210,7 +210,7 @@ describe('NotificationProvider browser notification click', () => {
           severity: 'critical',
           source: 'source',
           source_id: 's-1',
-          action_url: '/monitor?alert_id=s-1',
+          action_url: '/observability/monitor?alert_id=s-1',
           action_type: 'confirm',
           created_at: new Date().toISOString(),
         },
@@ -229,7 +229,7 @@ describe('NotificationProvider browser notification click', () => {
     expect(typeof options.onClick).toBe('function');
 
     options.onClick?.();
-    expect(safeNavigateMock).toHaveBeenCalledWith('/monitor?alert_id=s-1');
+    expect(safeNavigateMock).toHaveBeenCalledWith('/observability/monitor?alert_id=s-1');
   });
 
   it('keeps approval updates from re-rendering data-only consumers', async () => {

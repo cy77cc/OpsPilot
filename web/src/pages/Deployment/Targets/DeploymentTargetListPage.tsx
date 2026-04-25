@@ -89,7 +89,7 @@ const DeploymentTargetListPage: React.FC = () => {
       <Card
         hoverable
         className="h-full cursor-pointer transition-shadow hover:shadow-lg"
-        onClick={() => navigate(`/deployment/targets/${target.id}`)}
+        onClick={() => navigate(`/delivery/targets/${target.id}`)}
       >
         <Space direction="vertical" className="w-full" size="middle">
           <div className="flex items-center justify-between">
@@ -141,7 +141,7 @@ const DeploymentTargetListPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
             刷新
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/targets/create')}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/targets/create')}>
             创建部署目标
           </Button>
         </Space>
@@ -256,7 +256,7 @@ const DeploymentTargetListPage: React.FC = () => {
             }
           >
             {!search && envFilter === 'all' && runtimeFilter === 'all' && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/targets/create')}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/targets/create')}>
                 创建第一个部署目标
               </Button>
             )}

@@ -324,7 +324,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               </div>
             </Tooltip>
 
-            <NotificationBell onViewAll={() => navigate('/monitor')} />
+            <NotificationBell onViewAll={() => navigate('/observability/monitor')} />
             <AICopilotButton onOpen={() => setCopilotOpen(true)} />
 
             <Dropdown
@@ -361,8 +361,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <Button
               type="text"
               icon={<Box size={20} />}
-              onClick={() => navigate('/services')}
-              className={location.pathname.startsWith('/services') ? 'text-primary-600' : 'text-gray-600'}
+              onClick={() => navigate('/delivery/services')}
+              className={location.pathname.startsWith('/delivery/services') ? 'text-primary-600' : 'text-gray-600'}
             />
             <Button
               type="text"

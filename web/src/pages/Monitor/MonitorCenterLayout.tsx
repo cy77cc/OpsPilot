@@ -40,21 +40,21 @@ const MonitorCenterLayout: React.FC = () => {
   }, []);
 
   const tabItems = [
-    { key: '/monitor/dashboard', label: <span><DashboardOutlined /> 实时大盘</span> },
-    { key: '/monitor/alerts', label: <span><BellOutlined /> 告警历史</span> },
-    { key: '/monitor/rules', label: <span><SettingOutlined /> 规则配置</span> },
-    { key: '/monitor/channels', label: <span><NotificationOutlined /> 通知渠道</span> },
-    { key: '/monitor/routing', label: <span><BranchesOutlined /> 路由策略</span> },
-    { key: '/monitor/deliveries', label: <span><HistoryOutlined /> 投递记录</span> },
+    { key: '/observability/monitor/dashboard', label: <span><DashboardOutlined /> 实时大盘</span> },
+    { key: '/observability/monitor/alerts', label: <span><BellOutlined /> 告警历史</span> },
+    { key: '/observability/monitor/rules', label: <span><SettingOutlined /> 规则配置</span> },
+    { key: '/observability/monitor/channels', label: <span><NotificationOutlined /> 通知渠道</span> },
+    { key: '/observability/monitor/routing', label: <span><BranchesOutlined /> 路由策略</span> },
+    { key: '/observability/monitor/deliveries', label: <span><HistoryOutlined /> 投递记录</span> },
   ];
 
   const getSelectedKey = () => {
-    if (location.pathname.startsWith('/monitor/dashboard')) {return '/monitor/dashboard';}
-    if (location.pathname.startsWith('/monitor/alerts')) {return '/monitor/alerts';}
-    if (location.pathname.startsWith('/monitor/rules')) {return '/monitor/rules';}
-    if (location.pathname.startsWith('/monitor/channels')) {return '/monitor/channels';}
-    if (location.pathname.startsWith('/monitor/routing')) {return '/monitor/routing';}
-    if (location.pathname.startsWith('/monitor/deliveries')) {return '/monitor/deliveries';}
+    if (location.pathname.startsWith('/observability/monitor/dashboard')) {return '/observability/monitor/dashboard';}
+    if (location.pathname.startsWith('/observability/monitor/alerts')) {return '/observability/monitor/alerts';}
+    if (location.pathname.startsWith('/observability/monitor/rules')) {return '/observability/monitor/rules';}
+    if (location.pathname.startsWith('/observability/monitor/channels')) {return '/observability/monitor/channels';}
+    if (location.pathname.startsWith('/observability/monitor/routing')) {return '/observability/monitor/routing';}
+    if (location.pathname.startsWith('/observability/monitor/deliveries')) {return '/observability/monitor/deliveries';}
     return location.pathname;
   };
 

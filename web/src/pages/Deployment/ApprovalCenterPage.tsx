@@ -77,7 +77,7 @@ const ApprovalCenterPage: React.FC = () => {
       dataIndex: 'id',
       key: 'id',
       render: (id: number) => (
-        <a onClick={() => navigate(`/deployment/${id}`)}>#{id}</a>
+        <a onClick={() => navigate(`/delivery/deployments/${id}`)}>#{id}</a>
       ),
     },
     {

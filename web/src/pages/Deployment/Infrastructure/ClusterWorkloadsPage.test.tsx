@@ -18,11 +18,11 @@ vi.mock('../../../api', () => ({
   Api: mockApi,
 }));
 
-function renderPage(initialEntry = '/deployment/infrastructure/clusters/42/workloads') {
+function renderPage(initialEntry = '/resources/clusters/42/workloads') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id/workloads" element={<ClusterWorkloadsPage />} />
+        <Route path="/resources/clusters/:id/workloads" element={<ClusterWorkloadsPage />} />
       </Routes>
     </MemoryRouter>,
   );

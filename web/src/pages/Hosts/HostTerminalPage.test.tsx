@@ -97,9 +97,9 @@ describe('HostTerminalPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -111,9 +111,9 @@ describe('HostTerminalPage', () => {
 
   it('opens modal editor after clicking a file and saves content', async () => {
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -148,9 +148,9 @@ describe('HostTerminalPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -178,9 +178,9 @@ describe('HostTerminalPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -195,9 +195,9 @@ describe('HostTerminalPage', () => {
 
   it('uses full viewport layout so terminal bottom line is not clipped by page chrome', async () => {
     const { container } = render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -210,9 +210,9 @@ describe('HostTerminalPage', () => {
 
   it('shows confirm dialog when closing modal with unsaved edits', async () => {
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1/terminal']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1/terminal']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id/terminal" element={<HostTerminalPage />} />
+          <Route path="/resources/hosts/:id/terminal" element={<HostTerminalPage />} />
         </Routes>
       </MemoryRouter>
     );

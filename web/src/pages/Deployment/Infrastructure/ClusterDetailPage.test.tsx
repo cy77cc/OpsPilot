@@ -8,6 +8,11 @@ import ClusterDetailPage from './ClusterDetailPage';
 import ClusterOverviewPanel from './components/ClusterOverviewPanel';
 import ClusterOperationsPanel from './components/ClusterOperationsPanel';
 
+vi.mock('@ant-design/charts', () => ({
+  Pie: () => 'PieChart',
+  Line: () => 'LineChart'
+}));
+
 const mockApi = vi.hoisted(() => ({
   cluster: {
     getClusterDetail: vi.fn(),
@@ -271,9 +276,9 @@ function mockBaselineLoads() {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+    <MemoryRouter initialEntries={['/resources/clusters/42']}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id" element={<ClusterDetailPage />} />
+        <Route path="/resources/clusters/:id" element={<ClusterDetailPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -300,7 +305,7 @@ async function openServicesTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function openMaintenanceTab(user: ReturnType<typeof userEvent.setup>) {
-  const tab = await screen.findByRole('tab', { name: /运维/i });
+  const tab = await screen.findByRole('tab', { name: /操作记录/i });
   await user.click(tab);
 }
 
@@ -370,9 +375,9 @@ describe('ClusterDetailPage', () => {
       <MemoryRouter>
         <ClusterOverviewPanel cluster={defaultCluster as any} statusColor="success">
           <ClusterOperationsPanel
-            operationCenterHref="/deployment/infrastructure/clusters/42/operations"
-            securityHref="/deployment/infrastructure/clusters/42/security"
-            policyHref="/deployment/infrastructure/clusters/42/policies"
+            operationCenterHref="/resources/clusters/42/operations"
+            securityHref="/resources/clusters/42/security"
+            policyHref="/resources/clusters/42/policies"
             nodesLoading={false}
             onOpenOperationCenter={openOperationCenter}
             onSyncNodes={syncNodes}
@@ -386,15 +391,15 @@ describe('ClusterDetailPage', () => {
     expect(screen.getByText('K8s: -')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '进入安全中心' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/security',
+      '/resources/clusters/42/security',
     );
     expect(screen.getByRole('link', { name: '进入策略中心' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/policies',
+      '/resources/clusters/42/policies',
     );
     expect(screen.getByRole('link', { name: '查看全部操作' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations',
+      '/resources/clusters/42/operations',
     );
 
     await user.click(screen.getByRole('button', { name: '进入操作中心' }));
@@ -409,15 +414,15 @@ describe('ClusterDetailPage', () => {
 
     expect(await screen.findByRole('link', { name: '进入安全中心' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/security',
+      '/resources/clusters/42/security',
     );
     expect(screen.getByRole('link', { name: '进入策略中心' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/policies',
+      '/resources/clusters/42/policies',
     );
     expect(screen.getByRole('link', { name: '查看全部操作' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations',
+      '/resources/clusters/42/operations',
     );
   });
 
@@ -435,7 +440,7 @@ describe('ClusterDetailPage', () => {
 
     expect(await screen.findByText('节点隔离')).toBeInTheDocument();
     const auditLink = await screen.findByRole('link', { name: '审计' });
-    expect(auditLink).toHaveAttribute('href', '/deployment/infrastructure/clusters/42/operations?audit_id=101');
+    expect(auditLink).toHaveAttribute('href', '/resources/clusters/42/operations?audit_id=101');
   });
 
   it('runs uncordon action from row dropdown', async () => {
@@ -502,7 +507,7 @@ describe('ClusterDetailPage', () => {
 
     expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations?audit_id=202',
+      '/resources/clusters/42/operations?audit_id=202',
     );
   }, 90000);
 
@@ -737,7 +742,7 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('Service 删除')).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations?audit_id=111',
+      '/resources/clusters/42/operations?audit_id=111',
     );
   }, 90000);
 
@@ -841,7 +846,7 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('Ingress 创建')).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations?audit_id=602',
+      '/resources/clusters/42/operations?audit_id=602',
     );
   }, 90000);
 
@@ -962,7 +967,7 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('证书续期')).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations?audit_id=115',
+      '/resources/clusters/42/operations?audit_id=115',
     );
   }, 90000);
 
@@ -993,7 +998,7 @@ describe('ClusterDetailPage', () => {
     expect(await screen.findByText('集群升级')).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: '审计' })).toHaveAttribute(
       'href',
-      '/deployment/infrastructure/clusters/42/operations?audit_id=116',
+      '/resources/clusters/42/operations?audit_id=116',
     );
   }, 90000);
 

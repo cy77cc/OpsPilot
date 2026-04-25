@@ -175,7 +175,7 @@ const AuditLogsPage: React.FC = () => {
       key: 'resource_id',
       render: (id: number, record: AuditLog) => {
         if (record.resource_type === 'release') {
-          return <a onClick={() => navigate(`/deployment/${id}`)}>#{id}</a>;
+          return <a onClick={() => navigate(`/delivery/deployments/${id}`)}>#{id}</a>;
         }
         return `#${id}`;
       },

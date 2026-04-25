@@ -664,10 +664,10 @@ const ClusterBootstrapWizard: React.FC = () => {
               title="集群创建成功"
               subTitle={`集群 "${formData.name}" 已成功创建`}
               extra={[
-                <Button type="primary" key="detail" onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>
+                <Button type="primary" key="detail" onClick={() => navigate(`/resources/clusters/${clusterId}`)}>
                   查看集群
                 </Button>,
-                <Button key="list" onClick={() => navigate('/deployment/infrastructure/clusters')}>
+                <Button key="list" onClick={() => navigate('/resources/clusters')}>
                   返回列表
                 </Button>,
               ]}
@@ -715,7 +715,7 @@ const ClusterBootstrapWizard: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-start">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/resources/clusters')}>
           返回
         </Button>
       </div>
@@ -730,7 +730,7 @@ const ClusterBootstrapWizard: React.FC = () => {
 
       {currentStep < 5 && (
         <div className="flex justify-between">
-          <Button onClick={() => navigate('/deployment/infrastructure/clusters')}>
+          <Button onClick={() => navigate('/resources/clusters')}>
             取消
           </Button>
           <Space>

@@ -139,7 +139,7 @@ const DeploymentOverviewPage: React.FC = () => {
             <div
               key={release.id}
               className="p-3 border border-gray-200 rounded hover:bg-gray-50 cursor-pointer"
-              onClick={() => navigate(`/deployment/${release.id}`)}
+              onClick={() => navigate(`/delivery/deployments/${release.id}`)}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold">{release.service_name}</span>
@@ -174,7 +174,7 @@ const DeploymentOverviewPage: React.FC = () => {
             <div
               key={release.id}
               className="p-3 border border-gray-200 rounded hover:bg-gray-50 cursor-pointer"
-              onClick={() => navigate(`/deployment/${release.id}`)}
+              onClick={() => navigate(`/delivery/deployments/${release.id}`)}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold">{release.service_name}</span>
@@ -204,7 +204,7 @@ const DeploymentOverviewPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
             刷新
           </Button>
-          <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/deployment/create')}>
+          <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/delivery/deployments/create')}>
             创建发布
           </Button>
         </Space>

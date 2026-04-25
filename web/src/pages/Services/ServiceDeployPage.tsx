@@ -47,7 +47,7 @@ const ServiceDeployPage: React.FC = () => {
         cluster_id: values.cluster_id ? Number(values.cluster_id) : undefined,
       });
       message.success(`部署已触发: #${resp.data.unified_release_id || resp.data.release_record_id}`);
-      navigate(`/services/${id}`);
+      navigate(`/delivery/services/${id}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '部署失败');
     } finally {

@@ -21,7 +21,7 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ alerts, loading }) => {
     <Card
       title={<span>活跃告警</span>}
       extra={(
-        <Button type="link" onClick={() => navigate('/monitor/alerts')}>
+        <Button type="link" onClick={() => navigate('/observability/monitor/alerts')}>
           查看全部
         </Button>
       )}
@@ -43,7 +43,7 @@ const AlertPanel: React.FC<AlertPanelProps> = ({ alerts, loading }) => {
           <div
             key={index}
             className="cursor-pointer rounded-md px-2 py-2 hover:bg-gray-50 flex items-center justify-between border-b border-gray-50 last:border-0"
-            onClick={() => navigate('/monitor/alerts')}
+            onClick={() => navigate('/observability/monitor/alerts')}
           >
             <div className="flex flex-col">
               <span className="text-sm font-medium">{item.title}</span>

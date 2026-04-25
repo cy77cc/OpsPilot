@@ -195,7 +195,7 @@ const DeploymentTopologyPage: React.FC = () => {
             type="primary"
             onClick={() => {
               if (selectedNode) {
-                navigate(`/deployment/targets/${selectedNode.target_id}`);
+                navigate(`/delivery/targets/${selectedNode.target_id}`);
               }
             }}
           >

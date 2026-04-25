@@ -88,7 +88,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/services')}
+                    onSelect={() => handleNavigate('/delivery/services')}
                     className="command-palette-item"
                   >
                     <AppstoreOutlined className="command-palette-item-icon" />
@@ -97,7 +97,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/deployment')}
+                    onSelect={() => handleNavigate('/delivery/deployments')}
                     className="command-palette-item"
                   >
                     <CloudUploadOutlined className="command-palette-item-icon" />
@@ -106,7 +106,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/tasks')}
+                    onSelect={() => handleNavigate('/observability/tasks')}
                     className="command-palette-item"
                   >
                     <ClockCircleOutlined className="command-palette-item-icon" />
@@ -115,7 +115,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                   </Command.Item>
 
                   <Command.Item
-                    onSelect={() => handleNavigate('/monitor')}
+                    onSelect={() => handleNavigate('/observability/monitor')}
                     className="command-palette-item"
                   >
                     <BarChartOutlined className="command-palette-item-icon" />
@@ -156,7 +156,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
             {page === 'create' && (
               <Command.Group heading="创建资源" className="command-palette-group">
                 <Command.Item
-                  onSelect={() => handleNavigate('/services/provision')}
+                  onSelect={() => handleNavigate('/delivery/services/provision')}
                   className="command-palette-item"
                 >
                   <AppstoreOutlined className="command-palette-item-icon" />
@@ -164,7 +164,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                 </Command.Item>
 
                 <Command.Item
-                  onSelect={() => handleNavigate('/deployment/create')}
+                  onSelect={() => handleNavigate('/delivery/deployments/create')}
                   className="command-palette-item"
                 >
                   <CloudUploadOutlined className="command-palette-item-icon" />
@@ -172,7 +172,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange }) =
                 </Command.Item>
 
                 <Command.Item
-                  onSelect={() => handleNavigate('/deployment/infrastructure/hosts/onboarding')}
+                  onSelect={() => handleNavigate('/resources/hosts/onboarding')}
                   className="command-palette-item"
                 >
                   <CloudUploadOutlined className="command-palette-item-icon" />

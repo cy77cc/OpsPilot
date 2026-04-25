@@ -17,11 +17,11 @@ vi.mock('../../../api', () => ({
   Api: mockApi,
 }));
 
-function renderPage(initialEntry = '/deployment/infrastructure/clusters/42/network') {
+function renderPage(initialEntry = '/resources/clusters/42/network') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id/network" element={<ClusterNetworkTrafficPage />} />
+        <Route path="/resources/clusters/:id/network" element={<ClusterNetworkTrafficPage />} />
       </Routes>
     </MemoryRouter>,
   );

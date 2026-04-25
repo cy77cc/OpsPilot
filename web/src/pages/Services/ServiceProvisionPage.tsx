@@ -179,7 +179,7 @@ const ServiceProvisionPage: React.FC = () => {
         });
       }
       message.success('服务创建成功');
-      navigate(`/services/${created.data.id}`);
+      navigate(`/delivery/services/${created.data.id}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '创建失败');
     } finally {
@@ -193,7 +193,7 @@ const ServiceProvisionPage: React.FC = () => {
     <div className="space-y-4">
       {/* 页面顶部导航 */}
       <div className="flex items-center justify-start">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/services')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/services')}>
           返回
         </Button>
       </div>

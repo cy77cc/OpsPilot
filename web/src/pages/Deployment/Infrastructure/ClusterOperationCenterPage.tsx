@@ -230,7 +230,7 @@ const ClusterOperationCenterPage: React.FC = () => {
     if (releaseId) {params.set('release_id', releaseId);}
     if (auditId) {params.set('audit_id', String(auditId));}
     const query = params.toString();
-    return `/deployment/infrastructure/clusters/${clusterId}/operations${query ? `?${query}` : ''}`;
+    return `/resources/clusters/${clusterId}/operations${query ? `?${query}` : ''}`;
   }, [clusterId, searchFilters.from, searchFilters.operator, searchFilters.resource, searchFilters.status, searchFilters.to]);
 
   const loadCluster = useCallback(async () => {
@@ -474,7 +474,7 @@ const ClusterOperationCenterPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/resources/clusters/${clusterId}`)}>
             返回详情
           </Button>
           <div>
@@ -494,7 +494,7 @@ const ClusterOperationCenterPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={() => void loadHistory(page, pageSize, filters)} loading={loading && !isInitialLoading}>
             刷新
           </Button>
-          <Button onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>回到集群详情</Button>
+          <Button onClick={() => navigate(`/resources/clusters/${clusterId}`)}>回到集群详情</Button>
         </Space>
       </div>
 

@@ -102,7 +102,7 @@ const AlertDetailPage: React.FC = () => {
       <Card
         title={
           <Space>
-            <Link to="/monitor/alerts">返回列表</Link>
+            <Link to="/observability/monitor/alerts">返回列表</Link>
             <Typography.Text>告警详情</Typography.Text>
           </Space>
         }

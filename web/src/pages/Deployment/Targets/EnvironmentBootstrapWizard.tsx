@@ -74,7 +74,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
       });
 
       message.success('环境初始化已启动');
-      navigate(`/deployment/targets/${targetId}/bootstrap/${res.data.job_id}`);
+      navigate(`/delivery/targets/${targetId}/bootstrap/${res.data.job_id}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '启动失败');
     } finally {
@@ -108,7 +108,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-start">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/delivery/targets/${targetId}`)}>
             返回
           </Button>
         </div>
@@ -147,7 +147,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-start">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/targets/${targetId}`)}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/delivery/targets/${targetId}`)}>
           返回
         </Button>
       </div>
@@ -181,7 +181,7 @@ const EnvironmentBootstrapWizard: React.FC = () => {
               <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleStart} loading={loading}>
                 开始初始化
               </Button>
-              <Button onClick={() => navigate(`/deployment/targets/${targetId}`)}>
+              <Button onClick={() => navigate(`/delivery/targets/${targetId}`)}>
                 取消
               </Button>
             </Space>

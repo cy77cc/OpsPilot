@@ -236,7 +236,7 @@ const HostCredentialsPage: React.FC = () => {
       title="凭证管理"
       extra={
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts')}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/resources/hosts')}>
             返回
           </Button>
           <Button onClick={() => { loadKeys(); loadTemplates(); }} loading={keysLoading || templatesLoading}>

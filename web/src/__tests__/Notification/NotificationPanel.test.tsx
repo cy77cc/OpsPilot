@@ -32,7 +32,7 @@ vi.mock('../../api/modules/notification', () => ({
               severity: 'critical',
               source: '主机 node-01',
               source_id: 'alert-001',
-              action_url: '/monitor?alert_id=alert-001',
+              action_url: '/observability/monitor?alert_id=alert-001',
               action_type: 'confirm',
               created_at: new Date().toISOString(),
             },
@@ -162,7 +162,7 @@ describe('NotificationPanel', () => {
     fireEvent.click(screen.getAllByText('CPU 使用率超过 90%')[0]);
 
     await waitFor(() => {
-      expect(safeNavigateMock).toHaveBeenCalledWith('/monitor?alert_id=alert-001');
+      expect(safeNavigateMock).toHaveBeenCalledWith('/observability/monitor?alert_id=alert-001');
     });
   });
 });

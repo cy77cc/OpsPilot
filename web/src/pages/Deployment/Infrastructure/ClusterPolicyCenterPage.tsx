@@ -263,7 +263,7 @@ const ClusterPolicyCenterPage: React.FC = () => {
   if (!cluster) {
     return (
       <div className="space-y-6">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment/infrastructure/clusters')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/resources/clusters')}>
           返回集群列表
         </Button>
         <Empty description="集群不存在" />
@@ -276,13 +276,13 @@ const ClusterPolicyCenterPage: React.FC = () => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <Space wrap>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}`)}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/resources/clusters/${clusterId}`)}>
               返回集群
             </Button>
             <Button icon={<ReloadOutlined />} onClick={() => void loadCluster()}>
               刷新
             </Button>
-            <Link to={`/deployment/infrastructure/clusters/${clusterId}/operations`}>
+            <Link to={`/resources/clusters/${clusterId}/operations`}>
               <Button icon={<AuditOutlined />}>查看审计</Button>
             </Link>
           </Space>

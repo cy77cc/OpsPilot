@@ -275,7 +275,7 @@ const ClusterListPage: React.FC = () => {
         <Button 
           type="link" 
           className="!p-0 !h-auto !text-[#2563eb] font-medium text-[13px]"
-          onClick={() => navigate(`/deployment/infrastructure/clusters/${record.id}`)}
+          onClick={() => navigate(`/resources/clusters/${record.id}`)}
         >
           {text}
           <div className="text-[#9ca3af] text-[11px] font-normal mt-0.5">ID: {record.id}</div>
@@ -375,8 +375,8 @@ const ClusterListPage: React.FC = () => {
       width: 160,
       render: (_: any, record: Cluster) => (
         <Space size={12}>
-          <Tooltip title="详情"><ExternalLink size={16} className="text-[#6b7280] cursor-pointer hover:text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/clusters/${record.id}`)} /></Tooltip>
-          <Tooltip title="节点"><HardDrive size={16} className="text-[#6b7280] cursor-pointer hover:text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/clusters/${record.id}/nodes`)} /></Tooltip>
+          <Tooltip title="详情"><ExternalLink size={16} className="text-[#6b7280] cursor-pointer hover:text-[#2563eb]" onClick={() => navigate(`/resources/clusters/${record.id}`)} /></Tooltip>
+          <Tooltip title="节点"><HardDrive size={16} className="text-[#6b7280] cursor-pointer hover:text-[#2563eb]" onClick={() => navigate(`/resources/clusters/${record.id}/nodes`)} /></Tooltip>
           <Tooltip title="监控"><Monitor size={16} className="text-[#6b7280] cursor-pointer hover:text-[#2563eb]" /></Tooltip>
           <Dropdown
             trigger={['click']}
@@ -503,8 +503,8 @@ const ClusterListPage: React.FC = () => {
                 <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
                 <Dropdown menu={{ 
                   items: [
-                    { key: 'bootstrap', label: '创建新集群', icon: <PlusOutlined />, onClick: () => navigate('/deployment/infrastructure/clusters/bootstrap') },
-                    { key: 'import', label: '导入 Kubeconfig', icon: <ImportOutlined />, onClick: () => navigate('/deployment/infrastructure/clusters/import') },
+                    { key: 'bootstrap', label: '创建新集群', icon: <PlusOutlined />, onClick: () => navigate('/resources/clusters/bootstrap') },
+                    { key: 'import', label: '导入 Kubeconfig', icon: <ImportOutlined />, onClick: () => navigate('/resources/clusters/import') },
                   ]
                 }}>
                   <Button type="primary" icon={<PlusOutlined />}>新增集群 <DownOutlined className="text-[10px]" /></Button>
@@ -597,7 +597,7 @@ const ClusterListPage: React.FC = () => {
             <div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[15px] font-semibold text-[#1f2937]">待处理告警</div>
-                <Button type="link" size="small" className="!p-0" onClick={() => navigate('/monitor/alerts')}>更多告警</Button>
+                <Button type="link" size="small" className="!p-0" onClick={() => navigate('/observability/monitor/alerts')}>更多告警</Button>
               </div>
               {(!dashboardData?.alerts.recent || dashboardData.alerts.recent.length === 0) ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />

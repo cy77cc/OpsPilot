@@ -47,7 +47,7 @@ const EventStream: React.FC<EventStreamProps> = ({ events, loading }) => {
     <Card
       title={<span>最近事件</span>}
       extra={(
-        <Button type="link" onClick={() => navigate('/deployment/observability/audit-logs')}>
+        <Button type="link" onClick={() => navigate('/delivery/deployments/observability/audit-logs')}>
           查看全部
         </Button>
       )}

@@ -58,9 +58,9 @@ describe('HostDetailPage', () => {
 
   it('shows health and maintenance metadata, and renders health-check result modal', async () => {
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id" element={<HostDetailPage />} />
+          <Route path="/resources/hosts/:id" element={<HostDetailPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -95,9 +95,9 @@ describe('HostDetailPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/hosts/1']}>
+      <MemoryRouter initialEntries={['/resources/hosts/1']}>
         <Routes>
-          <Route path="/deployment/infrastructure/hosts/:id" element={<HostDetailPage />} />
+          <Route path="/resources/hosts/:id" element={<HostDetailPage />} />
         </Routes>
       </MemoryRouter>
     );

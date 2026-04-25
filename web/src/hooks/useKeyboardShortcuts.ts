@@ -41,10 +41,10 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => 
 
       const navigationMap: Record<string, string> = {
         h: '/',
-        s: '/services',
-        d: '/deployment',
-        m: '/monitor',
-        t: '/tasks',
+        s: '/delivery/services',
+        d: '/delivery/deployments',
+        m: '/observability/monitor',
+        t: '/observability/tasks',
       };
 
       if (gPressed && navigationMap[key]) {

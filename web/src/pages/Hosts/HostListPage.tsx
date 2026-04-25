@@ -627,7 +627,7 @@ const HostListPage: React.FC = () => {
     ],
     onClick: async ({ key }) => {
       if (key === 'alerts') {
-        navigate(`/monitor?status=firing&keyword=${encodeURIComponent(row.name)}`);
+        navigate(`/observability/monitor?status=firing&keyword=${encodeURIComponent(row.name)}`);
         return;
       }
       if (key === 'offline') {
@@ -663,7 +663,7 @@ const HostListPage: React.FC = () => {
         <Button
           type="link"
           className="!px-0 !h-auto !text-[#2563eb] !whitespace-normal !break-all !text-left"
-          onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}`)}
+          onClick={() => navigate(`/resources/hosts/${row.id}`)}
         >
           {value}
         </Button>
@@ -805,13 +805,13 @@ const HostListPage: React.FC = () => {
       width: 220,
       render: (_, row) => (
         <Space size={8}>
-          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}`)}>查看</Button>
-          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/deployment/infrastructure/hosts/${row.id}/terminal`)}>终端</Button>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/resources/hosts/${row.id}`)}>查看</Button>
+          <Button type="link" size="small" className="!px-0 !h-auto !text-[#2563eb]" onClick={() => navigate(`/resources/hosts/${row.id}/terminal`)}>终端</Button>
           <Button
             type="link"
             size="small"
             className="!px-0 !h-auto !text-[#2563eb]"
-            onClick={() => navigate(`/monitor?status=firing&keyword=${encodeURIComponent(row.name || row.ip)}`)}
+            onClick={() => navigate(`/observability/monitor?status=firing&keyword=${encodeURIComponent(row.name || row.ip)}`)}
           >
             监控
           </Button>
@@ -877,15 +877,15 @@ const HostListPage: React.FC = () => {
     ],
     onClick: ({ key }) => {
       if (key === 'ssh') {
-        navigate('/deployment/infrastructure/hosts/onboarding');
+        navigate('/resources/hosts/onboarding');
         return;
       }
       if (key === 'cloud') {
-        navigate('/deployment/infrastructure/hosts/cloud-import');
+        navigate('/resources/hosts/cloud-import');
         return;
       }
       if (key === 'virtualization') {
-        navigate('/deployment/infrastructure/hosts/virtualization');
+        navigate('/resources/hosts/virtualization');
       }
     },
   };
@@ -1026,7 +1026,7 @@ const HostListPage: React.FC = () => {
                 <Dropdown menu={createHostMenu}>
                   <Button htmlType="button" type="primary" icon={<PlusOutlined />}>新增主机 <DownOutlined /></Button>
                 </Dropdown>
-                <Button htmlType="button" icon={<ToolOutlined />} onClick={() => navigate('/deployment/infrastructure/hosts/credentials')}>密钥凭证管理</Button>
+                <Button htmlType="button" icon={<ToolOutlined />} onClick={() => navigate('/resources/hosts/credentials')}>密钥凭证管理</Button>
                 <Dropdown menu={selectedBatchMenu} disabled={selectedIds.length === 0}>
                   <Button htmlType="button">批量操作 <DownOutlined /></Button>
                 </Dropdown>
@@ -1125,7 +1125,7 @@ const HostListPage: React.FC = () => {
             <div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[15px] font-semibold text-[#1f2937]">待处理告警</div>
-                <Button type="link" size="small" className="!px-0" onClick={() => navigate('/monitor?status=firing&source=host')}>更多告警</Button>
+                <Button type="link" size="small" className="!px-0" onClick={() => navigate('/observability/monitor?status=firing&source=host')}>更多告警</Button>
               </div>
               {pendingAlerts.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />

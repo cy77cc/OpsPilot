@@ -628,8 +628,8 @@ const HostTerminalPage: React.FC = () => {
       }}
     >
       <Breadcrumb>
-        <Breadcrumb.Item><Link to="/deployment/infrastructure/hosts">主机管理</Link></Breadcrumb.Item>
-        <Breadcrumb.Item><Link to={`/deployment/infrastructure/hosts/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
+        <Breadcrumb.Item><Link to="/resources/hosts">主机管理</Link></Breadcrumb.Item>
+        <Breadcrumb.Item><Link to={`/resources/hosts/${id}`}>{host?.name || `Host #${id}`}</Link></Breadcrumb.Item>
         <Breadcrumb.Item>终端与文件</Breadcrumb.Item>
       </Breadcrumb>
 
@@ -638,7 +638,7 @@ const HostTerminalPage: React.FC = () => {
         styles={{ body: { padding: 12, minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
         title={
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/deployment/infrastructure/hosts/${id}`)}>返回</Button>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/resources/hosts/${id}`)}>返回</Button>
             <Text strong>{host?.name || `Host #${id}`}</Text>
             <Text type="secondary">{host?.ip || '-'}</Text>
             <Tag color={status === 'connected' ? 'success' : status === 'connecting' ? 'processing' : status === 'error' ? 'error' : 'default'}>

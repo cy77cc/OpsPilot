@@ -76,7 +76,7 @@ const JobListPage: React.FC = () => {
       dataIndex: 'name',
       key: 'name',
       render: (text: string, record: Task) => (
-        <a onClick={() => navigate(`/jobs/${record.id}/history`)}>{text}</a>
+        <a onClick={() => navigate(`/observability/jobs/${record.id}/history`)}>{text}</a>
       ),
     },
     {
@@ -121,7 +121,7 @@ const JobListPage: React.FC = () => {
           <Button type="link" icon={<PlayCircleOutlined />} onClick={() => handleStartJob(record.id)} disabled={record.status === 'stopped'}>
             执行
           </Button>
-          <Button type="link" icon={<EditOutlined />} onClick={() => navigate(`/jobs/${record.id}/edit`)}>
+          <Button type="link" icon={<EditOutlined />} onClick={() => navigate(`/observability/jobs/${record.id}/edit`)}>
             编辑
           </Button>
           <Button type="link" danger icon={<DeleteOutlined />} onClick={() => showDeleteConfirm(record.id)}>
@@ -139,7 +139,7 @@ const JobListPage: React.FC = () => {
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/jobs/create')}>创建任务</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/observability/jobs/create')}>创建任务</Button>
         </Space>
       }
     >

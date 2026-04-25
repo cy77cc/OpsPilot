@@ -120,7 +120,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -144,7 +144,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -176,7 +176,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/services/payment-api']}>
+      <MemoryRouter initialEntries={['/delivery/services/payment-api']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -215,7 +215,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -262,7 +262,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     } as any);
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -289,7 +289,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -317,7 +317,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -409,7 +409,7 @@ describe('CopilotSurface XMarkdown streaming', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/deployment/infrastructure/clusters/42']}>
+      <MemoryRouter initialEntries={['/resources/clusters/42']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );

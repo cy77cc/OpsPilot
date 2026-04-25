@@ -136,11 +136,11 @@ function mockBaselineLoads() {
   });
 }
 
-function renderPage(initialEntry = '/deployment/infrastructure/clusters/42/policies') {
+function renderPage(initialEntry = '/resources/clusters/42/policies') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/deployment/infrastructure/clusters/:id/policies" element={<ClusterPolicyCenterPage />} />
+        <Route path="/resources/clusters/:id/policies" element={<ClusterPolicyCenterPage />} />
       </Routes>
     </MemoryRouter>,
   );

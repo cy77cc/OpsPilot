@@ -38,7 +38,7 @@ const ServiceVisibilityPage: React.FC = () => {
         .filter((x) => Number.isFinite(x) && x > 0);
       await Api.services.updateGrantedTeams(id, teams);
       messageApi.success('可见性设置已更新');
-      navigate(`/services/${id}`);
+      navigate(`/delivery/services/${id}`);
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '保存失败');
     } finally {
@@ -70,7 +70,7 @@ const ServiceVisibilityPage: React.FC = () => {
         </Form>
 
         <Space>
-          <Button onClick={() => navigate(`/services/${id}`)}>取消</Button>
+          <Button onClick={() => navigate(`/delivery/services/${id}`)}>取消</Button>
           <Button type="primary" loading={saving} onClick={save}>保存</Button>
         </Space>
       </Card>

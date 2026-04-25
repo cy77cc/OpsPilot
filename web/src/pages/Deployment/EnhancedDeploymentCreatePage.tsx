@@ -356,7 +356,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
       });
 
       message.success('发布已创建');
-      navigate(`/deployment/${res.data.release_id}`);
+      navigate(`/delivery/deployments/${res.data.release_id}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : '创建发布失败');
     } finally {
@@ -375,7 +375,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end">
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/deployment')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/delivery/deployments')}>
           返回
         </Button>
       </div>
@@ -385,7 +385,7 @@ const EnhancedDeploymentCreatePage: React.FC = () => {
       <div className="mt-6">{steps[currentStep].content}</div>
 
       <div className="flex justify-between">
-        <Button onClick={() => navigate('/deployment')}>取消</Button>
+        <Button onClick={() => navigate('/delivery/deployments')}>取消</Button>
         <Space>
           {currentStep > 0 && <Button onClick={handlePrev}>上一步</Button>}
           {currentStep < steps.length - 1 && (

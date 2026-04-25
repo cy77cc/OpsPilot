@@ -193,7 +193,7 @@ const DeploymentListPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={load} loading={isRefreshing}>
             刷新
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/create')}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/deployments/create')}>
             创建部署
           </Button>
         </Space>
@@ -340,7 +340,7 @@ const DeploymentListPage: React.FC = () => {
                 }
               >
                 {!searchQuery && statusFilter === 'all' && runtimeFilter === 'all' && (
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/deployment/create')}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/delivery/deployments/create')}>
                     创建第一个部署
                   </Button>
                 )}
@@ -411,7 +411,7 @@ const DeploymentListPage: React.FC = () => {
                                 <Button
                                   type="text"
                                   icon={<EyeOutlined />}
-                                  onClick={() => navigate(`/deployment/${release.id}`)}
+                                  onClick={() => navigate(`/delivery/deployments/${release.id}`)}
                                 />
                               </Tooltip>
                               {(release.status === 'succeeded' || release.status === 'applied') && (

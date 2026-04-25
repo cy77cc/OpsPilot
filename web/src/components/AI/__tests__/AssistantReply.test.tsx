@@ -165,7 +165,7 @@ describe('AssistantReply', () => {
     });
 
     const view = render(
-      <MemoryRouter initialEntries={['/services/payment-api']}>
+      <MemoryRouter initialEntries={['/delivery/services/payment-api']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -179,7 +179,7 @@ describe('AssistantReply', () => {
       queueRequest: vi.fn(),
     });
     view.rerender(
-      <MemoryRouter initialEntries={['/services/payment-api']}>
+      <MemoryRouter initialEntries={['/delivery/services/payment-api']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -194,7 +194,7 @@ describe('AssistantReply', () => {
       queueRequest: vi.fn(),
     });
     view.rerender(
-      <MemoryRouter initialEntries={['/services/payment-api']}>
+      <MemoryRouter initialEntries={['/delivery/services/payment-api']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );
@@ -225,7 +225,7 @@ describe('AssistantReply', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/services/payment-api']}>
+      <MemoryRouter initialEntries={['/delivery/services/payment-api']}>
         <CopilotSurface open onClose={() => undefined} />
       </MemoryRouter>,
     );

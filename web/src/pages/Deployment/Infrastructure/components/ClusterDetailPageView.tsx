@@ -213,7 +213,7 @@ const ClusterDetailPageView: React.FC = () => {
       <div className="h-[calc(100vh-112px)] flex flex-col items-center justify-center bg-white rounded-lg">
         <ClusterOutlined className="text-6xl text-gray-200 mb-4" />
         <p className="text-gray-400 text-lg">该集群不存在或已被移除</p>
-        <Button type="primary" className="mt-4" onClick={() => navigate('/deployment/infrastructure/clusters')}>返回集群列表</Button>
+        <Button type="primary" className="mt-4" onClick={() => navigate('/resources/clusters')}>返回集群列表</Button>
       </div>
     );
   }
@@ -253,7 +253,7 @@ const ClusterDetailPageView: React.FC = () => {
           </div>
         </div>
         <Space size={8}>
-          <Button icon={<AuditOutlined />} onClick={() => navigate(`/deployment/infrastructure/clusters/${clusterId}/operations`)}>操作中心</Button>
+          <Button icon={<AuditOutlined />} onClick={() => navigate(`/resources/clusters/${clusterId}/operations`)}>操作中心</Button>
           <Button icon={<SafetyOutlined />} onClick={() => navigate(buildPolicyReleaseTraceLink())}>策略发布轨迹</Button>
           <Button icon={<SyncOutlined />} onClick={handleSyncNodes} loading={nodesLoading}>同步节点</Button>
           <Button icon={<ApiOutlined />} onClick={handleTestConnection}>测试连接</Button>

@@ -57,9 +57,9 @@ describe('AlertDetailPage', () => {
 
   it('disables 手动重试 when alert is resolved', async () => {
     render(
-      <MemoryRouter initialEntries={['/monitor/alerts/alert-1']}>
+      <MemoryRouter initialEntries={['/observability/monitor/alerts/alert-1']}>
         <Routes>
-          <Route path="/monitor/alerts/:alertId" element={<AlertDetailPage />} />
+          <Route path="/observability/monitor/alerts/:alertId" element={<AlertDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -101,9 +101,9 @@ describe('AlertDetailPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/monitor/alerts/alert-1']}>
+      <MemoryRouter initialEntries={['/observability/monitor/alerts/alert-1']}>
         <Routes>
-          <Route path="/monitor/alerts/:alertId" element={<AlertDetailPage />} />
+          <Route path="/observability/monitor/alerts/:alertId" element={<AlertDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -159,9 +159,9 @@ describe('AlertDetailPage', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/monitor/alerts/alert-1']}>
+      <MemoryRouter initialEntries={['/observability/monitor/alerts/alert-1']}>
         <Routes>
-          <Route path="/monitor/alerts/:alertId" element={<AlertDetailPage />} />
+          <Route path="/observability/monitor/alerts/:alertId" element={<AlertDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );

@@ -67,7 +67,7 @@ const JobCreationPage: React.FC = () => {
         message: isEditing ? '更新成功' : '创建成功',
         description: isEditing ? '任务已成功更新' : '任务已成功创建',
       });
-      navigate('/jobs');
+      navigate('/observability/jobs');
     } catch (error) {
       notification.error({ message: '提交失败', description: (error as Error).message || '请重试' });
     } finally {
@@ -144,7 +144,7 @@ const JobCreationPage: React.FC = () => {
         </Card>
 
         <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button size="large" onClick={() => navigate('/jobs')}>取消</Button>
+          <Button size="large" onClick={() => navigate('/observability/jobs')}>取消</Button>
           <Button type="primary" size="large" icon={<SaveOutlined />} htmlType="submit" loading={loading}>
             {isEditing ? '保存更改' : '创建任务'}
           </Button>

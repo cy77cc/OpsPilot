@@ -62,7 +62,7 @@ const ClusterNodesPage: React.FC = () => {
           </div>
           <Space>
             <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
-            <Link to={`/deployment/infrastructure/clusters/${clusterId}/operations`}>进入操作中心</Link>
+            <Link to={`/resources/clusters/${clusterId}/operations`}>进入操作中心</Link>
           </Space>
         </Space>
       </Card>

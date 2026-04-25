@@ -92,13 +92,13 @@ const CreateTargetWizard: React.FC = () => {
             package_version: 'latest',
           });
           message.info('环境初始化已启动');
-          navigate(`/deployment/targets/${res.data.id}/bootstrap/${bootstrapRes.data.job_id}`);
+          navigate(`/delivery/targets/${res.data.id}/bootstrap/${bootstrapRes.data.job_id}`);
         } catch (err) {
           message.warning('环境初始化启动失败，请稍后手动启动');
-          navigate(`/deployment/targets/${res.data.id}`);
+          navigate(`/delivery/targets/${res.data.id}`);
         }
       } else {
-        navigate(`/deployment/targets/${res.data.id}`);
+        navigate(`/delivery/targets/${res.data.id}`);
       }
     } catch (err) {
       message.error(err instanceof Error ? err.message : '创建失败');
@@ -297,7 +297,7 @@ const CreateTargetWizard: React.FC = () => {
       <Steps current={currentStep} items={steps.map(item => ({ title: item.title }))} />
 
       <div className="flex justify-between">
-        <Button onClick={() => navigate('/deployment/targets')}>取消</Button>
+        <Button onClick={() => navigate('/delivery/targets')}>取消</Button>
         <Space>
           {currentStep > 0 && <Button onClick={handlePrev}>上一步</Button>}
           {currentStep < steps.length - 1 && (

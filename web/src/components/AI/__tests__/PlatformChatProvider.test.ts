@@ -131,7 +131,7 @@ describe('PlatformChatProvider', () => {
     const provider = new PlatformChatProvider({
       scene: 'cluster',
       getSessionId: () => 'sess-1',
-      getSceneContext: () => ({ route: '/deployment/infrastructure/clusters/42', resourceId: '42' }),
+      getSceneContext: () => ({ route: '/resources/clusters/42', resourceId: '42' }),
     });
 
     const params = provider.transformParams(
@@ -145,7 +145,7 @@ describe('PlatformChatProvider', () => {
       clientRequestId: expect.any(String),
       scene: 'cluster',
       context: {
-        route: '/deployment/infrastructure/clusters/42',
+        route: '/resources/clusters/42',
         resourceId: '42',
       },
     }));
