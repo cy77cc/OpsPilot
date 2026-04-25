@@ -43,8 +43,6 @@ interface ZoneInfo {
   localName: string;
 }
 
-import { PageSkeleton } from '../../components/LoadingSkeleton';
-
 const HostCloudImportPage: React.FC = () => {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);

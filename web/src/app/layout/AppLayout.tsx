@@ -196,7 +196,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   );
 
   return (
-    <Layout className="min-h-screen">
+    <Layout className="h-screen overflow-hidden">
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
       <KeyboardShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
 
@@ -234,10 +234,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         style={{
           marginLeft: isMobile ? 0 : collapsed ? 80 : 240,
           transition: 'margin-left 0.2s',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <Header
-          className="h-16 px-4 md:px-6 flex items-center justify-between bg-white shadow-sm"
+          className="h-16 flex-shrink-0 px-4 md:px-6 flex items-center justify-between bg-white shadow-sm"
           style={{
             position: 'sticky',
             top: 0,
@@ -348,7 +351,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </Header>
 
         {isMobile && (
-          <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 flex items-center justify-around z-50 shadow-lg">
+          <div className="flex-shrink-0 fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 flex items-center justify-around z-50 shadow-lg">
             <Button
               type="text"
               icon={<LayoutDashboard size={20} />}
@@ -377,12 +380,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         )}
 
         <Content
-          className="bg-gray-50"
+          className="bg-gray-50 flex-1 overflow-y-auto overflow-x-hidden relative"
           style={{
-            minHeight: isMobile ? 'calc(100vh - 128px)' : 'calc(100vh - 64px)',
+            height: isMobile ? 'calc(100vh - 128px)' : 'calc(100vh - 64px)',
           }}
         >
-          <div className="flex min-h-full w-full flex-col p-6">
+          <div className="flex min-h-full w-full flex-col p-6 pb-20 md:pb-6">
             <PageTransition>{children}</PageTransition>
           </div>
         </Content>
