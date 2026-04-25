@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Card, Space, Table, Tag, Typography, Button } from 'antd';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Card, Table, Tag, Typography } from 'antd';
 import type { TablePaginationConfig } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert } from '../../api/modules/monitoring';
 import { normalizeHealStatus } from './monitorAlertHealStatus';
-import { PageSkeleton } from '../../components/LoadingSkeleton';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 const severityColor: Record<string, string> = {
   critical: 'error',
@@ -21,7 +20,7 @@ const AlertsPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
 
-  const load = async (nextPage = page, nextPageSize = pageSize) => {
+  const load = useCallback(async (nextPage = page, nextPageSize = pageSize) => {
     setLoading(true);
     try {
       const alertRes = await Api.monitoring.getAlertList({ page: nextPage, pageSize: nextPageSize });
@@ -32,7 +31,9 @@ const AlertsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize]);
+
+  useRegisterMonitorRefresh(load, loading);
 
   useEffect(() => {
     void load(1, pageSize);
@@ -44,20 +45,9 @@ const AlertsPage: React.FC = () => {
     void load(nextPage, nextPageSize);
   };
 
-  if (loading && rows.length === 0) {
-    return <PageSkeleton />;
-  }
-
   return (
     <Card
       title="告警列表"
-      extra={
-        <Space>
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load(page, pageSize)}>
-            刷新
-          </Button>
-        </Space>
-      }
     >
       <Table<Alert>
         rowKey="id"

@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Col, Row, Progress, Button, Space, Table, Tag } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { Card, Col, Row, Button, Space, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Api } from '../../api';
 import type { Alert, MetricData } from '../../api/modules/monitoring';
-import { PageSkeleton } from '../../components/LoadingSkeleton';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 const MonitorPage: React.FC = () => {
   const [loadingAlerts, setLoadingAlerts] = useState(false);
@@ -40,10 +39,12 @@ const MonitorPage: React.FC = () => {
     }
   };
 
-  const load = () => {
+  const load = useCallback(() => {
     void loadAlerts();
     void loadMetrics();
-  };
+  }, []);
+
+  useRegisterMonitorRefresh(load, loadingAlerts || loadingMetrics);
 
   useEffect(() => {
     load();
@@ -64,20 +65,8 @@ const MonitorPage: React.FC = () => {
     };
   }, [cpuMetrics, memMetrics]);
 
-  const isInitialLoading = loadingAlerts && alerts.length === 0;
-
-  if (isInitialLoading) {
-    return <PageSkeleton />;
-  }
-
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Space>
-          <Button icon={<ReloadOutlined />} loading={loadingAlerts || loadingMetrics} onClick={load}>刷新</Button>
-        </Space>
-      </div>
-      
       <Row gutter={[12, 12]}>
         <Col xs={24} md={12}>
           <Card title="CPU 资源使用率趋势 (24h)">
@@ -141,7 +130,7 @@ const MonitorPage: React.FC = () => {
         <Table
          
           rowKey="id"
-          loading={loadingAlerts && alerts.length > 0}
+          loading={loadingAlerts}
           dataSource={alerts}
           pagination={false}
           columns={[

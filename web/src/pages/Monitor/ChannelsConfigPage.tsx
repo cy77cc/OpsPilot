@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { Api } from '../../api';
 import { useScope } from '../../app/scope/useScope';
 import { GuidedFormItem } from '../../components/FormGuidance';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { channelFieldGuides } from './channelFieldGuides';
-import { PageSkeleton } from '../../components/LoadingSkeleton';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 type ChannelTestForm = {
   provider: string;
@@ -55,7 +55,7 @@ const ChannelsConfigPage: React.FC = () => {
     return false;
   };
 
-  const loadChannels = async (showError = true): Promise<boolean> => {
+  const loadChannels = useCallback(async (showError = true): Promise<boolean> => {
     const seq = loadSeqRef.current + 1;
     loadSeqRef.current = seq;
     setLoading(true);
@@ -82,7 +82,9 @@ const ChannelsConfigPage: React.FC = () => {
         setLoading(false);
       }
     }
-  };
+  }, [currentProjectId]);
+
+  useRegisterMonitorRefresh(loadChannels, loading);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -224,10 +226,6 @@ const ChannelsConfigPage: React.FC = () => {
       setSubmitting(false);
       }
       };
-
-      if (loading && rows.length === 0) {
-      return <PageSkeleton />;
-      }
 
       return (
       <Space orientation="vertical" style={{ width: '100%' }}>      <Card

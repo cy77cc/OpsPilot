@@ -1,35 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Table } from 'antd';
 import { Api } from '../../api';
 import type { AlertDelivery } from '../../api/modules/monitoring';
-import { PageSkeleton } from '../../components/LoadingSkeleton';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 const DeliveriesPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<AlertDelivery[]>([]);
 
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await Api.monitoring.listAlertDeliveries({ page: 1, pageSize: 50 });
-        const list = (res?.data as any)?.list || [];
-        if (!mounted) {return;}
-        setRows(list);
-      } finally {
-        if (mounted) {setLoading(false);}
-      }
-    };
-    load();
-    return () => {
-      mounted = false;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await Api.monitoring.listAlertDeliveries({ page: 1, pageSize: 50 });
+      const list = (res?.data as any)?.list || [];
+      setRows(list);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading && rows.length === 0) {
-    return <PageSkeleton />;
-  }
+  useRegisterMonitorRefresh(load, loading);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
     <Card title="投递记录">

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button, Card, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, message } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
 import { Api } from '../../api';
@@ -6,7 +6,7 @@ import { useScope } from '../../app/scope/useScope';
 import ScopeSelector, { type ScopeValue } from './components/ScopeSelector';
 import { GuidedFormItem } from '../../components/FormGuidance';
 import { monitorFieldGuides } from '../../constants/fieldGuides';
-import { PageSkeleton } from '../../components/LoadingSkeleton';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 type EffectiveRuleRow = {
   id: string;
@@ -81,7 +81,7 @@ const RulesConfigPage: React.FC = () => {
     return false;
   };
 
-  const load = async (showError = true): Promise<boolean> => {
+  const load = useCallback(async (showError = true): Promise<boolean> => {
     const seq = loadSeqRef.current + 1;
     loadSeqRef.current = seq;
     setLoading(true);
@@ -116,7 +116,9 @@ const RulesConfigPage: React.FC = () => {
         setLoading(false);
       }
     }
-  };
+  }, [currentProjectId]);
+
+  useRegisterMonitorRefresh(load, loading);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -389,10 +391,6 @@ const RulesConfigPage: React.FC = () => {
       message.error(error?.message || '规则同步失败');
     }
   };
-
-  if (loading && rows.length === 0) {
-    return <PageSkeleton />;
-  }
 
   return (
     <Card

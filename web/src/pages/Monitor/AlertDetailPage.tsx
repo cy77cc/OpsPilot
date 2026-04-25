@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Alert, Button, Card, Descriptions, Empty, Space, Table, Tag, Typography, message } from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import { Api } from '../../api';
 import type { Alert as MonitorAlert } from '../../api/modules/monitoring';
 import type { AlertHealApprovalTask, AlertHealJob } from '../../api/modules/aiAlertHeal';
 import { normalizeHealStatus } from './monitorAlertHealStatus';
+import { useRegisterMonitorRefresh } from './MonitorRefreshContext';
 
 const retryBlockedStatuses = new Set(['pending', 'analyzing', 'auto_fixing', 'waiting_approval']);
 
@@ -26,7 +27,7 @@ const AlertDetailPage: React.FC = () => {
   const [latestJob, setLatestJob] = useState<AlertHealJob | null>(null);
   const [approvals, setApprovals] = useState<AlertHealApprovalTask[]>([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!alertId) {
       return;
     }
@@ -41,11 +42,13 @@ const AlertDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [alertId]);
+
+  useRegisterMonitorRefresh(load, loading);
 
   useEffect(() => {
     void load();
-  }, [alertId]);
+  }, [load]);
 
   const retryDisabled = !latestJob || (alertItem?.status === 'resolved') || retryBlockedStatuses.has(latestJob.status);
 
