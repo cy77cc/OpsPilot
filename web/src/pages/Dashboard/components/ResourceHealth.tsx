@@ -43,14 +43,14 @@ export const ResourceHealth: React.FC<{ data?: HealthOverview }> = ({ data }) =>
     <Card 
       title="主机健康状态" 
       className="h-full shadow-sm border-none flex flex-col"
-      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 12 } }}
     >
-      <div className="flex-1 overflow-auto min-h-0">
-        <div className="h-48">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="h-full min-h-[180px]">
            <Pie {...config} />
         </div>
       </div>
-      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+      <div className="text-right pt-2 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
         查看拓扑 &gt;
       </div>
     </Card>

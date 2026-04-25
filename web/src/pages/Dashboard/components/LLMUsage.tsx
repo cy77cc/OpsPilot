@@ -4,6 +4,30 @@ import { Line } from '@ant-design/charts';
 import type { AIActivity } from '../../../api/modules/dashboard';
 
 export const LLMUsage: React.FC<{ data?: AIActivity }> = ({ data }) => {
+  const formatTokenCount = (tokenCount: number): string => {
+    if (tokenCount >= 1_000_000) {
+      return `${(tokenCount / 1_000_000).toFixed(2)}M`;
+    }
+
+    if (tokenCount >= 1_000) {
+      return `${(tokenCount / 1_000).toFixed(2)}k`;
+    }
+
+    return `${tokenCount}`;
+  };
+
+  const formatDuration = (durationMs: number): string => {
+    if (durationMs >= 60_000) {
+      return `${(durationMs / 60_000).toFixed(2)}min`;
+    }
+
+    if (durationMs >= 1_000) {
+      return `${(durationMs / 1_000).toFixed(2)}s`;
+    }
+
+    return `${durationMs}ms`;
+  };
+
   // Mock trend data as it's not fully provided in V2 yet
   const chartData = [
     { date: '05-06', type: '对话', value: 800 },
@@ -30,15 +54,15 @@ export const LLMUsage: React.FC<{ data?: AIActivity }> = ({ data }) => {
       <div className="flex-1 overflow-auto min-h-0">
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div><div className="text-xs text-gray-400 mb-1">会话总数</div><div className="text-xl font-bold text-gray-900">{data?.stats?.sessionCount || 0}</div></div>
-          <div><div className="text-xs text-gray-400 mb-1">Tokens 消耗</div><div className="text-xl font-bold text-gray-900">{((data?.stats?.tokenCount || 0) / 1000000).toFixed(2)}M</div></div>
-          <div><div className="text-xs text-gray-400 mb-1">成功率</div><div className="text-xl font-bold text-gray-900">{data?.stats?.successRate || 0}%</div></div>
-          <div><div className="text-xs text-gray-400 mb-1">平均耗时</div><div className="text-xl font-bold text-gray-900">{data?.stats?.avgDurationMs || 0}ms</div></div>
+          <div><div className="text-xs text-gray-400 mb-1">Tokens 消耗</div><div className="text-xl font-bold text-gray-900">{formatTokenCount(data?.stats?.tokenCount || 0)}</div></div>
+          <div><div className="text-xs text-gray-400 mb-1">成功率</div><div className="text-xl font-bold text-gray-900">{(data?.stats?.successRate || 0).toFixed(2)}%</div></div>
+          <div><div className="text-xs text-gray-400 mb-1">平均耗时</div><div className="text-xl font-bold text-gray-900">{formatDuration(data?.stats?.avgDurationMs || 0)}</div></div>
         </div>
-        <div className="h-32 mt-2">
+        <div className="h-32">
           {chartData.length > 0 ? <Line {...config} /> : <Empty description="暂无 AI 指标" />}
         </div>
       </div>
-      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+      <div className="text-right pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
         查看 AI 详情 &gt;
       </div>
     </Card>

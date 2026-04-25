@@ -35,15 +35,15 @@ export const ClusterUsage: React.FC<{ data?: ResourcesOverview }> = ({ data }) =
     <Card 
       title="核心资源使用率" 
       className="h-full shadow-sm border-none flex flex-col" 
-      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 24px 24px' } }}
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 12px 12px' } }}
     >
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <Tabs items={items} activeKey={activeTab} onChange={setActiveTab} />
-        <div className="h-48 mt-2">
+        <div className="flex-1 min-h-[170px] mt-2">
           {chartData.length > 0 ? <Line {...config} /> : <Empty description="暂无指标数据" className="mt-8" />}
         </div>
       </div>
-      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+      <div className="text-right pt-2 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
         查看详情 &gt;
       </div>
     </Card>

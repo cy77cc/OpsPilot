@@ -68,7 +68,7 @@ const Dashboard: React.FC = () => {
         <KPIOverview data={data?.health} alerts={data?.alerts?.firing} />
         
         {/* Main Grid Layout - Charts Row */}
-        <div className="grid grid-cols-12 gap-3">
+        <div className="grid grid-cols-12 gap-3 xl:auto-rows-[360px]">
           <div className="col-span-12 xl:col-span-3">
             <ResourceHealth data={data?.health} />
           </div>

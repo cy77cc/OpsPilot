@@ -25,7 +25,7 @@ export const DeliveryOverview: React.FC<{ data?: OperationsOverview }> = ({ data
           </div>
         </div>
       </div>
-      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+      <div className="text-right pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
         查看 CICD &gt;
       </div>
     </Card>

@@ -30,19 +30,19 @@ export const AlertTrends: React.FC<{ data?: any }> = ({ data }) => {
     <Card 
       title="告警趋势" 
       className="h-full shadow-sm border-none flex flex-col"
-      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 12 } }}
     >
-      <div className="flex-1 overflow-auto min-h-0">
-        <div className="flex justify-between mb-4 px-4">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="flex justify-between mb-3 px-4">
            <div className="text-center"><div className="text-xl font-bold text-red-500">{data?.firing || 0}</div><div className="text-xs text-gray-500">严重</div></div>
            <div className="text-center"><div className="text-xl font-bold text-orange-400">56</div><div className="text-xs text-gray-500">警告</div></div>
            <div className="text-center"><div className="text-xl font-bold text-blue-500">132</div><div className="text-xs text-gray-500">信息</div></div>
         </div>
-        <div className="h-40">
+        <div className="flex-1 min-h-[140px]">
           <Column {...config} />
         </div>
       </div>
-      <div className="text-right mt-4 pt-4 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
+      <div className="text-right pt-2 border-t border-gray-50 flex-shrink-0 text-blue-500 text-xs cursor-pointer hover:text-blue-600 transition-colors">
         查看告警中心 &gt;
       </div>
     </Card>
