@@ -16,7 +16,7 @@ interface ProtectedRoutesProps {
 
 const ProtectedRoutes: React.FC<ProtectedRoutesProps> = ({ withAuth, governanceMenuEnabled }) => (
   <Routes>
-    {renderWorkloadRoutes(withAuth)}
+    {renderOverviewRoutes(withAuth)}
     {renderDeliveryRoutes(withAuth)}
     {renderResourceRoutes(withAuth)}
     {renderObservabilityRoutes(withAuth)}

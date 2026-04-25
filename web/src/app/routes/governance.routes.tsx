@@ -6,23 +6,16 @@ import { LEGACY_GOVERNANCE_MENU_ITEMS } from '../layout/navigation.config';
 import {
   ToolsPage,
   SettingsPage,
-  AIModelSettingsPage,
   UsersPage,
   RolesPage,
   PermissionsPage,
-  ServiceListPage,
-  ServiceProvisionPage,
-  ServiceDetailPage,
-  ServiceDeployPage,
-  ServiceVisibilityPage,
-  CMDBPage,
   AccessControlPage,
-  AutomationPage,
-  CICDPage,
+  ApprovalCenterPage,
+  DeploymentAuditLogsPage,
   HelpCenterPage,
 } from './pages';
 
-interface PlatformRoutesProps {
+interface GovernanceRoutesProps {
   withAuth: WithAuth;
   governanceMenuEnabled: boolean;
 }
@@ -35,41 +28,36 @@ const LEGACY_GOVERNANCE_PAGES: Record<LegacyGovernancePath, React.ReactElement> 
   '/settings/permissions': <PermissionsPage />,
 };
 
-export function renderPlatformRoutes({ withAuth, governanceMenuEnabled }: PlatformRoutesProps) {
+export function renderGovernanceRoutes({ withAuth, governanceMenuEnabled }: GovernanceRoutesProps) {
   return (
     <>
-    <Route path="/tools" element={<ToolsPage />} />
-    <Route path="/tools/nightingale" element={<ToolsPage />} />
-    <Route path="/tools/jenkins" element={<ToolsPage />} />
-    <Route path="/tools/jumpserver" element={<ToolsPage />} />
-    <Route path="/tools/kuboard" element={<ToolsPage />} />
-    <Route path="/tools/cmdb" element={<ToolsPage />} />
-    <Route path="/tools/archery" element={<ToolsPage />} />
-    <Route path="/settings" element={<SettingsPage />} />
-    <Route path="/settings/ai-models" element={<SettingsPage defaultTab="ai" />} />
-    <Route path="/governance/users" element={withAuth('rbac', 'read', <UsersPage />)} />
-    <Route path="/governance/roles" element={withAuth('rbac', 'read', <RolesPage />)} />
-    <Route path="/governance/permissions" element={withAuth('rbac', 'read', <PermissionsPage />)} />
-    {LEGACY_GOVERNANCE_MENU_ITEMS.map(({ key: legacyPath }) => (
-      <Route
-        key={legacyPath}
-        path={legacyPath}
-        element={
-          governanceMenuEnabled
-            ? <LegacyGovernanceRedirect to={legacyPath.replace('/settings/', '/governance/')} />
-            : withAuth('rbac', 'read', LEGACY_GOVERNANCE_PAGES[legacyPath])
-        }
-      />
-    ))}
-    <Route path="/services" element={withAuth('service', 'read', <ServiceListPage />)} />
-    <Route path="/services/provision" element={withAuth('service', 'write', <ServiceProvisionPage />)} />
-    <Route path="/services/:id" element={withAuth('service', 'read', <ServiceDetailPage />)} />
-    <Route path="/services/:id/deploy" element={withAuth('service', 'deploy', <ServiceDeployPage />)} />
-    <Route path="/services/:id/visibility" element={withAuth('service', 'write', <ServiceVisibilityPage />)} />
-    <Route path="/cmdb" element={withAuth('cmdb', 'read', <CMDBPage />)} />
-    <Route path="/org" element={withAuth('rbac', 'read', <AccessControlPage />)} />
-    <Route path="/automation" element={withAuth('automation', 'read', <AutomationPage />)} />
-    <Route path="/cicd" element={withAuth('cicd', 'read', <CICDPage />)} />
+      <Route path="/tools" element={<ToolsPage />} />
+      <Route path="/tools/nightingale" element={<ToolsPage />} />
+      <Route path="/tools/jenkins" element={<ToolsPage />} />
+      <Route path="/tools/jumpserver" element={<ToolsPage />} />
+      <Route path="/tools/kuboard" element={<ToolsPage />} />
+      <Route path="/tools/archery" element={<ToolsPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      
+      <Route path="/governance/org" element={withAuth('rbac', 'read', <AccessControlPage />)} />
+      <Route path="/governance/approvals" element={withAuth('deploy:target', 'read', <ApprovalCenterPage />)} />
+      <Route path="/governance/audit-logs" element={withAuth('deploy:target', 'read', <DeploymentAuditLogsPage />)} />
+      <Route path="/governance/users" element={withAuth('rbac', 'read', <UsersPage />)} />
+      <Route path="/governance/roles" element={withAuth('rbac', 'read', <RolesPage />)} />
+      <Route path="/governance/permissions" element={withAuth('rbac', 'read', <PermissionsPage />)} />
+
+      {LEGACY_GOVERNANCE_MENU_ITEMS.map(({ key: legacyPath }) => (
+        <Route
+          key={legacyPath}
+          path={legacyPath}
+          element={
+            governanceMenuEnabled
+              ? <LegacyGovernanceRedirect to={legacyPath.replace('/settings/', '/governance/')} />
+              : withAuth('rbac', 'read', LEGACY_GOVERNANCE_PAGES[legacyPath])
+          }
+        />
+      ))}
+
       <Route path="/help" element={<HelpCenterPage />} />
     </>
   );
