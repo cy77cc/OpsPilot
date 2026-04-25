@@ -1,18 +1,23 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from 'antd';
 import { useSearchParams } from 'react-router-dom';
-import { CredentialTabs } from './components/CredentialTabs';
-import { CredentialStatsCards } from './components/CredentialStatsCards';
-import { CredentialToolbar } from './components/CredentialToolbar';
-import { CredentialTable } from './components/CredentialTable';
-import { CredentialDetailDrawer } from './components/CredentialDetailDrawer';
-import { CredentialTypeGuide } from './components/CredentialTypeGuide';
-import { PresetAuthTable } from './components/PresetAuthTable';
-import { CredentialAuditTable } from './components/CredentialAuditTable';
-import { CredentialPermissionTable } from './components/CredentialPermissionTable';
-import { CreateCredentialModal } from './components/CreateCredentialModal';
 import { hostApi } from '../../../api/modules/hosts';
-import type { CredentialItem, CredentialStats } from '../../../api/modules/hosts';
+import type { CredentialDetail, CredentialItem, CredentialStats } from '../../../api/modules/hosts';
+import { CredentialAuditTable } from './components/CredentialAuditTable';
+import { CredentialDetailDrawer } from './components/CredentialDetailDrawer';
+import { CredentialPermissionTable } from './components/CredentialPermissionTable';
+import { CredentialStatsCards } from './components/CredentialStatsCards';
+import { CredentialTable } from './components/CredentialTable';
+import { CredentialTabs } from './components/CredentialTabs';
+import { CredentialToolbar } from './components/CredentialToolbar';
+import { CredentialTypeGuide } from './components/CredentialTypeGuide';
+import { CreateCredentialModal } from './components/CreateCredentialModal';
+import { PresetAuthTable } from './components/PresetAuthTable';
+import {
+  toCredentialDetailViewModel,
+  toCredentialRowViewModel,
+  type CredentialDetailViewModel,
+} from './viewModels';
 
 const CredentialsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,37 +26,51 @@ const CredentialsPage: React.FC = () => {
   const [credentials, setCredentials] = useState<CredentialItem[]>([]);
   const [stats, setStats] = useState<CredentialStats>();
   const [loading, setLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [detail, setDetail] = useState<CredentialDetailViewModel | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(true);
 
-  // 搜索和筛选状态
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterType, setFilterType] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
 
   const fetchStats = useCallback(() => {
-    hostApi.getCredentialStats().then(res => {
-      if (res && res.success) setStats(res.data);
+    hostApi.getCredentialStats().then((res) => {
+      if (res?.success) {
+        setStats(res.data);
+      }
     });
   }, []);
 
   const fetchCredentials = useCallback(() => {
     setLoading(true);
-    hostApi.getCredentials().then(credsRes => {
-      if (credsRes && credsRes.success) {
-        let list = [];
-        if (Array.isArray(credsRes.data)) {
-          list = credsRes.data;
-        } else if (credsRes.data && Array.isArray(credsRes.data.list)) {
-          list = credsRes.data.list;
-        } else if (credsRes.data && typeof credsRes.data === 'object') {
-          list = Object.values(credsRes.data).find(v => Array.isArray(v)) || [];
+    hostApi
+      .getCredentials()
+      .then((credsRes) => {
+        if (credsRes?.success) {
+          const list = Array.isArray((credsRes.data as any)?.list)
+            ? (credsRes.data as any).list
+            : Array.isArray(credsRes.data)
+              ? credsRes.data
+              : [];
+          setCredentials(list);
         }
-        setCredentials(list);
-      }
-    }).catch(err => {
-      console.error('Failed to fetch credentials:', err);
-    }).finally(() => setLoading(false));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const fetchDetail = useCallback((id: string) => {
+    setDetailLoading(true);
+    hostApi
+      .getCredentialDetail(id)
+      .then((res) => {
+        if (res?.success) {
+          setDetail(toCredentialDetailViewModel(res.data as CredentialDetail));
+        }
+      })
+      .finally(() => setDetailLoading(false));
   }, []);
 
   useEffect(() => {
@@ -64,111 +83,147 @@ const CredentialsPage: React.FC = () => {
     }
   }, [activeTab, fetchCredentials]);
 
-  // 前端过滤逻辑
   const filteredCredentials = useMemo(() => {
-    return credentials.filter(item => {
-      const matchKeyword = !searchKeyword || 
-        item.name.toLowerCase().includes(searchKeyword.toLowerCase()) || 
-        item.description?.toLowerCase().includes(searchKeyword.toLowerCase());
+    const normalized = credentials.map(toCredentialRowViewModel);
+    return normalized.filter((item) => {
+      const keyword = searchKeyword.trim().toLowerCase();
+      const matchKeyword =
+        !keyword ||
+        item.name.toLowerCase().includes(keyword) ||
+        item.description?.toLowerCase().includes(keyword) ||
+        item.tags.some((tag) => tag.toLowerCase().includes(keyword));
       const matchType = !filterType || item.type === filterType;
       const matchStatus = !filterStatus || item.status === filterStatus;
       return matchKeyword && matchType && matchStatus;
     });
-  }, [credentials, searchKeyword, filterType, filterStatus]);
+  }, [credentials, searchKeyword, filterStatus, filterType]);
+
+  useEffect(() => {
+    if (activeTab !== 'key-management') {
+      return;
+    }
+    if (filteredCredentials.length === 0) {
+      setSelectedId(undefined);
+      setDetail(null);
+      return;
+    }
+    const stillExists = selectedId && filteredCredentials.some((item) => item.id === selectedId);
+    const nextId = stillExists ? selectedId : filteredCredentials[0]?.id;
+    if (nextId && nextId !== selectedId) {
+      setSelectedId(nextId);
+      setIsDetailOpen(true);
+    }
+  }, [activeTab, filteredCredentials, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || activeTab !== 'key-management') {
+      return;
+    }
+    fetchDetail(selectedId);
+  }, [activeTab, fetchDetail, selectedId]);
 
   const handleRefresh = () => {
     fetchStats();
     if (activeTab === 'key-management') {
       fetchCredentials();
+      if (selectedId) {
+        fetchDetail(selectedId);
+      }
     }
   };
 
   const handleTabChange = (key: string) => {
     setSearchParams({ tab: key });
-    setSelectedId(undefined);
+    if (key !== 'key-management') {
+      setDetail(null);
+      setSelectedId(undefined);
+    }
   };
 
   return (
-    <div className="p-4 h-full flex flex-col gap-4 bg-[#f6f8fb] overflow-hidden">
-      {/* 顶部统计卡片 */}
-      <div className="flex-none">
-        <CredentialStatsCards stats={stats} loading={!stats && loading} />
-      </div>
+    <div className="h-full overflow-auto bg-[#f7f9fc] px-6 py-5">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-3">
+        <section className="px-1 pt-1">
+          <div className="text-[13px] text-[#6b7280]">资源管理 / 主机 / 凭证管理</div>
+          <h1 className="mt-4 text-[34px] font-semibold leading-none text-[#111827]">凭证管理</h1>
+          <p className="mt-3 text-[14px] text-[#6b7280]">
+            统一管理用于主机访问的凭证，支持密钥、密码等多种类型，保障主机安全访问。
+          </p>
+        </section>
 
-      {/* 主体功能区 */}
-      <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
-        {/* Tab 导航卡片 */}
-        <Card 
-          size="small" 
-          styles={{ body: { padding: '0 16px' } }}
-          className="border border-[#e8edf3] rounded-[10px] shadow-none flex-none"
+        <Card
+          className="rounded-2xl border border-[#e6edf5] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+          styles={{ body: { padding: '0 20px' } }}
         >
           <CredentialTabs activeKey={activeTab} onChange={handleTabChange} />
         </Card>
 
-        {/* 内容展示区 */}
-        <div className="flex-1 min-h-0 overflow-auto pr-1 scrollbar-thin">
-          {activeTab === 'key-management' && (
-            <div className="flex flex-col gap-4 pb-2">
-              <Card 
-                size="small" 
-                className="border border-[#e8edf3] rounded-[10px] shadow-none"
-                styles={{ body: { padding: 16 } }}
-              >
-                <CredentialToolbar 
-                  onRefresh={handleRefresh} 
-                  onCreate={() => setIsCreateModalOpen(true)} 
-                  onSearch={setSearchKeyword}
-                  onTypeChange={setFilterType}
-                  onStatusChange={setFilterStatus}
-                />
-                <div className="[&_.ant-table-thead>tr>th]:!bg-[#f6f8fb] [&_.ant-table-thead>tr>th]:!text-[#6b7280] [&_.ant-table-thead>tr>th]:!text-[13px] [&_.ant-table-tbody>tr>td]:!text-[13px]">
-                  <CredentialTable 
-                    data={filteredCredentials} 
-                    loading={loading} 
-                    onRowClick={(record) => setSelectedId(record.id)} 
+        <CredentialStatsCards stats={stats} loading={!stats && loading} />
+
+        {activeTab === 'key-management' ? (
+          <>
+            <section className="overflow-hidden rounded-2xl border border-[#e6edf5] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.04)]">
+              <div className="grid min-h-[720px] grid-cols-1 xl:grid-cols-[minmax(0,1fr)_392px]">
+                <div className="min-w-0 px-3 py-3 xl:border-r xl:border-[#edf2f7]">
+                  <CredentialToolbar
+                    onRefresh={handleRefresh}
+                    onCreate={() => setIsCreateModalOpen(true)}
+                    onSearch={setSearchKeyword}
+                    onTypeChange={setFilterType}
+                    onStatusChange={setFilterStatus}
+                  />
+                  <CredentialTable
+                    data={filteredCredentials}
+                    loading={loading}
+                    selectedId={selectedId}
+                    onRowClick={(record) => {
+                      setSelectedId(record.id);
+                      setIsDetailOpen(true);
+                    }}
                     onRefresh={handleRefresh}
                   />
                 </div>
-              </Card>
 
-              <CredentialTypeGuide />
+                <CredentialDetailDrawer
+                  detail={detail}
+                  loading={detailLoading}
+                  open={isDetailOpen}
+                  onClose={() => setIsDetailOpen(false)}
+                  onRefresh={handleRefresh}
+                />
+              </div>
+            </section>
 
-              <CredentialDetailDrawer 
-                credentialId={selectedId} 
-                onClose={() => setSelectedId(undefined)} 
-                onRefresh={handleRefresh}
-              />
-              
-              <CreateCredentialModal 
-                open={isCreateModalOpen} 
-                onCancel={() => setIsCreateModalOpen(false)} 
-                onSuccess={() => {
-                  setIsCreateModalOpen(false);
-                  handleRefresh();
-                }}
-              />
-            </div>
-          )}
+            <CredentialTypeGuide />
 
-          {activeTab === 'preset-auth' && (
-            <Card className="border border-[#e8edf3] rounded-[10px] shadow-none" styles={{ body: { padding: 16 } }}>
-              <PresetAuthTable />
-            </Card>
-          )}
+            <CreateCredentialModal
+              open={isCreateModalOpen}
+              onCancel={() => setIsCreateModalOpen(false)}
+              onSuccess={() => {
+                setIsCreateModalOpen(false);
+                handleRefresh();
+              }}
+            />
+          </>
+        ) : null}
 
-          {activeTab === 'usage-audit' && (
-            <Card className="border border-[#e8edf3] rounded-[10px] shadow-none" styles={{ body: { padding: 16 } }}>
-              <CredentialAuditTable />
-            </Card>
-          )}
+        {activeTab === 'preset-auth' ? (
+          <Card className="rounded-2xl border border-[#e6edf5] shadow-[0_8px_24px_rgba(15,23,42,0.04)]" styles={{ body: { padding: 20 } }}>
+            <PresetAuthTable />
+          </Card>
+        ) : null}
 
-          {activeTab === 'permission' && (
-            <Card className="border border-[#e8edf3] rounded-[10px] shadow-none" styles={{ body: { padding: 16 } }}>
-              <CredentialPermissionTable />
-            </Card>
-          )}
-        </div>
+        {activeTab === 'usage-audit' ? (
+          <Card className="rounded-2xl border border-[#e6edf5] shadow-[0_8px_24px_rgba(15,23,42,0.04)]" styles={{ body: { padding: 20 } }}>
+            <CredentialAuditTable />
+          </Card>
+        ) : null}
+
+        {activeTab === 'permission' ? (
+          <Card className="rounded-2xl border border-[#e6edf5] shadow-[0_8px_24px_rgba(15,23,42,0.04)]" styles={{ body: { padding: 20 } }}>
+            <CredentialPermissionTable />
+          </Card>
+        ) : null}
       </div>
     </div>
   );

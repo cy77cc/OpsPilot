@@ -1,54 +1,56 @@
 import React, { useState } from 'react';
 import { Button, Input, Modal, Typography, message } from 'antd';
-import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
-import type { CredentialDetail } from '../../../../api/modules/hosts';
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
+import type { CredentialDetailViewModel } from '../viewModels';
 
-const { Text } = Typography;
+const { Paragraph } = Typography;
 
-export const CredentialSecretPanel: React.FC<{ detail: CredentialDetail }> = ({ detail }) => {
+export const CredentialSecretPanel: React.FC<{ detail: CredentialDetailViewModel }> = ({ detail }) => {
   const [visible, setVisible] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(false);
-
-  const handleReveal = () => {
-    if (!visible) {
-      setConfirmModal(true);
-    } else {
-      setVisible(false);
-    }
-  };
-
-  const confirmReveal = () => {
-    setVisible(true);
-    setConfirmModal(false);
-    message.warning('查看凭证动作已被审计记录');
-  };
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
-    <div>
-      <h3 className="font-semibold mb-2">密钥内容</h3>
-      <div className="bg-gray-50 p-4 rounded border border-gray-200">
-        {!visible ? (
-          <div className="flex flex-col items-center justify-center py-4">
-            <Text type="secondary" className="mb-2">密钥已加密存储，仅在需要时查看</Text>
-            <Button icon={<EyeOutlined />} onClick={handleReveal}>查看密钥</Button>
+    <section className="border-b border-[#edf2f7] pb-6">
+      <h3 className="mb-4 text-[20px] font-semibold text-[#111827]">密钥内容</h3>
+      <div className="rounded-xl border border-[#e8edf5] bg-[#fafcff] p-4">
+        {visible ? (
+          <div className="space-y-3">
+            <Input.TextArea
+              readOnly
+              value={detail.secret || '******'}
+              autoSize={{ minRows: 4, maxRows: 8 }}
+              className="font-mono text-[12px]"
+            />
+            <Button icon={<EyeInvisibleOutlined />} onClick={() => setVisible(false)}>
+              隐藏密钥
+            </Button>
           </div>
         ) : (
-          <div>
-            <Input.TextArea value={detail.secret || '******'} readOnly autoSize={{ minRows: 3, maxRows: 10 }} className="font-mono text-xs mb-2" />
-            <Button icon={<EyeInvisibleOutlined />} onClick={handleReveal}>隐藏密钥</Button>
+          <div className="flex flex-col gap-3">
+            <Button icon={<EyeOutlined />} className="w-fit" onClick={() => setConfirmOpen(true)}>
+              查看密钥
+            </Button>
+            <Paragraph className="!mb-0 !text-[13px] !text-[#6b7280]">
+              密钥已加密存储，仅在需要时查看
+            </Paragraph>
           </div>
         )}
       </div>
 
       <Modal
         title="安全确认"
-        open={confirmModal}
-        onOk={confirmReveal}
-        onCancel={() => setConfirmModal(false)}
+        open={confirmOpen}
+        onOk={() => {
+          setVisible(true);
+          setConfirmOpen(false);
+          message.warning('查看凭证动作已记录到审计日志');
+        }}
+        onCancel={() => setConfirmOpen(false)}
         okText="确认查看"
+        cancelText="取消"
       >
-        <p>您正在尝试查看敏感凭证信息，此操作将被记录到系统审计日志中。是否继续？</p>
+        您正在尝试查看敏感凭证信息，此操作将被记录到系统审计日志中。是否继续？
       </Modal>
-    </div>
+    </section>
   );
 };

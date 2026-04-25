@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CodeHighlighter } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
-import remarkGfm from 'remark-gfm';
 import type { ComponentProps } from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
@@ -530,7 +529,6 @@ function MarkdownViewportContent({
       <XMarkdown
         content={normalizedContent}
         components={markdownComponents}
-        remarkPlugins={[remarkGfm]}
         streaming={{ hasNextChunk: isStreaming, enableAnimation: true }}
       />
     </div>

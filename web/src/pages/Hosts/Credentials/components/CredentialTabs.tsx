@@ -19,7 +19,7 @@ export const CredentialTabs: React.FC<Props> = ({ activeKey, onChange }) => {
       activeKey={activeKey}
       onChange={onChange}
       items={items}
-      className="-mb-px"
+      className="-mb-px [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-tab]:!px-4 [&_.ant-tabs-tab]:!py-4 [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:!text-[#2f6bff] [&_.ant-tabs-ink-bar]:!bg-[#2f6bff]"
     />
   );
 };

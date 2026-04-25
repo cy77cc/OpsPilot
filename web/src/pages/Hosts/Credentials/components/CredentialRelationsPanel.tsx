@@ -1,26 +1,31 @@
 import React from 'react';
-import { List, Typography } from 'antd';
-import type { CredentialDetail } from '../../../../api/modules/hosts';
+import type { CredentialDetailViewModel } from '../viewModels';
 
-const { Text } = Typography;
+export const CredentialRelationsPanel: React.FC<{ detail: CredentialDetailViewModel }> = ({ detail }) => {
+  const items = [
+    { label: '关联主机', value: `${detail.hostCount} 台`, action: '查看' },
+    { label: '关联集群', value: `${detail.relationClusterCount} 个`, action: '查看' },
+    { label: '最近使用', value: detail.recentUsage || '-' },
+  ];
 
-export const CredentialRelationsPanel: React.FC<{ detail: CredentialDetail }> = ({ detail }) => {
   return (
-    <div>
-      <h3 className="font-semibold mb-2">关联信息</h3>
-      <List size="small" bordered className="bg-white">
-        <List.Item className="flex justify-between">
-          <Text>关联主机</Text>
-          <div>
-            <Text strong className="mr-2">{detail.hostCount} 台</Text>
-            <a>查看</a>
+    <section className="border-b border-[#edf2f7] pb-6">
+      <h3 className="mb-4 text-[20px] font-semibold text-[#111827]">关联信息</h3>
+      <div className="space-y-3 text-[14px]">
+        {items.map((item) => (
+          <div key={item.label} className="flex items-center justify-between gap-4">
+            <div className="text-[#6b7280]">{item.label}</div>
+            <div className="flex items-center gap-3 text-[#111827]">
+              <span>{item.value}</span>
+              {item.action ? (
+                <button type="button" className="text-[#2f6bff]">
+                  {item.action}
+                </button>
+              ) : null}
+            </div>
           </div>
-        </List.Item>
-        <List.Item className="flex justify-between">
-          <Text>最近使用</Text>
-          <Text>{detail.recentUsage || '-'}</Text>
-        </List.Item>
-      </List>
-    </div>
+        ))}
+      </div>
+    </section>
   );
 };
