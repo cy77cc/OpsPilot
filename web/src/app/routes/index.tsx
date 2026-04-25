@@ -2,11 +2,12 @@ import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { WithAuth } from './routeGuards';
 import { renderWorkloadRoutes } from './workloads.routes';
-import { renderDeploymentRoutes } from './deployment.routes';
-import { renderInfrastructureRoutes } from './infrastructure.routes';
+import { renderDeliveryRoutes } from './delivery.routes';
+import { renderResourceRoutes } from './resource.routes';
 import { renderObservabilityRoutes } from './observability.routes';
 import { renderLegacyRoutes } from './legacy.routes';
-import { renderPlatformRoutes } from './platform.routes';
+import { renderGovernanceRoutes } from './governance.routes';
+import { renderAIRoutes } from './ai.routes';
 
 interface ProtectedRoutesProps {
   withAuth: WithAuth;
@@ -16,11 +17,12 @@ interface ProtectedRoutesProps {
 const ProtectedRoutes: React.FC<ProtectedRoutesProps> = ({ withAuth, governanceMenuEnabled }) => (
   <Routes>
     {renderWorkloadRoutes(withAuth)}
-    {renderDeploymentRoutes(withAuth)}
-    {renderInfrastructureRoutes(withAuth)}
+    {renderDeliveryRoutes(withAuth)}
+    {renderResourceRoutes(withAuth)}
     {renderObservabilityRoutes(withAuth)}
     {renderLegacyRoutes({ withAuth })}
-    {renderPlatformRoutes({ withAuth, governanceMenuEnabled })}
+    {renderGovernanceRoutes({ withAuth, governanceMenuEnabled })}
+    {renderAIRoutes({ withAuth })}
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 );
