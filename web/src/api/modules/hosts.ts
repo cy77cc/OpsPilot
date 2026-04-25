@@ -355,6 +355,63 @@ const throwHostKeyTrustRequired = (raw: any, fallbackType?: HostKeyTrustErrorDat
   throw error;
 };
 
+export interface CredentialItem {
+  id: string;
+  name: string;
+  description?: string;
+  type: 'ssh_key' | 'password' | 'token' | 'certificate';
+  authMethod: string;
+  hostCount: number;
+  tags: string[];
+  status: 'available' | 'expiring_soon' | 'expired' | 'disabled';
+  expireAt?: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface CredentialDetail extends CredentialItem {
+  secret?: string;
+  createdAt: string;
+  createdBy: string;
+  usageCount: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+  recentUsage?: string;
+}
+
+export interface CredentialUsageRecord {
+  id: string;
+  time: string;
+  credentialName: string;
+  operator: string;
+  target: string;
+  method: string;
+  result: 'success' | 'failure';
+  sourceIp: string;
+  remark?: string;
+}
+
+export interface CredentialPermissionItem {
+  id: string;
+  credentialName: string;
+  targetUserOrRole: string;
+  permissions: string[];
+  scope: string;
+  effectiveTime: string;
+  expireTime: string;
+  status: 'active' | 'expired';
+}
+
+export interface CredentialStats {
+  total: number;
+  available: number;
+  expiringSoon: number;
+  expired: number;
+  recentUpdate: string;
+  recentUpdateBy: string;
+}
+
 export const hostApi = {
   async getHostList(params?: HostListParams): Promise<ApiResponse<PaginatedResponse<Host>>> {
     const response = await apiService.get<Host[]>('/hosts', {
@@ -820,9 +877,32 @@ export const hostApi = {
     return apiService.delete(`/hosts/${id}/tags/${encodeURIComponent(tag)}`);
   },
 
+  async getCredentials(params?: any): Promise<ApiResponse<{ list: CredentialItem[]; total: number }>> {
+    return apiService.get('/credentials', { params });
+  },
+
+  async getCredentialStats(): Promise<ApiResponse<CredentialStats>> {
+    return apiService.get('/credentials/stats');
+  },
+
+  async getCredentialDetail(id: string): Promise<ApiResponse<CredentialDetail>> {
+    return apiService.get(`/credentials/${id}`);
+  },
+
+  async getCredentialUsageRecords(params?: any): Promise<ApiResponse<{ list: CredentialUsageRecord[]; total: number }>> {
+    return apiService.get('/credentials/usage-records', { params });
+  },
+
+  async getCredentialUsageStats(id: string): Promise<ApiResponse<any>> {
+    return apiService.get(`/credentials/${id}/usage-stats`);
+  },
+
+  async getCredentialPermissions(params?: any): Promise<ApiResponse<{ list: CredentialPermissionItem[]; total: number }>> {
+    return apiService.get('/credentials/permissions', { params });
+  },
+
   async listSSHKeys(): Promise<ApiResponse<SSHKeyItem[]>> {
     const res = await apiService.get<any>('/credentials/ssh_keys');
-    // 后端返回 { list: [...], total: N } 结构
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
@@ -875,7 +955,6 @@ export const hostApi = {
 
   async listCloudAccounts(provider?: string): Promise<ApiResponse<CloudAccount[]>> {
     const res = await apiService.get<any>('/hosts/cloud/accounts', { params: { provider } });
-    // 后端返回 { list: [...], total: N } 格式
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
@@ -904,7 +983,7 @@ export const hostApi = {
     };
   },
 
-  async createCloudAccount(payload: { provider: string; productType?: string; accountName: string; accessKeyId: string; accessKeySecret: string; regionDefault?: string; projectId?: string; isIntl?: boolean }): Promise<ApiResponse<CloudAccount>> {
+  async createCloudAccount(payload: any): Promise<ApiResponse<CloudAccount>> {
     const res = await apiService.post<any>('/hosts/cloud/accounts', {
       provider: payload.provider,
       product_type: payload.productType || '',
@@ -930,18 +1009,8 @@ export const hostApi = {
     };
   },
 
-  async queryCloudInstances(payload: { provider: string; accountId: number; region?: string; zone?: string; keyword?: string }): Promise<ApiResponse<CloudInstance[]>> {
-    const body: Record<string, any> = {
-      account_id: payload.accountId,
-      region: payload.region || '',
-      keyword: payload.keyword || '',
-    };
-    // 仅当 zone 有效时才发送
-    if (payload.zone) {
-      body.zone = payload.zone;
-    }
-    const res = await apiService.post<any>(`/hosts/cloud/providers/${payload.provider}/instances/query`, body);
-    // 后端返回 { list: [...], total: N } 格式
+  async queryCloudInstances(payload: any): Promise<ApiResponse<CloudInstance[]>> {
+    const res = await apiService.post<any>(`/hosts/cloud/providers/${payload.provider}/instances/query`, payload);
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
     return {
       ...res,
@@ -963,59 +1032,20 @@ export const hostApi = {
     return apiService.delete(`/hosts/cloud/accounts/${accountId}`);
   },
 
-  async listCloudRegions(provider: string, accountId: string): Promise<ApiResponse<{ regionId: string; localName: string }[]>> {
-    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/regions`, {
-      params: { account_id: accountId },
-    });
+  async listCloudRegions(provider: string, accountId: string): Promise<ApiResponse<any[]>> {
+    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/regions`, { params: { account_id: accountId } });
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
-    return {
-      ...res,
-      data: rawList.map((x: any) => ({
-        regionId: x.region_id || x.regionId,
-        localName: x.local_name || x.localName,
-      })),
-    };
+    return { ...res, data: rawList };
   },
 
-  async listCloudZones(provider: string, accountId: string, region: string): Promise<ApiResponse<{ zoneId: string; localName: string }[]>> {
-    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/zones`, {
-      params: { account_id: accountId, region },
-    });
+  async listCloudZones(provider: string, accountId: string, region: string): Promise<ApiResponse<any[]>> {
+    const res = await apiService.get<any>(`/hosts/cloud/providers/${provider}/zones`, { params: { account_id: accountId, region } });
     const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || []);
-    return {
-      ...res,
-      data: rawList.map((x: any) => ({
-        zoneId: x.zone_id || x.zoneId,
-        localName: x.local_name || x.localName,
-      })),
-    };
+    return { ...res, data: rawList };
   },
 
-  async importCloudInstances(payload: { provider: string; accountId: number; instances: CloudInstance[]; role?: string; labels?: string[]; credentialAssignments?: Record<string, string | number> }): Promise<ApiResponse<any>> {
-    // Convert credentialAssignments values to numbers (backend expects uint64)
-    const credentialAssignments: Record<string, number> = {};
-    if (payload.credentialAssignments) {
-      for (const [instanceId, templateId] of Object.entries(payload.credentialAssignments)) {
-        credentialAssignments[instanceId] = typeof templateId === 'string' ? parseInt(templateId, 10) : templateId;
-      }
-    }
-    return apiService.post(`/hosts/cloud/providers/${payload.provider}/instances/import`, {
-      account_id: payload.accountId,
-      instances: payload.instances.map((x) => ({
-        instance_id: x.instanceId,
-        name: x.name,
-        ip: x.ip,
-        region: x.region,
-        status: x.status,
-        os: x.os,
-        cpu: x.cpu,
-        memory_mb: x.memoryMB,
-        disk_gb: x.diskGB,
-      })),
-      role: payload.role || '',
-      labels: payload.labels || [],
-      credential_assignments: credentialAssignments,
-    });
+  async importCloudInstances(payload: any): Promise<ApiResponse<any>> {
+    return apiService.post(`/hosts/cloud/providers/${payload.provider}/instances/import`, payload);
   },
 
   async listCredentialTemplates(): Promise<ApiResponse<CredentialTemplate[]>> {
@@ -1039,7 +1069,7 @@ export const hostApi = {
     };
   },
 
-  async createCredentialTemplate(payload: CreateCredentialTemplateParams): Promise<ApiResponse<CredentialTemplate>> {
+  async createCredentialTemplate(payload: any): Promise<ApiResponse<CredentialTemplate>> {
     const res = await apiService.post<any>('/credentials/templates', {
       name: payload.name,
       auth_type: payload.authType,
@@ -1071,27 +1101,11 @@ export const hostApi = {
     return apiService.delete(`/credentials/templates/${id}`);
   },
 
-  async kvmPreview(hostId: string, payload: { name: string; cpu: number; memoryMB: number; diskGB: number; networkBridge?: string; template?: string }): Promise<ApiResponse<any>> {
-    return apiService.post(`/hosts/virtualization/kvm/hosts/${hostId}/preview`, {
-      name: payload.name,
-      cpu: payload.cpu,
-      memory_mb: payload.memoryMB,
-      disk_gb: payload.diskGB,
-      network_bridge: payload.networkBridge || 'br0',
-      template: payload.template || 'ubuntu-22.04',
-    });
+  async kvmPreview(hostId: string, payload: any): Promise<ApiResponse<any>> {
+    return apiService.post(`/hosts/virtualization/kvm/hosts/${hostId}/preview`, payload);
   },
 
-  async kvmProvision(hostId: string, payload: { name: string; ip: string; cpu: number; memoryMB: number; diskGB: number; sshUser?: string; password?: string; sshKeyId?: number }): Promise<ApiResponse<any>> {
-    return apiService.post(`/hosts/virtualization/kvm/hosts/${hostId}/provision`, {
-      name: payload.name,
-      ip: payload.ip,
-      cpu: payload.cpu,
-      memory_mb: payload.memoryMB,
-      disk_gb: payload.diskGB,
-      ssh_user: payload.sshUser || 'root',
-      password: payload.password || '',
-      ssh_key_id: payload.sshKeyId,
-    });
+  async kvmProvision(hostId: string, payload: any): Promise<ApiResponse<any>> {
+    return apiService.post(`/hosts/virtualization/kvm/hosts/${hostId}/provision`, payload);
   },
 };

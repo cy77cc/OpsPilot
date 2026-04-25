@@ -10,6 +10,77 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ListUnifiedCredentials 获取统一凭证列表（包括密钥和模板）。
+func (h *Handler) ListUnifiedCredentials(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	list, err := h.hostService.ListUnifiedCredentials(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, gin.H{"list": list, "total": len(list)})
+}
+
+// GetCredentialStats 获取凭证统计信息。
+func (h *Handler) GetCredentialStats(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	stats, err := h.hostService.GetCredentialStats(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, stats)
+}
+
+// ListCredentialUsageRecords 获取凭证使用记录。
+func (h *Handler) ListCredentialUsageRecords(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	// TODO: 从数据库读取真实的使用记录
+	httpx.OK(c, gin.H{"list": []any{}, "total": 0})
+}
+
+// ListCredentialPermissions 获取凭证权限记录。
+func (h *Handler) ListCredentialPermissions(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	// TODO: 从数据库读取真实的权限记录
+	httpx.OK(c, gin.H{"list": []any{}, "total": 0})
+}
+
+// GetCredential 获取凭证详情。
+func (h *Handler) GetCredential(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	detail, err := h.hostService.GetCredentialDetail(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, err.Error())
+		return
+	}
+	httpx.OK(c, detail)
+}
+
+// GetCredentialUsageStats 获取凭证使用统计。
+func (h *Handler) GetCredentialUsageStats(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:credential:read", "host:credential:*", "host:*") {
+		return
+	}
+	// TODO: 实现真实的统计逻辑
+	httpx.OK(c, gin.H{
+		"total":       0,
+		"success":     0,
+		"failed":      0,
+		"successRate": 0,
+	})
+}
+
 // ListSSHKeys 获取 SSH 密钥列表。
 //
 // @Summary 获取 SSH 密钥列表

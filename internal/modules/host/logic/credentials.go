@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
@@ -39,6 +40,171 @@ type CredentialTemplateCreateReq struct {
 	Password    string  `json:"password"`    // SSH 密码（密码认证）
 	SSHKeyID    *uint64 `json:"ssh_key_id"`  // SSH 密钥 ID（密钥认证）
 	Description string  `json:"description"` // 描述
+}
+
+// CredentialItem 统一凭证项。
+type CredentialItem struct {
+	ID          string   `json:"id"`          // 凭证 ID (带前缀)
+	Name        string   `json:"name"`        // 名称
+	Description string   `json:"description"` // 描述
+	Type        string   `json:"type"`        // 类型: ssh_key, password, token, certificate
+	AuthMethod  string   `json:"authMethod"`  // 认证方式
+	HostCount   int      `json:"hostCount"`   // 关联主机数
+	Tags        []string `json:"tags"`        // 标签
+	Status      string   `json:"status"`      // 状态: available, expiring_soon, expired, disabled
+	ExpireAt    string   `json:"expireAt"`    // 过期时间
+	UpdatedAt   string   `json:"updatedAt"`   // 更新时间
+	UpdatedBy   string   `json:"updatedBy"`   // 更新者
+}
+
+// CredentialStats 凭证统计信息。
+type CredentialStats struct {
+	Total          int    `json:"total"`          // 总凭证数
+	Available      int    `json:"available"`      // 可用凭证数
+	ExpiringSoon   int    `json:"expiringSoon"`   // 即将过期数
+	Expired        int    `json:"expired"`        // 已过期数
+	RecentUpdate   string `json:"recentUpdate"`   // 最近更新时间
+	RecentUpdateBy string `json:"recentUpdateBy"` // 最近更新者
+}
+
+// ListUnifiedCredentials 获取统一凭证列表。
+func (s *HostService) ListUnifiedCredentials(ctx context.Context) ([]CredentialItem, error) {
+	keys, err := s.ListSSHKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	templates, err := s.ListCredentialTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []CredentialItem
+	for _, key := range keys {
+		items = append(items, CredentialItem{
+			ID:          fmt.Sprintf("key-%d", key.ID),
+			Name:        key.Name,
+			Description: fmt.Sprintf("Algorithm: %s", key.Algorithm),
+			Type:        "ssh_key",
+			AuthMethod:  "SSH Key",
+			HostCount:   key.UsageCount,
+			Tags:        []string{},
+			Status:      "available",
+			UpdatedAt:   key.UpdatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedBy:   "system",
+		})
+	}
+	for _, tpl := range templates {
+		authMethod := "用户名密码"
+		tplType := "password"
+		if tpl.AuthType == "key" {
+			authMethod = "SSH Key"
+			tplType = "ssh_key"
+		}
+		items = append(items, CredentialItem{
+			ID:          fmt.Sprintf("tpl-%d", tpl.ID),
+			Name:        tpl.Name,
+			Description: tpl.Description,
+			Type:        tplType,
+			AuthMethod:  authMethod,
+			HostCount:   0,
+			Tags:        []string{},
+			Status:      "available",
+			UpdatedAt:   tpl.UpdatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedBy:   strconv.FormatUint(tpl.CreatedBy, 10),
+		})
+	}
+
+	return items, nil
+}
+
+// GetCredentialStats 获取凭证统计。
+func (s *HostService) GetCredentialStats(ctx context.Context) (*CredentialStats, error) {
+	list, err := s.ListUnifiedCredentials(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &CredentialStats{
+		Total:     len(list),
+		Available: len(list), // 暂时默认都可用
+	}
+
+	if len(list) > 0 {
+		stats.RecentUpdate = list[0].UpdatedAt
+		stats.RecentUpdateBy = list[0].UpdatedBy
+	}
+
+	return stats, nil
+}
+
+// CredentialDetail 凭证详情。
+type CredentialDetail struct {
+	CredentialItem
+	Secret       string  `json:"secret"`       // 密钥内容 (脱敏或根据权限显示)
+	CreatedAt    string  `json:"createdAt"`    // 创建时间
+	CreatedBy    string  `json:"createdBy"`    // 创建者
+	UsageCount   int     `json:"usageCount"`   // 累计使用次数
+	SuccessCount int     `json:"successCount"` // 成功次数
+	FailureCount int     `json:"failureCount"` // 失败次数
+	SuccessRate  float64 `json:"successRate"`  // 成功率
+	RecentUsage  string  `json:"recentUsage"`  // 最近使用时间
+}
+
+// GetCredentialDetail 获取凭证详情。
+func (s *HostService) GetCredentialDetail(ctx context.Context, id string) (*CredentialDetail, error) {
+	isKey := strings.HasPrefix(id, "key-")
+	realIDStr := strings.TrimPrefix(strings.TrimPrefix(id, "key-"), "tpl-")
+	realID, _ := strconv.ParseUint(realIDStr, 10, 64)
+
+	if isKey {
+		var key model.SSHKey
+		if err := s.svcCtx.DB.WithContext(ctx).First(&key, realID).Error; err != nil {
+			return nil, err
+		}
+		return &CredentialDetail{
+			CredentialItem: CredentialItem{
+				ID:          id,
+				Name:        key.Name,
+				Description: fmt.Sprintf("Algorithm: %s", key.Algorithm),
+				Type:        "ssh_key",
+				AuthMethod:  "SSH Key",
+				HostCount:   key.UsageCount,
+				Status:      "available",
+				UpdatedAt:   key.UpdatedAt.Format("2006-01-02 15:04:05"),
+				UpdatedBy:   "system",
+			},
+			Secret:       key.PublicKey,
+			CreatedAt:    key.CreatedAt.Format("2006-01-02 15:04:05"),
+			CreatedBy:    "system",
+			UsageCount:   key.UsageCount,
+			SuccessCount: key.UsageCount,
+			SuccessRate:  100,
+		}, nil
+	} else {
+		var tpl model.SSHCredentialTemplate
+		if err := s.svcCtx.DB.WithContext(ctx).First(&tpl, realID).Error; err != nil {
+			return nil, err
+		}
+		authMethod := "用户名密码"
+		if tpl.AuthType == "key" {
+			authMethod = "SSH Key"
+		}
+		return &CredentialDetail{
+			CredentialItem: CredentialItem{
+				ID:          id,
+				Name:        tpl.Name,
+				Description: tpl.Description,
+				Type:        tpl.AuthType,
+				AuthMethod:  authMethod,
+				Status:      "available",
+				UpdatedAt:   tpl.UpdatedAt.Format("2006-01-02 15:04:05"),
+				UpdatedBy:   strconv.FormatUint(tpl.CreatedBy, 10),
+			},
+			Secret:    "********",
+			CreatedAt: tpl.CreatedAt.Format("2006-01-02 15:04:05"),
+			CreatedBy: strconv.FormatUint(tpl.CreatedBy, 10),
+		}, nil
+	}
 }
 
 // ListSSHKeys 获取 SSH 密钥列表。

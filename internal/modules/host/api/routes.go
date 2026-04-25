@@ -96,6 +96,13 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 	// SSH 密钥管理路由
 	cred := v1.Group("/credentials", middleware.JWTAuth())
 	{
+		cred.GET("", h.ListUnifiedCredentials)
+		cred.GET("/stats", h.GetCredentialStats)
+		cred.GET("/usage-records", h.ListCredentialUsageRecords)
+		cred.GET("/permissions", h.ListCredentialPermissions)
+		cred.GET("/:id", h.GetCredential)
+		cred.GET("/:id/usage-stats", h.GetCredentialUsageStats)
+
 		cred.GET("/ssh_keys", h.ListSSHKeys)
 		cred.POST("/ssh_keys", h.CreateSSHKey)
 		cred.DELETE("/ssh_keys/:id", h.DeleteSSHKey)

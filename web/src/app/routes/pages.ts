@@ -5,7 +5,7 @@ export const HostListPage = lazy(() => import('../../pages/Hosts/HostListPage'))
 export const HostDetailPage = lazy(() => import('../../pages/Hosts/HostDetailPage'));
 export const HostOnboardingPage = lazy(() => import('../../pages/Hosts/HostOnboardingPage'));
 export const HostTerminalPage = lazy(() => import('../../pages/Hosts/HostTerminalPage'));
-export const HostCredentialsPage = lazy(() => import('../../pages/Hosts/HostCredentialsPage'));
+export const HostCredentialsPage = lazy(() => import('../../pages/Hosts/Credentials'));
 export const HostCloudImportPage = lazy(() => import('../../pages/Hosts/HostCloudImportPage'));
 export const HostVirtualizationPage = lazy(() => import('../../pages/Hosts/HostVirtualizationPage'));
 export const TasksPage = lazy(() => import('../../pages/Tasks/TasksPage'));
