@@ -141,15 +141,8 @@ const CredentialsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full overflow-auto bg-[#f7f9fc] px-6 py-5">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-3">
-        <section className="px-1 pt-1">
-          <div className="text-[13px] text-[#6b7280]">资源管理 / 主机 / 凭证管理</div>
-          <h1 className="mt-4 text-[34px] font-semibold leading-none text-[#111827]">凭证管理</h1>
-          <p className="mt-3 text-[14px] text-[#6b7280]">
-            统一管理用于主机访问的凭证，支持密钥、密码等多种类型，保障主机安全访问。
-          </p>
-        </section>
+    <div className="h-[calc(100vh-112px)] flex flex-col gap-4 overflow-auto bg-[#f7f9fc]">
+      <div className="flex w-full flex-col gap-3">
 
         <Card
           className="rounded-2xl border border-[#e6edf5] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]"

@@ -59,28 +59,37 @@ export const CredentialStatsCards: React.FC<Props> = ({ stats, loading }) => {
         return (
           <div
             key={card.key}
-            className="rounded-2xl border border-[#e8edf5] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+            className="h-[84px] rounded-2xl border border-[#e8edf5] bg-white px-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
           >
             {loading ? (
               <Skeleton active paragraph={{ rows: 2 }} title={false} />
             ) : (
-              <div className="flex items-center gap-4">
+              <div className="flex h-full items-center gap-3">
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-full text-[22px]"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[18px]"
                   style={{ backgroundColor: card.soft, color: card.accent }}
                 >
                   <Icon />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-medium text-[#4b5565]">{card.title}</div>
-                  <div className="mt-1 text-[18px] font-semibold leading-none text-[#111827] xl:text-[38px] xl:leading-[1.1]">
+                <div className="min-w-0 flex-1 self-center">
+                  <div className="text-[13px] font-medium leading-none text-[#4b5565]">{card.title}</div>
+                  <div
+                    className={`mt-1 font-semibold leading-none text-[#111827] ${
+                      card.key === 'recent'
+                        ? 'truncate text-[13px] xl:text-[18px]'
+                        : 'text-[16px] xl:text-[28px]'
+                    }`}
+                    title={card.value}
+                  >
                     {card.value}
                   </div>
-                  <div className="mt-2 text-[12px] text-[#6b7280]">{card.helper}</div>
+                  <div className="mt-1 text-[11px] leading-none text-[#6b7280]">{card.helper}</div>
                 </div>
-                <div className="hidden self-end xl:block">
-                  <Sparkline values={card.sparkline} stroke={card.accent} />
-                </div>
+                {card.key !== 'recent' ? (
+                  <div className="hidden self-center xl:block xl:origin-right xl:scale-[0.82]">
+                    <Sparkline values={card.sparkline} stroke={card.accent} />
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
