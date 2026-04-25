@@ -269,4 +269,92 @@ describe('ApiService cookie-session refresh and retry', () => {
       instance.defaults.adapter = originalAdapter;
     }
   });
+
+  it('retries /auth/me once after refreshing the cookie session', async () => {
+    const instance = Reflect.get(apiService, 'instance') as {
+      defaults: { adapter: unknown };
+    };
+    const originalAdapter = instance.defaults.adapter;
+    const refreshedHandler = vi.fn();
+    let meAttempt = 0;
+
+    window.addEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+
+    const adapterSpy = vi.fn(async (config: { url?: string }) => {
+      const url = String(config.url || '');
+
+      if (url.includes('/auth/refresh')) {
+        return {
+          data: { code: 1000, data: {} },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+        };
+      }
+
+      if (url.includes('/auth/me')) {
+        meAttempt += 1;
+        if (meAttempt === 1) {
+          const error = new Error('unauthorized') as Error & {
+            config: typeof config;
+            response: {
+              data: { message: string };
+              status: number;
+              statusText: string;
+              headers: Record<string, never>;
+              config: typeof config;
+            };
+          };
+          error.config = config;
+          error.response = {
+            data: { message: 'unauthorized' },
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: {},
+            config,
+          };
+          throw error;
+        }
+
+        return {
+          data: {
+            code: 1000,
+            data: {
+              id: 7,
+              username: 'alice',
+            },
+          },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+        };
+      }
+
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    instance.defaults.adapter = adapterSpy;
+
+    try {
+      await expect(apiService.get('/auth/me')).resolves.toEqual({
+        success: true,
+        data: {
+          id: 7,
+          username: 'alice',
+        },
+        message: undefined,
+        messageKey: undefined,
+        dataSource: undefined,
+        total: undefined,
+      });
+
+      expect(adapterSpy).toHaveBeenCalledTimes(3);
+      expect(refreshedHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(TOKEN_EVENTS.REFRESHED, refreshedHandler);
+      instance.defaults.adapter = originalAdapter;
+    }
+  });
 });

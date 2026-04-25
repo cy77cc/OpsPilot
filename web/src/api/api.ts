@@ -106,9 +106,7 @@ class ApiService {
         const requestURL = String(originalConfig.url || '');
         // 兼容后端统一结构：{ code, msg/message, data, total }
         if (typeof payload?.code === 'number') {
-          // /auth/me 用于检查登录状态，401 或认证失败码是正常的"未登录"响应，不应触发 token 刷新
-          const isAuthMeRequest = requestURL.includes('/auth/me');
-          if (!isAuthMeRequest && isAuthBusinessCode(payload.code) && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
+          if (isAuthBusinessCode(payload.code) && this.shouldRefreshAndRetry(requestURL, originalConfig)) {
             dispatchTokenNeedsRefresh('response');
             originalConfig._retry = true;
             return this.tryRefreshAndRetry(originalConfig);
@@ -135,9 +133,7 @@ class ApiService {
       (error) => {
         const originalConfig = (error.config || {}) as AxiosRequestConfig & { _retry?: boolean };
         const requestURL = String(originalConfig.url || '');
-        // /auth/me 用于检查登录状态，401 是正常的"未登录"响应，不应触发 token 刷新
-        const isAuthMeRequest = requestURL.includes('/auth/me');
-        if (!isAuthMeRequest && error.response?.status === 401 && !requestURL.includes('/auth/refresh') && !originalConfig._retry) {
+        if (error.response?.status === 401 && this.shouldRefreshAndRetry(requestURL, originalConfig)) {
           dispatchTokenNeedsRefresh('response');
           originalConfig._retry = true;
           return this.tryRefreshAndRetry(originalConfig);
@@ -177,6 +173,13 @@ class ApiService {
   async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     const response = await this.instance.delete<ApiResponse<T>>(url, config);
     return response.data;
+  }
+
+  private shouldRefreshAndRetry(
+    requestURL: string,
+    config: AxiosRequestConfig & { _retry?: boolean }
+  ): boolean {
+    return !requestURL.includes('/auth/refresh') && !config._retry;
   }
 
   private async tryRefreshAndRetry(config: AxiosRequestConfig): Promise<AxiosResponse<RawApiPayload>> {
