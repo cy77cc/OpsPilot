@@ -6,6 +6,7 @@ import { GuidedFormItem } from '../../components/FormGuidance';
 
 const { Title, Text } = Typography;
 const LOGIN_ERROR_TEXT = '登录失败，请检查用户名或密码后重试';
+const REDIRECT_AFTER_LOGIN_KEY = 'redirectAfterLogin';
 
 const LoginPage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
@@ -19,7 +20,10 @@ const LoginPage: React.FC = () => {
       setLoading(true);
       setError(null);
       await login(values);
-      const redirect = (location.state as { from?: string } | null)?.from || '/';
+      const redirectFromSession = sessionStorage.getItem(REDIRECT_AFTER_LOGIN_KEY);
+      const redirectFromState = (location.state as { from?: string } | null)?.from;
+      const redirect = redirectFromSession || redirectFromState || '/';
+      sessionStorage.removeItem(REDIRECT_AFTER_LOGIN_KEY);
       navigate(redirect, { replace: true });
     } catch {
       setError(LOGIN_ERROR_TEXT);
