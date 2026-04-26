@@ -99,6 +99,7 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.POST("/:id/services/:name/actions", h.ServiceAction)
 		g.GET("/:id/disks", h.ListDisks)
 		g.GET("/:id/network-interfaces", h.ListNetworkInterfaces)
+			g.GET("/:id/routes", h.ListNetworkRoutes)
 		g.GET("/:id/packages", h.ListPackages)
 		g.GET("/:id/alarms", h.ListAlarms)
 	}

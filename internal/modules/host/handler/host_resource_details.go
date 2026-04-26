@@ -84,6 +84,19 @@ func (h *Handler) ListNetworkInterfaces(c *gin.Context) {
 	httpx.OK(c, mockData)
 }
 
+// ListNetworkRoutes 获取主机路由表信息。
+func (h *Handler) ListNetworkRoutes(c *gin.Context) {
+	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
+		return
+	}
+	// TODO: SSH route -n / ip route
+	mockData := []v1.RouteItem{
+		{Destination: "0.0.0.0", Gateway: "192.168.1.1", Mask: "0.0.0.0", Flags: "UG", Interface: "ens33", Metric: 100},
+		{Destination: "192.168.1.0", Gateway: "0.0.0.0", Mask: "255.255.255.0", Flags: "U", Interface: "ens33", Metric: 100},
+	}
+	httpx.OK(c, mockData)
+}
+
 // ListPackages 获取主机已安装软件包。
 func (h *Handler) ListPackages(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {

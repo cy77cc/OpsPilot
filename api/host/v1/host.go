@@ -370,3 +370,13 @@ type AuditLogItem struct {
 	SourceIP  string    `json:"source_ip"`
 }
 
+// RouteItem represents a routing table entry.
+type RouteItem struct {
+	Destination string `json:"destination"`
+	Gateway     string `json:"gateway"`
+	Mask        string `json:"mask"`
+	Flags       string `json:"flags"`
+	Interface   string `json:"iface"`
+	Metric      int    `json:"metric,omitempty"`
+}
+
