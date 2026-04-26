@@ -219,12 +219,49 @@ func (h *Handler) ListDisks(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH df -h
-	mockData := []v1.PartitionItem{
-		{Filesystem: "/dev/sda1", Type: "ext4", Size: "40GB", Used: "12GB", Available: "28GB", UsagePct: 30, Mounted: "/"},
-		{Filesystem: "/dev/sdb1", Type: "xfs", Size: "100GB", Used: "80GB", Available: "20GB", UsagePct: 80, Mounted: "/data"},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+	out, err := h.runSSHCommandOnHost(c, id, "df -BG --output=source,target,fstype,size,used,avail,pcent --total")
+	if err != nil {
+		return // error already written
+	}
+	httpx.OK(c, parseDfOutput(out))
+}
+
+// parseDfOutput parses `df -BG --output=source,target,fstype,size,used,avail,pcent --total` output.
+func parseDfOutput(out string) []v1.PartitionItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	disks := make([]v1.PartitionItem, 0, len(lines))
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || i == 0 || strings.HasPrefix(line, "total") {
+			continue // skip header and total
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			continue
+		}
+		usagePct := 0.0
+		pctStr := strings.TrimSuffix(fields[6], "%")
+		if val, err := strconv.ParseFloat(pctStr, 64); err == nil {
+			usagePct = val
+		}
+		disks = append(disks, v1.PartitionItem{
+			Filesystem: fields[0],
+			Type:       fields[2],
+			Size:       strings.TrimSuffix(fields[3], "G") + "GB",
+			Used:       strings.TrimSuffix(fields[4], "G") + "GB",
+			Available:  strings.TrimSuffix(fields[5], "G") + "GB",
+			UsagePct:   usagePct,
+			Mounted:    fields[1],
+		})
+	}
+	return disks
 }
 
 // ListNetworkInterfaces 获取主机网络接口信息。
