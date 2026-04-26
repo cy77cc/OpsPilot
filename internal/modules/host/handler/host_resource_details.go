@@ -269,12 +269,149 @@ func (h *Handler) ListNetworkInterfaces(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH ip addr
-	mockData := []v1.InterfaceItem{
-		{Name: "ens33", IP: "192.168.1.10", MAC: "00:50:56:af:3e:88", Status: "up", RX: "1.2 GB", TX: "450 MB", MTU: 1500},
-		{Name: "docker0", IP: "172.17.0.1", MAC: "02:42:04:60:88:94", Status: "up", RX: "0 B", TX: "0 B", MTU: 1500},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+
+	// Collect IPv4 addresses
+	ipOut, err := h.runSSHCommandOnHost(c, id, "ip -o addr show inet")
+	if err != nil {
+		return
+	}
+	ipMap := map[string]string{}
+	for _, line := range strings.Split(ipOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 4 {
+			ifaceName := fields[1]
+			cidr := fields[3]
+			ip := strings.Split(cidr, "/")[0]
+			if existing, ok := ipMap[ifaceName]; ok {
+				ipMap[ifaceName] = existing + ", " + ip
+			} else {
+				ipMap[ifaceName] = ip
+			}
+		}
+	}
+
+	// Collect link info (MAC, state, MTU)
+	linkOut, err := h.runSSHCommandOnHost(c, id, "ip link show")
+	if err != nil {
+		return
+	}
+
+	// Collect RX/TX bytes from /sys/class/net
+	rxTxMap := map[string][2]string{}
+	for ifaceName := range ipMap {
+		rxOut, _ := h.runSSHCommandOnHost(c, id, fmt.Sprintf("cat /sys/class/net/%s/statistics/rx_bytes 2>/dev/null || echo 0", ifaceName))
+		txOut, _ := h.runSSHCommandOnHost(c, id, fmt.Sprintf("cat /sys/class/net/%s/statistics/tx_bytes 2>/dev/null || echo 0", ifaceName))
+		rxBytes, _ := strconv.ParseUint(strings.TrimSpace(rxOut), 10, 64)
+		txBytes, _ := strconv.ParseUint(strings.TrimSpace(txOut), 10, 64)
+		rxTxMap[ifaceName] = [2]string{formatBytes(rxBytes), formatBytes(txBytes)}
+	}
+
+	interfaces := parseIpLinkOutput(linkOut, ipMap, rxTxMap)
+	httpx.OK(c, interfaces)
+}
+
+// parseIpLinkOutput parses `ip link show` output into InterfaceItem slices.
+func parseIpLinkOutput(out string, ipMap map[string]string, rxTxMap map[string][2]string) []v1.InterfaceItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	interfaces := make([]v1.InterfaceItem, 0)
+
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		// Interface header line: "N: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ..."
+		parts := strings.SplitN(trimmed, ":", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		namePart := strings.TrimSpace(parts[1])
+		nameFields := strings.Fields(namePart)
+		if len(nameFields) == 0 {
+			continue
+		}
+		name := strings.TrimSuffix(nameFields[0], ":")
+
+		// Skip loopback
+		if name == "lo" {
+			continue
+		}
+
+		// Extract MTU
+		mtu := 1500
+		if len(parts) >= 3 {
+			allFields := strings.Fields(parts[2])
+			for k, ff := range allFields {
+				if ff == "mtu" && k+1 < len(allFields) {
+					if val, err := strconv.Atoi(allFields[k+1]); err == nil {
+						mtu = val
+					}
+					break
+				}
+			}
+		}
+
+		// Extract state from angle brackets
+		status := "down"
+		if strings.Contains(trimmed, "UP") && !strings.Contains(trimmed, "DOWN") {
+			status = "up"
+		} else if strings.Contains(trimmed, "LOWER_UP") {
+			status = "up"
+		}
+
+		// Extract MAC from next line if available
+		mac := ""
+		if i+1 < len(lines) {
+			nextFields := strings.Fields(lines[i+1])
+			for j, f := range nextFields {
+				if f == "link/ether" && j+1 < len(nextFields) {
+					mac = nextFields[j+1]
+					break
+				}
+				_ = j
+			}
+		}
+
+		rx := "0 B"
+		tx := "0 B"
+		if stats, ok := rxTxMap[name]; ok {
+			rx = stats[0]
+			tx = stats[1]
+		}
+
+		interfaces = append(interfaces, v1.InterfaceItem{
+			Name:   name,
+			IP:     ipMap[name],
+			MAC:    mac,
+			Status: status,
+			RX:     rx,
+			TX:     tx,
+			MTU:    mtu,
+		})
+	}
+	return interfaces
+}
+
+// formatBytes converts bytes to human-readable string.
+func formatBytes(bytes uint64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	}
+	if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+	return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
 }
 
 // ListNetworkRoutes 获取主机路由表信息。
