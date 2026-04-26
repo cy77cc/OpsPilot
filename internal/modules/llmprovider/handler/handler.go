@@ -584,19 +584,18 @@ func maskedSecret(cipherText string) string {
 	if strings.TrimSpace(cipherText) == "" {
 		return ""
 	}
-	plain, err := utils.DecryptText(cipherText, strings.TrimSpace(config.CFG.Security.EncryptionKey))
-	if err != nil || plain == "" {
-		return "****"
-	}
-	switch n := len(plain); {
+	// Mask the ciphertext directly without decryption to avoid
+	// exposing plaintext keys in the read path.
+	s := strings.TrimSpace(cipherText)
+	switch n := len(s); {
 	case n <= 1:
 		return "****"
 	case n <= 4:
-		return plain[:1] + "****"
+		return s[:1] + "****"
 	case n <= 8:
-		return plain[:2] + "****" + plain[n-1:]
+		return s[:2] + "****" + s[n-1:]
 	default:
-		return plain[:4] + "****" + plain[n-4:]
+		return s[:4] + "****" + s[n-4:]
 	}
 }
 

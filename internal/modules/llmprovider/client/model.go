@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +20,6 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	llmdao "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/dao"
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/redis/go-redis/v9"
 	arkruntime "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"golang.org/x/sync/semaphore"
@@ -168,7 +166,7 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 		}
 
 		if provider != nil {
-			cacheKey := fmt.Sprintf("%d:%v", provider.ID, opts)
+			cacheKey := fmt.Sprintf("%d:%d:%t:%f", provider.ID, opts.Timeout.Milliseconds(), opts.Thinking, opts.Temp)
 			if val, ok := modelCache.Load(cacheKey); ok {
 				return val.(einomodel.ToolCallingChatModel), nil
 			}
@@ -285,35 +283,16 @@ func CheckModelHealth(ctx context.Context, db *gorm.DB) error {
 }
 
 func dbFromRuntimeContext(ctx context.Context) *gorm.DB {
-	services := runtimectx.Services(ctx)
-	if services == nil {
-		return nil
+	if extractor := dbExtractor.Load(); extractor != nil {
+		return extractor(ctx)
 	}
-
-	value := reflect.ValueOf(services)
-	if !value.IsValid() {
-		return nil
-	}
-	if value.Kind() == reflect.Interface {
-		if value.IsNil() {
-			return nil
-		}
-		value = value.Elem()
-	}
-	if value.Kind() == reflect.Pointer {
-		if value.IsNil() {
-			return nil
-		}
-		value = value.Elem()
-	}
-	if value.Kind() != reflect.Struct {
-		return nil
-	}
-
-	field := value.FieldByName("DB")
-	if !field.IsValid() || !field.CanInterface() {
-		return nil
-	}
-	db, _ := field.Interface().(*gorm.DB)
-	return db
+	return nil
 }
+
+// SetDBExtractor registers a function to extract *gorm.DB from context.
+// Call this once during application initialization.
+func SetDBExtractor(fn func(context.Context) *gorm.DB) {
+	dbExtractor.Store(fn)
+}
+
+var dbExtractor atomic.Pointer[func(context.Context) *gorm.DB]

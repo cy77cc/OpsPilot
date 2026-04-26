@@ -203,7 +203,7 @@ func (o *ApprovalOrchestrator) Evaluate(ctx context.Context, toolName string, ar
 
 	argsMap := map[string]any{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(args)), &argsMap); err != nil {
-		argsMap = map[string]any{}
+		argsMap = map[string]any{"_parse_error": true}
 	}
 
 	policies, err := o.listPolicies(ctx, toolName)

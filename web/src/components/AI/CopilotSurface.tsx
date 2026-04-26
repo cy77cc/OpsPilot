@@ -26,6 +26,20 @@ import {
 import { normalizeMarkdownContent } from './markdownContent';
 import { PlatformChatProvider } from './providers';
 import type { AssistantReplyRuntime, ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
+import type { AIMessage } from '../../features/ai/api/shared';
+import type { AISession } from '../../features/ai/api/shared';
+
+interface XChatItemExtraInfo {
+  messageId?: string;
+  runtime?: AssistantReplyRuntime;
+  message?: AIMessage;
+}
+
+interface XChatItem {
+  key: string;
+  label: string;
+  extraInfo?: XChatItemExtraInfo;
+}
 import { useCopilotSessionReducer } from './hooks/useCopilotSessionReducer';
 import { useCopilotStream } from './hooks/useCopilotStream';
 import {
@@ -117,7 +131,7 @@ function toConversationItems(items: ConversationSummary[]): ConversationItemType
   }));
 }
 
-function getConversationLabelFromSummary(item: any): string {
+function getConversationLabelFromSummary(item: { title?: string; last_message?: { content?: string } }): string {
   const title = typeof item?.title === 'string' ? item.title.trim() : '';
   if (title) {
     return title;
@@ -294,11 +308,11 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       const session = response?.data;
       const messages = Array.isArray(session?.messages) ? session.messages : [];
       return Promise.all(messages.map(async (message) => {
-        const hydrated = await hydrateAssistantHistoryFromProjection(message as any);
+        const hydrated = await hydrateAssistantHistoryFromProjection(message);
         return {
           message: {
             ...hydrated,
-            runtime: buildHistoricalPendingRuntime(hydrated.runtime, message as any),
+            runtime: buildHistoricalPendingRuntime(hydrated.runtime, message),
           },
           status: mapHistoryMessageStatus(message.status),
         };
@@ -367,9 +381,10 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                 icon={<CopyOutlined />}
                 aria-label="复制回复"
                 onClick={() => {
+                  const msg = (item as XChatItem).extraInfo?.message;
                   void copyAssistantReplyToClipboard(
-                    (item as any).message?.content || '',
-                    (item as any).message?.runtime,
+                    msg?.content || '',
+                    (item as XChatItem).extraInfo?.runtime,
                   );
                 }}
               />
@@ -396,12 +411,12 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           },
         },
         contentRender: (content: string, info) => (
-          <div data-message-anchor={(item as any).extraInfo?.messageId}>
+          <div data-message-anchor={(item as XChatItem).extraInfo?.messageId}>
             <AssistantReply
               content={content}
-              runtime={(info as any).extraInfo?.runtime}
+              runtime={(info as { extraInfo?: XChatItemExtraInfo }).extraInfo?.runtime}
               status={info.status}
-              onLoadStepContent={buildStepContentLoader((info as any).extraInfo?.runtime)}
+              onLoadStepContent={buildStepContentLoader((info as { extraInfo?: XChatItemExtraInfo }).extraInfo?.runtime)}
             />
           </div>
         ),
@@ -430,7 +445,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       }
 
       try {
-        const sessionItems: ConversationSummary[] = ((sessionsResult as any)?.data || []).map((item: any) => ({
+        const sessionItems: ConversationSummary[] = ((sessionsResult?.data as AISession[]) || []).map((item) => ({
           key: item.id,
           label: getConversationLabelFromSummary(item),
           scene: item.scene || scene,

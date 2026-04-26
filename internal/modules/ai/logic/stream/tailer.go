@@ -47,7 +47,7 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return nil
+		return err
 	}
 	if t == nil || t.RunEventDAO == nil || strings.TrimSpace(runID) == "" {
 		return nil
@@ -58,9 +58,9 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 	cursor := strings.TrimSpace(lastEventID)
 	emitted := false
 
-	for {
+		for {
 		if err := ctx.Err(); err != nil {
-			return nil
+			return err
 		}
 		events, err := t.RunEventDAO.ListAfterEventID(ctx, runID, cursor)
 		if err != nil {
@@ -121,7 +121,7 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil
+			return ctx.Err()
 		case <-timer.C:
 		}
 	}

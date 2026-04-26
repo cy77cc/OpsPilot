@@ -3,6 +3,7 @@ import { createEmptyAssistantRuntime } from './replyRuntime';
 import { extractPendingRunFromMessage } from './providers/runReconnectController';
 import { upsertPendingRun } from './pendingRunStore';
 import type { AssistantReplyRuntime, AssistantReplyStatusKind } from './types';
+import type { AIMessage } from '../../features/ai/api/shared';
 
 export const NEW_SESSION_KEY = '__new__';
 
@@ -38,7 +39,7 @@ export function mapHistoryMessageStatus(status?: string): 'success' | 'error' | 
 
 export function buildHistoricalPendingRuntime(
   runtime: AssistantReplyRuntime | undefined,
-  message: Record<string, any>,
+  message: AIMessage,
 ): AssistantReplyRuntime | undefined {
   const pendingRun = extractPendingRunFromMessage(message);
   if (!pendingRun) {

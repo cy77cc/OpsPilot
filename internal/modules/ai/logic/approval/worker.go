@@ -266,7 +266,7 @@ func (w *Worker) processEvent(ctx context.Context, e *ai.AIApprovalOutboxEvent) 
 	}
 	now := w.now()
 	if task.ExpiresAt != nil && task.ExpiresAt.Before(now) {
-		return w.expireAndFinalize(ctx, task, now)
+		return w.expireAndFinalize(ctx, task)
 	}
 	switch task.Status {
 	case "approved":
@@ -295,8 +295,7 @@ func (w *Worker) retryBackoff(retryCount int) time.Duration {
 	return delay
 }
 
-func (w *Worker) expireAndFinalize(ctx context.Context, task *ai.AIApprovalTask, now time.Time) error {
-	_ = now
+func (w *Worker) expireAndFinalize(ctx context.Context, task *ai.AIApprovalTask) error {
 	if w == nil || w.logic == nil || w.logic.SvcCtx == nil || w.logic.SvcCtx.DB == nil {
 		return fmt.Errorf("approval worker not initialized")
 	}

@@ -543,11 +543,19 @@ func classifyHostCommand(cmd string) (class string, risk string, blocked bool) {
 		"dd if=", "iptables -f", "userdel", "chown -r /", "chmod -r 777 /",
 	}
 	for _, keyword := range dangerous {
-		if strings.Contains(trimmed, keyword) {
+		// Normalize both sides: collapse multiple spaces to single space before comparison.
+		normalized := normalizeWhitespace(trimmed)
+		if strings.Contains(normalized, normalizeWhitespace(keyword)) {
 			return "dangerous", "high", true
 		}
 	}
 	return "service_control", "medium", false
+}
+
+// normalizeWhitespace collapses multiple consecutive spaces to a single space.
+func normalizeWhitespace(s string) string {
+	fields := strings.Fields(s)
+	return strings.Join(fields, " ")
 }
 
 func isReadonlyHostCommand(cmd string) bool {

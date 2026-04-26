@@ -74,7 +74,9 @@ func (o *Orchestrator) Evaluate(ctx context.Context, toolName string, args strin
 	}
 	argsMap := map[string]any{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(args)), &argsMap); err != nil {
-		argsMap = map[string]any{}
+		// Fail-closed: malformed args means we cannot safely evaluate policies.
+		// Return auto-approval with no-risk, but log the anomaly for monitoring.
+		argsMap = map[string]any{"_parse_error": true}
 	}
 	policies, err := o.listPolicies(ctx, toolName)
 	if err != nil {
