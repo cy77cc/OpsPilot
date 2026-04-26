@@ -180,15 +180,29 @@ func (h *Handler) Metrics(c *gin.Context) {
 		if s.SummaryJSON != "" {
 			_ = json.Unmarshal([]byte(s.SummaryJSON), &extra)
 		}
+		// Read disk I/O and network I/O from SummaryJSON if available
+		diskIo := 0.0
+		netIn := 0.0
+		netOut := 0.0
+		if val, ok := extra["disk_io_iops"].(float64); ok {
+			diskIo = val
+		}
+		if val, ok := extra["net_rx_bytes"].(float64); ok {
+			netIn = val
+		}
+		if val, ok := extra["net_tx_bytes"].(float64); ok {
+			netOut = val
+		}
+
 		rows = append(rows, gin.H{
 			"id":            s.ID,
 			"time":          s.CheckedAt.Format("15:04"),
 			"cpu":           int(cpuPct),
 			"memory":        int(memoryPct),
 			"disk":          int(s.DiskUsedPct),
-			"diskIo":        0, // TODO: Collect from agent
-			"netIn":         0, // TODO: Collect from agent
-			"netOut":        0, // TODO: Collect from agent
+			"diskIo":        diskIo,
+			"netIn":         netIn,
+			"netOut":        netOut,
 			"network":       0,
 			"latency_ms":    s.LatencyMS,
 			"health_state":  s.State,
