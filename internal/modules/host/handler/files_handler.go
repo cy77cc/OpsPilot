@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -20,13 +21,6 @@ import (
 const maxInlineReadBytes = 1024 * 1024 // 1MB
 
 // normalizeRemotePath 规范化远程路径。
-//
-// 处理空路径、去除首尾空格、清理路径中的 . 和 ..。
-//
-// 参数:
-//   - p: 原始路径
-//
-// 返回: 规范化后的路径
 func normalizeRemotePath(p string) string {
 	trimmed := strings.TrimSpace(p)
 	if trimmed == "" {
@@ -37,6 +31,22 @@ func normalizeRemotePath(p string) string {
 		return "."
 	}
 	return cleaned
+}
+
+// validateSafePath checks that the cleaned path does not escape the filesystem root.
+func validateSafePath(p string) bool {
+	cleaned := path.Clean(p)
+	return !strings.HasPrefix(cleaned, "..") && !path.IsAbs(cleaned) || path.Clean(cleaned) == "."
+}
+
+// validateSafePathWithBase checks that the cleaned path is under the given base directory.
+func validateSafePathWithBase(base, p string) bool {
+	cleaned := path.Clean(p)
+	cleanBase := path.Clean(base)
+	if cleaned == cleanBase {
+		return true
+	}
+	return strings.HasPrefix(cleaned, cleanBase+"/")
 }
 
 // withSFTP 使用 SFTP 客户端执行操作。
@@ -102,6 +112,10 @@ func (h *Handler) ListFiles(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(c.Query("path"))
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		items, err := cli.ReadDir(target)
 		if err != nil {
@@ -150,6 +164,10 @@ func (h *Handler) ReadFileContent(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(c.Query("path"))
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		f, err := cli.Open(target)
 		if err != nil {
@@ -209,6 +227,10 @@ func (h *Handler) WriteFileContent(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(req.Path)
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		f, err := cli.Create(target)
 		if err != nil {
@@ -251,6 +273,10 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 	dirPath := normalizeRemotePath(c.Query("path"))
+	if !validateSafePath(dirPath) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		httpx.Fail(c, xcode.ParamError, "file is required")
@@ -304,6 +330,10 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(c.Query("path"))
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		f, err := cli.Open(target)
 		if err != nil {
@@ -311,7 +341,13 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		}
 		defer f.Close()
 		name := path.Base(target)
-		c.Header("Content-Disposition", `attachment; filename="`+name+`"`)
+		safeName := strings.Map(func(r rune) rune {
+			if r >= 0x20 && r < 0x7F && r != '"' && r != '\\' && r != ';' && r != '\r' && r != '\n' {
+				return r
+			}
+			return '_'
+		}, name)
+		c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, safeName))
 		c.Header("Content-Type", "application/octet-stream")
 		_, _ = io.Copy(c.Writer, f)
 		return nil
@@ -352,6 +388,10 @@ func (h *Handler) MakeDir(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(req.Path)
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		if err := cli.MkdirAll(target); err != nil {
 			return err
@@ -397,6 +437,10 @@ func (h *Handler) RenamePath(c *gin.Context) {
 	}
 	oldPath := normalizeRemotePath(req.OldPath)
 	newPath := normalizeRemotePath(req.NewPath)
+	if !validateSafePath(oldPath) || !validateSafePath(newPath) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		if err := cli.Rename(oldPath, newPath); err != nil {
 			return err
@@ -433,6 +477,10 @@ func (h *Handler) DeletePath(c *gin.Context) {
 		return
 	}
 	target := normalizeRemotePath(c.Query("path"))
+	if !validateSafePath(target) {
+		httpx.Fail(c, xcode.ParamError, "invalid path: path traversal not allowed")
+		return
+	}
 	err := h.withSFTP(c, hostID, func(cli *sftp.Client) error {
 		info, err := cli.Stat(target)
 		if err != nil {
