@@ -28,11 +28,22 @@ const mockApi = vi.hoisted(() => ({
     updateHost: vi.fn(),
     updateCredentials: vi.fn(),
     sshCheck: vi.fn(),
+    getHostProcesses: vi.fn(),
+    getHostServices: vi.fn(),
+    getHostDisks: vi.fn(),
+    getHostNetworkInterfaces: vi.fn(),
+    getHostPackages: vi.fn(),
+    getHostAlarms: vi.fn(),
+    getHostAudits: vi.fn(),
   },
 }));
 
 vi.mock('../../../api', () => ({
   Api: mockApi,
+}));
+
+vi.mock('../../../api/modules/hosts', () => ({
+  hostApi: mockApi.hosts,
 }));
 
 // Mock ResizeObserver which is needed by recharts
@@ -48,6 +59,13 @@ describe('HostDetailPage New Design', () => {
     mockApi.hosts.getHostDetail.mockResolvedValue({ data: mockHost });
     mockApi.hosts.getHostMetrics.mockResolvedValue({ data: [] });
     mockApi.hosts.listSSHKeys.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostProcesses.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostServices.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostDisks.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostNetworkInterfaces.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostPackages.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostAlarms.mockResolvedValue({ data: [] });
+    mockApi.hosts.getHostAudits.mockResolvedValue({ data: [] });
   });
 
   const renderPage = () => {
@@ -66,7 +84,7 @@ describe('HostDetailPage New Design', () => {
       expect(screen.getAllByText('test-host').length).toBeGreaterThan(0);
       expect(screen.getByText('运行中')).toBeInTheDocument();
       expect(screen.getAllByText('192.168.1.10').length).toBeGreaterThan(0);
-      expect(screen.getByText('返回主机列表')).toBeInTheDocument();
+      expect(screen.getByLabelText('返回主机列表')).toBeInTheDocument();
     });
   });
 
@@ -105,7 +123,7 @@ describe('HostDetailPage New Design', () => {
     });
   });
 
-  it('switches to other tabs and shows placeholder', async () => {
+  it('switches to other tabs and shows content', async () => {
     renderPage();
     await waitFor(() => {
       const monitorTabs = screen.getAllByText('监控');
@@ -115,6 +133,6 @@ describe('HostDetailPage New Design', () => {
         fireEvent.click(monitorTab);
       }
     });
-    expect(await screen.findByText('监控 模块正在开发中')).toBeInTheDocument();
+    expect(await screen.findByText('详细监控指标')).toBeInTheDocument();
   });
 });

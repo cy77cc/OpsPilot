@@ -1108,4 +1108,36 @@ export const hostApi = {
   async kvmProvision(hostId: string, payload: any): Promise<ApiResponse<any>> {
     return apiService.post(`/hosts/virtualization/kvm/hosts/${hostId}/provision`, payload);
   },
+
+  async getHostProcesses(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/processes`);
+  },
+
+  async killProcess(id: string, pid: number): Promise<ApiResponse<void>> {
+    return apiService.post(`/hosts/${id}/processes/${pid}/kill`);
+  },
+
+  async getHostServices(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/services`);
+  },
+
+  async serviceAction(id: string, name: string, action: string): Promise<ApiResponse<void>> {
+    return apiService.post(`/hosts/${id}/services/${name}/actions`, { action });
+  },
+
+  async getHostDisks(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/disks`);
+  },
+
+  async getHostNetworkInterfaces(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/network-interfaces`);
+  },
+
+  async getHostPackages(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/packages`);
+  },
+
+  async getHostAlarms(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/alarms`);
+  },
 };

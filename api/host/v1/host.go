@@ -293,3 +293,80 @@ type KVMProvisionReq struct {
 	Password      string  `json:"password"`
 	SSHKeyID      *uint64 `json:"ssh_key_id"`
 }
+
+// ProcessItem represents a single system process.
+type ProcessItem struct {
+	PID     int     `json:"pid"`
+	User    string  `json:"user"`
+	CPU     float64 `json:"cpu"`
+	Memory  float64 `json:"memory"`
+	VSZ     uint64  `json:"vsz"`
+	RSS     uint64  `json:"rss"`
+	State   string  `json:"state"`
+	Start   string  `json:"start"`
+	Time    string  `json:"time"`
+	Command string  `json:"command"`
+}
+
+// ServiceItem represents a system service.
+type ServiceItem struct {
+	Name        string `json:"name"`
+	Status      string `json:"status"`  // active, inactive, failed
+	Startup     string `json:"startup"` // enabled, disabled, static
+	Description string `json:"description"`
+}
+
+// PartitionItem represents a disk partition/mount point.
+type PartitionItem struct {
+	Filesystem string  `json:"filesystem"`
+	Type       string  `json:"type"`
+	Size       string  `json:"size"`
+	Used       string  `json:"used"`
+	Available  string  `json:"available"`
+	UsagePct   float64 `json:"usage_pct"`
+	Mounted    string  `json:"mounted"`
+}
+
+// InterfaceItem represents a network interface.
+type InterfaceItem struct {
+	Name   string `json:"name"`
+	IP     string `json:"ip"`
+	MAC    string `json:"mac"`
+	Status string `json:"status"` // up, down
+	RX     string `json:"rx"`
+	TX     string `json:"tx"`
+	MTU    int    `json:"mtu"`
+}
+
+// PackageItem represents an installed software package.
+type PackageItem struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Arch        string `json:"arch"`
+	Status      string `json:"status"` // installed, upgradable
+	Description string `json:"description"`
+}
+
+// AlarmHistoryItem represents a host alert history record.
+type AlarmHistoryItem struct {
+	ID         string     `json:"id"`
+	Level      string     `json:"level"` // critical, warning, info
+	Title      string     `json:"title"`
+	Status     string     `json:"status"` // active, resolved
+	StartedAt  time.Time  `json:"started_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	Duration   string     `json:"duration"`
+	Value      string     `json:"value"`
+}
+
+// AuditLogItem represents an operation log record for a host.
+type AuditLogItem struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Content   string    `json:"content"`
+	Operator  string    `json:"operator"`
+	Time      time.Time `json:"time"`
+	Status    string    `json:"status"` // success, failed
+	SourceIP  string    `json:"source_ip"`
+}
+

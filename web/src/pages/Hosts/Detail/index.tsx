@@ -27,6 +27,15 @@ import { GuidedFormItem } from '../../../components/FormGuidance';
 import HostDetailHeader from './components/HostDetailHeader';
 import HostDetailTabs from './components/HostDetailTabs';
 import OverviewTab from './tabs/OverviewTab';
+import MonitorTab from './tabs/MonitorTab';
+import ProcessTab from './tabs/ProcessTab';
+import ServiceTab from './tabs/ServiceTab';
+import DiskTab from './tabs/DiskTab';
+import NetworkTab from './tabs/NetworkTab';
+import PackageTab from './tabs/PackageTab';
+import ConfigTab from './tabs/ConfigTab';
+import AlarmTab from './tabs/AlarmTab';
+import OperationLogTab from './tabs/OperationLogTab';
 import PlaceholderTab from './tabs/PlaceholderTab';
 
 type HostEditFormValues = {
@@ -250,15 +259,15 @@ const HostDetailPage: React.FC = () => {
         onTabChange={(key) => setSearchParams({ tab: key })}
       />
     ),
-    monitor: <PlaceholderTab name="监控" />,
-    process: <PlaceholderTab name="进程" />,
-    service: <PlaceholderTab name="服务" />,
-    disk: <PlaceholderTab name="磁盘" />,
-    network: <PlaceholderTab name="网络" />,
-    packages: <PlaceholderTab name="软件包" />,
-    config: <PlaceholderTab name="配置" />,
-    alarm: <PlaceholderTab name="告警" />,
-    logs: <PlaceholderTab name="操作记录" />,
+    monitor: <MonitorTab hostId={id} />,
+    process: <ProcessTab hostId={id} />,
+    service: <ServiceTab hostId={id} />,
+    disk: <DiskTab hostId={id} />,
+    network: <NetworkTab hostId={id} />,
+    packages: <PackageTab hostId={id} />,
+    config: <ConfigTab hostId={id} />,
+    alarm: <AlarmTab hostId={id} />,
+    logs: <OperationLogTab hostId={id} />,
   };
 
   if (loading && !host) {

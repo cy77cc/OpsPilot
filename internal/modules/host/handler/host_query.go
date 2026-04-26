@@ -182,9 +182,13 @@ func (h *Handler) Metrics(c *gin.Context) {
 		}
 		rows = append(rows, gin.H{
 			"id":            s.ID,
+			"time":          s.CheckedAt.Format("15:04"),
 			"cpu":           int(cpuPct),
 			"memory":        int(memoryPct),
 			"disk":          int(s.DiskUsedPct),
+			"diskIo":        0, // TODO: Collect from agent
+			"netIn":         0, // TODO: Collect from agent
+			"netOut":        0, // TODO: Collect from agent
 			"network":       0,
 			"latency_ms":    s.LatencyMS,
 			"health_state":  s.State,
@@ -227,7 +231,7 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 // Audits 获取主机审计日志。
 //
 // @Summary 获取主机审计日志
-// @Description 获取指定主机的操作审计记录（MVP 阶段返回模拟数据）
+// @Description 获取指定主机的操作审计记录
 // @Tags 主机管理
 // @Accept json
 // @Produce json
@@ -253,10 +257,13 @@ func (h *Handler) Audits(c *gin.Context) {
 	rows := make([]gin.H, 0, len(events))
 	for _, event := range events {
 		rows = append(rows, gin.H{
-			"id":         event.ID,
-			"action":     event.Type,
+			"id":         strconv.FormatUint(uint64(event.ID), 10),
+			"type":       event.Type,
+			"content":    event.Message,
 			"operator":   "system",
-			"detail":     event.Message,
+			"time":       event.CreatedAt,
+			"status":     "success",
+			"source_ip":  "-",
 			"created_at": event.CreatedAt,
 		})
 	}

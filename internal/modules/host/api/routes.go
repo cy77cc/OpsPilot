@@ -91,6 +91,16 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.DELETE("/:id/tags/:tag", h.RemoveTag)
 		g.GET("/:id/metrics", h.Metrics)
 		g.GET("/:id/audits", h.Audits)
+
+		// 资源详情 (New)
+		g.GET("/:id/processes", h.ListProcesses)
+		g.POST("/:id/processes/:pid/kill", h.KillProcess)
+		g.GET("/:id/services", h.ListServices)
+		g.POST("/:id/services/:name/actions", h.ServiceAction)
+		g.GET("/:id/disks", h.ListDisks)
+		g.GET("/:id/network-interfaces", h.ListNetworkInterfaces)
+		g.GET("/:id/packages", h.ListPackages)
+		g.GET("/:id/alarms", h.ListAlarms)
 	}
 
 	// SSH 密钥管理路由
