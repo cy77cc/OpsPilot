@@ -51,6 +51,8 @@ const HostDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [host, setHost] = useState<Host | null>(null);
   const [metrics, setMetrics] = useState<HostMetricPoint[]>([]);
+  const [headerStickyHeight, setHeaderStickyHeight] = useState(0);
+  const headerStickyRef = React.useRef<HTMLDivElement | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -108,6 +110,25 @@ const HostDetailPage: React.FC = () => {
     if (!editOpen) return;
     void loadSSHKeys();
   }, [editOpen, loadSSHKeys]);
+
+  useEffect(() => {
+    const element = headerStickyRef.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      setHeaderStickyHeight(Math.ceil(element.getBoundingClientRect().height));
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
 
   const handleAction = (action: string) => {
     if (action === 'terminal') {
@@ -267,13 +288,25 @@ const HostDetailPage: React.FC = () => {
 
   return (
     <div className="bg-gray-50 min-h-full -m-6">
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+      <div ref={headerStickyRef} className="sticky top-0 z-20 bg-white border-b border-gray-200 px-6 py-2.5 shadow-sm">
         <HostDetailHeader 
           host={host} 
           onEdit={openEditModal} 
           onTerminal={() => navigate(`/resources/hosts/${id}/terminal`)} 
           onHealthCheck={runHealthCheck}
           onAction={handleAction}
+        />
+      </div>
+
+      <div
+        className="sticky z-10 bg-gray-50/95 px-6 backdrop-blur"
+        style={{ top: headerStickyHeight }}
+      >
+        <HostDetailTabs
+          activeTab={activeTab}
+          onChange={(key) => setSearchParams({ tab: key })}
+          tabContent={tabContent}
+          navOnly
         />
       </div>
       
@@ -287,12 +320,8 @@ const HostDetailPage: React.FC = () => {
             className="mb-4"
           />
         )}
-        
-        <HostDetailTabs 
-          activeTab={activeTab} 
-          onChange={(key) => setSearchParams({ tab: key })} 
-          tabContent={tabContent}
-        />
+
+        {tabContent[activeTab] || <div className="p-8 text-center text-gray-400">正在开发中...</div>}
       </div>
 
       <Modal

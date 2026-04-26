@@ -6,12 +6,14 @@ interface HostDetailTabsProps {
   activeTab: string;
   onChange: (key: string) => void;
   tabContent: Record<string, React.ReactNode>;
+  navOnly?: boolean;
 }
 
 const HostDetailTabs: React.FC<HostDetailTabsProps> = ({
   activeTab,
   onChange,
   tabContent,
+  navOnly = false,
 }) => {
   const items: TabsProps['items'] = [
     { key: 'overview', label: '概览' },
@@ -26,7 +28,7 @@ const HostDetailTabs: React.FC<HostDetailTabsProps> = ({
     { key: 'logs', label: '操作记录' },
   ].map(item => ({
     ...item,
-    children: tabContent[item.key] || <div className="p-8 text-center text-gray-400">正在开发中...</div>
+    children: navOnly ? undefined : (tabContent[item.key] || <div className="p-8 text-center text-gray-400">正在开发中...</div>),
   }));
 
   return (
@@ -34,7 +36,9 @@ const HostDetailTabs: React.FC<HostDetailTabsProps> = ({
       activeKey={activeTab} 
       onChange={onChange} 
       items={items}
-      className="host-detail-tabs"
+      className={navOnly
+        ? 'host-detail-tabs host-detail-tabs-nav-only mb-0 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-nav]:!before:border-b-0 [&_.ant-tabs-nav-wrap]:py-0.5 [&_.ant-tabs-tab]:!mx-0 [&_.ant-tabs-tab]:!px-3 [&_.ant-tabs-tab]:!py-2 [&_.ant-tabs-tab-btn]:text-slate-600 [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:!text-blue-600 [&_.ant-tabs-ink-bar]:!bg-blue-600 [&_.ant-tabs-content-holder]:hidden'
+        : 'host-detail-tabs'}
       destroyInactiveTabPane={false}
     />
   );
