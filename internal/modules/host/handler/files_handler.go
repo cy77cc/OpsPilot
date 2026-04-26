@@ -36,17 +36,10 @@ func normalizeRemotePath(p string) string {
 // validateSafePath checks that the cleaned path does not escape the filesystem root.
 func validateSafePath(p string) bool {
 	cleaned := path.Clean(p)
-	return !strings.HasPrefix(cleaned, "..") && !path.IsAbs(cleaned) || path.Clean(cleaned) == "."
-}
-
-// validateSafePathWithBase checks that the cleaned path is under the given base directory.
-func validateSafePathWithBase(base, p string) bool {
-	cleaned := path.Clean(p)
-	cleanBase := path.Clean(base)
-	if cleaned == cleanBase {
+	if cleaned == "." {
 		return true
 	}
-	return strings.HasPrefix(cleaned, cleanBase+"/")
+	return !strings.HasPrefix(cleaned, "..") && !path.IsAbs(cleaned)
 }
 
 // withSFTP 使用 SFTP 客户端执行操作。
