@@ -77,6 +77,15 @@ func (h *Handler) Create(c *gin.Context) {
 	httpx.OK(c, node)
 }
 
+// UpdateReq defines allowed fields for host updates.
+type UpdateReq struct {
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Role        string  `json:"role"`
+	Status      string  `json:"status"`
+	Labels      *string `json:"labels"` // nil means don't update
+}
+
 // Update 更新主机信息。
 //
 // @Summary 更新主机
@@ -86,7 +95,7 @@ func (h *Handler) Create(c *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Param id path int true "主机 ID"
-// @Param body body map[string]interface{} true "更新字段"
+// @Param body body UpdateReq true "更新字段"
 // @Success 200 {object} httpx.Response
 // @Failure 400 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
@@ -101,17 +110,57 @@ func (h *Handler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req map[string]any
+	var req UpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
-	node, err := h.hostService.Update(c.Request.Context(), id, req)
+
+	// Validate status value
+	if req.Status != "" && !isValidHostStatus(req.Status) {
+		httpx.Fail(c, xcode.ParamError, "invalid status: must be online, offline, or maintenance")
+		return
+	}
+
+	// Build update map with only non-empty fields
+	updates := map[string]any{}
+	if req.Name != "" {
+		updates["name"] = req.Name
+	}
+	if req.Description != "" {
+		updates["description"] = req.Description
+	}
+	if req.Role != "" {
+		updates["role"] = req.Role
+	}
+	if req.Status != "" {
+		updates["status"] = req.Status
+	}
+	if req.Labels != nil {
+		updates["labels"] = req.Labels
+	}
+
+	if len(updates) == 0 {
+		httpx.Fail(c, xcode.ParamError, "no valid fields to update")
+		return
+	}
+
+	_, err := h.hostService.Update(c.Request.Context(), id, updates)
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	httpx.OK(c, node)
+	httpx.OK(c, gin.H{"updated_fields": len(updates)})
+}
+
+// isValidHostStatus checks if the status is a valid host status.
+func isValidHostStatus(status string) bool {
+	switch status {
+	case "online", "offline", "maintenance":
+		return true
+	default:
+		return false
+	}
 }
 
 // Delete 删除主机。
