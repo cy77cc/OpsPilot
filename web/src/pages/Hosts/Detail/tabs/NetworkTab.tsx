@@ -3,6 +3,7 @@ import { Card, Table, Tag, Row, Col, Statistic, Tooltip, Spin } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { hostApi } from '../../../../api/modules/hosts';
+import type { MetricsSnapshot } from './MonitorTab';
 
 interface InterfaceItem {
   name: string;
@@ -27,7 +28,7 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
   const [loading, setLoading] = useState(false);
   const [interfaces, setInterfaces] = useState<InterfaceItem[]>([]);
   const [routes, setRoutes] = useState<RouteItem[]>([]);
-  const [metrics, setMetrics] = useState<any>(null);
+  const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {

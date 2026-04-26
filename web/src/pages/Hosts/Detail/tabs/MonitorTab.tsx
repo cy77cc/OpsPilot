@@ -3,9 +3,25 @@ import { Card, Row, Col, Select, DatePicker, Spin } from 'antd';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { hostApi } from '../../../../api/modules/hosts';
 
+export interface MetricsSnapshot {
+  id: number;
+  time: string;
+  cpu: number;
+  memory: number;
+  disk: number;
+  diskIo: number;
+  netIn: number;
+  netOut: number;
+  latency_ms?: number;
+  health_state?: string;
+  error_message?: string;
+  summary?: Record<string, unknown>;
+  created_at?: string;
+}
+
 const { RangePicker } = DatePicker;
 
-const ChartCard: React.FC<{ title: string; data: any[]; dataKey: string; color: string; unit: string; loading?: boolean }> = ({ title, data, dataKey, color, unit, loading }) => (
+const ChartCard: React.FC<{ title: string; data: MetricsSnapshot[]; dataKey: string; color: string; unit: string; loading?: boolean }> = ({ title, data, dataKey, color, unit, loading }) => (
   <Card title={<span className="text-sm font-medium">{title}</span>} size="small" bordered={false} className="bg-white border-none shadow-sm h-full">
     <Spin spinning={loading}>
       <div style={{ height: 200, width: '100%' }}>
@@ -29,7 +45,7 @@ const ChartCard: React.FC<{ title: string; data: any[]; dataKey: string; color: 
 
 const MonitorTab: React.FC<{ hostId: string }> = ({ hostId }) => {
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<MetricsSnapshot[]>([]);
 
   useEffect(() => {
     const fetchMetrics = async () => {

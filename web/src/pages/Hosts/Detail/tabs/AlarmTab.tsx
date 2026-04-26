@@ -88,8 +88,8 @@ const AlarmTab: React.FC<{ hostId: string }> = ({ hostId }) => {
         <div className="flex gap-4 items-center bg-gray-50/50 p-3 rounded-lg">
           <Space size="middle">
             <span className="text-xs text-gray-500">告警级别:</span>
-            <Select 
-              defaultValue="all" 
+            <Select
+              value={levelFilter}
               style={{ width: 120 }} 
               size="small"
               onChange={setLevelFilter}

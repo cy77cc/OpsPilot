@@ -50,8 +50,8 @@ const CredentialsPage: React.FC = () => {
       .getCredentials()
       .then((credsRes) => {
         if (credsRes?.success) {
-          const list = Array.isArray((credsRes.data as any)?.list)
-            ? (credsRes.data as any).list
+          const list = Array.isArray(credsRes.data?.list)
+            ? credsRes.data.list
             : Array.isArray(credsRes.data)
               ? credsRes.data
               : [];
