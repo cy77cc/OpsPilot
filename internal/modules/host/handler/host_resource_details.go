@@ -2,9 +2,12 @@ package handler
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/cy77cc/OpsPilot/api/host/v1"
+	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	monitormodel "github.com/cy77cc/OpsPilot/internal/modules/monitoring/model"
@@ -16,13 +19,76 @@ func (h *Handler) ListProcesses(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH 实时获取
-	mockData := []v1.ProcessItem{
-		{PID: 1, User: "root", CPU: 0.1, Memory: 0.1, VSZ: 168924, RSS: 12456, State: "S", Start: "May12", Time: "0:05", Command: "/sbin/init"},
-		{PID: 1205, User: "nginx", CPU: 0.5, Memory: 2.1, VSZ: 245600, RSS: 45600, State: "S", Start: "10:15", Time: "1:22", Command: "nginx: worker process"},
-		{PID: 3456, User: "root", CPU: 12.5, Memory: 15.4, VSZ: 4567890, RSS: 1234567, State: "R", Start: "14:20", Time: "5:10", Command: "/usr/bin/java -jar opspilot.jar"},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+	node, err := h.hostService.Get(c.Request.Context(), id)
+	if err != nil {
+		httpx.Fail(c, xcode.NotFound, "host not found")
+		return
+	}
+	privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
+		return
+	}
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	if strings.TrimSpace(privateKey) != "" {
+		password = ""
+	}
+	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
+	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return
+		}
+		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	out, err := sshclient.RunCommand(cli, "ps aux --no-headers")
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Sprintf("failed to list processes: %s", out))
+		return
+	}
+
+	processes := parsePsOutput(out)
+	httpx.OK(c, processes)
+}
+
+// parsePsOutput parses `ps aux --no-headers` output into ProcessItem slices.
+func parsePsOutput(out string) []v1.ProcessItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	processes := make([]v1.ProcessItem, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 11 {
+			continue
+		}
+		pid, _ := strconv.Atoi(fields[1])
+		cpu, _ := strconv.ParseFloat(fields[2], 64)
+		mem, _ := strconv.ParseFloat(fields[3], 64)
+		vsz, _ := strconv.ParseUint(fields[4], 10, 64)
+		rss, _ := strconv.ParseUint(fields[5], 10, 64)
+		command := strings.Join(fields[10:], " ")
+		processes = append(processes, v1.ProcessItem{
+			PID:     pid,
+			User:    fields[0],
+			CPU:     cpu,
+			Memory:  mem,
+			VSZ:     vsz,
+			RSS:     rss,
+			State:   fields[7],
+			Start:   fields[8],
+			Time:    fields[9],
+			Command: command,
+		})
+	}
+	return processes
 }
 
 // KillProcess 终止主机进程。
