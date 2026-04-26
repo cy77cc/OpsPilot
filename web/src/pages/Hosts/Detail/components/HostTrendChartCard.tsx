@@ -50,14 +50,14 @@ const HostTrendChartCard: React.FC<HostTrendChartCardProps> = ({ loading }) => {
               tick={{ fontSize: 12, fill: '#999' }} 
             />
             <YAxis 
-              yId="left" 
+              yAxisId="left" 
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 12, fill: '#999' }}
               unit="%" 
             />
             <YAxis 
-              yId="right" 
+              yAxisId="right" 
               orientation="right" 
               axisLine={false} 
               tickLine={false} 
@@ -69,7 +69,7 @@ const HostTrendChartCard: React.FC<HostTrendChartCardProps> = ({ loading }) => {
             />
             <Legend verticalAlign="top" align="right" iconType="circle" />
             <Line
-              yId="left"
+              yAxisId="left"
               type="monotone"
               dataKey="cpu"
               name="CPU 使用率"
@@ -79,7 +79,7 @@ const HostTrendChartCard: React.FC<HostTrendChartCardProps> = ({ loading }) => {
               activeDot={{ r: 4 }}
             />
             <Line
-              yId="left"
+              yAxisId="left"
               type="monotone"
               dataKey="memory"
               name="内存使用率"
@@ -89,7 +89,7 @@ const HostTrendChartCard: React.FC<HostTrendChartCardProps> = ({ loading }) => {
               activeDot={{ r: 4 }}
             />
             <Line
-              yId="right"
+              yAxisId="right"
               type="monotone"
               dataKey="diskIo"
               name="磁盘 I/O"

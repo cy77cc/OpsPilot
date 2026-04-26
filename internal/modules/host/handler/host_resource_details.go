@@ -121,7 +121,7 @@ func (h *Handler) ListAlarms(c *gin.Context) {
 		Limit(100).
 		Find(&alerts).Error
 	if err != nil {
-		httpx.Fail(c, xcode.DBError, err.Error())
+		httpx.Fail(c, xcode.DatabaseError, err.Error())
 		return
 	}
 
