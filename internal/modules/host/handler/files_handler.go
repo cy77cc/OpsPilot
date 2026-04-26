@@ -61,7 +61,11 @@ func (h *Handler) withSFTP(c *gin.Context, hostID uint64, fn func(*sftp.Client) 
 	if err != nil {
 		return err
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		return fmt.Errorf("decrypt password: %w", pwErr)
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}

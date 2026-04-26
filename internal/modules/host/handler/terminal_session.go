@@ -143,7 +143,12 @@ func (h *Handler) CreateTerminalSession(c *gin.Context) {
 		httpx.Fail(c, xcode.ParamError, err.Error())
 		return
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.Fail(c, xcode.ParamError, fmt.Errorf("decrypt password: %w", pwErr).Error())
+		return
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}

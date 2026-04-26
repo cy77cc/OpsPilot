@@ -347,7 +347,15 @@ func (s *HostService) RunHealthCheck(ctx context.Context, hostID uint64, operato
 		_ = s.persistHealthSnapshot(ctx, snapshot, node)
 		return snapshot, nil
 	}
-	password := strings.TrimSpace(s.ResolveNodeSSHPassword(node))
+	password, pwErr := s.ResolveNodeSSHPassword(node)
+	password = strings.TrimSpace(password)
+	if pwErr != nil {
+		snapshot.ErrorMessage = fmt.Sprintf("decrypt password: %v", pwErr)
+		snapshot.State = "critical"
+		snapshot.ConnectivityStatus = "critical"
+		_ = s.persistHealthSnapshot(ctx, snapshot, node)
+		return snapshot, nil
+	}
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -629,32 +637,31 @@ func (s *HostService) ensureSSHPasswordCipher(password string) (string, error) {
 
 // ResolveNodeSSHPassword 在 SSH 使用边界解析主机密码。
 //
-// 返回可用于 SSH 连接的明文密码；对历史明文或解密失败场景返回原值，
-// 以兼容旧数据和错误配置场景。
-func (s *HostService) ResolveNodeSSHPassword(node *model.Node) string {
+// 返回可用于 SSH 连接的明文密码；解密失败时返回错误。
+func (s *HostService) ResolveNodeSSHPassword(node *model.Node) (string, error) {
 	if node == nil {
-		return ""
+		return "", nil
 	}
 	password := strings.TrimSpace(node.SSHPassword)
 	return s.decryptNodeSSHPassword(password)
 }
 
-// decryptNodeSSHPassword 尝试将存储态密码解析为 SSH 可用明文。
+// decryptNodeSSHPassword 将存储态密码解密为 SSH 可用明文。
 //
-// 对历史明文或解密失败场景返回原值，确保兼容旧数据。
-func (s *HostService) decryptNodeSSHPassword(password string) string {
+// 解密失败时返回错误，不再回退到原始密文。
+func (s *HostService) decryptNodeSSHPassword(password string) (string, error) {
 	if strings.TrimSpace(password) == "" {
-		return ""
+		return "", nil
 	}
 	key := strings.TrimSpace(config.CFG.Security.EncryptionKey)
 	if key == "" {
-		return password
+		return "", fmt.Errorf("security.encryption_key is not configured")
 	}
 	plain, err := utils.DecryptText(password, key)
 	if err != nil {
-		return password
+		return "", fmt.Errorf("failed to decrypt SSH password: %w", err)
 	}
-	return plain
+	return plain, nil
 }
 
 // emitMaintenanceLifecycle 发送维护生命周期事件。

@@ -348,7 +348,11 @@ func (s *HostService) applyProbeCredentialTemplate(ctx context.Context, req *Pro
 
 	switch authType {
 	case "password":
-		password := strings.TrimSpace(s.decryptNodeSSHPassword(template.Password))
+		password, pwErr := s.decryptNodeSSHPassword(template.Password)
+		if pwErr != nil {
+			return fmt.Errorf("credential template password decrypt failed: %w", pwErr)
+		}
+		password = strings.TrimSpace(password)
 		if password == "" {
 			return errors.New("credential template password is empty")
 		}

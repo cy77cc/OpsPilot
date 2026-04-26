@@ -33,7 +33,12 @@ func (h *Handler) ListProcesses(c *gin.Context) {
 		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
 		return
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("decrypt password: %w", pwErr).Error())
+		return
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -124,7 +129,12 @@ func (h *Handler) KillProcess(c *gin.Context) {
 		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
 		return
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("decrypt password: %w", pwErr).Error())
+		return
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -658,7 +668,12 @@ func (h *Handler) runSSHCommandOnHost(c *gin.Context, hostID uint64, cmd string)
 		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
 		return "", err
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("decrypt password: %w", pwErr).Error())
+		return "", pwErr
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}

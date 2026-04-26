@@ -47,7 +47,12 @@ func (h *Handler) SSHCheck(c *gin.Context) {
 		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
 		return
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("decrypt password: %w", pwErr).Error())
+		return
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -104,7 +109,12 @@ func (h *Handler) SSHExec(c *gin.Context) {
 		httpx.OK(c, gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1})
 		return
 	}
-	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+	if pwErr != nil {
+		httpx.OK(c, gin.H{"stdout": "", "stderr": fmt.Errorf("decrypt password: %w", pwErr).Error(), "exit_code": 1})
+		return
+	}
+	password = strings.TrimSpace(password)
 	if strings.TrimSpace(privateKey) != "" {
 		password = ""
 	}
@@ -163,7 +173,12 @@ func (h *Handler) BatchExec(c *gin.Context) {
 			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1}
 			continue
 		}
-		password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+		password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+		if pwErr != nil {
+			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": fmt.Errorf("decrypt password: %w", pwErr).Error(), "exit_code": 1}
+			continue
+		}
+		password = strings.TrimSpace(password)
 		if strings.TrimSpace(privateKey) != "" {
 			password = ""
 		}
