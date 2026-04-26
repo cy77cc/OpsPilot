@@ -148,23 +148,70 @@ func (h *Handler) ListServices(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH systemctl list-units
-	mockData := []v1.ServiceItem{
-		{Name: "nginx.service", Status: "active", Startup: "enabled", Description: "The nginx HTTP and reverse proxy server"},
-		{Name: "opspilot-agent.service", Status: "active", Startup: "enabled", Description: "OpsPilot host management agent"},
-		{Name: "postgresql.service", Status: "active", Startup: "enabled", Description: "PostgreSQL database server"},
-		{Name: "redis.service", Status: "failed", Startup: "disabled", Description: "Advanced key-value store"},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+	out, err := h.runSSHCommandOnHost(c, id, "systemctl list-units --type=service --all --no-pager --no-legend")
+	if err != nil {
+		return // error already written
+	}
+	httpx.OK(c, parseSystemctlOutput(out))
 }
 
-// ServiceAction 执行服务操作 (start/stop/restart)。
+// parseSystemctlOutput parses `systemctl list-units --type=service --all --no-pager --no-legend` output.
+func parseSystemctlOutput(out string) []v1.ServiceItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	services := make([]v1.ServiceItem, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		description := ""
+		if len(fields) > 4 {
+			description = strings.Join(fields[4:], " ")
+		}
+		services = append(services, v1.ServiceItem{
+			Name:        fields[0],
+			Status:      fields[2],
+			Startup:     fields[1],
+			Description: description,
+		})
+	}
+	return services
+}
+
+// ServiceAction 执行服务操作 (start/stop/restart/reload/status).
 func (h *Handler) ServiceAction(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:write", "host:execute", "host:*") {
 		return
 	}
-	// TODO: 执行 SSH systemctl 命令
-	httpx.OK(c, "service action triggered")
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	name := c.Param("name")
+	var req struct {
+		Action string `json:"action" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+
+	out, err := h.runSSHCommandOnHost(c, id, fmt.Sprintf("systemctl %s %s", req.Action, name))
+	if err != nil {
+		return // error already written
+	}
+	httpx.OK(c, gin.H{"message": fmt.Sprintf("service %s %s completed", name, req.Action), "output": out})
 }
 
 // ListDisks 获取主机磁盘分区信息。
@@ -275,4 +322,38 @@ func (h *Handler) ListAlarms(c *gin.Context) {
 	}
 
 	httpx.OK(c, resp)
+}
+
+// runSSHCommandOnHost establishes an SSH connection to a host and runs a command.
+func (h *Handler) runSSHCommandOnHost(c *gin.Context, hostID uint64, cmd string) (string, error) {
+	node, err := h.hostService.Get(c.Request.Context(), hostID)
+	if err != nil {
+		httpx.Fail(c, xcode.NotFound, "host not found")
+		return "", err
+	}
+	privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
+		return "", err
+	}
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	if strings.TrimSpace(privateKey) != "" {
+		password = ""
+	}
+	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
+	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return "", err
+		}
+		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
+		return "", err
+	}
+	defer cli.Close()
+
+	out, err := sshclient.RunCommand(cli, cmd)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Sprintf("command failed: %s", out))
+		return "", err
+	}
+	return out, nil
 }
