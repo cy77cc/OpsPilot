@@ -511,12 +511,69 @@ func (h *Handler) ListPackages(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH dpkg -l / rpm -qa
-	mockData := []v1.PackageItem{
-		{Name: "nginx", Version: "1.18.0-6ubuntu1.4", Arch: "amd64", Status: "installed", Description: "high performance web server"},
-		{Name: "openssl", Version: "1.1.1f-1ubuntu2.19", Arch: "amd64", Status: "upgradable", Description: "Secure Sockets Layer toolkit"},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+	node, err := h.hostService.Get(c.Request.Context(), id)
+	if err != nil {
+		httpx.Fail(c, xcode.NotFound, "host not found")
+		return
+	}
+
+	// Determine package manager based on OS
+	cmd := "rpm -qa --queryformat '%{NAME}\\t%{VERSION}\\t%{ARCH}\\n'"
+	if isDebianBased(node.OS) {
+		cmd = "dpkg-query -W --showformat='${Package}\\t${Version}\\t${Architecture}\\t${Status}\\n'"
+	}
+
+	out, err := h.runSSHCommandOnHost(c, id, cmd)
+	if err != nil {
+		return // error already written
+	}
+	httpx.OK(c, parsePackageOutput(out, isDebianBased(node.OS)))
+}
+
+// isDebianBased checks if the OS is Debian/Ubuntu family.
+func isDebianBased(os string) bool {
+	osLower := strings.ToLower(os)
+	return strings.Contains(osLower, "debian") || strings.Contains(osLower, "ubuntu")
+}
+
+// parsePackageOutput parses dpkg or rpm output into PackageItem slices.
+func parsePackageOutput(out string, isDebian bool) []v1.PackageItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	packages := make([]v1.PackageItem, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 {
+			continue
+		}
+		item := v1.PackageItem{
+			Name:    fields[0],
+			Version: fields[1],
+			Arch:    fields[2],
+			Status:  "installed",
+		}
+		if isDebian && len(fields) >= 4 {
+			if strings.Contains(fields[3], "install ok installed") {
+				item.Status = "installed"
+			} else if strings.Contains(fields[3], "hold") {
+				item.Status = "hold"
+			} else {
+				item.Status = fields[3]
+			}
+		}
+		packages = append(packages, item)
+	}
+	return packages
 }
 
 // ListAlarms 获取主机告警历史。
