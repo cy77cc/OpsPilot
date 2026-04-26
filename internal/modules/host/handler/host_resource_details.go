@@ -443,10 +443,10 @@ func parseRouteOutput(out string) []v1.RouteItem {
 			continue
 		}
 		item := v1.RouteItem{
-			Gateway:     "0.0.0.0",
-			Mask:        "255.255.255.255",
-			Flags:       "U",
-			Metric:      0,
+			Gateway: "0.0.0.0",
+			Mask:    "255.255.255.255",
+			Flags:   "U",
+			Metric:  0,
 		}
 		fields := strings.Fields(line)
 
