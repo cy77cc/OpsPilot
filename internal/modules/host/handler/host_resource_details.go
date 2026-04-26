@@ -644,15 +644,6 @@ func (h *Handler) ListAlarms(c *gin.Context) {
 		})
 	}
 
-	// 如果数据库没数据，提供一些 mock 展示
-	if len(resp) == 0 {
-		now := time.Now()
-		resp = []v1.AlarmHistoryItem{
-			{ID: "m1", Level: "warning", Title: "磁盘使用率过高", Status: "resolved", StartedAt: now.Add(-1 * time.Hour), Duration: "45m", Value: "85%"},
-			{ID: "m2", Level: "critical", Title: "内存使用率超过 90%", Status: "resolved", StartedAt: now.Add(-2 * time.Hour), Duration: "18m", Value: "92%"},
-		}
-	}
-
 	httpx.OK(c, resp)
 }
 

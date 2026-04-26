@@ -492,6 +492,7 @@ func (h *Handler) UsageTrend(c *gin.Context) {
 	if err := h.svcCtx.DB.WithContext(c.Request.Context()).
 		Where("host_id IN ? AND checked_at >= ?", hostIDs, start).
 		Order("checked_at ASC").
+		Limit(10000).
 		Find(&snapshots).Error; err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
