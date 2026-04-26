@@ -4,6 +4,8 @@ package handler
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
@@ -12,6 +14,14 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	"github.com/gin-gonic/gin"
+)
+
+// execRateLimiter tracks per-user SSH exec rate limiting.
+// Key: user ID, Value: last exec timestamp.
+var (
+	execMu          sync.Mutex
+	execLastUse     = map[uint64]time.Time{}
+	execMinInterval = 2 * time.Second // minimum interval between exec calls per user
 )
 
 // SSHCheck 检查主机 SSH 连接。
@@ -88,6 +98,18 @@ func (h *Handler) SSHExec(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:write", "host:execute", "host:*") {
 		return
 	}
+	// Rate limit: max 1 exec per 2 seconds per user
+	uid := getUID(c)
+	if uid > 0 {
+		execMu.Lock()
+		if last, ok := execLastUse[uid]; ok && time.Since(last) < execMinInterval {
+			execMu.Unlock()
+			httpx.Fail(c, xcode.ParamError, "rate limited: please wait before executing another command")
+			return
+		}
+		execLastUse[uid] = time.Now()
+		execMu.Unlock()
+	}
 	id, ok := parseID(c)
 	if !ok {
 		return
@@ -132,6 +154,8 @@ func (h *Handler) SSHExec(c *gin.Context) {
 		httpx.OK(c, gin.H{"stdout": out, "stderr": err.Error(), "exit_code": 1})
 		return
 	}
+	// Audit log
+	fmt.Printf("[AUDIT] SSHExec user=%d host=%d cmd=%s\n", getUID(c), id, req.Command)
 	httpx.OK(c, gin.H{"stdout": out, "stderr": "", "exit_code": 0})
 }
 
