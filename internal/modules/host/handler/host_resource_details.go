@@ -419,12 +419,91 @@ func (h *Handler) ListNetworkRoutes(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:read", "host:*") {
 		return
 	}
-	// TODO: SSH route -n / ip route
-	mockData := []v1.RouteItem{
-		{Destination: "0.0.0.0", Gateway: "192.168.1.1", Mask: "0.0.0.0", Flags: "UG", Interface: "ens33", Metric: 100},
-		{Destination: "192.168.1.0", Gateway: "0.0.0.0", Mask: "255.255.255.0", Flags: "U", Interface: "ens33", Metric: 100},
+	id, ok := parseID(c)
+	if !ok {
+		return
 	}
-	httpx.OK(c, mockData)
+	out, err := h.runSSHCommandOnHost(c, id, "ip route show")
+	if err != nil {
+		return // error already written
+	}
+	httpx.OK(c, parseRouteOutput(out))
+}
+
+// parseRouteOutput parses `ip route show` output into RouteItem slices.
+func parseRouteOutput(out string) []v1.RouteItem {
+	if out == "" {
+		return nil
+	}
+	lines := strings.Split(out, "\n")
+	routes := make([]v1.RouteItem, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		item := v1.RouteItem{
+			Gateway:     "0.0.0.0",
+			Mask:        "255.255.255.255",
+			Flags:       "U",
+			Metric:      0,
+		}
+		fields := strings.Fields(line)
+
+		if fields[0] == "default" {
+			// default via 192.168.1.1 dev eth0
+			item.Destination = "0.0.0.0"
+			item.Mask = "0.0.0.0"
+			item.Flags = "UG"
+			for i, f := range fields {
+				if f == "via" && i+1 < len(fields) {
+					item.Gateway = fields[i+1]
+				}
+				if f == "dev" && i+1 < len(fields) {
+					item.Interface = fields[i+1]
+				}
+				if f == "metric" && i+1 < len(fields) {
+					if val, err := strconv.Atoi(fields[i+1]); err == nil {
+						item.Metric = val
+					}
+				}
+			}
+		} else {
+			// 192.168.1.0/24 dev eth0 or 10.0.0.0/8 via 10.0.0.1 dev eth0
+			destination := fields[0]
+			parts := strings.Split(destination, "/")
+			item.Destination = parts[0]
+			if len(parts) == 2 {
+				item.Mask = cidrToMask(parts[1])
+			} else {
+				item.Mask = "255.255.255.255"
+			}
+			for i, f := range fields {
+				if f == "via" && i+1 < len(fields) {
+					item.Gateway = fields[i+1]
+					if item.Flags == "U" {
+						item.Flags = "UG"
+					}
+				}
+				if f == "dev" && i+1 < len(fields) {
+					item.Interface = fields[i+1]
+				}
+			}
+		}
+		routes = append(routes, item)
+	}
+	return routes
+}
+
+// cidrToMask converts a CIDR prefix length to dotted decimal notation.
+func cidrToMask(bits string) string {
+	prefix, err := strconv.Atoi(bits)
+	if err != nil || prefix < 0 || prefix > 32 {
+		return "255.255.255.255"
+	}
+	mask := uint32(0xFFFFFFFF) << (32 - prefix)
+	return fmt.Sprintf("%d.%d.%d.%d",
+		(mask>>24)&0xFF, (mask>>16)&0xFF, (mask>>8)&0xFF, mask&0xFF)
 }
 
 // ListPackages 获取主机已安装软件包。
