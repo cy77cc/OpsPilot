@@ -96,8 +96,51 @@ func (h *Handler) KillProcess(c *gin.Context) {
 	if !httpx.Authorize(c, h.svcCtx.DB, "host:write", "host:execute", "host:*") {
 		return
 	}
-	// TODO: 执行 SSH kill 命令
-	httpx.OK(c, "process termination signal sent")
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	pidStr := c.Param("pid")
+	pid, err := strconv.ParseUint(pidStr, 10, 64)
+	if err != nil {
+		httpx.Fail(c, xcode.ParamError, "invalid pid")
+		return
+	}
+
+	// Optional signal query param, default to 15 (SIGTERM)
+	signal := c.DefaultQuery("signal", "15")
+
+	node, err := h.hostService.Get(c.Request.Context(), id)
+	if err != nil {
+		httpx.Fail(c, xcode.NotFound, "host not found")
+		return
+	}
+	privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Errorf("failed to load SSH key: %w", err).Error())
+		return
+	}
+	password := strings.TrimSpace(h.hostService.ResolveNodeSSHPassword(node))
+	if strings.TrimSpace(privateKey) != "" {
+		password = ""
+	}
+	cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
+	if err != nil {
+		if writeHostKeyPayloadIfNeeded(c, err) {
+			return
+		}
+		httpx.OK(c, gin.H{"reachable": false, "message": err.Error()})
+		return
+	}
+	defer cli.Close()
+
+	cmd := fmt.Sprintf("kill -%s %d", signal, pid)
+	out, err := sshclient.RunCommand(cli, cmd)
+	if err != nil {
+		httpx.Fail(c, xcode.ServerError, fmt.Sprintf("kill failed: %s", out))
+		return
+	}
+	httpx.OK(c, gin.H{"message": fmt.Sprintf("process %d terminated with signal %s", pid, signal), "output": out})
 }
 
 // ListServices 获取主机服务列表。
