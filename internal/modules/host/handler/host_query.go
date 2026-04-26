@@ -16,43 +16,24 @@ import (
 // List 获取主机列表。
 //
 // @Summary 获取主机列表
-// @Description 获取所有主机信息
+// @Description 分页获取主机信息
 // @Tags 主机管理
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页条数" default(20)
 // @Success 200 {object} httpx.Response
 // @Failure 401 {object} httpx.Response
 // @Failure 500 {object} httpx.Response
 // @Router /hosts [get]
 func (h *Handler) List(c *gin.Context) {
-	rows, err := h.queryHostDashboardRows(c)
+	rows, total, err := h.queryHostDashboardRowsPaginated(c)
 	if err != nil {
 		httpx.Fail(c, xcode.ServerError, err.Error())
 		return
 	}
-	total := len(rows)
-	page := 1
-	pageSize := total
-	if raw := c.Query("page"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			page = n
-		}
-	}
-	if raw := c.Query("page_size"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			pageSize = n
-		}
-	}
-	start := (page - 1) * pageSize
-	if start > total {
-		start = total
-	}
-	end := start + pageSize
-	if end > total {
-		end = total
-	}
-	httpx.OK(c, gin.H{"list": enrichHostListRows(rows[start:end]), "total": total})
+	httpx.OK(c, gin.H{"list": enrichHostListRows(rows), "total": total})
 }
 
 // Get 获取单个主机详情。

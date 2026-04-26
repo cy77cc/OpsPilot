@@ -219,6 +219,112 @@ func (h *Handler) queryHostDashboardRows(c *gin.Context) ([]hostDashboardRow, er
 	return rows, nil
 }
 
+func (h *Handler) queryHostDashboardRowsPaginated(c *gin.Context) ([]hostDashboardRow, int64, error) {
+	ctx := c.Request.Context()
+	keyword, status, environment, region, osName, tags := parseHostFilterParams(c)
+
+	page := 1
+	pageSize := 20
+	if raw := c.Query("page"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if raw := c.Query("page_size"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			pageSize = n
+		}
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	base := applyHostBaseFilters(h.svcCtx.DB.WithContext(ctx).Model(&hostmodel.Node{}), keyword, environment, region, osName, tags)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []hostDashboardRow{}, 0, nil
+	}
+
+	var nodes []hostmodel.Node
+	offset := (page - 1) * pageSize
+	if err := applyHostBaseFilters(h.svcCtx.DB.WithContext(ctx).Model(&hostmodel.Node{}), keyword, environment, region, osName, tags).
+		Order("id DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&nodes).Error; err != nil {
+		return nil, 0, err
+	}
+
+	hostIDs := make([]uint64, 0, len(nodes))
+	for _, node := range nodes {
+		hostIDs = append(hostIDs, uint64(node.ID))
+	}
+
+	var snapshots []hostmodel.HostHealthSnapshot
+	if err := h.svcCtx.DB.WithContext(ctx).
+		Where("host_id IN ?", hostIDs).
+		Order("host_id ASC, checked_at DESC").
+		Find(&snapshots).Error; err != nil {
+		if !isMissingHealthSnapshotsTableErr(err) {
+			return nil, 0, err
+		}
+	}
+
+	latestByHost := make(map[uint64]*hostmodel.HostHealthSnapshot, len(hostIDs))
+	for i := range snapshots {
+		hostID := snapshots[i].HostID
+		if _, exists := latestByHost[hostID]; !exists {
+			latestByHost[hostID] = &snapshots[i]
+		}
+	}
+
+	rows := make([]hostDashboardRow, 0, len(nodes))
+	for _, node := range nodes {
+		hostID := uint64(node.ID)
+		snapshot := latestByHost[hostID]
+		cpuPct, memoryPct, diskPct, monitorStatus, heartbeat := computeUsageAndMonitor(snapshot)
+		env := detectEnvironmentFromLabels(node.Labels)
+		onlineStatus := normalizeNodeOnlineStatus(node.Status)
+
+		if status != "" && status != "all" {
+			abnormal := onlineStatus == "offline" || onlineStatus == "error" || monitorStatus == "warning"
+			if (status == "online" && onlineStatus != "online") ||
+				(status == "offline" && onlineStatus == "online") ||
+				(status == "abnormal" && !abnormal) {
+				continue
+			}
+		}
+
+		alertCount := 0
+		if monitorStatus == "warning" {
+			alertCount = 1
+			if snapshot != nil && strings.EqualFold(snapshot.State, "critical") {
+				alertCount = 2
+			}
+		}
+		if onlineStatus == "offline" {
+			alertCount++
+		}
+
+		rows = append(rows, hostDashboardRow{
+			Node:            node,
+			Environment:     env,
+			MonitorStatus:   monitorStatus,
+			CPUUsagePct:     cpuPct,
+			MemoryUsagePct:  memoryPct,
+			DiskUsagePct:    diskPct,
+			LastHeartbeatAt: heartbeat,
+			AlertCount:      alertCount,
+		})
+	}
+
+	return rows, total, nil
+}
+
 func isMissingAlertsTableErr(err error) bool {
 	if err == nil {
 		return false
