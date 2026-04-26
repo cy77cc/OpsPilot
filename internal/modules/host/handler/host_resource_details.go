@@ -109,6 +109,10 @@ func (h *Handler) KillProcess(c *gin.Context) {
 
 	// Optional signal query param, default to 15 (SIGTERM)
 	signal := c.DefaultQuery("signal", "15")
+	if !isValidSignal(signal) {
+		httpx.Fail(c, xcode.ParamError, "invalid signal: must be a number or signal name")
+		return
+	}
 
 	node, err := h.hostService.Get(c.Request.Context(), id)
 	if err != nil {
@@ -199,11 +203,19 @@ func (h *Handler) ServiceAction(c *gin.Context) {
 		return
 	}
 	name := c.Param("name")
+	if !isValidServiceName(name) {
+		httpx.Fail(c, xcode.ParamError, "invalid service name")
+		return
+	}
 	var req struct {
 		Action string `json:"action" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
+		return
+	}
+	if !isValidServiceAction(req.Action) {
+		httpx.Fail(c, xcode.ParamError, "invalid action: must be start|stop|restart|reload|status")
 		return
 	}
 
@@ -443,7 +455,7 @@ func parseRouteOutput(out string) []v1.RouteItem {
 			continue
 		}
 		item := v1.RouteItem{
-			Gateway: "0.0.0.0",
+			Gateway: "-",
 			Mask:    "255.255.255.255",
 			Flags:   "U",
 			Metric:  0,
@@ -666,4 +678,47 @@ func (h *Handler) runSSHCommandOnHost(c *gin.Context, hostID uint64, cmd string)
 		return "", err
 	}
 	return out, nil
+}
+
+// isValidSignal validates that the signal is a number or a known signal name.
+func isValidSignal(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	// Accept numeric signals (e.g., "9", "15")
+	if _, err := strconv.Atoi(s); err == nil {
+		return true
+	}
+	// Accept common signal names (with or without SIG prefix)
+	allowed := map[string]bool{
+		"HUP": true, "INT": true, "QUIT": true, "ILL": true, "TRAP": true,
+		"ABRT": true, "BUS": true, "FPE": true, "KILL": true, "USR1": true,
+		"SEGV": true, "USR2": true, "PIPE": true, "ALRM": true, "TERM": true,
+	}
+	name := strings.TrimPrefix(strings.ToUpper(s), "SIG")
+	return allowed[name]
+}
+
+// isValidServiceName validates that the service name contains only safe characters.
+func isValidServiceName(name string) bool {
+	if name == "" || len(name) > 256 {
+		return false
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidServiceAction validates that the systemctl action is one of the allowed set.
+func isValidServiceAction(action string) bool {
+	switch action {
+	case "start", "stop", "restart", "reload", "status", "enable", "disable", "is-active", "is-enabled":
+		return true
+	default:
+		return false
+	}
 }
