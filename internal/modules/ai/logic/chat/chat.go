@@ -321,7 +321,7 @@ func (l *Logic) lookupActiveApprovalID(ctx context.Context, runID string) (strin
 }
 
 func isRecordNotFound(err error) bool {
-	return err != nil && err.Error() == "record not found"
+	return err != nil && errors.Is(err, gorm.ErrRecordNotFound)
 }
 
 func isTailOpenStatus(status string) bool {

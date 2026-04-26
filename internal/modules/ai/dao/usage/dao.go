@@ -84,10 +84,10 @@ func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsRes
 
 	// 审批统计
 	var approvalTotal, approvalPassed int64
-	approvalQ := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
+	approvalBaseQ := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
 		Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
-	approvalQ.Where("approval_count > 0").Count(&approvalTotal)
-	approvalQ.Where("approval_status = ?", "approved").Count(&approvalPassed)
+	approvalBaseQ.Model(&model.AIUsageLog{}).Where("approval_count > 0").Count(&approvalTotal)
+	approvalBaseQ.Model(&model.AIUsageLog{}).Where("approval_status = ?", "approved").Count(&approvalPassed)
 
 	if result.TotalRequests > 0 {
 		result.ApprovalRate = float64(approvalTotal) / float64(result.TotalRequests)

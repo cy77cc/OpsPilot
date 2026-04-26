@@ -20,10 +20,11 @@ export function useFormAssist(
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Read the global feature flag from localStorage. Default to enabled ('1').
-  const isEnabled = typeof window !== 'undefined' 
-    ? (localStorage.getItem('ai-form-assist-enabled') !== '0') // Anything other than '0' (including null) is enabled
-    : false;
+  // Read the global feature flag from localStorage once on mount.
+  const [isEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('ai-form-assist-enabled') !== '0';
+  });
 
   useEffect(() => {
     // Start a 3-second timer only when:
@@ -108,12 +109,13 @@ export function useFormAssist(
           },
           abortControllerRef.current.signal
         );
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
           // Ignore abort errors
           return;
         }
-        setError(err.message || 'Failed to connect to AI service');
+        const message = err instanceof Error ? err.message : 'Failed to connect to AI service';
+        setError(message);
         setIsStreaming(false);
       }
     },

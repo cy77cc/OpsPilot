@@ -22,6 +22,10 @@ func (f *arkFactory) Create(ctx context.Context, p *model.AILLMProvider, opts Ch
 	}
 
 	temp := float32(p.Temperature)
+	thinkingType := arkruntime.ThinkingTypeDisabled
+	if p.Thinking {
+		thinkingType = arkruntime.ThinkingTypeEnabled
+	}
 	return arkmodel.NewChatModel(ctx, &arkmodel.ChatModelConfig{
 		APIKey:      p.APIKey,
 		BaseURL:     p.BaseURL,
@@ -29,7 +33,7 @@ func (f *arkFactory) Create(ctx context.Context, p *model.AILLMProvider, opts Ch
 		Temperature: &temp,
 		Timeout:     &opts.Timeout,
 		Thinking: &arkruntime.Thinking{
-			Type: arkruntime.ThinkingTypeDisabled,
+			Type: thinkingType,
 		},
 	})
 }

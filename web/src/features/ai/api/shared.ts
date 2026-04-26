@@ -5,6 +5,12 @@ import type { ApiResponse } from '../../../api/api';
 export { ApiRequestError, apiService };
 export type { ApiResponse };
 
+export interface ThoughtChainEntry {
+  type?: string;
+  content?: string;
+  [key: string]: unknown;
+}
+
 export interface AIMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -22,7 +28,7 @@ export interface AIMessage {
   runtime?: Record<string, unknown>;
   thinking?: string;
   rawEvidence?: string[];
-  thoughtChain?: Array<Record<string, any>>;
+  thoughtChain?: ThoughtChainEntry[];
   traceId?: string;
   status?: string;
   error_message?: string;
@@ -85,7 +91,7 @@ export interface AIChatParams {
   last_event_id?: string;
   message: string;
   scene?: string;
-  context?: any;
+  context?: Record<string, unknown>;
 }
 
 export interface AIRun {
@@ -493,7 +499,10 @@ export function dispatchAIStreamEvent(segment: string, handlers: A2UIStreamHandl
     else if (line.startsWith('id:')) {eventId = line.slice(3).trim();}
   });
   if (eventId) {handlers.onEventId?.(eventId);}
-  const payload = data ? JSON.parse(data) : {};
+  let payload: Record<string, unknown> = {};
+  if (data) {
+    try { payload = JSON.parse(data); } catch { return; }
+  }
   if (eventType === 'meta') {handlers.onMeta?.(payload as A2UIMetaEvent);}
   else if (eventType === 'agent_handoff') {handlers.onAgentHandoff?.(payload as A2UIAgentHandoffEvent);}
   else if (eventType === 'plan') {handlers.onPlan?.(payload as A2UIPlanEvent);}

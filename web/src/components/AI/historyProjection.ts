@@ -5,6 +5,17 @@ import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRunt
 
 const projectionCache = new Map<string, AIRunProjection | null>();
 const contentCache = new Map<string, AIRunContent | null>();
+const MAX_CACHE_SIZE = 50;
+
+function setCacheEntry<K, V>(cache: Map<K, V>, key: K, value: V): void {
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) {
+      cache.delete(firstKey);
+    }
+  }
+  cache.set(key, value);
+}
 const INTERRUPTED_TOOL_MESSAGE = '执行未完成';
 export const PROJECTION_MISSING_SUMMARY_LABEL = 'projection missing summary';
 export const PROJECTION_UNRECOVERABLE_PLACEHOLDER = '回答内容不可恢复';
@@ -108,9 +119,10 @@ export async function loadRunProjection(runId: string): Promise<AIRunProjection 
       cursor = page.next_cursor;
     }
 
-    projectionCache.set(runId, projection);
+    setCacheEntry(projectionCache, runId, projection);
     return projection;
-  } catch {
+  } catch (err) {
+    console.warn('Failed to load run projection:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
@@ -121,9 +133,10 @@ export async function loadRunContent(contentId: string): Promise<AIRunContent | 
   try {
     const response = await aiApi.getRunContent(contentId);
     const content = response.data || null;
-    contentCache.set(contentId, content);
+    setCacheEntry(contentCache, contentId, content);
     return content;
-  } catch {
+  } catch (err) {
+    console.warn('Failed to load run content:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }

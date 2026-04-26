@@ -192,11 +192,15 @@ function formatContent(content: string, maxSize = MAX_CONTENT_SIZE): { formatted
     truncated = true;
   }
 
-  try {
-    const parsed = JSON.parse(formatted);
-    formatted = JSON.stringify(parsed, null, 2);
-  } catch {
-    // Keep non-JSON payloads untouched.
+  // Only attempt JSON parsing for content that looks like JSON
+  const trimmed = formatted.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(formatted);
+      formatted = JSON.stringify(parsed, null, 2);
+    } catch {
+      // Keep malformed JSON content untouched.
+    }
   }
 
   return { formatted, truncated };

@@ -115,6 +115,16 @@ func SanitizeUserFacingError(err error) string {
 	if err == nil {
 		return "生成中断，请稍后重试。"
 	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded") {
+		return "请求超时，请稍后重试。"
+	}
+	if strings.Contains(msg, "unauthorized") || strings.Contains(msg, "forbidden") || strings.Contains(msg, "permission") {
+		return "权限不足，请联系管理员。"
+	}
+	if strings.Contains(msg, "rate limit") || strings.Contains(msg, "too many requests") {
+		return "请求过于频繁，请稍后重试。"
+	}
 	return "生成中断，请稍后重试。"
 }
 

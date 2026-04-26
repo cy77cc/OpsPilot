@@ -193,8 +193,12 @@ func (l *Logic) GetDiagnosisReport(ctx context.Context, userID uint64, reportID 
 		return report, err
 	}
 	if l.ChatDAO != nil {
-		if session, err := l.ChatDAO.GetSession(ctx, report.SessionID, userID, ""); err != nil || session == nil {
+		session, err := l.ChatDAO.GetSession(ctx, report.SessionID, userID, "")
+		if err != nil {
 			return nil, err
+		}
+		if session == nil {
+			return nil, fmt.Errorf("report ownership check failed")
 		}
 	}
 	return report, nil
@@ -225,8 +229,12 @@ func (l *Logic) GetApproval(ctx context.Context, approvalID string, userID uint6
 		return task, err
 	}
 	if l.ChatDAO != nil && task.SessionID != "" {
-		if session, err := l.ChatDAO.GetSession(ctx, task.SessionID, userID, ""); err != nil || session == nil {
+		session, err := l.ChatDAO.GetSession(ctx, task.SessionID, userID, "")
+		if err != nil {
 			return nil, err
+		}
+		if session == nil {
+			return nil, fmt.Errorf("approval ownership check failed")
 		}
 	}
 	return task, nil

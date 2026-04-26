@@ -669,7 +669,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           {attachedFiles.length > 0 && (
             <div className={styles.fileList}>
               {attachedFiles.map((file, index) => (
-                <div key={index} className={styles.fileItem}>
+                <div key={`${file.name}-${file.size}-${file.lastModified}`} className={styles.fileItem}>
                   <PaperClipOutlined style={{ fontSize: 12, flexShrink: 0 }} />
                   <span className={styles.fileName}>{file.name}</span>
                   <Button

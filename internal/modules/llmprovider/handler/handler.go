@@ -4,6 +4,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -167,7 +169,20 @@ func (h *HTTPHandler) UpdateModel(c *gin.Context) {
 				return err
 			}
 		}
-		return tx.Save(record).Error
+		return tx.Model(&LLMProviderRecord{}).Where("id = ?", record.ID).Updates(map[string]any{
+			"name":            record.Name,
+			"provider":        record.Provider,
+			"model":           record.Model,
+			"base_url":        record.BaseURL,
+			"api_key":         record.APIKey,
+			"temperature":     record.Temperature,
+			"thinking":        record.Thinking,
+			"is_default":      record.IsDefault,
+			"is_enabled":      record.IsEnabled,
+			"sort_order":      record.SortOrder,
+			"api_key_version": record.APIKeyVersion,
+			"config_version":  record.ConfigVersion,
+		}).Error
 	}); err != nil {
 		httpx.ServerErr(c, err)
 		return
@@ -422,6 +437,9 @@ func buildProviderRecord(input providerPayload) (*LLMProviderRecord, error) {
 	if err := validateProviderRecord(record); err != nil {
 		return nil, err
 	}
+	if err := validateBaseURL(record.BaseURL); err != nil {
+		return nil, err
+	}
 	apiKey := strings.TrimSpace(input.APIKey)
 	if apiKey == "" {
 		return nil, xcode.NewErrCodeMsg(xcode.LLMImportValidationFail, "api_key is required")
@@ -451,6 +469,9 @@ func patchProviderRecord(existing *LLMProviderRecord, input providerUpdatePayloa
 	}
 	if input.BaseURL != nil {
 		record.BaseURL = strings.TrimSpace(*input.BaseURL)
+		if err := validateBaseURL(record.BaseURL); err != nil {
+			return nil, err
+		}
 	}
 	if input.Temperature != nil {
 		record.Temperature = *input.Temperature
@@ -485,6 +506,17 @@ func patchProviderRecord(existing *LLMProviderRecord, input providerUpdatePayloa
 	}
 	record.APIKey = encrypted
 	return record, nil
+}
+
+func validateBaseURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("base_url is not a valid URL: %w", err)
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "0.0.0.0")) {
+		return xcode.NewErrCodeMsg(xcode.LLMImportValidationFail, "base_url must use https or http for localhost")
+	}
+	return nil
 }
 
 func validateProviderRecord(record *LLMProviderRecord) error {

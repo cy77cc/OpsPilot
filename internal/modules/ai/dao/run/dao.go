@@ -91,6 +91,8 @@ func (d *AIRunDAO) FindByClientRequestID(ctx context.Context, sessionID, clientR
 //   - bool: 是否为新创建（true=新创建，false=复用）
 //   - error: 错误信息
 func (d *AIRunDAO) CreateOrReuseRunShell(ctx context.Context, userID uint64, sessionID, clientRequestID string, build func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage)) (*model.AIRun, bool, error) {
+	// userID is validated at the session ownership layer (caller) before this method is invoked.
+	// This DAO method operates at the run level where session ownership is already guaranteed.
 	_ = userID
 
 	normalizedSessionID := strings.TrimSpace(sessionID)
@@ -206,6 +208,8 @@ func (d *AIRunDAO) ListBySession(ctx context.Context, sessionID string) ([]model
 	return runs, err
 }
 
+const maxSessionIDsInQuery = 100
+
 // ListBySessionIDs 批量列出多个会话的运行记录。
 //
 // 参数:
@@ -216,6 +220,9 @@ func (d *AIRunDAO) ListBySession(ctx context.Context, sessionID string) ([]model
 func (d *AIRunDAO) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]model.AIRun, error) {
 	if len(sessionIDs) == 0 {
 		return nil, nil
+	}
+	if len(sessionIDs) > maxSessionIDsInQuery {
+		return nil, fmt.Errorf("too many session IDs: max %d", maxSessionIDsInQuery)
 	}
 	var runs []model.AIRun
 	err := d.db.WithContext(ctx).

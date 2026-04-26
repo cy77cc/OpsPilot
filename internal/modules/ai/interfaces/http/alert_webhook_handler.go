@@ -114,6 +114,9 @@ func readAlertWebhookPayload(body io.Reader) ([]byte, error) {
 
 func verifyAlertWebhookSignature(secret, signature string, body []byte) bool {
 	expected := signAlertWebhookBody(secret, body)
+	if expected == nil {
+		return false
+	}
 	actual, err := decodeAlertWebhookSignature(signature)
 	if err != nil {
 		return false
@@ -123,7 +126,9 @@ func verifyAlertWebhookSignature(secret, signature string, body []byte) bool {
 
 func signAlertWebhookBody(secret string, body []byte) []byte {
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
+	if _, err := mac.Write(body); err != nil {
+		return nil
+	}
 	return mac.Sum(nil)
 }
 

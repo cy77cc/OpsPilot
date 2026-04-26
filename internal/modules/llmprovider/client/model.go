@@ -24,6 +24,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/redis/go-redis/v9"
 	arkruntime "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
+	"golang.org/x/sync/semaphore"
 	"gorm.io/gorm"
 )
 
@@ -65,7 +66,12 @@ func startHealthCheckLoop(db *gorm.DB) {
 	ticker := time.NewTicker(time.Minute * 5)
 	defer ticker.Stop()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const maxConcurrent = 5
+	sem := semaphore.NewWeighted(maxConcurrent)
+
 	for range ticker.C {
 		dao := llmdao.NewLLMProviderDAO(db)
 		providers, err := dao.ListEnabled(ctx)
@@ -76,7 +82,11 @@ func startHealthCheckLoop(db *gorm.DB) {
 
 		for _, p := range providers {
 			p := p
+			if err := sem.Acquire(ctx, 1); err != nil {
+				break
+			}
 			go func() {
+				defer sem.Release(1)
 				pForUse, _ := decryptProviderAPIKey(&p)
 				if pForUse == nil {
 					return

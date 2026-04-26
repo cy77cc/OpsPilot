@@ -69,7 +69,12 @@ export class RunReconnectController {
     this.onPendingRunChange?.(persisted);
   }
 
-  dispose(): void {}
+  dispose(): void {
+    this.flushApprovalResumeWaiters();
+    this.approvalResumeWaiters = [];
+    this.pendingRun = null;
+    this.onPendingRunChange = undefined;
+  }
 
   handleMeta(payload: A2UIMetaEvent, params: AIChatParams): void {
     const existing = payload.run_id ? getPendingRun(payload.run_id) : null;
