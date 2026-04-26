@@ -51,8 +51,6 @@ const HostDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [host, setHost] = useState<Host | null>(null);
   const [metrics, setMetrics] = useState<HostMetricPoint[]>([]);
-  const [headerStickyHeight, setHeaderStickyHeight] = useState(0);
-  const headerStickyRef = React.useRef<HTMLDivElement | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -63,8 +61,8 @@ const HostDetailPage: React.FC = () => {
 
   const [editForm] = Form.useForm<HostEditFormValues>();
   const [keyForm] = Form.useForm<{ name: string; privateKey: string; passphrase?: string }>();
-  const retryOperationRef = React.useRef<() => Promise<void>>(async () => {});
-  
+  const retryOperationRef = React.useRef<() => Promise<void>>(async () => { });
+
   const {
     pendingTrust,
     setPendingTrust,
@@ -111,31 +109,12 @@ const HostDetailPage: React.FC = () => {
     void loadSSHKeys();
   }, [editOpen, loadSSHKeys]);
 
-  useEffect(() => {
-    const element = headerStickyRef.current;
-    if (!element) return;
-
-    const updateHeight = () => {
-      setHeaderStickyHeight(Math.ceil(element.getBoundingClientRect().height));
-    };
-
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    window.addEventListener('resize', updateHeight);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, []);
-
   const handleAction = (action: string) => {
     if (action === 'terminal') {
       navigate(`/resources/hosts/${id}/terminal`);
       return;
     }
-    
+
     const exec = async () => {
       await Api.hosts.hostAction(id, action);
       message.success('操作已提交');
@@ -264,11 +243,11 @@ const HostDetailPage: React.FC = () => {
 
   const tabContent: Record<string, React.ReactNode> = {
     overview: (
-      <OverviewTab 
-        host={host} 
-        loading={loading} 
-        onAction={handleAction} 
-        onTabChange={(key) => setSearchParams({ tab: key })} 
+      <OverviewTab
+        host={host}
+        loading={loading}
+        onAction={handleAction}
+        onTabChange={(key) => setSearchParams({ tab: key })}
       />
     ),
     monitor: <PlaceholderTab name="监控" />,
@@ -288,29 +267,28 @@ const HostDetailPage: React.FC = () => {
 
   return (
     <div className="bg-gray-50 min-h-full -m-6">
-      <div ref={headerStickyRef} className="sticky top-0 z-20 bg-white border-b border-gray-200 px-6 py-2.5 shadow-sm">
-        <HostDetailHeader 
-          host={host} 
-          onEdit={openEditModal} 
-          onTerminal={() => navigate(`/resources/hosts/${id}/terminal`)} 
-          onHealthCheck={runHealthCheck}
-          onAction={handleAction}
-        />
+      {/* header + tab 固定区域 */}
+      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white shadow-sm">
+        <div className="px-3 py-1">
+          <HostDetailHeader
+            host={host}
+            onEdit={openEditModal}
+            onTerminal={() => navigate(`/resources/hosts/${id}/terminal`)}
+            onHealthCheck={runHealthCheck}
+            onAction={handleAction}
+          />
+        </div>
+        <div className="border-t border-slate-100 bg-gray-50/95 px-6 backdrop-blur">
+          <HostDetailTabs
+            activeTab={activeTab}
+            onChange={(key) => setSearchParams({ tab: key })}
+            tabContent={tabContent}
+            navOnly
+          />
+        </div>
       </div>
 
-      <div
-        className="sticky z-10 bg-gray-50/95 px-6 backdrop-blur"
-        style={{ top: headerStickyHeight }}
-      >
-        <HostDetailTabs
-          activeTab={activeTab}
-          onChange={(key) => setSearchParams({ tab: key })}
-          tabContent={tabContent}
-          navOnly
-        />
-      </div>
-      
-      <div className="p-6">
+      <div className="px-4">
         {(host?.healthState === 'critical' || host?.healthState === 'degraded' || host?.maintenanceReason) && (
           <Alert
             type={host?.healthState === 'critical' ? 'error' : host?.healthState === 'degraded' ? 'warning' : 'info'}
@@ -341,7 +319,7 @@ const HostDetailPage: React.FC = () => {
               </GuidedFormItem>
             </Col>
             <Col span={12}>
-              <Form.Item name="status" label="状态" rules={[{ required: true }]}> 
+              <Form.Item name="status" label="状态" rules={[{ required: true }]}>
                 <Select options={[{ value: 'online', label: 'online' }, { value: 'offline', label: 'offline' }, { value: 'maintenance', label: 'maintenance' }]} />
               </Form.Item>
             </Col>
@@ -367,7 +345,7 @@ const HostDetailPage: React.FC = () => {
           <Card size="small" title="SSH 凭据" style={{ marginBottom: 8 }}>
             <Row gutter={12}>
               <Col span={8}>
-                <Form.Item name="authType" label="认证方式" rules={[{ required: true }]}> 
+                <Form.Item name="authType" label="认证方式" rules={[{ required: true }]}>
                   <Radio.Group optionType="button" buttonStyle="solid">
                     <Radio value="password">密码</Radio>
                     <Radio value="key">SSH 密钥</Radio>
@@ -375,12 +353,12 @@ const HostDetailPage: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <GuidedFormItem name="username" label="SSH 用户" rules={[{ required: true }]}> 
+                <GuidedFormItem name="username" label="SSH 用户" rules={[{ required: true }]}>
                   <Input />
                 </GuidedFormItem>
               </Col>
               <Col span={8}>
-                <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]}> 
+                <GuidedFormItem name="port" label="SSH 端口" rules={[{ required: true }]}>
                   <InputNumber min={1} max={65535} style={{ width: '100%' }} />
                 </GuidedFormItem>
               </Col>
@@ -434,10 +412,10 @@ const HostDetailPage: React.FC = () => {
         width={760}
       >
         <Form form={keyForm} layout="vertical">
-          <GuidedFormItem name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}> 
+          <GuidedFormItem name="name" label="名称" rules={[{ required: true, message: '请输入密钥名称' }]}>
             <Input placeholder="例如: prod-root-key" />
           </GuidedFormItem>
-          <GuidedFormItem name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}> 
+          <GuidedFormItem name="privateKey" label="私钥内容（PEM）" rules={[{ required: true, message: '请输入私钥内容' }]}>
             <Input.TextArea rows={10} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
           </GuidedFormItem>
           <GuidedFormItem name="passphrase" label="Passphrase（可选）">

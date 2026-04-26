@@ -37,7 +37,7 @@ const HostDetailTabs: React.FC<HostDetailTabsProps> = ({
       onChange={onChange} 
       items={items}
       className={navOnly
-        ? 'host-detail-tabs host-detail-tabs-nav-only mb-0 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-nav]:!before:border-b-0 [&_.ant-tabs-nav-wrap]:py-0.5 [&_.ant-tabs-tab]:!mx-0 [&_.ant-tabs-tab]:!px-3 [&_.ant-tabs-tab]:!py-2 [&_.ant-tabs-tab-btn]:text-slate-600 [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:!text-blue-600 [&_.ant-tabs-ink-bar]:!bg-blue-600 [&_.ant-tabs-content-holder]:hidden'
+        ? 'host-detail-tabs host-detail-tabs-nav-only mb-0 [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-nav]:!before:border-b-0 [&_.ant-tabs-nav-wrap]:py-0.5 [&_.ant-tabs-tab]:!mx-0 [&_.ant-tabs-tab]:!px-3 [&_.ant-tabs-tab]:!py-2 [&_.ant-tabs-tab+.ant-tabs-tab]:!ml-4 [&_.ant-tabs-tab-btn]:text-slate-600 [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:!text-blue-600 [&_.ant-tabs-ink-bar]:!bg-blue-600 [&_.ant-tabs-content-holder]:hidden'
         : 'host-detail-tabs'}
       destroyInactiveTabPane={false}
     />
