@@ -495,7 +495,7 @@ const HostListPage: React.FC = () => {
         subLabel: '较昨日',
         subValue: `${Math.max(0, Math.round(overview.totalHosts * 0.02)) >= 1 ? `+${Math.max(0, Math.round(overview.totalHosts * 0.02))}` : '+0'}`,
         subColor: '#10b981',
-        icon: <DesktopOutlined className="text-[18px] text-[#2563eb]" />,
+        icon: <DesktopOutlined className="text-[36px] text-[#2563eb]" />,
         iconBg: '#e8f1ff',
         sparkColor: '#2563eb',
         sparkPoints: cpuPoints,
@@ -508,7 +508,7 @@ const HostListPage: React.FC = () => {
         subLabel: '在线率',
         subValue: `${overview.onlineRate.toFixed(1)}%`,
         subColor: '#10b981',
-        icon: <CheckCircleOutlined className="text-[18px] text-[#16a34a]" />,
+        icon: <CheckCircleOutlined className="text-[36px] text-[#16a34a]" />,
         iconBg: '#e9f8ef',
         sparkColor: '#16a34a',
         sparkPoints: memoryPoints,
@@ -521,7 +521,7 @@ const HostListPage: React.FC = () => {
         subLabel: '较昨日',
         subValue: `${overview.abnormalHosts > 0 ? `-${Math.min(overview.abnormalHosts, 3)}` : '-0'}`,
         subColor: '#ef4444',
-        icon: <ExclamationCircleOutlined className="text-[18px] text-[#ef4444]" />,
+        icon: <ExclamationCircleOutlined className="text-[36px] text-[#ef4444]" />,
         iconBg: '#feefef',
         sparkColor: '#ef4444',
         sparkPoints: cpuPoints,
@@ -534,7 +534,7 @@ const HostListPage: React.FC = () => {
         subLabel: '较昨日',
         subValue: '+0.0%',
         subColor: '#0ea5e9',
-        icon: <DashboardOutlined className="text-[18px] text-[#2563eb]" />,
+        icon: <DashboardOutlined className="text-[36px] text-[#2563eb]" />,
         iconBg: '#ebf3ff',
         sparkColor: '#2563eb',
         sparkPoints: cpuPoints,
@@ -547,7 +547,7 @@ const HostListPage: React.FC = () => {
         subLabel: '较昨日',
         subValue: '+0.0%',
         subColor: '#0ea5e9',
-        icon: <ToolOutlined className="text-[18px] text-[#7c3aed]" />,
+        icon: <ToolOutlined className="text-[36px] text-[#7c3aed]" />,
         iconBg: '#f1ecff',
         sparkColor: '#7c3aed',
         sparkPoints: memoryPoints,
@@ -560,7 +560,7 @@ const HostListPage: React.FC = () => {
         subLabel: '严重',
         subValue: `${overview.severeAlertCount} / 警告 ${overview.warningAlertCount}`,
         subColor: '#ef4444',
-        icon: <BellOutlined className="text-[18px] text-[#f59e0b]" />,
+        icon: <BellOutlined className="text-[36px] text-[#f59e0b]" />,
         iconBg: '#fff4e8',
         sparkColor: '#f59e0b',
         sparkPoints: cpuPoints,
@@ -917,23 +917,32 @@ const HostListPage: React.FC = () => {
         <div className="min-w-0 flex flex-col gap-4 min-h-0">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
             {kpiCards.map((card) => (
-              <Card key={card.key} size="small" styles={{ body: { padding: '14px 16px 12px' } }} className="border border-[#e8edf3] rounded-[10px]">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="text-[#6b7280] text-[13px]">{card.title}</div>
-                    <div className="mt-[6px] flex items-end gap-1">
-                      <span className="text-[40px] leading-none font-semibold text-[#111827] tracking-[-0.02em]">{card.value}</span>
-                      <span className="text-[18px] leading-6 text-[#374151] mb-[3px]">{card.unit}</span>
-                    </div>
-                    <div className="text-[13px] text-[#6b7280] mt-[8px]">
-                      {card.subLabel} <span style={{ color: card.subColor }}>{card.subValue}</span>
+              <Card key={card.key} size="small" styles={{ body: { padding: '16px 16px 12px' } }} className="border border-[#e8edf3] rounded-[10px]">
+                <div className="flex flex-col h-full justify-between">
+                  {/* 上面 2/3: Icon on Left, Title and Value on Right */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="w-10 h-10 rounded-[10px] inline-flex items-center justify-center shrink-0 [&_.anticon]:text-[20px]" style={{ backgroundColor: card.iconBg }}>
+                      {card.icon}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[#6b7280] text-[13px] mb-1 truncate">{card.title}</div>
+                      <div className="flex items-end gap-1">
+                        <span className="text-[28px] leading-none font-semibold text-[#111827] tracking-tight">{card.value}</span>
+                        <span className="text-[13px] leading-none text-[#6b7280] mb-[2px]">{card.unit}</span>
+                      </div>
                     </div>
                   </div>
-                  <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ backgroundColor: card.iconBg }}>
-                    {card.icon}
-                  </span>
+                  
+                  {/* 下面 1/3: Comparison and Sparkline (No divider) */}
+                  <div className="flex items-end justify-between pt-1">
+                    <div className="text-[12px] text-[#6b7280] leading-none">
+                      {card.subLabel} <span className="font-medium ml-1" style={{ color: card.subColor }}>{card.subValue}</span>
+                    </div>
+                    <div className="w-[84px] h-[22px]">
+                      <Sparkline points={card.sparkPoints} color={card.sparkColor} />
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-[8px]"><Sparkline points={card.sparkPoints} color={card.sparkColor} /></div>
               </Card>
             ))}
           </div>
