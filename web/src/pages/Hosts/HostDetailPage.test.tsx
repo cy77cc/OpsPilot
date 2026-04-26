@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import HostDetailPage from './HostDetailPage';
+import HostDetailPage from './Detail';
 
 const mockApi = vi.hoisted(() => ({
   hosts: {

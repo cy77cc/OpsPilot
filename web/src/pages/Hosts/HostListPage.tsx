@@ -827,7 +827,7 @@ const HostListPage: React.FC = () => {
     data: distribution.map((item) => ({ type: item.name, value: item.value })),
     angleField: 'value',
     colorField: 'type',
-    innerRadius: 0.7,
+    innerRadius: 0.68,
     legend: false,
     color: ['#2563eb', '#10b981', '#94a3b8'],
     label: false,
@@ -836,6 +836,8 @@ const HostListPage: React.FC = () => {
     tooltip: { title: 'type' },
     interactions: [{ type: 'element-active' }],
   };
+
+  const distributionTotal = distribution.reduce((sum, item) => sum + item.value, 0);
 
   const trendLineData = [
     ...trend.map((point) => ({ time: point.time, value: point.cpuUsage, type: 'CPU 利用率' })),
@@ -1096,17 +1098,26 @@ const HostListPage: React.FC = () => {
               {distribution.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
               ) : (
-                <>
-                  <Pie {...pieConfig} />
-                  <div className="space-y-2">
-                    {distribution.map((item) => (
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-[168px] w-[158px] items-center justify-center shrink-0">
+                    <Pie {...pieConfig} />
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="text-[28px] font-semibold leading-none text-[#111827]">{distributionTotal}</span>
+                      <span className="mt-1 text-[12px] text-[#9ca3af]">总数</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {distribution.map((item, index) => (
                       <div key={item.name} className="flex items-center justify-between text-sm">
-                        <span>{item.name}</span>
-                        <span className="text-gray-500">{item.value} ({item.percent.toFixed(1)}%)</span>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: pieConfig.color[index % pieConfig.color.length] }} />
+                          <span className="truncate text-[#374151]">{item.name}</span>
+                        </div>
+                        <span className="ml-3 whitespace-nowrap text-[#6b7280]">{item.value} ({item.percent.toFixed(1)}%)</span>
                       </div>
                     ))}
                   </div>
-                </>
+                </div>
               )}
             </div>
           </Card>
@@ -1133,11 +1144,11 @@ const HostListPage: React.FC = () => {
                 <Space orientation="vertical" size={12} style={{ width: '100%' }}>
                   {pendingAlerts.map((item) => (
                     <div key={`${item.level}-${item.name}`} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <Badge color={item.level === 'critical' ? '#ef4444' : '#f59e0b'} />
-                        <span>{item.name}</span>
+                        <span className="truncate text-[#374151]">{item.name}</span>
                       </div>
-                      <span className={item.level === 'critical' ? 'text-red-500 font-semibold' : 'text-amber-500 font-semibold'}>
+                      <span className={item.level === 'critical' ? 'text-red-500 font-semibold whitespace-nowrap' : 'text-amber-500 font-semibold whitespace-nowrap'}>
                         {item.level === 'critical' ? '严重' : '警告'} {item.count}
                       </span>
                     </div>

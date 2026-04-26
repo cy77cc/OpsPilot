@@ -2,7 +2,7 @@ import { lazy } from 'react';
 
 export const Dashboard = lazy(() => import('../../pages/Dashboard/Dashboard'));
 export const HostListPage = lazy(() => import('../../pages/Hosts/HostListPage'));
-export const HostDetailPage = lazy(() => import('../../pages/Hosts/HostDetailPage'));
+export const HostDetailPage = lazy(() => import('../../pages/Hosts/Detail'));
 export const HostOnboardingPage = lazy(() => import('../../pages/Hosts/HostOnboardingPage'));
 export const HostTerminalPage = lazy(() => import('../../pages/Hosts/HostTerminalPage'));
 export const HostCredentialsPage = lazy(() => import('../../pages/Hosts/Credentials'));
