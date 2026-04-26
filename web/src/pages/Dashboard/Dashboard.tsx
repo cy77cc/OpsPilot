@@ -47,7 +47,7 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="p-0 bg-gray-50 min-h-screen">
-      <div className="flex justify-end items-center mb-6">
+      <div className="flex justify-end items-center mb-3">
         <div className="flex items-center gap-3">
           <Select 
             value={timeRange}
@@ -68,7 +68,7 @@ const Dashboard: React.FC = () => {
         <KPIOverview data={data?.health} alerts={data?.alerts?.firing} />
         
         {/* Main Grid Layout - Charts Row */}
-        <div className="grid grid-cols-12 gap-3 xl:auto-rows-[360px]">
+        <div className="grid grid-cols-12 gap-3 xl:auto-rows-[340px]">
           <div className="col-span-12 xl:col-span-3">
             <ResourceHealth data={data?.health} />
           </div>
