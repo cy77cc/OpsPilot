@@ -14,20 +14,32 @@ interface InterfaceItem {
   mtu: number;
 }
 
+interface RouteItem {
+  destination: string;
+  gateway: string;
+  mask: string;
+  flags: string;
+  iface: string;
+  metric?: number;
+}
+
 const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
   const [loading, setLoading] = useState(false);
   const [interfaces, setInterfaces] = useState<InterfaceItem[]>([]);
+  const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [metrics, setMetrics] = useState<any>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [ifaceRes, metricRes] = await Promise.all([
+        const [ifaceRes, metricRes, routeRes] = await Promise.all([
           hostApi.getHostNetworkInterfaces(hostId),
           hostApi.getHostMetrics(hostId),
+          hostApi.getHostNetworkRoutes(hostId),
         ]);
         setInterfaces(ifaceRes.data || []);
+        setRoutes(routeRes.data || []);
         if (metricRes.data && metricRes.data.length > 0) {
           setMetrics(metricRes.data[metricRes.data.length - 1]);
         }
@@ -38,7 +50,7 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
     if (hostId) fetchData();
   }, [hostId]);
 
-  const columns: ColumnsType<InterfaceItem> = [
+  const interfaceColumns: ColumnsType<InterfaceItem> = [
     { title: '接口名称', dataIndex: 'name', key: 'name', width: 120 },
     { title: 'IPv4 地址', dataIndex: 'ip', key: 'ip', width: 150 },
     { title: 'MAC 地址', dataIndex: 'mac', key: 'mac', width: 180, render: (mac) => <code className="text-xs">{mac}</code> },
@@ -52,6 +64,14 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
     { title: '累计接收 (Rx)', dataIndex: 'rx', key: 'rx', width: 120 },
     { title: '累计发送 (Tx)', dataIndex: 'tx', key: 'tx', width: 120 },
     { title: 'MTU', dataIndex: 'mtu', key: 'mtu', width: 80 },
+  ];
+
+  const routeColumns: ColumnsType<RouteItem> = [
+    { title: '目标', dataIndex: 'destination', key: 'destination' },
+    { title: '网关', dataIndex: 'gateway', key: 'gateway' },
+    { title: '掩码', dataIndex: 'mask', key: 'mask' },
+    { title: '标志', dataIndex: 'flags', key: 'flags' },
+    { title: '接口', dataIndex: 'iface', key: 'iface' },
   ];
 
   return (
@@ -82,7 +102,7 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
 
         <Card title="网络接口" className="border-none shadow-sm">
           <Table
-            columns={columns}
+            columns={interfaceColumns}
             dataSource={interfaces}
             rowKey="name"
             size="small"
@@ -90,7 +110,7 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
           />
         </Card>
 
-        <Card 
+        <Card
           title={
             <div className="flex items-center gap-2">
               路由表
@@ -98,22 +118,13 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
                 <InfoCircleOutlined className="text-gray-400 text-xs" />
               </Tooltip>
             </div>
-          } 
+          }
           className="border-none shadow-sm"
         >
           <Table
-            columns={[
-              { title: '目标', dataIndex: 'dest', key: 'dest' },
-              { title: '网关', dataIndex: 'gw', key: 'gw' },
-              { title: '掩码', dataIndex: 'mask', key: 'mask' },
-              { title: '标志', dataIndex: 'flags', key: 'flags' },
-              { title: '接口', dataIndex: 'iface', key: 'iface' },
-            ]}
-            dataSource={[
-              { dest: '0.0.0.0', gw: '192.168.1.1', mask: '0.0.0.0', flags: 'UG', iface: 'ens33' },
-              { dest: '192.168.1.0', gw: '0.0.0.0', mask: '255.255.255.0', flags: 'U', iface: 'ens33' },
-            ]}
-            rowKey="dest"
+            columns={routeColumns}
+            dataSource={routes}
+            rowKey="destination"
             size="small"
             pagination={false}
           />

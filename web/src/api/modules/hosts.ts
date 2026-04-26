@@ -1133,6 +1133,10 @@ export const hostApi = {
     return apiService.get(`/hosts/${id}/network-interfaces`);
   },
 
+  async getHostNetworkRoutes(id: string): Promise<ApiResponse<any[]>> {
+    return apiService.get(`/hosts/${id}/routes`);
+  },
+
   async getHostPackages(id: string): Promise<ApiResponse<any[]>> {
     return apiService.get(`/hosts/${id}/packages`);
   },
