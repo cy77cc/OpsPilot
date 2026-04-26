@@ -178,51 +178,81 @@ func (h *Handler) BatchExec(c *gin.Context) {
 		return
 	}
 	var req struct {
-		HostIDs []uint64 `json:"host_ids"`
-		Command string   `json:"command" binding:"required"`
+		HostIDs     []uint64 `json:"host_ids"`
+		Command     string   `json:"command" binding:"required"`
+		Concurrency int      `json:"concurrency"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BindErr(c, err)
 		return
 	}
-	results := map[string]any{}
-	for _, id := range req.HostIDs {
-		node, err := h.hostService.Get(c.Request.Context(), id)
-		if err != nil {
-			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": "host not found", "exit_code": 1}
-			continue
-		}
-		privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
-		if err != nil {
-			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1}
-			continue
-		}
-		password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
-		if pwErr != nil {
-			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": fmt.Errorf("decrypt password: %w", pwErr).Error(), "exit_code": 1}
-			continue
-		}
-		password = strings.TrimSpace(password)
-		if strings.TrimSpace(privateKey) != "" {
-			password = ""
-		}
-		cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
-		if err != nil {
-			if hint := hostKeyTrustHintFromError(err); hint != nil {
-				results[fmt.Sprintf("%d", id)] = hostKeyErrorPayload(err.Error(), hint)
-				continue
-			}
-			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": "", "stderr": err.Error(), "exit_code": 1}
-			continue
-		}
-		out, err := sshclient.RunCommand(cli, req.Command)
-		_ = cli.Close()
-		if err != nil {
-			results[fmt.Sprintf("%d", id)] = gin.H{"stdout": out, "stderr": err.Error(), "exit_code": 1}
-			continue
-		}
-		results[fmt.Sprintf("%d", id)] = gin.H{"stdout": out, "stderr": "", "exit_code": 0}
+
+	concurrency := req.Concurrency
+	if concurrency < 1 {
+		concurrency = 10
 	}
+	if concurrency > 50 {
+		concurrency = 50
+	}
+
+	type execResult struct {
+		HostID   string `json:"host_id"`
+		Stdout   string `json:"stdout"`
+		Stderr   string `json:"stderr"`
+		ExitCode int    `json:"exit_code"`
+	}
+
+	results := make([]execResult, len(req.HostIDs))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for i, hostID := range req.HostIDs {
+		wg.Add(1)
+		go func(idx int, id uint64) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			hostIDStr := fmt.Sprintf("%d", id)
+			node, err := h.hostService.Get(c.Request.Context(), id)
+			if err != nil {
+				results[idx] = execResult{HostID: hostIDStr, Stdout: "", Stderr: "host not found", ExitCode: 1}
+				return
+			}
+			privateKey, passphrase, err := h.loadNodePrivateKey(c, node)
+			if err != nil {
+				results[idx] = execResult{HostID: hostIDStr, Stdout: "", Stderr: err.Error(), ExitCode: 1}
+				return
+			}
+			password, pwErr := h.hostService.ResolveNodeSSHPassword(node)
+			if pwErr != nil {
+				results[idx] = execResult{HostID: hostIDStr, Stdout: "", Stderr: fmt.Errorf("decrypt password: %w", pwErr).Error(), ExitCode: 1}
+				return
+			}
+			password = strings.TrimSpace(password)
+			if strings.TrimSpace(privateKey) != "" {
+				password = ""
+			}
+			cli, err := sshclient.NewSSHClient(node.SSHUser, password, node.IP, node.Port, privateKey, passphrase)
+			if err != nil {
+				if hint := hostKeyTrustHintFromError(err); hint != nil {
+					results[idx] = execResult{HostID: hostIDStr, Stdout: "", Stderr: err.Error(), ExitCode: 1}
+				} else {
+					results[idx] = execResult{HostID: hostIDStr, Stdout: "", Stderr: err.Error(), ExitCode: 1}
+				}
+				return
+			}
+			out, err := sshclient.RunCommand(cli, req.Command)
+			_ = cli.Close()
+			if err != nil {
+				results[idx] = execResult{HostID: hostIDStr, Stdout: out, Stderr: err.Error(), ExitCode: 1}
+				return
+			}
+			results[idx] = execResult{HostID: hostIDStr, Stdout: out, Stderr: "", ExitCode: 0}
+		}(i, hostID)
+	}
+
+	wg.Wait()
 	httpx.OK(c, results)
 }
 
