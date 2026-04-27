@@ -15,7 +15,7 @@ import {
 import { Bubble, Conversations, Prompts, Sender, Welcome } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
 import { useXChat, useXConversations } from '@ant-design/x-sdk';
-import { Button, Drawer, Popover, Space, Tag, Typography } from 'antd';
+import { App, Button, Drawer, Popover, Space, Tag, Tooltip, Typography } from 'antd';
 import { useLocation } from 'react-router-dom';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
@@ -225,6 +225,7 @@ export async function copyAssistantReplyToClipboard(
 
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
+  const { message: messageApi } = App.useApp();
   const location = useLocation();
   const { scene, context } = React.useMemo(
     () => resolveScene(location.pathname),
@@ -374,22 +375,83 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
 
           return (
             <div style={{ display: 'flex', gap: 2 }}>
-              <Button
-                type="text"
-                size="small"
-                icon={<CopyOutlined />}
-                aria-label="复制回复"
-                onClick={() => {
-                  const msg = (item as XChatItem).extraInfo?.message;
-                  void copyAssistantReplyToClipboard(
-                    msg?.content || '',
-                    (item as XChatItem).extraInfo?.runtime,
-                  );
-                }}
-              />
-              <Button type="text" size="small" icon={<LikeOutlined />} aria-label="点赞" />
-              <Button type="text" size="small" icon={<DislikeOutlined />} aria-label="点踩" />
-              <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="重新生成" />
+              <Tooltip title="复制">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={async () => {
+                    const msg = (item as XChatItem).extraInfo?.message;
+                    try {
+                      await copyAssistantReplyToClipboard(
+                        msg?.content || '',
+                        (item as XChatItem).extraInfo?.runtime,
+                      );
+                      messageApi.success('内容已复制');
+                    } catch {
+                      messageApi.error('复制失败');
+                    }
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="赞同">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LikeOutlined />}
+                  onClick={async () => {
+                    const messageId = (item as XChatItem).extraInfo?.messageId;
+                    if (!messageId) {return;}
+                    try {
+                      await aiApi.submitMessageFeedback(messageId, 'like');
+                      messageApi.success('感谢您的反馈！');
+                    } catch {
+                      messageApi.error('提交反馈失败');
+                    }
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="踩">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DislikeOutlined />}
+                  onClick={async () => {
+                    const messageId = (item as XChatItem).extraInfo?.messageId;
+                    if (!messageId) {return;}
+                    try {
+                      await aiApi.submitMessageFeedback(messageId, 'dislike');
+                      messageApi.success('感谢您的反馈！');
+                    } catch {
+                      messageApi.error('提交反馈失败');
+                    }
+                  }}
+                />
+              </Tooltip>
+              <Tooltip title="重新生成">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={() => {
+                    // Find the last user message before this assistant message
+                    const currentIndex = renderedMessages.findIndex((m) => m.renderKey === item.key);
+                    if (currentIndex === -1) {return;}
+
+                    let lastUserPrompt = '';
+                    for (let i = currentIndex - 1; i >= 0; i -= 1) {
+                      if (renderedMessages[i].message.role === 'user') {
+                        lastUserPrompt = renderedMessages[i].message.content || '';
+                        break;
+                      }
+                    }
+
+                    if (lastUserPrompt) {
+                      void onRequest(lastUserPrompt);
+                    }
+                  }}
+                />
+              </Tooltip>
             </div>
           );
         },
@@ -431,7 +493,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         },
       },
     }),
-    [buildStepContentLoader],
+    [buildStepContentLoader, messageApi, renderedMessages, onRequest],
   );
 
   React.useEffect(() => {
@@ -659,6 +721,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
                   extraInfo: {
                     messageId: item.renderKey,
                     runtime: item.message.runtime,
+                    message: item.message,
                   },
                 }))}
                 role={bubbleRole}

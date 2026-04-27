@@ -113,6 +113,13 @@ func (s *Service) GetDiagnosisReport(ctx context.Context, userID uint64, reportI
 	return s.logic.GetDiagnosisReport(ctx, userID, reportID)
 }
 
+func (s *Service) SubmitFeedback(ctx context.Context, userID uint64, messageID string, action string) error {
+	if s == nil || s.logic == nil {
+		return errChatServiceNotInitialized
+	}
+	return s.logic.SubmitFeedback(ctx, userID, messageID, action)
+}
+
 func (s *Service) ValidateReplayCursor(ctx context.Context, sessionID, clientRequestID, lastEventID string) error {
 	if strings.TrimSpace(lastEventID) == "" {
 		return nil

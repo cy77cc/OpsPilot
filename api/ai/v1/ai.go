@@ -38,6 +38,7 @@ type ChatMessageResponse struct {
 	Role         string `json:"role"`
 	Content      string `json:"content"`
 	Status       string `json:"status,omitempty"`
+	Feedback     string `json:"feedback,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	CreatedAt    string `json:"created_at,omitempty"`
 }
@@ -92,6 +93,7 @@ type MessageSummary struct {
 	Role         string `json:"role"`
 	Content      string `json:"content"`
 	Status       string `json:"status,omitempty"`
+	Feedback     string `json:"feedback,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	CreatedAt    string `json:"created_at,omitempty"`
 }
@@ -172,6 +174,17 @@ type SubmitApprovalResponse struct {
 	ApprovalID string `json:"approval_id"`
 	Status     string `json:"status"` // approved, rejected, expired
 	Message    string `json:"message,omitempty"`
+}
+
+// MessageFeedbackRequest defines the request body for message feedback.
+type MessageFeedbackRequest struct {
+	Action string `json:"action"` // like, dislike
+}
+
+// MessageFeedbackResponse defines the response body for message feedback.
+type MessageFeedbackResponse struct {
+	MessageID string `json:"message_id"`
+	Feedback  string `json:"feedback"`
 }
 
 // RetryResumeApprovalRequest requeues a retryable approval-owned run resume.

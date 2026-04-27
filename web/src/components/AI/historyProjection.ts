@@ -378,26 +378,62 @@ export async function hydrateAssistantHistoryFromProjection(
   }
 
   // 使用轻量级 runtime 转换，不加载 executor 内容
-  const runtime = projectionToLazyRuntime(projection);
+  let runtime = projectionToLazyRuntime(projection);
+
+  // 如果后端持久化了完整的 runtime（比如 activities 和 segments），则优先合并
+  const persistedRuntime = (message as any).runtime as AssistantReplyRuntime | undefined;
+  if (persistedRuntime) {
+    const mergedActivities = [...(runtime.activities || [])];
+    const seenIds = new Set(mergedActivities.map((a) => a.id));
+    for (const a of persistedRuntime.activities || []) {
+      if (!seenIds.has(a.id)) {
+        mergedActivities.push(a);
+        seenIds.add(a.id);
+      }
+    }
+    runtime = {
+      ...runtime,
+      ...persistedRuntime,
+      activities: mergedActivities,
+      plan: runtime.plan || persistedRuntime.plan,
+      segments: persistedRuntime.segments || runtime.segments,
+    };
+  }
 
   // 如果没有 plan，说明是标准对话，尝试恢复 interleaved segments 以实现内联渲染
   if (!runtime.plan && runtime._executorBlocks && runtime._executorBlocks.length > 0) {
-    const segments: AssistantReplySegment[] = [];
+    const segments: AssistantReplySegment[] = runtime.segments ? [...runtime.segments] : [];
     const activities: AssistantReplyActivity[] = [];
-    for (const block of runtime._executorBlocks) {
-      const res = await loadStepContent(block, -1);
-      segments.push(...res.segments);
-      activities.push(...res.activities);
-    }
-    runtime.segments = segments;
-    // 合并 executor 中的 activities，注意去重或保持顺序
-    const seenIds = new Set(runtime.activities.map(a => a.id));
-    activities.forEach(a => {
-      if (!seenIds.has(a.id)) {
-        runtime.activities.push(a);
-        seenIds.add(a.id);
+    
+    // 只有当没有从 persistedRuntime 恢复 segments 时，才去解析 executorBlocks
+    if (!runtime.segments || runtime.segments.length === 0) {
+      for (const block of runtime._executorBlocks) {
+        const res = await loadStepContent(block, -1);
+        segments.push(...res.segments);
+        activities.push(...res.activities);
       }
-    });
+      
+      // 合并 executor 中的 activities，注意去重或保持顺序
+      const seenIds = new Set(runtime.activities.map(a => a.id));
+      activities.forEach(a => {
+        if (!seenIds.has(a.id)) {
+          runtime.activities.push(a);
+          seenIds.add(a.id);
+        }
+      });
+    }
+
+    const currentSummary = (projection.summary?.content || '').trim();
+    const currentPersisted = (message.content || '').trim();
+    const displayContent = currentSummary || currentPersisted || PROJECTION_UNRECOVERABLE_PLACEHOLDER;
+
+    // 检查是否包含文本段落
+    const hasTextSegment = segments.some(s => s.type === 'text');
+    if (!hasTextSegment && displayContent && displayContent !== PROJECTION_UNRECOVERABLE_PLACEHOLDER) {
+      segments.unshift({ type: 'text', text: displayContent });
+    }
+
+    runtime.segments = segments;
   }
 
   const summaryContent = (projection.summary?.content || '').trim();

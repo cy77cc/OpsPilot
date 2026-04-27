@@ -48,6 +48,7 @@ func RegisterAIHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.GET("/runs/:runId/projection", queryHandler.GetRunProjection)
 		g.GET("/run-contents/:id", queryHandler.GetRunContent)
 		g.GET("/diagnosis/:reportId", queryHandler.GetDiagnosisReport)
+		g.POST("/messages/:id/feedback", queryHandler.SubmitFeedback)
 
 		// 审批相关 (Human-in-the-Loop)
 		g.GET("/approvals/pending", approvalHandler.ListPendingApprovals)

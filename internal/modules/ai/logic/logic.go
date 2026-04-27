@@ -204,6 +204,28 @@ func (l *Logic) GetDiagnosisReport(ctx context.Context, userID uint64, reportID 
 	return report, nil
 }
 
+func (l *Logic) SubmitFeedback(ctx context.Context, userID uint64, messageID string, action string) error {
+	if l.ChatDAO == nil {
+		return fmt.Errorf("chat service not initialized")
+	}
+	msg, err := l.ChatDAO.GetMessage(ctx, messageID)
+	if err != nil {
+		return err
+	}
+	if msg == nil {
+		return fmt.Errorf("message not found")
+	}
+	// Verify user owns the session
+	session, err := l.ChatDAO.GetSession(ctx, msg.SessionID, userID, "")
+	if err != nil {
+		return err
+	}
+	if session == nil {
+		return fmt.Errorf("permission denied")
+	}
+	return l.ChatDAO.UpdateMessage(ctx, messageID, map[string]any{"feedback": action})
+}
+
 // ── Approval 委托 ────────────────────────────────────────────
 
 func (l *Logic) SubmitApproval(ctx context.Context, input SubmitApprovalInput) (*SubmitApprovalOutput, error) {

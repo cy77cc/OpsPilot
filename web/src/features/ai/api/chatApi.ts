@@ -102,4 +102,15 @@ export async function chatStream(params: AIChatParams, handlers: A2UIStreamHandl
   }
 }
 
-export const chatApi = { chatStream };
+export async function submitMessageFeedback(messageId: string, action: 'like' | 'dislike'): Promise<void> {
+  const base = import.meta.env.VITE_API_BASE || '/api/v1';
+  await fetch(`${base}/ai/messages/${messageId}/feedback`, buildContextualFetchInit({
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action }),
+  }));
+}
+
+export const chatApi = { chatStream, submitMessageFeedback };

@@ -29,6 +29,7 @@ type ChatQueryService interface {
 	GetDiagnosisReport(ctx context.Context, userID uint64, reportID string) (*ai.AIDiagnosisReport, error)
 	RunByAssistantMessageID(ctx context.Context, sessionID string) map[string]*ai.AIRun
 	RunBySessionAndAssistantMessageID(ctx context.Context, sessions []ai.AIChatSession) map[string]map[string]*ai.AIRun
+	SubmitFeedback(ctx context.Context, userID uint64, messageID string, action string) error
 }
 
 type ChatQueryHandler struct {
@@ -245,6 +246,23 @@ func (h *ChatQueryHandler) GetDiagnosisReport(c *gin.Context) {
 	})
 }
 
+func (h *ChatQueryHandler) SubmitFeedback(c *gin.Context) {
+	var req aiv1.MessageFeedbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BindErr(c, err)
+		return
+	}
+	err := h.svc.SubmitFeedback(c.Request.Context(), httpx.UIDFromCtx(c), c.Param("id"), req.Action)
+	if err != nil {
+		httpx.ServerErr(c, err)
+		return
+	}
+	httpx.OK(c, aiv1.MessageFeedbackResponse{
+		MessageID: c.Param("id"),
+		Feedback:  req.Action,
+	})
+}
+
 func (h *ChatQueryHandler) buildResumableCredentials(ctx context.Context, run *ai.AIRun) *logic.ResumableCredentials {
 	if h == nil || h.svc == nil {
 		return nil
@@ -272,6 +290,7 @@ func sessionMessageItem(message ai.AIChatMessage, run *ai.AIRun) gin.H {
 		"session_id_num": message.SessionIDNum,
 		"role":           message.Role,
 		"status":         message.Status,
+		"feedback":       message.Feedback,
 		"created_at":     formatTime(message.CreatedAt),
 		"content":        message.Content,
 	}
