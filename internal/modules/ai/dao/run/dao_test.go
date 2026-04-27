@@ -177,7 +177,7 @@ func TestAIRunDAO_CreateOrReuseRunShell(t *testing.T) {
 			defer wg.Done()
 			<-start
 
-			run, created, err := dao.CreateOrReuseRunShell(ctx, session.UserID, session.ID, "req-shell", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+			run, created, err := dao.CreateOrReuseRunShell(ctx, session.ID, "req-shell", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
 				buildCalls.Add(1)
 				runID := fmt.Sprintf("run-shell-%d", i)
 				userMessageID := fmt.Sprintf("msg-user-%d", i)
@@ -289,7 +289,7 @@ func TestAIRunDAO_CreateOrReuseRunShell_EmptyClientRequestIDIsNonIdempotent(t *t
 		t.Fatalf("create session: %v", err)
 	}
 
-	firstRun, firstCreated, err := dao.CreateOrReuseRunShell(ctx, session.UserID, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+	firstRun, firstCreated, err := dao.CreateOrReuseRunShell(ctx, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
 		return &model.AIRun{
 				ID:                 "run-empty-1",
 				SessionID:          session.ID,
@@ -322,7 +322,7 @@ func TestAIRunDAO_CreateOrReuseRunShell_EmptyClientRequestIDIsNonIdempotent(t *t
 		t.Fatal("expected firstRun to be non-nil")
 	}
 
-	secondRun, secondCreated, err := dao.CreateOrReuseRunShell(ctx, session.UserID, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
+	secondRun, secondCreated, err := dao.CreateOrReuseRunShell(ctx, session.ID, "", func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage) {
 		return &model.AIRun{
 				ID:                 "run-empty-2",
 				SessionID:          session.ID,

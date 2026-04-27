@@ -57,7 +57,7 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 		return result, nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return result, fmt.Errorf("context is required")
 	}
 	if input.Projector == nil {
 		input.Projector = airuntime.NewStreamProjector()
@@ -148,7 +148,7 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 					return result, err
 				}
 				result.FatalErr = fmt.Errorf("iterator event: %w", event.Err)
-				return result, nil
+				return result, result.FatalErr
 			}
 			result.HasToolErrors = true
 		}
@@ -186,7 +186,7 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 						return result, err
 					}
 					result.FatalErr = err
-					return result, nil
+					return result, result.FatalErr
 				}
 				if msg == nil {
 					continue

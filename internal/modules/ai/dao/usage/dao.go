@@ -86,6 +86,12 @@ func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsRes
 	var approvalTotal, approvalPassed int64
 	approvalBaseQ := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
 		Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
+	if query.Scene != "" {
+		approvalBaseQ = approvalBaseQ.Where("scene = ?", query.Scene)
+	}
+	if query.UserID > 0 {
+		approvalBaseQ = approvalBaseQ.Where("user_id = ?", query.UserID)
+	}
 	approvalBaseQ.Model(&model.AIUsageLog{}).Where("approval_count > 0").Count(&approvalTotal)
 	approvalBaseQ.Model(&model.AIUsageLog{}).Where("approval_status = ?", "approved").Count(&approvalPassed)
 
@@ -98,12 +104,16 @@ func (d *UsageLogDAO) GetStats(ctx context.Context, query StatsQuery) (*StatsRes
 
 	// 工具错误率
 	var toolCalls, toolErrors int64
-	d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
-		Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate).
-		Select("COALESCE(SUM(tool_call_count), 0)").Scan(&toolCalls)
-	d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
-		Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate).
-		Select("COALESCE(SUM(tool_error_count), 0)").Scan(&toolErrors)
+	toolBaseQ := d.db.WithContext(ctx).Model(&model.AIUsageLog{}).
+		Where("created_at >= ? AND created_at < ?", query.StartDate, query.EndDate)
+	if query.Scene != "" {
+		toolBaseQ = toolBaseQ.Where("scene = ?", query.Scene)
+	}
+	if query.UserID > 0 {
+		toolBaseQ = toolBaseQ.Where("user_id = ?", query.UserID)
+	}
+	toolBaseQ.Select("COALESCE(SUM(tool_call_count), 0)").Scan(&toolCalls)
+	toolBaseQ.Select("COALESCE(SUM(tool_error_count), 0)").Scan(&toolErrors)
 	if toolCalls > 0 {
 		result.ToolErrorRate = float64(toolErrors) / float64(toolCalls)
 	}

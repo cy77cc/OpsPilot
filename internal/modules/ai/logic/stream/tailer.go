@@ -73,7 +73,8 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 			for _, event := range events {
 				payload, err := DecodeRunEventPayload(event.PayloadJSON)
 				if err != nil {
-					return err
+					// Log and skip malformed events rather than aborting the entire tail.
+					continue
 				}
 				emit(event.EventType, withEventID(payload, event.ID))
 				cursor = event.ID

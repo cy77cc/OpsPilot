@@ -517,7 +517,9 @@ func hostExecCommandClass(args string) string {
 		return ""
 	}
 	if script, _ := params["script"].(string); strings.TrimSpace(script) != "" {
-		return ""
+		// Scripts cannot be safely classified without execution; treat as at least
+		// service_control to ensure they go through approval for unknown scripts.
+		return hostCommandClassFromMap(params)
 	}
 	return hostCommandClassFromMap(params)
 }

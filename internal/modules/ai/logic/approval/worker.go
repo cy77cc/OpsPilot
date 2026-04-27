@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -158,16 +159,11 @@ func (w *Worker) RunLoop(ctx context.Context, interval time.Duration) {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
 		}
 		claimed, _ := w.RunOnce(ctx)
 		if claimed {
 			continue
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
 		}
 	}
 }
@@ -193,11 +189,10 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	if err := outboxDAO.MarkDone(ctx, e.ID); err != nil {
-		nextRetryAt := w.now().Add(w.retryBackoff(e.RetryCount))
-		if markErr := outboxDAO.MarkRetry(ctx, e.ID, nextRetryAt); markErr != nil {
-			return true, err
-		}
-		return true, err
+		// Log the MarkDone failure but do not retry the event processing.
+		// Retrying after successful processEvent risks double-resume (e.g., resuming the run twice).
+		// A separate reconciliation job should handle stuck "processing" events.
+		log.Printf("approval worker: failed to mark outbox event %d as done: %v (event was processed successfully)", e.ID, err)
 	}
 	return true, nil
 }

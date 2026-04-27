@@ -78,6 +78,7 @@ func (o *Orchestrator) Evaluate(ctx context.Context, toolName string, args strin
 		// Fail-closed: malformed args means we cannot safely evaluate policies.
 		// Return auto-approval with no-risk, but log the anomaly for monitoring.
 		argsMap = map[string]any{"_parse_error": true}
+		log.Printf("approval: failed to parse tool args for %q: %v", toolName, err)
 	}
 	policies, err := o.listPolicies(ctx, toolName)
 	if err != nil {

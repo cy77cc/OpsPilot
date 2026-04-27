@@ -361,12 +361,12 @@ func (m *WriteModel) writeEvent(ctx context.Context, tx *gorm.DB, outboxDAO *aid
 }
 
 func marshalEventPayload(eventType string, occurredAt time.Time, sequence int64, task *ai.AIApprovalTask, payload map[string]any) (string, error) {
-	_ = eventType
-	_ = occurredAt
-	_ = sequence
 	if payload == nil {
 		payload = map[string]any{}
 	}
+	payload["event_type"] = eventType
+	payload["occurred_at"] = occurredAt.Format(time.RFC3339Nano)
+	payload["sequence"] = sequence
 	if task == nil {
 		return "", fmt.Errorf("approval task is required")
 	}

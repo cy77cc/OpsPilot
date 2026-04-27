@@ -79,9 +79,11 @@ func (d *AIRunDAO) FindByClientRequestID(ctx context.Context, sessionID, clientR
 // 实现幂等性：如果相同 client_request_id 的 Run 已存在，返回已有记录。
 // 否则创建新的 Run、用户消息和助手消息。
 //
+// 注意：调用方必须在调用此方法前验证 session 的所有权（即 session 属于指定用户）。
+// 本方法不在 DAO 层重复验证，以避免额外的数据库查询。
+//
 // 参数:
 //   - ctx: 上下文
-//   - userID: 用户 ID
 //   - sessionID: 会话 ID
 //   - clientRequestID: 客户端请求 ID
 //   - build: 构建 Run 和消息的回调函数
@@ -90,10 +92,7 @@ func (d *AIRunDAO) FindByClientRequestID(ctx context.Context, sessionID, clientR
 //   - *model.AIRun: 运行记录
 //   - bool: 是否为新创建（true=新创建，false=复用）
 //   - error: 错误信息
-func (d *AIRunDAO) CreateOrReuseRunShell(ctx context.Context, userID uint64, sessionID, clientRequestID string, build func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage)) (*model.AIRun, bool, error) {
-	// userID is validated at the session ownership layer (caller) before this method is invoked.
-	// This DAO method operates at the run level where session ownership is already guaranteed.
-	_ = userID
+func (d *AIRunDAO) CreateOrReuseRunShell(ctx context.Context, sessionID, clientRequestID string, build func() (*model.AIRun, *model.AIChatMessage, *model.AIChatMessage)) (*model.AIRun, bool, error) {
 
 	normalizedSessionID := strings.TrimSpace(sessionID)
 	normalizedClientRequestID := strings.TrimSpace(clientRequestID)

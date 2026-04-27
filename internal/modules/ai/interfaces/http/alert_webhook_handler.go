@@ -10,7 +10,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	alertheal "github.com/cy77cc/OpsPilot/internal/modules/ai/logic/alertheal"
@@ -19,6 +21,7 @@ import (
 )
 
 const maxAlertWebhookPayloadBytes = 1 << 20 // 1 MiB
+const maxAlertWebhookTimestampAge = 5 * time.Minute
 
 type AlertWebhookIngestor interface {
 	Ingest(ctx context.Context, protocol string, raw []byte) ([]model.AIAlertIngestEvent, error)
@@ -48,6 +51,21 @@ func (h *AlertWebhookHandler) Handle(c *gin.Context) {
 	if signature == "" {
 		writeWebhookError(c, http.StatusUnauthorized, "missing webhook signature")
 		return
+	}
+
+	// Validate timestamp to prevent replay attacks
+	timestampStr := strings.TrimSpace(c.GetHeader("X-OpsPilot-Timestamp"))
+	if timestampStr != "" {
+		ts, err := strconv.ParseInt(timestampStr, 10, 64)
+		if err != nil {
+			writeWebhookError(c, http.StatusUnauthorized, "invalid webhook timestamp")
+			return
+		}
+		tsTime := time.Unix(ts, 0)
+		if time.Since(tsTime) > maxAlertWebhookTimestampAge {
+			writeWebhookError(c, http.StatusUnauthorized, "webhook timestamp expired")
+			return
+		}
 	}
 
 	body, err := readAlertWebhookPayload(c.Request.Body)

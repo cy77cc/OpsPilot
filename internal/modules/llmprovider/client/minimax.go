@@ -20,12 +20,15 @@ func (f *minimaxFactory) Create(ctx context.Context, p *model.AILLMProvider, opt
 		return nil, fmt.Errorf("llm provider is nil")
 	}
 
+	// MiniMax 兼容 Claude/OpenAI 协议，通过 Claude adapter 路由。
+	temp := float32(p.Temperature)
 	return claude.NewChatModel(ctx, &claude.Config{
 		BaseURL: &p.BaseURL,
 		Model:   p.Model,
 		APIKey:  p.APIKey,
+		Temperature: &temp,
 		Thinking: &claude.Thinking{
-			Enable: false,
+			Enable: p.Thinking,
 		},
 	})
 }

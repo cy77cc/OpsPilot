@@ -130,7 +130,7 @@ func EnsureChatShell(ctx context.Context, l *Logic, input ChatInput) (ChatShell,
 	}
 
 	var createdUser, createdAssistant *ai.AIChatMessage
-	run, created, err := l.RunDAO.CreateOrReuseRunShell(ctx, input.UserID, sessionID, input.ClientRequestID, func() (*ai.AIRun, *ai.AIChatMessage, *ai.AIChatMessage) {
+	run, created, err := l.RunDAO.CreateOrReuseRunShell(ctx, sessionID, input.ClientRequestID, func() (*ai.AIRun, *ai.AIChatMessage, *ai.AIChatMessage) {
 		userMessageID := uuid.NewString()
 		assistantMessageID := uuid.NewString()
 		createdUser = &ai.AIChatMessage{ID: userMessageID, SessionID: sessionID, Role: "user", Content: input.Message, Status: "done"}
@@ -959,7 +959,7 @@ func EmitTerminalFailure(ctx context.Context, l *Logic, shell ChatShell, seq *in
 		return err
 	}
 	emit(projected.Event, withEventID(projected.Data, eid))
-	runUpdate := aidao.AIRunStatusUpdate{AssistantMessageID: shell.AssistantMessage.ID, Status: "failed_runtime", ErrorMessage: internalErr.Error()}
+	runUpdate := aidao.AIRunStatusUpdate{AssistantMessageID: shell.AssistantMessage.ID, Status: "failed_runtime", ErrorMessage: stream.SanitizeUserFacingError(internalErr)}
 	snapshot := stream.BuildAssistantFailureSnapshot(summaryBody, assistantBody, publicErr)
 	if err := FinalizeRunCritical(ctx, l, shell, runUpdate, snapshot); err != nil {
 		return err

@@ -181,7 +181,7 @@ func (h *HTTPHandler) UpdateModel(c *gin.Context) {
 			"is_enabled":      record.IsEnabled,
 			"sort_order":      record.SortOrder,
 			"api_key_version": record.APIKeyVersion,
-			"config_version":  record.ConfigVersion,
+			"config_version":  record.ConfigVersion + 1,
 		}).Error
 	}); err != nil {
 		httpx.ServerErr(c, err)
@@ -212,7 +212,7 @@ func (h *HTTPHandler) SetDefaultModel(c *gin.Context) {
 		}
 		return tx.Model(&LLMProviderRecord{}).
 			Where("id = ? AND deleted_at IS NULL", record.ID).
-			Update("is_default", true).Error
+			Updates(map[string]any{"is_default": true, "config_version": record.ConfigVersion + 1}).Error
 	}); err != nil {
 		httpx.ServerErr(c, err)
 		return

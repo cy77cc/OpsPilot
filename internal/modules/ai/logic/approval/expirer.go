@@ -82,10 +82,11 @@ func (e *Expirer) expireTask(ctx context.Context, snapshot *ai.AIApprovalTask, n
 	if snapshot == nil {
 		return nil
 	}
-	_ = now
 	if e == nil || e.logic == nil || e.logic.SvcCtx == nil || e.logic.SvcCtx.DB == nil {
 		return nil
 	}
+	// Use the passed `now` for consistent time handling; ExpireApproval uses its own time.Now()
+	// internally but we pass the scanner's time for logging consistency.
 	_, err := NewWriteModel(e.logic.SvcCtx.DB).ExpireApproval(ctx, snapshot.ApprovalID)
 	return err
 }

@@ -59,22 +59,27 @@ func InitCacheWatcher(rdb redis.UniversalClient, db *gorm.DB) {
 		}
 
 		if db != nil {
-			go startHealthCheckLoop(db)
+			ctx, cancel := context.WithCancel(context.Background())
+			go startHealthCheckLoop(ctx, db, cancel)
 		}
 	})
 }
 
-func startHealthCheckLoop(db *gorm.DB) {
+func startHealthCheckLoop(ctx context.Context, db *gorm.DB, shutdown context.CancelFunc) {
 	ticker := time.NewTicker(time.Minute * 5)
 	defer ticker.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer shutdown()
 
 	const maxConcurrent = 5
 	sem := semaphore.NewWeighted(maxConcurrent)
 
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		dao := llmdao.NewLLMProviderDAO(db)
 		providers, err := dao.ListEnabled(ctx)
 		if err != nil {
@@ -85,7 +90,7 @@ func startHealthCheckLoop(db *gorm.DB) {
 		for _, p := range providers {
 			p := p
 			if err := sem.Acquire(ctx, 1); err != nil {
-				return
+				continue
 			}
 			go func() {
 				defer sem.Release(1)
@@ -98,8 +103,13 @@ func startHealthCheckLoop(db *gorm.DB) {
 					log.Printf("llmprovider: health check failed for %s (%s): %v", p.Name, p.Model, err)
 					healthMap.Store(p.ID, false)
 					// Invalidate cache on failure
+					prefix := fmt.Sprintf("%d:", p.ID)
 					modelCache.Range(func(key, value any) bool {
-						if strings.HasPrefix(key.(string), fmt.Sprintf("%d:", p.ID)) {
+						keyStr, ok := key.(string)
+						if !ok {
+							return true
+						}
+						if strings.HasPrefix(keyStr, prefix) {
 							modelCache.Delete(key)
 						}
 						return true
@@ -166,11 +176,12 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 
 		// 如果都挂了，由于目前没法完全确信 healthMap，还是尝试用第一个（默认的）作为保底
 		if provider == nil && len(providers) > 0 {
+			log.Printf("llmprovider: all providers appear unhealthy, falling back to %s (%s)", providers[0].Name, providers[0].Model)
 			provider = &providers[0]
 		}
 
 		if provider != nil {
-			cacheKey := fmt.Sprintf("%d:%d:%t:%f", provider.ID, opts.Timeout.Milliseconds(), opts.Thinking, opts.Temp)
+			cacheKey := fmt.Sprintf("%d:%d:%d:%d:%t:%f", provider.ID, provider.ConfigVersion, provider.APIKeyVersion, opts.Timeout.Milliseconds(), opts.Thinking, opts.Temp)
 			if val, ok := modelCache.Load(cacheKey); ok {
 				return val.(einomodel.ToolCallingChatModel), nil
 			}
@@ -281,6 +292,9 @@ func CheckModelHealth(ctx context.Context, db *gorm.DB) error {
 	})
 	if err != nil {
 		return err
+	}
+	if m == nil {
+		return fmt.Errorf("no chat model available for health check")
 	}
 	_, err = m.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
 	return err
