@@ -58,7 +58,7 @@ func (t *RunTailer) ReplayThenTail(ctx context.Context, runID, lastEventID strin
 	cursor := strings.TrimSpace(lastEventID)
 	emitted := false
 
-		for {
+	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

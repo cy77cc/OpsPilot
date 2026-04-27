@@ -42,18 +42,22 @@ type IteratorProcessResult struct {
 
 // IteratorProcessInput 定义迭代器处理输入。
 type IteratorProcessInput struct {
-	Iterator         *adk.AsyncIterator[*adk.AgentEvent]
-	Projector        *airuntime.StreamProjector
-	Emit             func(event string, data any)
-	ConsumeProjected func(kind IteratorConsumeKind, events []airuntime.PublicStreamEvent) error
-	HandleRunUpdate  func(update RunUpdate)
+	Iterator                *adk.AsyncIterator[*adk.AgentEvent]
+	Projector               *airuntime.StreamProjector
+	Emit                    func(event string, data any)
+	ConsumeProjected        func(kind IteratorConsumeKind, events []airuntime.PublicStreamEvent) error
+	HandleRunUpdate         func(update RunUpdate)
+	CircuitBreakerThreshold int // 0 uses default of 2
 }
 
 // ProcessAgentIterator 处理 Agent 异步迭代器事件流。
-func ProcessAgentIterator(_ context.Context, input IteratorProcessInput) (IteratorProcessResult, error) {
+func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (IteratorProcessResult, error) {
 	result := IteratorProcessResult{}
 	if input.Iterator == nil {
 		return result, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if input.Projector == nil {
 		input.Projector = airuntime.NewStreamProjector()
@@ -68,7 +72,7 @@ func ProcessAgentIterator(_ context.Context, input IteratorProcessInput) (Iterat
 	var (
 		summaryContent    strings.Builder
 		assistantSnapshot strings.Builder
-		toolFailures      = newToolFailureTracker()
+		toolFailures      = newToolFailureTracker(input.CircuitBreakerThreshold)
 	)
 
 	processProjected := func(kind IteratorConsumeKind, events []airuntime.PublicStreamEvent) error {
@@ -103,6 +107,10 @@ func ProcessAgentIterator(_ context.Context, input IteratorProcessInput) (Iterat
 	}
 
 	for {
+		if ctx.Err() != nil {
+			result.FatalErr = ctx.Err()
+			break
+		}
 		if persisted := input.Projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
 			result.Interrupted = true
 			break

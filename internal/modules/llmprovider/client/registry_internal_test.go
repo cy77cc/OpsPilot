@@ -110,6 +110,18 @@ func TestGetDefaultChatModel_UsesDatabaseDefaultProvider(t *testing.T) {
 }
 
 func TestGetDefaultChatModel_UsesRuntimeContextDBWhenNil(t *testing.T) {
+	// Register the DB extractor for this test.
+	chatmodel.SetDBExtractor(func(ctx context.Context) *gorm.DB {
+		services := runtimectx.Services(ctx)
+		if services == nil {
+			return nil
+		}
+		svcCtx, ok := services.(*svc.ServiceContext)
+		if !ok {
+			return nil
+		}
+		return svcCtx.DB
+	})
 	chatmodel.ResetRegistryForTest()
 
 	cfg := config.CFG.LLM

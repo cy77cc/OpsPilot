@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
@@ -34,30 +35,33 @@ type ChatModelConfig struct {
 }
 
 var (
-	modelCache sync.Map // map[string]einomodel.ToolCallingChatModel
-	healthMap  sync.Map // map[uint64]bool (id -> isHealthy)
+	modelCache      sync.Map // map[string]einomodel.ToolCallingChatModel
+	healthMap       sync.Map // map[uint64]bool (id -> isHealthy)
+	watcherInitOnce sync.Once
 )
 
 // InitCacheWatcher 启动 Redis 订阅，当配置变更时清除本地缓存。
 func InitCacheWatcher(rdb redis.UniversalClient, db *gorm.DB) {
-	if rdb != nil {
-		go func() {
-			pubsub := rdb.Subscribe(context.Background(), constants.LLMConfigUpdateChannel)
-			defer pubsub.Close()
+	watcherInitOnce.Do(func() {
+		if rdb != nil {
+			go func() {
+				pubsub := rdb.Subscribe(context.Background(), constants.LLMConfigUpdateChannel)
+				defer pubsub.Close()
 
-			ch := pubsub.Channel()
-			for range ch {
-				modelCache.Range(func(key, value any) bool {
-					modelCache.Delete(key)
-					return true
-				})
-			}
-		}()
-	}
+				ch := pubsub.Channel()
+				for range ch {
+					modelCache.Range(func(key, value any) bool {
+						modelCache.Delete(key)
+						return true
+					})
+				}
+			}()
+		}
 
-	if db != nil {
-		go startHealthCheckLoop(db)
-	}
+		if db != nil {
+			go startHealthCheckLoop(db)
+		}
+	})
 }
 
 func startHealthCheckLoop(db *gorm.DB) {
@@ -81,7 +85,7 @@ func startHealthCheckLoop(db *gorm.DB) {
 		for _, p := range providers {
 			p := p
 			if err := sem.Acquire(ctx, 1); err != nil {
-				break
+				return
 			}
 			go func() {
 				defer sem.Release(1)
@@ -284,7 +288,7 @@ func CheckModelHealth(ctx context.Context, db *gorm.DB) error {
 
 func dbFromRuntimeContext(ctx context.Context) *gorm.DB {
 	if extractor := dbExtractor.Load(); extractor != nil {
-		return extractor(ctx)
+		return (*extractor)(ctx)
 	}
 	return nil
 }
@@ -292,7 +296,10 @@ func dbFromRuntimeContext(ctx context.Context) *gorm.DB {
 // SetDBExtractor registers a function to extract *gorm.DB from context.
 // Call this once during application initialization.
 func SetDBExtractor(fn func(context.Context) *gorm.DB) {
-	dbExtractor.Store(fn)
+	wrapped := dbExtractorFunc(fn)
+	dbExtractor.Store(&wrapped)
 }
 
-var dbExtractor atomic.Pointer[func(context.Context) *gorm.DB]
+type dbExtractorFunc func(context.Context) *gorm.DB
+
+var dbExtractor atomic.Pointer[dbExtractorFunc]

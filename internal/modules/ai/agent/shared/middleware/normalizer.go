@@ -800,7 +800,6 @@ func normalizeKey(in string) string {
 		}
 	}
 	normalized := strings.Trim(string(out), "_")
-	normalized = strings.ReplaceAll(normalized, "__", "_")
 	for strings.Contains(normalized, "__") {
 		normalized = strings.ReplaceAll(normalized, "__", "_")
 	}

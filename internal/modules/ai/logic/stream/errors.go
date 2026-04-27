@@ -33,6 +33,7 @@ type toolFailureKey struct{ ToolName, ArgsShape string }
 type toolFailureTracker struct {
 	counts     map[toolFailureKey]int
 	callShapes map[string]toolFailureKey
+	threshold  int
 }
 
 var (
@@ -42,8 +43,11 @@ var (
 	genericToolNamePattern   = regexp.MustCompile(`(?:toolName=|tool_name=|name:)\s*([A-Za-z0-9._:-]+)`)
 )
 
-func newToolFailureTracker() *toolFailureTracker {
-	return &toolFailureTracker{counts: make(map[toolFailureKey]int), callShapes: make(map[string]toolFailureKey)}
+func newToolFailureTracker(threshold int) *toolFailureTracker {
+	if threshold <= 0 {
+		threshold = toolFailureCircuitBreakerThreshold
+	}
+	return &toolFailureTracker{counts: make(map[toolFailureKey]int), callShapes: make(map[string]toolFailureKey), threshold: threshold}
 }
 
 // ClassifyRecoverableToolInvocationError 分类可恢复的工具调用错误。
@@ -201,7 +205,7 @@ func (t *toolFailureTracker) recordFailure(info *RecoverableToolInvocationError)
 	}
 	t.counts[key]++
 	count := t.counts[key]
-	return key, count, count >= toolFailureCircuitBreakerThreshold
+	return key, count, count >= t.threshold
 }
 
 func (t *toolFailureTracker) keyFor(info *RecoverableToolInvocationError) toolFailureKey {

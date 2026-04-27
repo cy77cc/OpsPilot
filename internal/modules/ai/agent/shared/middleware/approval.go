@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -349,13 +350,25 @@ func hostPolicyPrecheck(toolName, args string) *host.PolicyDecision {
 	}
 	target, _ := params["target"].(string)
 
-	engine := host.NewHostCommandPolicyEngine(host.DefaultReadonlyAllowlist())
+	engine := getHostPolicyEngine()
 	decision := engine.Evaluate(host.PolicyInput{
 		ToolName:   strings.TrimSpace(toolName),
 		Target:     strings.TrimSpace(target),
 		CommandRaw: cmd,
 	})
 	return &decision
+}
+
+var (
+	hostPolicyEngineOnce sync.Once
+	hostPolicyEngine     *host.HostCommandPolicyEngine
+)
+
+func getHostPolicyEngine() *host.HostCommandPolicyEngine {
+	hostPolicyEngineOnce.Do(func() {
+		hostPolicyEngine = host.NewHostCommandPolicyEngine(host.DefaultReadonlyAllowlist())
+	})
+	return hostPolicyEngine
 }
 
 func (m *approvalMiddleware) raiseApprovalInterrupt(ctx context.Context, toolName, callID, args string, decision *approval.ApprovalDecision) error {

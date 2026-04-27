@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"unicode/utf8"
 
@@ -850,7 +851,9 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 		if err := FinalizeRunCritical(ctx, l, shell, runStatus, result.SummaryText); err != nil {
 			return fmt.Errorf("persist waiting approval state: %w", err)
 		}
-		_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
+		if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("persist run enhancements best effort: %v", err)
+		}
 		emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": "waiting_approval", "agent": "executor", "summary": result.SummaryText})
 		return nil
 	}
@@ -877,7 +880,9 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	if err := FinalizeRunCritical(ctx, l, shell, runStatus, finalAssistantContent); err != nil {
 		return fmt.Errorf("finalize run critical: %w", err)
 	}
-	_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
+	if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
+		log.Printf("persist run enhancements best effort: %v", err)
+	}
 	emit(done.Event, withEventID(done.Data, eid))
 	return nil
 }

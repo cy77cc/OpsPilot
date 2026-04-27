@@ -229,8 +229,6 @@ const ClusterDetailPageView: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 1. Breadcrumb */}
-      <Breadcrumb items={[{ title: '资源管理' }, { title: '集群管理' }, { title: cluster.name }]} className="text-[12px] text-[#6b7280]" />
 
       {/* 2. Page Title & Action Bar */}
       <div className="flex justify-between items-start">

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -119,7 +120,9 @@ func ResumeApprovedTask(ctx context.Context, l *Logic, task *ai.AIApprovalTask, 
 		if err := FinalizeRunCritical(ctx, l, shell, runStatus, result.SummaryText); err != nil {
 			return nil, fmt.Errorf("persist waiting approval state: %w", err)
 		}
-		_ = PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText)
+	if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("persist run enhancements best effort (resume): %v", err)
+		}
 		return nil, nil
 	}
 

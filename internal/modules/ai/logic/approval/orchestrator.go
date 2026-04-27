@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"regexp"
 	"strings"
@@ -195,6 +196,7 @@ func FallbackRequiresApproval(toolName, commandClass string) bool {
 	if strings.Contains(strings.ToLower(toolName), "preview") && strings.EqualFold(strings.TrimSpace(commandClass), "readonly") {
 		return false
 	}
+	log.Printf("approval: tool %q has no registered policy, defaulting to approval required (command_class=%q)", toolName, commandClass)
 	return true
 }
 
