@@ -23,7 +23,6 @@ import {
   hydrateAssistantHistoryFromProjection,
   resetHistoryProjectionCache,
 } from './historyProjection';
-import { normalizeMarkdownContent } from './markdownContent';
 import { PlatformChatProvider } from './providers';
 import type { AssistantReplyRuntime, ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
 import type { AIMessage } from '../../features/ai/api/shared';
@@ -217,7 +216,7 @@ export async function copyAssistantReplyToClipboard(
     parts.push(finalMarkdownBody);
   }
 
-  const copyContent = normalizeMarkdownContent(parts.join('\n\n')).trim();
+  const copyContent = parts.join('\n\n').trim();
   if (!copyContent || !navigator?.clipboard?.writeText) {
     return;
   }

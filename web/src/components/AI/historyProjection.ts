@@ -1,6 +1,5 @@
 import type { AIMessage, AIRunContent, AIRunProjection } from '../../api/modules/ai';
 import { aiApi } from '../../api/modules/ai';
-import { normalizeMarkdownContent } from './markdownContent';
 import type { AssistantReplyActivity, AssistantReplyPlanStep, AssistantReplyRuntime, AssistantReplySegment, AssistantReplyStatusKind, SlimExecutorBlock, XChatMessage } from './types';
 
 const projectionCache = new Map<string, AIRunProjection | null>();
@@ -277,7 +276,7 @@ export async function loadStepContent(
   for (const item of block.items || []) {
     if (item.type === 'content' && item.content_id) {
       const runContent = await loadRunContent(item.content_id);
-      const text = normalizeMarkdownContent(runContent?.body_text || '');
+      const text = runContent?.body_text || '';
       if (text) {
         segments.push({ type: 'text', text });
         content += text;
@@ -380,8 +379,8 @@ export async function hydrateAssistantHistoryFromProjection(
 
   // 使用轻量级 runtime 转换，不加载 executor 内容
   const runtime = projectionToLazyRuntime(projection);
-  const summaryContent = normalizeMarkdownContent(projection.summary?.content || '').trim();
-  const persistedContent = normalizeMarkdownContent(fallbackContent).trim();
+  const summaryContent = (projection.summary?.content || '').trim();
+  const persistedContent = fallbackContent.trim();
   const displayContent = summaryContent || persistedContent || PROJECTION_UNRECOVERABLE_PLACEHOLDER;
 
   if (!summaryContent) {

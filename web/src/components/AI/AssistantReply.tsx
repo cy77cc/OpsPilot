@@ -5,7 +5,6 @@ import type { ComponentProps } from '@ant-design/x-markdown';
 import { createStyles } from 'antd-style';
 import { Collapse, Button, Skeleton } from 'antd';
 import { DownOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
-import { normalizeMarkdownContent } from './markdownContent';
 import type {
   AssistantReplyActivity,
   AssistantReplyPlanStep,
@@ -487,7 +486,7 @@ function MarkdownViewportContent({
   styles: Record<string, string>;
   isStreaming?: boolean;
 }) {
-  const normalizedContent = normalizeMarkdownContent(content);
+  const normalizedContent = content;
   const shouldDefer = isLargeMarkdown(normalizedContent);
   // If streaming, always keep visible to avoid jumps.
   const [isVisible, setIsVisible] = useState(isStreaming || !shouldDefer);
@@ -621,7 +620,7 @@ function StepContentRenderer({
         hasBlockContent = hasBlockContent || !inlineText;
         elements.push(inlineText ? (
           <span key={`text-${index}`} className={styles.inlineText}>
-            {normalizeMarkdownContent(segment.text)}
+            {segment.text}
           </span>
         ) : (
           <MarkdownViewportContent

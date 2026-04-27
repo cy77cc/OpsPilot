@@ -27,7 +27,6 @@ import {
   applyToolResult,
   createEmptyAssistantRuntime,
 } from '../replyRuntime';
-import { normalizeMarkdownContent } from '../markdownContent';
 import type { ChatRequest, PlatformStreamChunk, SceneContext, XChatMessage } from '../types';
 import { RunReconnectController } from './runReconnectController';
 
@@ -431,24 +430,22 @@ export class PlatformChatRequest extends AbstractXRequestClass<
                 iteration: 0,
                 is_final: true,
               });
-              const normalizedResponse = normalizeMarkdownContent(envelope.response);
               const next = applyDelta(
                 {
                   content,
                   runtime,
                 },
-                { content: normalizedResponse },
+                { content: envelope.response },
               );
               content = next.content;
               runtime = next.runtime || runtime;
-              emitVisibleChunk(normalizedResponse);
+              emitVisibleChunk(envelope.response);
               return;
             }
           }
 
-          const normalizedContent = normalizeMarkdownContent(incoming);
           if (runtime.plan?.activeStepIndex !== undefined) {
-            runtime = applyStepDelta(runtime, { content: normalizedContent });
+            runtime = applyStepDelta(runtime, { content: incoming });
             emitRuntimeOnlyUpdate();
             return;
           }
@@ -458,11 +455,11 @@ export class PlatformChatRequest extends AbstractXRequestClass<
               content,
               runtime,
             },
-            { content: normalizedContent },
+            { content: incoming },
           );
           content = next.content;
           runtime = next.runtime || runtime;
-          emitVisibleChunk(normalizedContent);
+          emitVisibleChunk(incoming);
           return;
         }
 
