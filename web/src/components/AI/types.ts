@@ -165,6 +165,7 @@ export interface AssistantReplyRuntime {
   phaseLabel?: string;
   activities: AssistantReplyActivity[];
   plan?: AssistantReplyPlan;
+  segments?: AssistantReplySegment[];
   summary?: AssistantReplySummary;
   status?: AssistantReplyRuntimeStatus;
   pendingRun?: PendingRunMetadata;

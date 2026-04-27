@@ -379,6 +379,27 @@ export async function hydrateAssistantHistoryFromProjection(
 
   // 使用轻量级 runtime 转换，不加载 executor 内容
   const runtime = projectionToLazyRuntime(projection);
+
+  // 如果没有 plan，说明是标准对话，尝试恢复 interleaved segments 以实现内联渲染
+  if (!runtime.plan && runtime._executorBlocks && runtime._executorBlocks.length > 0) {
+    const segments: AssistantReplySegment[] = [];
+    const activities: AssistantReplyActivity[] = [];
+    for (const block of runtime._executorBlocks) {
+      const res = await loadStepContent(block, -1);
+      segments.push(...res.segments);
+      activities.push(...res.activities);
+    }
+    runtime.segments = segments;
+    // 合并 executor 中的 activities，注意去重或保持顺序
+    const seenIds = new Set(runtime.activities.map(a => a.id));
+    activities.forEach(a => {
+      if (!seenIds.has(a.id)) {
+        runtime.activities.push(a);
+        seenIds.add(a.id);
+      }
+    });
+  }
+
   const summaryContent = (projection.summary?.content || '').trim();
   const persistedContent = fallbackContent.trim();
   const displayContent = summaryContent || persistedContent || PROJECTION_UNRECOVERABLE_PLACEHOLDER;

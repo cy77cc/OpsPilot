@@ -937,21 +937,6 @@ function AssistantReplyContent({
         </div>
       ): null}
 
-      {standaloneActivities.length > 0 ? (
-        <div className={styles.activities}>
-          {standaloneActivities.map((activity) => (
-            activity.kind === 'tool' || activity.kind === 'tool_approval' ? (
-              <ToolReference
-                key={activity.id}
-                activity={activity}
-              />
-            ) : (
-              renderNonToolActivity(activity, styles)
-            )
-          ))}
-        </div>
-      ) : null}
-
       {shouldRenderSummary ? (
         <div className={styles.summary}>
           {runtime.summary?.title ? <div className={styles.summaryTitle}>{runtime.summary.title}</div> : null}
@@ -968,12 +953,36 @@ function AssistantReplyContent({
         </div>
       ) : null}
 
-      {content ? (
+      {runtime?.segments?.length ? (
+        <div className={styles.activeStepBody}>
+          <StepContentRenderer
+            step={{ content, segments: runtime.segments }}
+            activities={standaloneActivities}
+            isStreaming={isStreaming}
+            styles={styles}
+          />
+        </div>
+      ) : content ? (
         <MarkdownViewportContent
           content={content}
           styles={styles}
           isStreaming={isStreaming}
         />
+      ) : null}
+
+      {!runtime?.segments?.length && standaloneActivities.length > 0 ? (
+        <div className={styles.activities}>
+          {standaloneActivities.map((activity) => (
+            activity.kind === 'tool' || activity.kind === 'tool_approval' ? (
+              <ToolReference
+                key={activity.id}
+                activity={activity}
+              />
+            ) : (
+              renderNonToolActivity(activity, styles)
+            )
+          ))}
+        </div>
       ) : null}
 
       {runtime?.status ? <div className={styles.footer}>{runtime.status.label}</div> : null}

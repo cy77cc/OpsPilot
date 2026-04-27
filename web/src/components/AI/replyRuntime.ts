@@ -340,6 +340,23 @@ function upsertActivity(
   };
 }
 
+function appendSegmentToRoot(
+  runtime: AssistantReplyRuntime,
+  segment: AssistantReplySegment,
+): AssistantReplyRuntime {
+  const segments = [...(runtime.segments || [])];
+  const previous = segments[segments.length - 1];
+  if (segment.type === 'text' && previous?.type === 'text') {
+    previous.text = `${previous.text || ''}${segment.text || ''}`;
+  } else {
+    segments.push(segment);
+  }
+  return {
+    ...runtime,
+    segments,
+  };
+}
+
 function appendSegmentToActiveStep(
   runtime: AssistantReplyRuntime,
   segment: AssistantReplySegment,
@@ -388,9 +405,14 @@ export function applyDelta(
   const nextContent =
     !current || current === PLACEHOLDER_CONTENT ? chunk : `${current}${chunk}`;
 
+  let runtime = message.runtime;
+  if (runtime && !runtime.plan) {
+    runtime = appendSegmentToRoot(runtime, { type: 'text', text: chunk });
+  }
+
   return {
     content: nextContent,
-    runtime: message.runtime,
+    runtime,
   };
 }
 
@@ -426,7 +448,14 @@ export function applyToolCall(
     return withActivity;
   }
 
-  return appendSegmentToActiveStep(withActivity, {
+  if (activeStepIndex !== undefined) {
+    return appendSegmentToActiveStep(withActivity, {
+      type: 'tool_ref',
+      callId: payload.call_id,
+    });
+  }
+
+  return appendSegmentToRoot(withActivity, {
     type: 'tool_ref',
     callId: payload.call_id,
   });
