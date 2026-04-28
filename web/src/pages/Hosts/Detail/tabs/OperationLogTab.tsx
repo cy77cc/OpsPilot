@@ -3,6 +3,7 @@ import { Card, Table, Tag, Input, Space, Button, DatePicker } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { hostApi } from '../../../../api/modules/hosts';
+import type { HostAuditItem } from '../../../../api/modules/hosts';
 
 const { RangePicker } = DatePicker;
 
@@ -24,7 +25,15 @@ const OperationLogTab: React.FC<{ hostId: string }> = ({ hostId }) => {
     setLoading(true);
     try {
       const res = await hostApi.getHostAudits(hostId);
-      setData(res.data || []);
+      setData((res.data || []).map((item: HostAuditItem) => ({
+        id: item.id,
+        type: item.action,
+        content: item.detail,
+        operator: item.operator,
+        time: item.createdAt,
+        status: 'success' as const,
+        source_ip: '',
+      })));
     } finally {
       setLoading(false);
     }

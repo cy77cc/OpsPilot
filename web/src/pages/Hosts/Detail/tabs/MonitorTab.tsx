@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Select, DatePicker, Spin } from 'antd';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { hostApi } from '../../../../api/modules/hosts';
+import type { HostMetricPoint } from '../../../../api/modules/hosts';
 
 export interface MetricsSnapshot {
   id: number;
@@ -52,7 +53,19 @@ const MonitorTab: React.FC<{ hostId: string }> = ({ hostId }) => {
       setLoading(true);
       try {
         const res = await hostApi.getHostMetrics(hostId);
-        setData(res.data || []);
+        setData((res.data || []).map((m: HostMetricPoint) => ({
+          id: Number(m.id),
+          time: m.createdAt,
+          cpu: m.cpu,
+          memory: m.memory,
+          disk: m.disk,
+          diskIo: 0,
+          netIn: 0,
+          netOut: 0,
+          latency_ms: m.latencyMs,
+          health_state: m.healthState,
+          error_message: m.errorMessage,
+        })));
       } finally {
         setLoading(false);
       }

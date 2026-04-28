@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Space, Tooltip, Typography } from 'antd';
 import { aiApi } from '../../api/modules/ai';
-import type { AssistantReplyRuntime, XChatMessage } from './types';
+import type { AssistantReplyRuntime, ChatRequest, XChatMessage } from './types';
 import type { AIMessage } from '../../features/ai/api/shared';
 
 const { Text } = Typography;
@@ -20,7 +20,7 @@ interface MessageActionBarProps {
   runtime?: AssistantReplyRuntime;
   renderedMessages: Array<{ renderKey: string; message: XChatMessage }>;
   currentKey: string;
-  onRequest: (message: string) => void;
+  onRequest: (requestParams: Partial<ChatRequest>) => void;
   onSuccess: (msg: string) => void;
   onError: (msg: string) => void;
   copyAssistantReplyToClipboard: (
@@ -124,7 +124,7 @@ export function MessageActionBar({
             }
 
             if (lastUserPrompt) {
-              onRequest(lastUserPrompt);
+              onRequest({ message: lastUserPrompt });
             }
           }}
         />

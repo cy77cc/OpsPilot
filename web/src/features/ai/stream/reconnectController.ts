@@ -43,7 +43,7 @@ interface RunReconnectControllerConfig {
 
 export class RunReconnectController {
   private pendingRun: PendingRunMetadata | null = null;
-  private readonly onPendingRunChange?: (pendingRun: PendingRunMetadata | null) => void;
+  private onPendingRunChange?: (pendingRun: PendingRunMetadata | null) => void;
   private approvalResumeRequested = false;
   private approvalResumeWaiters: Array<() => void> = [];
 

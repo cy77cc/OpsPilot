@@ -52,7 +52,7 @@ const HostQuickActionsCard: React.FC<HostQuickActionsCardProps> = ({ onAction })
           <Col span={6} key={action.key}>
             <Button
               className="w-full h-16 flex flex-col items-center justify-center p-2"
-              icon={React.cloneElement(action.icon as React.ReactElement, { style: { fontSize: '20px', marginBottom: '4px' } })}
+              icon={React.cloneElement(action.icon as React.ReactElement<{ style?: React.CSSProperties }>, { style: { fontSize: '20px', marginBottom: '4px' } })}
               onClick={() => handleAction(action.key, action.label, action.danger)}
               danger={action.danger}
             >

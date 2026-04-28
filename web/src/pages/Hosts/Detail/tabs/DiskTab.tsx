@@ -39,7 +39,7 @@ const DiskTab: React.FC<{ hostId: string }> = ({ hostId }) => {
 
   const columns: ColumnsType<PartitionItem> = [
     { title: '文件系统', dataIndex: 'filesystem', key: 'filesystem', width: 150 },
-    { title: '类型', dataIndex: 'type', key: 'type', width: 80, render: (type) => <Tag size="small">{type}</Tag> },
+    { title: '类型', dataIndex: 'type', key: 'type', width: 80, render: (type) => <Tag>{type}</Tag> },
     { title: '容量', dataIndex: 'size', key: 'size', width: 100 },
     { title: '已用', dataIndex: 'used', key: 'used', width: 100 },
     { title: '可用', dataIndex: 'available', key: 'available', width: 100 },

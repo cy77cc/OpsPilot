@@ -300,11 +300,11 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         footer: (_content: string, info) => (
           <MessageActionBar
             status={info.status}
-            messageId={(item as XChatItem).extraInfo?.messageId}
-            message={(item as XChatItem).extraInfo?.message}
-            runtime={(item as XChatItem).extraInfo?.runtime}
+            messageId={(item as unknown as XChatItem).extraInfo?.messageId}
+            message={(item as unknown as XChatItem).extraInfo?.message}
+            runtime={(item as unknown as XChatItem).extraInfo?.runtime}
             renderedMessages={renderedMessages}
-            currentKey={item.key}
+            currentKey={String(item.key)}
             onRequest={onRequest}
             onSuccess={(msg) => messageApi.success(msg)}
             onError={(msg) => messageApi.error(msg)}
@@ -328,7 +328,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
           },
         },
         contentRender: (content: string, info) => (
-          <div data-message-anchor={(item as XChatItem).extraInfo?.messageId}>
+          <div data-message-anchor={(item as unknown as XChatItem).extraInfo?.messageId}>
             <AssistantReply
               content={content}
               runtime={(info as { extraInfo?: XChatItemExtraInfo }).extraInfo?.runtime}
@@ -365,7 +365,7 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
         const sessionItems: ConversationSummary[] = ((sessionsResult?.data as AISession[]) || []).map((item) => ({
           key: item.id,
           label: getConversationLabelFromSummary(item),
-          scene: item.scene || scene,
+          scene: (item as AISession & { scene?: string }).scene || scene,
           updatedAt: item.updatedAt ?? item.updated_at,
         }));
 

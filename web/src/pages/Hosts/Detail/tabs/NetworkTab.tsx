@@ -4,6 +4,7 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { hostApi } from '../../../../api/modules/hosts';
 import type { MetricsSnapshot } from './MonitorTab';
+import type { HostMetricPoint } from '../../../../api/modules/hosts';
 
 interface InterfaceItem {
   name: string;
@@ -42,7 +43,20 @@ const NetworkTab: React.FC<{ hostId: string }> = ({ hostId }) => {
         setInterfaces(ifaceRes.data || []);
         setRoutes(routeRes.data || []);
         if (metricRes.data && metricRes.data.length > 0) {
-          setMetrics(metricRes.data[metricRes.data.length - 1]);
+          const m: HostMetricPoint = metricRes.data[metricRes.data.length - 1];
+          setMetrics({
+            id: Number(m.id),
+            time: m.createdAt,
+            cpu: m.cpu,
+            memory: m.memory,
+            disk: m.disk,
+            diskIo: 0,
+            netIn: 0,
+            netOut: 0,
+            latency_ms: m.latencyMs,
+            health_state: m.healthState,
+            error_message: m.errorMessage,
+          });
         }
       } finally {
         setLoading(false);
