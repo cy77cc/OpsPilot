@@ -2,12 +2,23 @@ package approval
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 )
+
+const maxRegexLen = 256
+
+// safeCompile compiles a regex pattern with a length guard to prevent ReDoS.
+func safeCompile(pattern string) (*regexp.Regexp, error) {
+	if len(pattern) > maxRegexLen {
+		return nil, fmt.Errorf("regex pattern too long (%d > %d)", len(pattern), maxRegexLen)
+	}
+	return regexp.Compile(pattern)
+}
 
 // MatchRiskPolicy selects the best matching policy using specificity precedence.
 func MatchRiskPolicy(rules []ai.AIToolRiskPolicy, scene, commandClass string, args map[string]any) (*ai.AIToolRiskPolicy, bool) {
@@ -110,7 +121,7 @@ func argumentValueMatches(expected, actual any) bool {
 			if !ok {
 				return false
 			}
-			re, err := regexp.Compile(regexPattern)
+			re, err := safeCompile(regexPattern)
 			if err != nil {
 				return false
 			}

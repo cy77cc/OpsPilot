@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
@@ -356,6 +357,8 @@ func K8sQuery(ctx context.Context) tool.InvokableTool {
 			"Don't use when: you need a general list of all resources in a namespace without complex filtering. "+
 			"Example: {\"cluster_id\":1,\"resource\":\"pods\",\"label\":\"app=nginx\"}.",
 		func(ctx context.Context, input *K8sQueryInput, opts ...tool.Option) (*K8sQueryOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
@@ -403,6 +406,8 @@ func K8sListResources(ctx context.Context) tool.InvokableTool {
 			"Don't use when: you already know a resource name or have specific labels (use k8s_query instead). "+
 			"Example: {\"cluster_id\":1,\"resource\":\"pods\",\"namespace\":\"default\"}.",
 		func(ctx context.Context, input *K8sListInput, opts ...tool.Option) (*K8sListResourcesOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable. Suggestion: retry or check system connectivity")
@@ -446,6 +451,8 @@ func K8sEvents(ctx context.Context) tool.InvokableTool {
 		"k8s_events",
 		"Query Kubernetes events with optional filtering. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), kind filters by involved object kind (Pod/Deployment/Service/Node), name filters by object name, limit caps results (default 50). Returns events with type, reason, message, and involved object info. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"kind\":\"Pod\",\"limit\":20}.",
 		func(ctx context.Context, input *K8sEventsQueryInput, opts ...tool.Option) (*K8sEventsOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context is unavailable")
@@ -483,6 +490,8 @@ func K8sGetEvents(ctx context.Context) tool.InvokableTool {
 		"k8s_get_events",
 		"Get Kubernetes events from a namespace. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace limits scope (default: all namespaces), limit caps results (default 50). Returns events with type, reason, and message. Use this for a quick event overview. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"limit\":30}.",
 		func(ctx context.Context, input *K8sEventsInput, opts ...tool.Option) (*K8sGetEventsOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context unavailable")
@@ -517,6 +526,8 @@ func K8sLogs(ctx context.Context) tool.InvokableTool {
 		"k8s_logs",
 		"Get logs from a Kubernetes pod. pod is required. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace (default: default), container specifies which container in a multi-container pod, tail_lines limits log lines (default 200). Returns pod logs as a string. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"pod\":\"nginx-abc123\",\"tail_lines\":100}.",
 		func(ctx context.Context, input *K8sLogsInput, opts ...tool.Option) (*K8sLogsOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context is unavailable")
@@ -548,6 +559,8 @@ func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
 		"k8s_get_pod_logs",
 		"Get logs from a specific Kubernetes pod. pod is required. cluster_id is required for live cluster access; if it is not already explicit in the user request or runtime context, resolve it first with discovery or inventory tools. Optional parameters after cluster resolution: namespace (default: default), container for multi-container pods, tail_lines limits output (default 200). Returns pod logs for debugging and troubleshooting. Example: {\"cluster_id\":1,\"namespace\":\"production\",\"pod\":\"api-server-xyz789\",\"tail_lines\":500}.",
 		func(ctx context.Context, input *K8sPodLogsInput, opts ...tool.Option) (*K8sGetPodLogsOutput, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			svcCtx := serviceContextFromRuntime(ctx)
 			if svcCtx == nil {
 				return nil, fmt.Errorf("service context is unavailable")

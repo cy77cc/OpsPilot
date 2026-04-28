@@ -800,8 +800,20 @@ func normalizeKey(in string) string {
 		}
 	}
 	normalized := strings.Trim(string(out), "_")
-	for strings.Contains(normalized, "__") {
-		normalized = strings.ReplaceAll(normalized, "__", "_")
+	// Collapse consecutive underscores in a single pass
+	var buf strings.Builder
+	buf.Grow(len(normalized))
+	prevUnderscore = false
+	for _, r := range normalized {
+		if r == '_' {
+			if !prevUnderscore {
+				buf.WriteRune(r)
+			}
+			prevUnderscore = true
+		} else {
+			buf.WriteRune(r)
+			prevUnderscore = false
+		}
 	}
-	return normalized
+	return buf.String()
 }

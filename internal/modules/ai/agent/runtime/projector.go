@@ -8,6 +8,9 @@ import (
 )
 
 // StreamProjector 消费 ADK 事件并投影为前端可消费的 SSE 事件。
+//
+// NOT safe for concurrent use. All methods must be called from the same
+// goroutine (typically the ProcessAgentIterator loop).
 type StreamProjector struct {
 	state  ProjectionState
 	buffer *DeltaBuffer

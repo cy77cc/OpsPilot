@@ -8,21 +8,22 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 )
 
+var defaultApprovalRequiredTools = map[string]bool{
+	"host_exec":               true,
+	"k8s_scale_deployment":    true,
+	"k8s_restart_deployment":  true,
+	"k8s_delete_pod":          true,
+	"k8s_rollback_deployment": true,
+	"k8s_delete_deployment":   true,
+	"cicd_pipeline_trigger":   true,
+	"job_run":                 true,
+	"service_deploy_apply":    true,
+	"service_deploy":          true,
+}
+
 // DefaultNeedsApproval 默认审批判断逻辑。
 func DefaultNeedsApproval(toolName string) bool {
-	approvalRequired := map[string]bool{
-		"host_exec":                true,
-		"k8s_scale_deployment":     true,
-		"k8s_restart_deployment":   true,
-		"k8s_delete_pod":           true,
-		"k8s_rollback_deployment":  true,
-		"k8s_delete_deployment":    true,
-		"cicd_pipeline_trigger":    true,
-		"job_run":                  true,
-		"service_deploy_apply":     true,
-		"service_deploy":           true,
-	}
-	return approvalRequired[toolName]
+	return defaultApprovalRequiredTools[toolName]
 }
 
 // DefaultPreviewGenerator 默认预览生成器。

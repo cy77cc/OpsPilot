@@ -81,7 +81,10 @@ func (m *WriteModel) SubmitApproval(ctx context.Context, input SubmitApprovalInp
 			}
 			if update.RowsAffected == 0 {
 				task, _ = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
-				if task != nil && task.Status == "pending" {
+				if task == nil {
+					return &ApprovalNotFoundError{ApprovalID: input.ApprovalID}
+				}
+				if task.Status == "pending" {
 					return AlreadyHandledError(task)
 				}
 				result = &SubmitApprovalOutput{ApprovalID: input.ApprovalID, Status: task.Status, Message: "approval is currently being processed"}
@@ -102,13 +105,19 @@ func (m *WriteModel) SubmitApproval(ctx context.Context, input SubmitApprovalInp
 		}
 		if !updated {
 			task, _ = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
-			if task != nil && task.Status == "pending" {
+			if task == nil {
+				return &ApprovalNotFoundError{ApprovalID: input.ApprovalID}
+			}
+			if task.Status == "pending" {
 				result = &SubmitApprovalOutput{ApprovalID: input.ApprovalID, Status: task.Status, Message: "approval is currently being processed"}
 				return nil
 			}
 			return AlreadyHandledError(task)
 		}
 		task, _ = approvalDAO.GetByApprovalID(ctx, input.ApprovalID)
+		if task == nil {
+			return &ApprovalNotFoundError{ApprovalID: input.ApprovalID}
+		}
 		result = &SubmitApprovalOutput{ApprovalID: input.ApprovalID, Status: task.Status, Message: fmt.Sprintf("approval %s successfully", task.Status)}
 		payload := TaskDecisionPayloadWithIdempotency(task, idempotencyKey, payloadHash, result)
 		return m.writeEvent(ctx, tx, outboxDAO, task, event.ApprovalEventTypeDecided, payload)

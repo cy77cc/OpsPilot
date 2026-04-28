@@ -238,7 +238,7 @@ func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestI
 
 	var createdRun *model.AIRun
 	var lastErr error
-	for attempt := 0; attempt < 20; attempt++ {
+	for attempt := 0; attempt < 8; attempt++ {
 		err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			run, userMessage, assistantMessage := build()
 			if run == nil || userMessage == nil || assistantMessage == nil {
@@ -302,7 +302,7 @@ func (d *AIRunDAO) createRunShell(ctx context.Context, sessionID, clientRequestI
 			return createdRun, nil
 		}
 		lastErr = err
-		if !isRetryableRunShellWriteError(err) || attempt == 19 {
+		if !isRetryableRunShellWriteError(err) || attempt == 7 {
 			return nil, err
 		}
 		if waitErr := waitForRunShellRetry(ctx, attempt); waitErr != nil {
@@ -375,6 +375,9 @@ func isRetryableRunShellWriteError(err error) bool {
 
 func waitForRunShellRetry(ctx context.Context, attempt int) error {
 	delay := time.Duration(attempt+1) * 20 * time.Millisecond
+	if delay > 100*time.Millisecond {
+		delay = 100 * time.Millisecond
+	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {

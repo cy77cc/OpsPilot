@@ -10,10 +10,12 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 	"time"
+
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
@@ -77,6 +79,8 @@ func K8sScaleDeployment(ctx context.Context) tool.InvokableTool {
 		"k8s_scale_deployment",
 		"Scale a Kubernetes Deployment to a specified number of replicas. cluster_id, namespace, name, and replicas are required. This triggers approval flow. Returns previous and new replica count. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"name\":\"nginx\",\"replicas\":3}.",
 		func(ctx context.Context, input *K8sScaleDeploymentInput, opts ...tool.Option) (map[string]any, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			// 参数验证
 			if err := validateScaleInput(input); err != nil {
 				return nil, err
@@ -93,7 +97,7 @@ func K8sScaleDeployment(ctx context.Context) tool.InvokableTool {
 			// 获取当前 Deployment
 			deploy, err := cli.AppsV1().Deployments(input.Namespace).Get(ctx, input.Name, metav1.GetOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to get deployment: %v", err)
+				return nil, fmt.Errorf("failed to get deployment: %w", err)
 			}
 			previousReplicas := *deploy.Spec.Replicas
 
@@ -101,7 +105,7 @@ func K8sScaleDeployment(ctx context.Context) tool.InvokableTool {
 			deploy.Spec.Replicas = &input.Replicas
 			_, err = cli.AppsV1().Deployments(input.Namespace).Update(ctx, deploy, metav1.UpdateOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to scale deployment: %v", err)
+				return nil, fmt.Errorf("failed to scale deployment: %w", err)
 			}
 
 			return map[string]any{
@@ -130,6 +134,8 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 		"k8s_restart_deployment",
 		"Trigger a rolling restart of a Kubernetes Deployment by updating the restartedAt annotation. cluster_id, namespace, and name are required. This triggers approval flow. Returns restart timestamp. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"name\":\"nginx\"}.",
 		func(ctx context.Context, input *K8sRestartDeploymentInput, opts ...tool.Option) (map[string]any, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			// 参数验证
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
@@ -146,7 +152,7 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 			// 获取当前 Deployment
 			deploy, err := cli.AppsV1().Deployments(input.Namespace).Get(ctx, input.Name, metav1.GetOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to get deployment: %v", err)
+				return nil, fmt.Errorf("failed to get deployment: %w", err)
 			}
 
 			// 更新 annotation 触发滚动重启
@@ -158,7 +164,7 @@ func K8sRestartDeployment(ctx context.Context) tool.InvokableTool {
 
 			_, err = cli.AppsV1().Deployments(input.Namespace).Update(ctx, deploy, metav1.UpdateOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to restart deployment: %v", err)
+				return nil, fmt.Errorf("failed to restart deployment: %w", err)
 			}
 
 			return map[string]any{
@@ -186,6 +192,8 @@ func K8sDeletePod(ctx context.Context) tool.InvokableTool {
 		"k8s_delete_pod",
 		"Delete a Kubernetes Pod. cluster_id, namespace, and name are required. Optional grace_period_seconds controls graceful termination (default 30). This triggers approval flow. Returns deleted pod name. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"name\":\"nginx-abc123\",\"grace_period_seconds\":30}.",
 		func(ctx context.Context, input *K8sDeletePodInput, opts ...tool.Option) (map[string]any, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			// 参数验证
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
@@ -210,7 +218,7 @@ func K8sDeletePod(ctx context.Context) tool.InvokableTool {
 
 			err = cli.CoreV1().Pods(input.Namespace).Delete(ctx, input.Name, deleteOpts)
 			if err != nil {
-				return nil, fmt.Errorf("failed to delete pod: %v", err)
+				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 
 			return map[string]any{
@@ -238,6 +246,8 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 		"k8s_rollback_deployment",
 		"Rollback a Kubernetes Deployment to a previous revision. cluster_id, namespace, and name are required. Optional revision specifies target revision (default: previous). This triggers approval flow. Returns revision rolled back to. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"name\":\"nginx\"}.",
 		func(ctx context.Context, input *K8sRollbackDeploymentInput, opts ...tool.Option) (map[string]any, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			// 参数验证
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
@@ -256,7 +266,7 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 				LabelSelector: fmt.Sprintf("app=%s", input.Name),
 			})
 			if err != nil {
-				return nil, fmt.Errorf("failed to list replicasets: %v", err)
+				return nil, fmt.Errorf("failed to list replicasets: %w", err)
 			}
 
 			// 找到当前和上一个版本
@@ -268,7 +278,9 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 					continue
 				}
 				var revNum int64
-				fmt.Sscanf(rev, "%d", &revNum)
+				if _, err := fmt.Sscanf(rev, "%d", &revNum); err != nil {
+					continue
+				}
 				if revNum > currentRevision {
 					previousRevision = currentRevision
 					previousRS = ""
@@ -286,17 +298,23 @@ func K8sRollbackDeployment(ctx context.Context) tool.InvokableTool {
 			}
 
 			// 使用 kubectl rollout undo 的方式：通过 REST API
-			rollbackBody := fmt.Sprintf(`{"name":"%s","rollbackTo":{"revision":%d}}`, input.Name, targetRevision)
+			rollbackBody, err := json.Marshal(map[string]any{
+				"name":        input.Name,
+				"rollbackTo": map[string]any{"revision": targetRevision},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("marshal rollback body: %w", err)
+			}
 			err = cli.AppsV1().RESTClient().Post().
 				Namespace(input.Namespace).
 				Resource("deployments").
 				Name(input.Name).
 				SubResource("rollback").
-				Body([]byte(rollbackBody)).
+				Body(rollbackBody).
 				Do(ctx).
 				Error()
 			if err != nil {
-				return nil, fmt.Errorf("failed to rollback deployment: %v", err)
+				return nil, fmt.Errorf("failed to rollback deployment: %w", err)
 			}
 
 			return map[string]any{
@@ -325,6 +343,8 @@ func K8sDeleteDeployment(ctx context.Context) tool.InvokableTool {
 		"k8s_delete_deployment",
 		"Delete a Kubernetes Deployment permanently. cluster_id, namespace, and name are required. WARNING: This action is irreversible and will stop the service. This triggers approval flow with critical risk level. Example: {\"cluster_id\":1,\"namespace\":\"default\",\"name\":\"nginx\"}.",
 		func(ctx context.Context, input *K8sDeleteDeploymentInput, opts ...tool.Option) (map[string]any, error) {
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
 			// 参数验证
 			if err := validateNamespaceNameInput(input.ClusterID, input.Namespace, input.Name); err != nil {
 				return nil, err
@@ -340,7 +360,7 @@ func K8sDeleteDeployment(ctx context.Context) tool.InvokableTool {
 
 			err = cli.AppsV1().Deployments(input.Namespace).Delete(ctx, input.Name, metav1.DeleteOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to delete deployment: %v", err)
+				return nil, fmt.Errorf("failed to delete deployment: %w", err)
 			}
 
 			return map[string]any{
@@ -382,7 +402,7 @@ func resolveK8sClientForWrite(svcCtx *svc.ServiceContext, clusterID int) (*kuber
 	}
 	var cluster clustermodel.Cluster
 	if err := svcCtx.DB.First(&cluster, clusterID).Error; err != nil {
-		return nil, "", fmt.Errorf("cluster not found: %v", err)
+		return nil, "", fmt.Errorf("cluster not found: %w", err)
 	}
 	cfg, _, err := buildRestConfigFromClusterOrCredential(svcCtx, &cluster)
 	if err != nil {
@@ -390,7 +410,7 @@ func resolveK8sClientForWrite(svcCtx *svc.ServiceContext, clusterID int) (*kuber
 	}
 	cli, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create k8s client: %v", err)
+		return nil, "", fmt.Errorf("failed to create k8s client: %w", err)
 	}
 	return cli, cluster.Name, nil
 }

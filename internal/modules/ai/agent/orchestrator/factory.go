@@ -86,8 +86,7 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 
 	skillHandler, err := buildSkillMiddleware(ctx)
 	if err != nil {
-		// Log warning but don't fail agent creation
-		// Skills are optional enhancements
+		logger.L().Warnf("skill middleware unavailable: %v", []any{err})
 	}
 
 	subAgents, err := buildDeepSubAgents(ctx, registry)

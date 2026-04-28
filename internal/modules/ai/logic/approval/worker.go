@@ -197,10 +197,12 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+const maxClaimOutboxAttempts = 20
+
 func (w *Worker) claimOutboxEvent(ctx context.Context) (*ai.AIApprovalOutboxEvent, error) {
 	db := w.logic.SvcCtx.DB
 	var claimed *ai.AIApprovalOutboxEvent
-	for {
+	for attempt := 0; attempt < maxClaimOutboxAttempts; attempt++ {
 		var candidate ai.AIApprovalOutboxEvent
 		hadCandidate := false
 		err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -245,7 +247,16 @@ func (w *Worker) claimOutboxEvent(ctx context.Context) (*ai.AIApprovalOutboxEven
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		delay := time.Duration(10<<min(attempt, 5)) * time.Millisecond
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
+	return nil, nil
 }
 
 func (w *Worker) processEvent(ctx context.Context, e *ai.AIApprovalOutboxEvent) error {

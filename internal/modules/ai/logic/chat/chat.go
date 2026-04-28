@@ -353,7 +353,9 @@ func loadSceneAugmentation(ctx context.Context, l *Logic, scene string) [][]stri
 		return nil
 	}
 	var prompts []ai.AIScenePrompt
-	_ = l.SvcCtx.DB.WithContext(ctx).Where("scene = ? AND is_active = ?", scene, true).Order("display_order ASC, id ASC").Find(&prompts).Error
+	if err := l.SvcCtx.DB.WithContext(ctx).Where("scene = ? AND is_active = ?", scene, true).Order("display_order ASC, id ASC").Find(&prompts).Error; err != nil {
+		logger.L().Warnf("load scene prompts for %q: %v", []any{scene, err})
+	}
 	var config ai.AISceneConfig
 	hasConfig := l.SvcCtx.DB.WithContext(ctx).Where("scene = ?", scene).First(&config).Error == nil
 

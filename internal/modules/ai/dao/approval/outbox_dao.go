@@ -130,8 +130,10 @@ func (d *AIApprovalOutboxDAO) EnqueueOrTouch(ctx context.Context, event *model.A
 //   - ctx: 上下文
 //
 // 返回: 事件记录或 nil（无待处理事件）
+const maxClaimAttempts = 20
+
 func (d *AIApprovalOutboxDAO) ClaimPending(ctx context.Context) (*model.AIApprovalOutboxEvent, error) {
-	for {
+	for attempt := 0; attempt < maxClaimAttempts; attempt++ {
 		claimed, hadCandidate, err := d.claimPendingAttempt(ctx)
 		if err != nil {
 			return nil, err
@@ -145,7 +147,16 @@ func (d *AIApprovalOutboxDAO) ClaimPending(ctx context.Context) (*model.AIApprov
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		delay := time.Duration(10<<min(attempt, 5)) * time.Millisecond
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
+	return nil, nil
 }
 
 // claimPendingAttempt 单次尝试声明待处理事件。
