@@ -36,3 +36,11 @@ func TestAllCatalogEntries_CoversCoreDomainsWithoutDuplicateNames(t *testing.T) 
 		}
 	}
 }
+
+func TestAllCatalogEntries_HaveNonEmptyDescriptions(t *testing.T) {
+	for _, entry := range AllCatalogEntries() {
+		if entry.Description == "" {
+			t.Errorf("catalog entry %q (domain=%s) has empty description", entry.ToolName, entry.Domain)
+		}
+	}
+}

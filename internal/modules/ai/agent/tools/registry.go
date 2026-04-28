@@ -4,7 +4,23 @@ package tools
 func AllCatalogEntries() []ToolMetadata {
 	entries := make([]ToolMetadata, 0, 48)
 	entries = append(entries, staticCatalogEntries()...)
+	entries = append(entries, domainCatalogEntries()...)
 	return entries
+}
+
+// domainCatalogEntries returns tool metadata from per-domain CatalogMetadataList functions
+// that are not already covered by staticCatalogEntries.
+func domainCatalogEntries() []ToolMetadata {
+	return []ToolMetadata{
+		// Kubernetes domain — additional tools beyond k8s_query and k8s_list_resources.
+		{ToolName: "k8s_events", Domain: "kubernetes", Capability: "events", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "inspect kubernetes events for a resource", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_logs", Domain: "kubernetes", Capability: "logs", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "read kubernetes pod logs", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_scale_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "scale a kubernetes deployment replica count", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_restart_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "restart a kubernetes deployment rollout", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_delete_pod", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "delete a kubernetes pod", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_rollback_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "rollback a kubernetes deployment to a previous revision", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+		{ToolName: "k8s_delete_deployment", Domain: "kubernetes", Capability: "mutation", RiskLevel: "high", OutputMode: "inline", Description: "delete a kubernetes deployment", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
+	}
 }
 
 func staticCatalogEntries() []ToolMetadata {
