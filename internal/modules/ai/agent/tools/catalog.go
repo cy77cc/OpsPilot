@@ -60,6 +60,18 @@ func (c Catalog) Search(query string, limit int, domain string) []ToolMetadata {
 	return out
 }
 
+// All returns a copy of all catalog entries.
+func (c Catalog) All() []ToolMetadata {
+	out := make([]ToolMetadata, len(c.entries))
+	copy(out, c.entries)
+	return out
+}
+
+// Len returns the number of entries in the catalog.
+func (c Catalog) Len() int {
+	return len(c.entries)
+}
+
 func scoreEntry(query string, entry ToolMetadata) int {
 	if strings.TrimSpace(query) == "" {
 		return 0
