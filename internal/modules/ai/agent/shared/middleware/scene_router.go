@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/sceneutil"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 )
 
@@ -22,8 +23,8 @@ import (
 type SceneRouterMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
 
-	// sceneToolMap 场景到工具的映射
-	sceneToolMap map[string][]string
+	// sceneToolMap 场景到工具的映射（O(1) 查找）
+	sceneToolMap map[string]*sceneutil.AllowedToolSet
 
 	// currentScene 当前场景（运行时动态设置）
 	currentScene string
@@ -45,13 +46,19 @@ func NewSceneRouter(ctx context.Context, cfg *SceneRouterConfig) (*SceneRouterMi
 		cfg.SceneToolMap = DefaultSceneToolMap()
 	}
 
+	// 将 []string 转换为 AllowedToolSet 以实现 O(1) 查找
+	toolSetMap := make(map[string]*sceneutil.AllowedToolSet, len(cfg.SceneToolMap))
+	for scene, names := range cfg.SceneToolMap {
+		toolSetMap[scene] = sceneutil.NewAllowedToolSet(names)
+	}
+
 	// 初始化时尝试从上下文获取场景
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
 	currentScene := NormalizeScene(sceneMeta.Scene)
 
 	return &SceneRouterMiddleware{
 		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-		sceneToolMap:                 cfg.SceneToolMap,
+		sceneToolMap:                 toolSetMap,
 		currentScene:                 currentScene,
 	}, nil
 }
@@ -74,7 +81,7 @@ func (m *SceneRouterMiddleware) WrapInvokableToolCall(
 
 	// 检查工具是否在当前场景允许列表中
 	allowedTools := m.sceneToolMap[scene]
-	if !isToolAllowed(tCtx.Name, allowedTools) {
+	if !allowedTools.IsAllowed(tCtx.Name) {
 		return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 			return "", fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, scene)
 		}, nil
@@ -98,7 +105,7 @@ func (m *SceneRouterMiddleware) WrapStreamableToolCall(
 
 	scene := m.resolveScene(ctx)
 	allowedTools := m.sceneToolMap[scene]
-	if !isToolAllowed(tCtx.Name, allowedTools) {
+	if !allowedTools.IsAllowed(tCtx.Name) {
 		return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
 			return nil, fmt.Errorf("tool '%s' is not available in scene '%s'", tCtx.Name, scene)
 		}, nil
@@ -115,16 +122,6 @@ func (m *SceneRouterMiddleware) resolveScene(ctx context.Context) string {
 		return scene
 	}
 	return "ai"
-}
-
-// isToolAllowed 检查工具是否在允许列表中。
-func isToolAllowed(toolName string, allowedTools []string) bool {
-	for _, name := range allowedTools {
-		if name == toolName {
-			return true
-		}
-	}
-	return false
 }
 
 // NormalizeScene 规范化场景名称。
