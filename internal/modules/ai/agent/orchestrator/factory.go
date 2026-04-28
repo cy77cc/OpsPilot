@@ -12,7 +12,9 @@ import (
 	"github.com/cloudwego/eino/adk/middlewares/summarization"
 	adkdeep "github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/adk/middlewares/skill"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
 	agentSkill "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/skill"
 	agenttodo "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/todo"
@@ -58,6 +60,7 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 	if len(sceneTools) == 0 {
 		return nil, fmt.Errorf("no tools available for scene: %s", normalizedScene)
 	}
+	sceneTools = appendSearchToolsTool(ctx, sceneTools)
 
 	mainHandlers, err := middleware.BuildAgentHandlers(ctx, normalizedScene, sceneTools)
 	if err != nil {
@@ -128,6 +131,7 @@ func createNamedSceneAgent(
 	if len(sceneTools) == 0 {
 		return nil, fmt.Errorf("no tools available for scene: %s", scene)
 	}
+	sceneTools = appendSearchToolsTool(ctx, sceneTools)
 
 	handlers, err := middleware.BuildAgentHandlers(ctx, scene, sceneTools)
 	if err != nil {
@@ -222,6 +226,36 @@ Rules:
 		subAgents = append(subAgents, specialist)
 	}
 	return subAgents, nil
+}
+
+// appendSearchToolsTool adds the search_tools meta-tool to the given tool set.
+// It builds a catalog from the tool metadata already present in sceneTools
+// so that agents can discover tools on demand.
+func appendSearchToolsTool(ctx context.Context, sceneTools []tool.BaseTool) []tool.BaseTool {
+	entries := make([]tools.ToolMetadata, 0, len(sceneTools))
+	for _, t := range sceneTools {
+		if t == nil {
+			continue
+		}
+		info, err := t.Info(ctx)
+		if err != nil || info == nil || info.Name == "" {
+			continue
+		}
+		entries = append(entries, tools.ToolMetadata{
+			ToolName:    info.Name,
+			Description: info.Desc,
+		})
+	}
+
+	catalog := tools.NewCatalog(entries)
+	searchTool, err := tools.NewSearchToolsTool(catalog)
+	if err != nil {
+		logger.L().Warn("search_tools tool unavailable, skipping",
+			logger.String("error", err.Error()),
+		)
+		return sceneTools
+	}
+	return append(sceneTools, searchTool)
 }
 
 // buildSkillMiddleware creates the skill middleware with a filesystem backend.
