@@ -28,14 +28,20 @@ func TestBuildAgentHandlers_WiresApprovalOrchestratorFromServiceContext(t *testi
 		t.Fatal("expected non-empty handlers")
 	}
 
-	// 验证第一个中间件是场景路由器
-	_, ok := handlers[0].(*SceneRouterMiddleware)
+	// 验证第一个中间件是可观测性中间件
+	_, ok := handlers[0].(*ObservabilityMiddleware)
 	if !ok {
-		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+		t.Fatalf("expected first handler to be observability middleware, got %T", handlers[0])
 	}
 
-	// 验证第二个中间件是审批中间件
-	approvalMw, ok := handlers[1].(*approvalMiddleware)
+	// 验证第二个中间件是场景路由器
+	_, ok = handlers[1].(*SceneRouterMiddleware)
+	if !ok {
+		t.Fatalf("expected second handler to be scene router middleware, got %T", handlers[1])
+	}
+
+	// 验证第三个中间件是审批中间件
+	approvalMw, ok := handlers[2].(*approvalMiddleware)
 	if !ok {
 		t.Fatalf("expected second handler to be approval middleware, got %T", handlers[1])
 	}
@@ -53,14 +59,20 @@ func TestBuildAgentHandlers_WithoutServiceContextKeepsFallbackApprovalMiddleware
 		t.Fatal("expected non-empty handlers")
 	}
 
-	// 验证场景路由器存在
-	_, ok := handlers[0].(*SceneRouterMiddleware)
+	// 验证可观测性中间件存在
+	_, ok := handlers[0].(*ObservabilityMiddleware)
 	if !ok {
-		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+		t.Fatalf("expected first handler to be observability middleware, got %T", handlers[0])
+	}
+
+	// 验证场景路由器存在
+	_, ok = handlers[1].(*SceneRouterMiddleware)
+	if !ok {
+		t.Fatalf("expected second handler to be scene router middleware, got %T", handlers[1])
 	}
 
 	// 验证审批中间件存在
-	approvalMw, ok := handlers[1].(*approvalMiddleware)
+	approvalMw, ok := handlers[2].(*approvalMiddleware)
 	if !ok {
 		t.Fatalf("expected second handler to be approval middleware, got %T", handlers[1])
 	}
@@ -85,9 +97,10 @@ func TestBuildAgentHandlers_SceneRouterAllowsProvidedToolsInAIScene(t *testing.T
 	if err != nil {
 		t.Fatalf("build handlers: %v", err)
 	}
-	router, ok := handlers[0].(*SceneRouterMiddleware)
+	// handlers[0] is ObservabilityMiddleware, handlers[1] is SceneRouterMiddleware
+	router, ok := handlers[1].(*SceneRouterMiddleware)
 	if !ok {
-		t.Fatalf("expected first handler to be scene router middleware, got %T", handlers[0])
+		t.Fatalf("expected second handler to be scene router middleware, got %T", handlers[1])
 	}
 
 	endpoint, err := router.WrapInvokableToolCall(context.Background(), func(ctx context.Context, args string, opts ...tool.Option) (string, error) {

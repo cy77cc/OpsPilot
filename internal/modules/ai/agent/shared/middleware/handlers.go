@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -12,16 +13,19 @@ import (
 )
 
 // BuildAgentHandlers builds the default handlers chain:
-// scene router + audit logger + approval middleware + output summarizer + arg normalization middleware.
+// observability + scene router + approval middleware + arg normalization middleware.
 //
 // 中间件执行顺序（洋葱模型）：
+//  0. Observability: 工具调用追踪和指标收集
 //  1. Scene Router: 设置场景边界，过滤工具
-//  2. Audit Logger: 记录工具调用审计
-//  3. Approval: 高风险工具审批拦截
-//  4. Output Summarizer: 工具输出摘要
-//  5. Arg Normalizer: 参数标准化
+//  2. Approval: 高风险工具审批拦截
+//  3. Arg Normalizer: 参数标准化
 func BuildAgentHandlers(ctx context.Context, scene string, tools []tool.BaseTool) ([]adk.ChatModelAgentMiddleware, error) {
 	var middlewares []adk.ChatModelAgentMiddleware
+
+	// 0. Observability (outermost — sees all tool calls)
+	noopMetrics := &noopObservabilityMetrics{}
+	middlewares = append(middlewares, NewObservabilityMiddleware(noopMetrics))
 
 	// 1. 场景路由器（最先执行，设置边界）
 	sceneToolMap := buildSceneToolMapForAgent(ctx, scene, tools)
@@ -93,3 +97,8 @@ func collectToolNames(ctx context.Context, tools []tool.BaseTool) []string {
 	slices.Sort(names)
 	return names
 }
+
+// noopObservabilityMetrics is a no-op implementation for when metrics are not configured.
+type noopObservabilityMetrics struct{}
+
+func (n *noopObservabilityMetrics) RecordToolCall(toolName string, duration time.Duration, err error) {}
