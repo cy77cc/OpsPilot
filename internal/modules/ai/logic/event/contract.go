@@ -20,38 +20,32 @@ const (
 
 type ApprovalEventEnvelope = aiapproval.ApprovalEventEnvelope
 
-type ApprovalRequestedInput = aiapproval.ApprovalRequestedInput
-type ApprovalDecidedInput = aiapproval.ApprovalDecidedInput
-type ApprovalExpiredInput = aiapproval.ApprovalExpiredInput
-type RunResumingInput = aiapproval.RunResumingInput
-type RunResumedInput = aiapproval.RunResumedInput
-type RunResumeFailedInput = aiapproval.RunResumeFailedInput
-type RunCompletedInput = aiapproval.RunCompletedInput
+type ApprovalEventInput = aiapproval.ApprovalEventInput
 
-func NewApprovalRequestedEnvelope(input ApprovalRequestedInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalRequestedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewApprovalRequestedEnvelope(input)
 }
 
-func NewApprovalDecidedEnvelope(input ApprovalDecidedInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalDecidedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewApprovalDecidedEnvelope(input)
 }
 
-func NewApprovalExpiredEnvelope(input ApprovalExpiredInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalExpiredEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewApprovalExpiredEnvelope(input)
 }
 
-func NewRunResumingEnvelope(input RunResumingInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumingEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewRunResumingEnvelope(input)
 }
 
-func NewRunResumedEnvelope(input RunResumedInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewRunResumedEnvelope(input)
 }
 
-func NewRunResumeFailedEnvelope(input RunResumeFailedInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumeFailedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewRunResumeFailedEnvelope(input)
 }
 
-func NewRunCompletedEnvelope(input RunCompletedInput) (*ApprovalEventEnvelope, error) {
+func NewRunCompletedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return aiapproval.NewRunCompletedEnvelope(input)
 }

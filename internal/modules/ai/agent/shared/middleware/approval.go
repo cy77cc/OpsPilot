@@ -503,7 +503,7 @@ func commandClassForTool(toolName, args string) string {
 	toolName = strings.ToLower(strings.TrimSpace(toolName))
 	switch toolName {
 	case "host_exec":
-		return unknownWhenEmpty(hostExecCommandClass(args))
+		return hostExecCommandClassFromAST(args)
 	case "host_batch_status_update":
 		return "service_control"
 	default:
@@ -511,34 +511,40 @@ func commandClassForTool(toolName, args string) string {
 	}
 }
 
-func hostExecCommandClass(args string) string {
+// hostExecCommandClassFromAST uses the hostpolicy AST engine to classify commands.
+// This replaces the old string-matching classifyHostCommand function.
+func hostExecCommandClassFromAST(args string) string {
+	cmd := extractCommandFromArgs(args)
+	if cmd == "" {
+		return "unknown"
+	}
+
+	parsed, err := host.ParseCommand(cmd)
+	if err != nil {
+		return "unknown"
+	}
+
+	engine := getHostPolicyEngine()
+	violations := engine.Validator().Validate(parsed)
+	if len(violations) == 0 {
+		return "readonly"
+	}
+	return "service_control"
+}
+
+// extractCommandFromArgs extracts the command string from tool arguments JSON.
+func extractCommandFromArgs(args string) string {
 	var params map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(args)), &params); err != nil {
 		return ""
 	}
+	if cmd, _ := params["command"].(string); strings.TrimSpace(cmd) != "" {
+		return strings.TrimSpace(cmd)
+	}
 	if script, _ := params["script"].(string); strings.TrimSpace(script) != "" {
-		// Scripts cannot be safely classified without execution; treat as at least
-		// service_control to ensure they go through approval for unknown scripts.
-		return hostCommandClassFromMap(params)
+		return strings.TrimSpace(script)
 	}
-	return hostCommandClassFromMap(params)
-}
-
-func hostCommandClassFromMap(params map[string]any) string {
-	if len(params) == 0 {
-		return ""
-	}
-	cmd, _ := params["command"].(string)
-	cmd = strings.TrimSpace(cmd)
-	if cmd == "" {
-		script, _ := params["script"].(string)
-		cmd = strings.TrimSpace(script)
-		if cmd == "" {
-			return "unknown"
-		}
-	}
-	class, _, _ := classifyHostCommand(cmd)
-	return class
+	return ""
 }
 
 func unknownWhenEmpty(class string) string {
@@ -546,40 +552,6 @@ func unknownWhenEmpty(class string) string {
 		return "unknown"
 	}
 	return class
-}
-
-func classifyHostCommand(cmd string) (class string, risk string, blocked bool) {
-	trimmed := strings.ToLower(strings.TrimSpace(cmd))
-	if isReadonlyHostCommand(cmd) {
-		return "readonly", "low", false
-	}
-	dangerous := []string{
-		"rm -rf /", "mkfs", "shutdown", "poweroff", "reboot", "init 0",
-		"dd if=", "iptables -f", "userdel", "chown -r /", "chmod -r 777 /",
-	}
-	for _, keyword := range dangerous {
-		// Normalize both sides: collapse multiple spaces to single space before comparison.
-		normalized := normalizeWhitespace(trimmed)
-		if strings.Contains(normalized, normalizeWhitespace(keyword)) {
-			return "dangerous", "high", true
-		}
-	}
-	return "service_control", "medium", false
-}
-
-// normalizeWhitespace collapses multiple consecutive spaces to a single space.
-func normalizeWhitespace(s string) string {
-	fields := strings.Fields(s)
-	return strings.Join(fields, " ")
-}
-
-func isReadonlyHostCommand(cmd string) bool {
-	switch strings.TrimSpace(cmd) {
-	case "hostname", "uptime", "df -h", "free -m", "ps aux --sort=-%cpu":
-		return true
-	default:
-		return false
-	}
 }
 
 // formatDisapproveMessage 格式化拒绝消息。

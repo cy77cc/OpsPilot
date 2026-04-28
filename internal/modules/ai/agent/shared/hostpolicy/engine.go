@@ -39,6 +39,11 @@ func DefaultReadonlyAllowlist() []string {
 	}
 }
 
+// Validator returns the underlying command validator.
+func (e *HostCommandPolicyEngine) Validator() *HostCommandValidator {
+	return e.validator
+}
+
 // Evaluate performs fail-closed policy evaluation.
 func (e *HostCommandPolicyEngine) Evaluate(input PolicyInput) PolicyDecision {
 	cmd := strings.TrimSpace(input.CommandRaw)

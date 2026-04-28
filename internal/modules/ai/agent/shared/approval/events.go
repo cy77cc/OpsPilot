@@ -32,7 +32,9 @@ type ApprovalEventEnvelope struct {
 	PayloadJSON string    `json:"payload_json"`
 }
 
-type ApprovalRequestedInput struct {
+// ApprovalEventInput is the unified input for creating approval event envelopes.
+// Replaces the 7 previously separate input structs that had identical fields.
+type ApprovalEventInput struct {
 	EventID     string
 	OccurredAt  time.Time
 	Sequence    int64
@@ -45,109 +47,31 @@ type ApprovalRequestedInput struct {
 	Payload     any
 }
 
-type ApprovalDecidedInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-type ApprovalExpiredInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-type RunResumingInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-type RunResumedInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-type RunResumeFailedInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-type RunCompletedInput struct {
-	EventID     string
-	OccurredAt  time.Time
-	Sequence    int64
-	Version     int
-	RunID       string
-	SessionID   string
-	ApprovalID  string
-	ToolCallID  string
-	AggregateID string
-	Payload     any
-}
-
-func NewApprovalRequestedEnvelope(input ApprovalRequestedInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalRequestedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(ApprovalEventTypeRequested, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewApprovalDecidedEnvelope(input ApprovalDecidedInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalDecidedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(ApprovalEventTypeDecided, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewApprovalExpiredEnvelope(input ApprovalExpiredInput) (*ApprovalEventEnvelope, error) {
+func NewApprovalExpiredEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(ApprovalEventTypeExpired, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewRunResumingEnvelope(input RunResumingInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumingEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(RunEventTypeResuming, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewRunResumedEnvelope(input RunResumedInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(RunEventTypeResumed, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewRunResumeFailedEnvelope(input RunResumeFailedInput) (*ApprovalEventEnvelope, error) {
+func NewRunResumeFailedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(RunEventTypeResumeFailed, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 
-func NewRunCompletedEnvelope(input RunCompletedInput) (*ApprovalEventEnvelope, error) {
+func NewRunCompletedEnvelope(input ApprovalEventInput) (*ApprovalEventEnvelope, error) {
 	return newApprovalEventEnvelope(RunEventTypeCompleted, input.EventID, input.OccurredAt, input.Sequence, input.Version, input.RunID, input.SessionID, input.ApprovalID, input.ToolCallID, input.AggregateID, input.Payload)
 }
 

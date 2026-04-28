@@ -9,7 +9,7 @@ import (
 func TestApprovalEnvelope_RequiresCoreFields(t *testing.T) {
 	t.Parallel()
 
-	envelope, err := NewApprovalRequestedEnvelope(ApprovalRequestedInput{
+	envelope, err := NewApprovalRequestedEnvelope(ApprovalEventInput{
 		EventID:     "evt-req-1",
 		OccurredAt:  time.Unix(100, 0).UTC(),
 		Sequence:    1,
@@ -61,7 +61,7 @@ func TestApprovalEnvelope_RequiresCoreFields(t *testing.T) {
 func TestApprovalEnvelope_SequenceMonotonicPerRunID(t *testing.T) {
 	t.Parallel()
 
-	requested, err := NewApprovalRequestedEnvelope(ApprovalRequestedInput{
+	requested, err := NewApprovalRequestedEnvelope(ApprovalEventInput{
 		EventID:     "evt-req-1",
 		OccurredAt:  time.Unix(100, 0).UTC(),
 		Sequence:    1,
@@ -77,7 +77,7 @@ func TestApprovalEnvelope_SequenceMonotonicPerRunID(t *testing.T) {
 		t.Fatalf("build requested envelope: %v", err)
 	}
 
-	decided, err := NewApprovalDecidedEnvelope(ApprovalDecidedInput{
+	decided, err := NewApprovalDecidedEnvelope(ApprovalEventInput{
 		EventID:     "evt-dec-1",
 		OccurredAt:  time.Unix(101, 0).UTC(),
 		Sequence:    2,
@@ -115,7 +115,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "requested",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewApprovalRequestedEnvelope(ApprovalRequestedInput{
+				return NewApprovalRequestedEnvelope(ApprovalEventInput{
 					EventID:     "evt-req-1",
 					OccurredAt:  time.Unix(100, 0).UTC(),
 					Sequence:    1,
@@ -133,7 +133,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "decided",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewApprovalDecidedEnvelope(ApprovalDecidedInput{
+				return NewApprovalDecidedEnvelope(ApprovalEventInput{
 					EventID:     "evt-dec-1",
 					OccurredAt:  time.Unix(101, 0).UTC(),
 					Sequence:    2,
@@ -151,7 +151,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "expired",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewApprovalExpiredEnvelope(ApprovalExpiredInput{
+				return NewApprovalExpiredEnvelope(ApprovalEventInput{
 					EventID:     "evt-exp-1",
 					OccurredAt:  time.Unix(102, 0).UTC(),
 					Sequence:    3,
@@ -169,7 +169,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "run-resuming",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewRunResumingEnvelope(RunResumingInput{
+				return NewRunResumingEnvelope(ApprovalEventInput{
 					EventID:     "evt-rs-1",
 					OccurredAt:  time.Unix(103, 0).UTC(),
 					Sequence:    4,
@@ -187,7 +187,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "run-resumed",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewRunResumedEnvelope(RunResumedInput{
+				return NewRunResumedEnvelope(ApprovalEventInput{
 					EventID:     "evt-rsd-1",
 					OccurredAt:  time.Unix(104, 0).UTC(),
 					Sequence:    5,
@@ -205,7 +205,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "run-resume-failed",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewRunResumeFailedEnvelope(RunResumeFailedInput{
+				return NewRunResumeFailedEnvelope(ApprovalEventInput{
 					EventID:     "evt-rsf-1",
 					OccurredAt:  time.Unix(105, 0).UTC(),
 					Sequence:    6,
@@ -223,7 +223,7 @@ func TestApprovalPayloadBuilders_EmitStableEventTypes(t *testing.T) {
 		{
 			name: "run-completed",
 			build: func() (*ApprovalEventEnvelope, error) {
-				return NewRunCompletedEnvelope(RunCompletedInput{
+				return NewRunCompletedEnvelope(ApprovalEventInput{
 					EventID:     "evt-done-1",
 					OccurredAt:  time.Unix(106, 0).UTC(),
 					Sequence:    7,
