@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"gopkg.in/yaml.v3"
@@ -17,6 +18,10 @@ const skillFileName = "SKILL.md"
 // Backend implements skill.Backend using the OS filesystem.
 type Backend struct {
 	baseDir string
+
+	cacheMu sync.RWMutex
+	cached  []skill.Skill
+	loaded  bool
 }
 
 // New creates a new filesystem-based skill backend.
@@ -64,6 +69,34 @@ func (b *Backend) Get(_ context.Context, name string) (skill.Skill, error) {
 }
 
 func (b *Backend) loadAll() ([]skill.Skill, error) {
+	// Fast path: read from cache
+	b.cacheMu.RLock()
+	if b.loaded {
+		defer b.cacheMu.RUnlock()
+		return b.cached, nil
+	}
+	b.cacheMu.RUnlock()
+
+	// Slow path: load from disk
+	b.cacheMu.Lock()
+	defer b.cacheMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if b.loaded {
+		return b.cached, nil
+	}
+
+	skills, err := b.loadAllFromDisk()
+	if err != nil {
+		return nil, err
+	}
+	b.cached = skills
+	b.loaded = true
+	return skills, nil
+}
+
+// loadAllFromDisk reads skills from the filesystem.
+func (b *Backend) loadAllFromDisk() ([]skill.Skill, error) {
 	entries, err := os.ReadDir(b.baseDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read skill directory %q: %w", b.baseDir, err)
@@ -77,7 +110,6 @@ func (b *Backend) loadAll() ([]skill.Skill, error) {
 		skillPath := filepath.Join(b.baseDir, entry.Name(), skillFileName)
 		s, err := b.loadSkill(skillPath)
 		if err != nil {
-			// Log warning but continue loading other skills
 			continue
 		}
 		skills = append(skills, s)
