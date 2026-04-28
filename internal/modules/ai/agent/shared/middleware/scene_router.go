@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -54,7 +53,7 @@ func NewSceneRouter(ctx context.Context, cfg *SceneRouterConfig) (*SceneRouterMi
 
 	// 初始化时尝试从上下文获取场景
 	sceneMeta := runtimectx.AIMetadataFrom(ctx)
-	currentScene := NormalizeScene(sceneMeta.Scene)
+	currentScene := sceneutil.NormalizeScene(sceneMeta.Scene)
 
 	return &SceneRouterMiddleware{
 		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
@@ -115,25 +114,20 @@ func (m *SceneRouterMiddleware) WrapStreamableToolCall(
 }
 
 func (m *SceneRouterMiddleware) resolveScene(ctx context.Context) string {
-	if scene := NormalizeScene(runtimectx.AIMetadataFrom(ctx).Scene); strings.TrimSpace(scene) != "" {
+	if scene := sceneutil.NormalizeScene(runtimectx.AIMetadataFrom(ctx).Scene); scene != sceneutil.DefaultScene {
 		return scene
 	}
-	if scene := NormalizeScene(m.currentScene); strings.TrimSpace(scene) != "" {
+	if scene := sceneutil.NormalizeScene(m.currentScene); scene != sceneutil.DefaultScene {
 		return scene
 	}
-	return "ai"
+	return sceneutil.DefaultScene
 }
 
 // NormalizeScene 规范化场景名称。
 //
-// 将场景名称转换为小写，去除前后空格。
-// 如果场景名称为空，返回默认场景 "ai"。
+// 委托给 sceneutil.NormalizeScene。
 func NormalizeScene(scene string) string {
-	scene = strings.TrimSpace(scene)
-	if scene == "" {
-		return "ai"
-	}
-	return strings.ToLower(scene)
+	return sceneutil.NormalizeScene(scene)
 }
 
 func DefaultSceneToolMap() map[string][]string {

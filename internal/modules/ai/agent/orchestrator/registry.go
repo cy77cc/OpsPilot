@@ -1,12 +1,12 @@
 package orchestrator
 
 import (
-	"strings"
-
 	cicdspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/cicd"
 	hostspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/host"
 	k8sspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/kubernetes"
 	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
+
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/sceneutil"
 )
 
 // SpecialistSpec describes a registered specialist target for a scene.
@@ -78,14 +78,14 @@ func (r *Registry) Register(scene string, spec SpecialistSpec) {
 	if r.byScene == nil {
 		r.byScene = map[string]SpecialistSpec{}
 	}
-	r.byScene[normalizeScene(scene)] = spec
+	r.byScene[sceneutil.NormalizeScene(scene)] = spec
 }
 
 func (r *Registry) Lookup(scene string) (SpecialistSpec, bool) {
 	if r == nil || r.byScene == nil {
 		return SpecialistSpec{}, false
 	}
-	spec, ok := r.byScene[normalizeScene(scene)]
+	spec, ok := r.byScene[sceneutil.NormalizeScene(scene)]
 	return spec, ok
 }
 
@@ -98,8 +98,4 @@ func (r *Registry) Entries() []RegistryEntry {
 		entries = append(entries, RegistryEntry{Scene: scene, Spec: spec})
 	}
 	return entries
-}
-
-func normalizeScene(scene string) string {
-	return strings.ToLower(strings.TrimSpace(scene))
 }

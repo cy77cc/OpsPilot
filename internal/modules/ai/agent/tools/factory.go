@@ -3,10 +3,10 @@ package tools
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/sceneutil"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/cicd"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/deployment"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/governance"
@@ -41,7 +41,7 @@ func BuildToolsForScene(ctx context.Context, scene string) []tool.BaseTool {
 func BuildToolsForSceneWithMode(ctx context.Context, scene string, readOnly bool) []tool.BaseTool {
 	var tools []tool.InvokableTool
 
-	switch normalizeScene(scene) {
+	switch sceneutil.NormalizeScene(scene) {
 	case "kubernetes", "cluster":
 		if readOnly {
 			tools = safeInvokableTools(ctx, "kubernetes.readonly", buildKubernetesReadonlyTools)
@@ -119,8 +119,4 @@ func logToolBuilderDegraded(builderName string, cause any) {
 		logger.String("builder", builderName),
 		logger.String("cause", fmt.Sprintf("%v", cause)),
 	)
-}
-
-func normalizeScene(scene string) string {
-	return strings.ToLower(strings.TrimSpace(scene))
 }
