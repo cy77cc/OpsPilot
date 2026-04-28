@@ -313,6 +313,36 @@ func (d *AIChatDAO) ListMessagesBySession(ctx context.Context, sessionID string)
 	return messages, err
 }
 
+// ListMessagesBySessionPaged 列出会话的消息（带分页）。
+//
+// 按时间倒序查询后反转为正序，返回最近的 limit 条消息。
+//
+// 参数:
+//   - ctx: 上下文
+//   - sessionID: 会话 ID
+//   - limit: 返回的最大消息数（<=0 时默认 100）
+//
+// 返回: 消息列表（按时间正序）
+func (d *AIChatDAO) ListMessagesBySessionPaged(ctx context.Context, sessionID string, limit int) ([]model.AIChatMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var messages []model.AIChatMessage
+	err := d.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at DESC, id DESC").
+		Limit(limit).
+		Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	// Reverse to chronological order
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+	return messages, nil
+}
+
 // GetMessage 根据 ID 获取单条消息。
 //
 // 返回消息或 nil（不存在时）。

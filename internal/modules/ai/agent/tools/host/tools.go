@@ -24,13 +24,11 @@ import (
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/hostpolicy"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
-	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
-	return svcCtx
+	return toolutil.ServiceContextFromRuntime(ctx)
 }
 
 // =============================================================================
@@ -169,6 +167,9 @@ func runPolicyAwareExecByTarget(ctx context.Context, svcCtx *svc.ServiceContext,
 		}, nil
 	}
 	if node == nil {
+		if violations := toolutil.ValidateCommandSafety(cmd); len(violations) > 0 {
+			return nil, fmt.Errorf("command blocked: %s", strings.Join(violations, "; "))
+		}
 		out, runErr := runLocalCommand(ctx, 6*time.Second, "sh", []string{"-c", cmd}...)
 		if runErr != nil {
 			return &HostExecOutput{
@@ -254,8 +255,8 @@ func HostListInventory(ctx context.Context) tool.InvokableTool {
 				query = query.Where("status = ?", status)
 			}
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
-				pattern := "%" + kw + "%"
-				query = query.Where("name LIKE ? OR ip LIKE ? OR hostname LIKE ?", pattern, pattern, pattern)
+				pattern := "%" + toolutil.EscapeLikePattern(kw) + "%"
+				query = query.Where("name LIKE ? ESCAPE '\\' OR ip LIKE ? ESCAPE '\\' OR hostname LIKE ? ESCAPE '\\'", pattern, pattern, pattern)
 			}
 			var nodes []hostmodel.Node
 			if err := query.Order("id desc").Limit(limit).Find(&nodes).Error; err != nil {

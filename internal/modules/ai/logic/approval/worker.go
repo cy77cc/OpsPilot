@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	sharedapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
@@ -192,7 +192,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		// Log the MarkDone failure but do not retry the event processing.
 		// Retrying after successful processEvent risks double-resume (e.g., resuming the run twice).
 		// A separate reconciliation job should handle stuck "processing" events.
-		log.Printf("approval worker: failed to mark outbox event %d as done: %v (event was processed successfully)", e.ID, err)
+		logger.L().Infof("approval worker: failed to mark outbox event %d as done: %v (event was processed successfully)", []any{e.ID, err})
 	}
 	return true, nil
 }

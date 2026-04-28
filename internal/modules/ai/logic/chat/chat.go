@@ -6,33 +6,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
-	contracts "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/contracts"
-	sharedmiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/shared"
-	workermiddleware "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/middleware/workers"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
-	cicdspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/cicd"
-	hostspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/host"
-	kubernetesspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/kubernetes"
-	monitorspecialist "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/specialists/monitor"
-	isolationworker "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/workers/isolation"
-	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic/stream"
 	ai "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	runtimecontext "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/context"
-	projectionruntime "github.com/cy77cc/OpsPilot/internal/modules/ai/runtime/projection"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+)
+
+const (
+	maxTitleRunes         = 48
+	maxProgressSummaryLen = 500
+	maxMessageLength      = 32768
 )
 
 // ChatInput 是 Chat 方法的输入参数。
@@ -408,7 +403,7 @@ func BuildSessionTitle(message string) string {
 	if trimmed == "" {
 		return "New AI session"
 	}
-	return TruncateString(trimmed, 48)
+	return TruncateString(trimmed, maxTitleRunes)
 }
 
 // NormalizeScene 规范化场景名称。
@@ -473,305 +468,14 @@ func TruncateString(s string, maxLen int) string {
 
 type EventEmitter func(event string, data any)
 
-type delegationWindow struct {
-	DelegationID      string
-	AgentName         string
-	Intent            string
-	Summary           string
-	StructuredSummary *contracts.DelegationSummary
-}
-
-type delegationStreamState struct {
-	active    *delegationWindow
-	completed []delegationWindow
-}
-
-func (s *delegationStreamState) observe(events []airuntime.PublicStreamEvent) {
-	for _, projected := range events {
-		switch projected.Event {
-		case "agent_handoff":
-			data, _ := projected.Data.(map[string]any)
-			s.observeHandoff(data)
-		case "delta":
-			data, _ := projected.Data.(map[string]any)
-			s.observeDelta(data)
-		case "tool_result":
-			data, _ := projected.Data.(map[string]any)
-			s.observeToolResult(data)
-		}
-	}
-}
-
-func (s *delegationStreamState) observeHandoff(data map[string]any) {
-	if data == nil {
-		return
-	}
-	from := strings.TrimSpace(stream.StringValue(data, "from"))
-	to := strings.TrimSpace(stream.StringValue(data, "to"))
-	intent := strings.TrimSpace(stream.StringValue(data, "intent"))
-
-	if s.active != nil && isDelegationReturnTarget(to) {
-		s.closeActiveWindow()
-	}
-
-	if !airuntime.IsDelegationHandoff(from, to, intent) {
-		return
-	}
-	s.closeActiveWindow()
-	s.active = &delegationWindow{
-		DelegationID: uuid.NewString(),
-		AgentName:    to,
-		Intent:       intent,
-	}
-}
-
-func (s *delegationStreamState) observeDelta(data map[string]any) {
-	if data == nil || s.active == nil || s.active.StructuredSummary != nil {
-		return
-	}
-	content := stream.StringValue(data, "content")
-	if strings.TrimSpace(content) == "" {
-		return
-	}
-	s.active.Summary += content
-}
-
-func (s *delegationStreamState) observeToolResult(data map[string]any) {
-	if data == nil || s.active == nil || s.active.StructuredSummary != nil {
-		return
-	}
-	if strings.TrimSpace(stream.StringValue(data, "tool_name")) != "monitor_metric" {
-		return
-	}
-
-	agent := normalizeDelegationAgent(stream.StringValue(data, "agent"))
-	if agent != "monitor" && agent != "isolation_worker" {
-		return
-	}
-
-	summary, ok := buildStructuredMonitorMetricSummary(*s.active, stream.StringValue(data, "content"))
-	if !ok {
-		return
-	}
-
-	s.active.StructuredSummary = &summary
-	s.active.AgentName = summary.AgentName
-	s.active.Summary = summary.Summary
-}
-
-func (s *delegationStreamState) windowsForEmit() []delegationWindow {
-	if s == nil {
-		return nil
-	}
-	if s.active != nil {
-		s.closeActiveWindow()
-	}
-	windows := s.completed
-	s.completed = nil
-	return windows
-}
-
-func (s *delegationStreamState) closeActiveWindow() {
-	if s == nil || s.active == nil {
-		return
-	}
-	window := *s.active
-	s.completed = append(s.completed, window)
-	s.active = nil
-}
-
-func sameAgentIdentity(left, right string) bool {
-	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
-}
-
-func isDelegationReturnTarget(target string) bool {
-	switch strings.ToLower(strings.TrimSpace(target)) {
-	case "executor", "deep_main", "orchestrator":
-		return true
-	default:
-		return false
-	}
-}
-
-func compactDelegationSummary(summary string) string {
-	return strings.TrimSpace(summary)
-}
-
-func normalizeDelegationAgent(agent string) string {
-	trimmed := strings.TrimSpace(agent)
-	if trimmed == "" {
-		return "specialist"
-	}
-	return trimmed
-}
-
-func buildDelegationNodeTitle(agent string) string {
-	trimmed := strings.TrimSpace(agent)
-	if trimmed == "" {
-		return "Delegation summary"
-	}
-	return fmt.Sprintf("%s summary", trimmed)
-}
-
-func shouldEmitDelegationWindow(window delegationWindow) bool {
-	if strings.TrimSpace(window.DelegationID) == "" {
-		return false
-	}
-	if strings.TrimSpace(window.AgentName) == "" {
-		return false
-	}
-	if strings.TrimSpace(window.Summary) == "" {
-		return false
-	}
-	return true
-}
-
-func buildDelegationPayload(window delegationWindow, runRiskLevel string) map[string]any {
-	summary := buildDelegationSummary(window, runRiskLevel)
-	payload := map[string]any{
-		"delegation_id": strings.TrimSpace(window.DelegationID),
-		"agent_name":    normalizeDelegationAgent(summary.AgentName),
-		"status":        string(summary.Status),
-		"title":         buildDelegationNodeTitle(summary.AgentName),
-		"summary":       compactDelegationSummary(summary.Summary),
-	}
-	if intent := strings.TrimSpace(window.Intent); intent != "" {
-		payload["intent"] = intent
-	}
-	if risk := strings.TrimSpace(string(summary.RiskLevel)); risk != "" {
-		payload["risk_level"] = risk
-	}
-	return payload
-}
-
-func buildDelegationSummary(window delegationWindow, runRiskLevel string) contracts.DelegationSummary {
-	if window.StructuredSummary != nil {
-		summary := *window.StructuredSummary
-		summary.RiskLevel = firstNonEmptyRiskLevel(summary.RiskLevel, delegationRiskLevel(runRiskLevel))
-		return summary
-	}
-
-	base := contracts.DelegationSummary{
-		TaskID:    strings.TrimSpace(window.DelegationID),
-		AgentName: normalizeDelegationAgent(window.AgentName),
-		Status:    contracts.StatusReturned,
-		Summary:   compactDelegationSummary(window.Summary),
-		RiskLevel: delegationRiskLevel(runRiskLevel),
-	}
-
-	if strings.EqualFold(base.AgentName, "isolation_worker") {
-		base = sharedmiddleware.ApplySummaryDefaults(
-			base,
-			"Isolation worker completed metric reduction for the requested scope.",
-			"Ask the monitor specialist to return a compact read-only summary to deep_main.",
-		)
-		if err := workermiddleware.ValidateStrictSummary(base); err == nil {
-			wrapped := monitorspecialist.BuildMonitorSummary(base, "", "")
-			wrapped.RiskLevel = firstNonEmptyRiskLevel(wrapped.RiskLevel, delegationRiskLevel(runRiskLevel))
-			return sharedmiddleware.ApplySummaryDefaults(
-				wrapped,
-				"MonitorAgent completed delegated analysis for the requested scope.",
-				"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
-			)
-		}
-	}
-
-	switch normalizeDelegationAgent(base.AgentName) {
-	case "monitor":
-		base = monitorspecialist.BuildMonitorSummary(base, "", "")
-	case "kubernetes":
-		base = kubernetesspecialist.BuildKubernetesSummary(base, "", "")
-	case "host":
-		base = hostspecialist.BuildHostSummary(base, "")
-	case "cicd":
-		base = cicdspecialist.BuildCICDSummary(base, "")
-	}
-
-	return sharedmiddleware.ApplySummaryDefaults(
-		base,
-		fmt.Sprintf("%s completed delegated analysis for the requested scope.", buildDelegationNodeTitle(base.AgentName)),
-		"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
-	)
-}
-
-func buildStructuredMonitorMetricSummary(window delegationWindow, raw string) (contracts.DelegationSummary, bool) {
-	type metricPoint struct {
-		Value float64 `json:"value"`
-	}
-	type metricResult struct {
-		Query     string        `json:"query"`
-		TimeRange string        `json:"time_range"`
-		Points    []metricPoint `json:"points"`
-	}
-
-	var payload metricResult
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
-		return contracts.DelegationSummary{}, false
-	}
-	if strings.TrimSpace(payload.Query) == "" {
-		return contracts.DelegationSummary{}, false
-	}
-
-	values := make([]float64, 0, len(payload.Points))
-	for _, point := range payload.Points {
-		values = append(values, point.Value)
-	}
-
-	workerSummary := isolationworker.ReduceMetricPoints(strings.TrimSpace(window.DelegationID), payload.Query, values)
-	if err := workermiddleware.ValidateStrictSummary(workerSummary); err != nil {
-		return contracts.DelegationSummary{}, false
-	}
-
-	monitorSummary := monitorspecialist.BuildMonitorSummary(workerSummary, "", payload.TimeRange)
-	monitorSummary = sharedmiddleware.ApplySummaryDefaults(
-		monitorSummary,
-		"MonitorAgent completed delegated metric analysis for the requested scope.",
-		"Ask deep_main whether to continue with read-only diagnosis or prepare a governed action.",
-	)
-	return monitorSummary, true
-}
-
-func delegationRiskLevel(value string) contracts.RiskLevel {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(contracts.RiskHigh):
-		return contracts.RiskHigh
-	case string(contracts.RiskMedium):
-		return contracts.RiskMedium
-	case string(contracts.RiskLow):
-		return contracts.RiskLow
-	default:
-		return ""
-	}
-}
-
-func firstNonEmptyRiskLevel(levels ...contracts.RiskLevel) contracts.RiskLevel {
-	for _, level := range levels {
-		if strings.TrimSpace(string(level)) != "" {
-			return level
-		}
-	}
-	return ""
-}
-
-func emitDelegationWindows(ctx context.Context, l *Logic, shell ChatShell, state *delegationStreamState, seq *int, emit EventEmitter) error {
-	for _, window := range state.windowsForEmit() {
-		if !shouldEmitDelegationWindow(window) {
-			continue
-		}
-		payload := buildDelegationPayload(window, shell.Run.RiskLevel)
-		eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, "delegation_node", payload)
-		if err != nil {
-			return err
-		}
-		emit("delegation_node", withEventID(payload, eid))
-	}
-	return nil
-}
-
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
 func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) error {
 	if l.RunDAO == nil || l.AIRouter == nil {
 		emit("error", map[string]any{"message": stream.SanitizeUserFacingError(fmt.Errorf("AI service not initialized"))})
+		return nil
+	}
+	if len(input.Message) > maxMessageLength {
+		emit("error", map[string]any{"message": fmt.Sprintf("message too long: %d bytes (max %d)", len(input.Message), maxMessageLength)})
 		return nil
 	}
 	shell, err := EnsureChatShell(ctx, l, input)
@@ -852,7 +556,7 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 			return fmt.Errorf("persist waiting approval state: %w", err)
 		}
 		if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("persist run enhancements best effort: %v", err)
+			logger.L().Infof("persist run enhancements best effort: %v", []any{err})
 		}
 		emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": "waiting_approval", "agent": "executor", "summary": result.SummaryText})
 		return nil
@@ -881,63 +585,10 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 		return fmt.Errorf("finalize run critical: %w", err)
 	}
 	if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("persist run enhancements best effort: %v", err)
+		logger.L().Infof("persist run enhancements best effort: %v", []any{err})
 	}
 	emit(done.Event, withEventID(done.Data, eid))
 	return nil
-}
-
-func buildSessionAgentInput(ctx context.Context, l *Logic, shell ChatShell, input ChatInput) []*schema.Message {
-	history := loadSessionHistoryMessages(ctx, l, shell, input.Budget)
-	current := schema.UserMessage(BuildAugmentedMessage(ctx, l, shell.Scene, input.Context, input.Message))
-	return append(history, current)
-}
-
-func loadSessionHistoryMessages(ctx context.Context, l *Logic, shell ChatShell, budget runtimecontext.Budget) []*schema.Message {
-	if l == nil || l.ChatDAO == nil || strings.TrimSpace(shell.SessionID) == "" {
-		return nil
-	}
-	rows, err := l.ChatDAO.ListMessagesBySession(ctx, shell.SessionID)
-	if err != nil || len(rows) == 0 {
-		return nil
-	}
-
-	history := make([]runtimecontext.Message, 0, len(rows))
-	for _, row := range rows {
-		if row.ID == shell.UserMessage.ID || row.ID == shell.AssistantMessage.ID {
-			continue
-		}
-		content := strings.TrimSpace(row.Content)
-		if content == "" {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(row.Role)) {
-		case "user":
-			history = append(history, runtimecontext.Message{Role: "user", Content: content})
-		case "assistant":
-			history = append(history, runtimecontext.Message{Role: "assistant", Content: content})
-		case "system":
-			history = append(history, runtimecontext.Message{Role: "system", Content: content, Pinned: true})
-		}
-	}
-
-	selected := runtimecontext.SelectBudgeted(history, budget)
-	if len(selected) < len(history) {
-		selected = runtimecontext.CompressOverflow(history, budget)
-	}
-
-	result := make([]*schema.Message, 0, len(selected))
-	for _, msg := range selected {
-		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
-		case "assistant":
-			result = append(result, schema.AssistantMessage(msg.Content, nil))
-		case "system":
-			result = append(result, schema.SystemMessage(msg.Content))
-		default:
-			result = append(result, schema.UserMessage(msg.Content))
-		}
-	}
-	return result
 }
 
 func (l *Logic) runtimeContext(ctx context.Context) context.Context {
@@ -945,239 +596,4 @@ func (l *Logic) runtimeContext(ctx context.Context) context.Context {
 		return ctx
 	}
 	return runtimectx.WithServices(ctx, l.SvcCtx)
-}
-
-// EmitTerminalFailure 发送终端失败事件并持久化。
-func EmitTerminalFailure(ctx context.Context, l *Logic, shell ChatShell, seq *int, internalErr error, summaryBody, assistantBody string, emit EventEmitter) error {
-	publicErr := stream.SanitizeUserFacingError(internalErr)
-	projected := airuntime.NewErrorEvent(shell.Run.ID, errors.New(publicErr))
-	eid, err := AppendRunEventWithID(ctx, l, shell.Run.ID, shell.SessionID, seq, projected.Event, projected.Data)
-	if err != nil {
-		return err
-	}
-	if err := persistTerminalProjectionEvent(ctx, l, shell.Run.ID, shell.SessionID, eid, projected); err != nil {
-		return err
-	}
-	emit(projected.Event, withEventID(projected.Data, eid))
-	runUpdate := aidao.AIRunStatusUpdate{AssistantMessageID: shell.AssistantMessage.ID, Status: "failed_runtime", ErrorMessage: stream.SanitizeUserFacingError(internalErr)}
-	snapshot := stream.BuildAssistantFailureSnapshot(summaryBody, assistantBody, publicErr)
-	if err := FinalizeRunCritical(ctx, l, shell, runUpdate, snapshot); err != nil {
-		return err
-	}
-	if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runUpdate.Status, snapshot); err != nil {
-		if strings.TrimSpace(summaryBody) == "" && strings.TrimSpace(assistantBody) == "" {
-			return nil
-		}
-		return fmt.Errorf("persist run artifacts: %w", err)
-	}
-	return nil
-}
-
-// FinalizeRunCritical 事务性更新消息和运行状态。
-func FinalizeRunCritical(ctx context.Context, l *Logic, shell ChatShell, runUpdate aidao.AIRunStatusUpdate, assistantContent string) error {
-	if l.SvcCtx == nil || l.SvcCtx.DB == nil {
-		return nil
-	}
-	return l.SvcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		chatDAO := aidaochat.NewAIChatDAO(tx)
-		runDAO := aidao.NewAIRunDAO(tx)
-		if err := chatDAO.UpdateMessage(ctx, shell.AssistantMessage.ID, map[string]any{"content": assistantContent, "status": assistantStatusFromRunStatus(runUpdate.Status)}); err != nil {
-			return err
-		}
-		runUpdate.AssistantMessageID = shell.AssistantMessage.ID
-		runUpdate.ProgressSummary = TruncateString(assistantContent, 500)
-		return runDAO.UpdateRunStatus(ctx, shell.Run.ID, runUpdate)
-	})
-}
-
-// PersistRunEnhancementsBestEffort 持久化投影和内容。
-func PersistRunEnhancementsBestEffort(ctx context.Context, l *Logic, runID, sessionID, status string, _ string) error {
-	if l.RunProjectionDAO == nil {
-		return nil
-	}
-	current, err := l.RunProjectionDAO.GetByRunID(ctx, runID)
-	if err != nil {
-		return err
-	}
-	if current == nil || strings.TrimSpace(current.ProjectionJSON) == "" {
-		return nil
-	}
-	var projection airuntime.RunProjection
-	if err := json.Unmarshal([]byte(current.ProjectionJSON), &projection); err != nil {
-		return err
-	}
-	if strings.TrimSpace(status) != "" {
-		projection.Status = status
-	}
-	projectionJSON, err := json.Marshal(&projection)
-	if err != nil {
-		return err
-	}
-	return l.RunProjectionDAO.Upsert(ctx, &ai.AIRunProjection{
-		ID:             current.ID,
-		RunID:          runID,
-		SessionID:      sessionID,
-		Version:        current.Version,
-		Status:         projection.Status,
-		ProjectionJSON: string(projectionJSON),
-	})
-}
-
-// EmitExistingShellTerminal 对重用 shell 发送终态事件。
-func EmitExistingShellTerminal(ctx context.Context, l *Logic, shell ChatShell, emit EventEmitter) {
-	switch shell.Run.Status {
-	case "failed", "failed_runtime":
-		emit("error", map[string]any{"run_id": shell.Run.ID, "message": stream.SanitizeUserFacingError(errors.New(shell.Run.ErrorMessage))})
-	case "cancelled", "expired":
-		emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "agent": "executor", "summary": shell.AssistantMessage.Content})
-	case "completed", "completed_with_tool_errors":
-		emit("done", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "summary": shell.AssistantMessage.Content})
-	default:
-		if ai.IsOpenRunStatus(shell.Run.Status) {
-			emit("run_state", map[string]any{"run_id": shell.Run.ID, "status": shell.Run.Status, "agent": "executor", "summary": shell.AssistantMessage.Content})
-		}
-	}
-}
-
-// AppendRunEventWithID 追加运行事件并返回事件 ID。
-func AppendRunEventWithID(ctx context.Context, l *Logic, runID, sessionID string, seq *int, eventName string, payload any) (string, error) {
-	if l.RunEventDAO == nil || seq == nil {
-		return "", nil
-	}
-	eventType, raw, err := marshalRuntimeEvent(eventName, payload)
-	if err != nil {
-		return "", err
-	}
-	if eventType == "" {
-		return "", nil
-	}
-	eventID := uuid.NewString()
-	*seq++
-	agentName := stream.EventAgentName(payload)
-	if eventType == airuntime.EventTypeDelegationNode {
-		data, _ := payload.(map[string]any)
-		agentName = strings.TrimSpace(stream.StringValue(data, "agent_name"))
-	}
-	return eventID, l.RunEventDAO.Create(ctx, &ai.AIRunEvent{
-		ID: eventID, RunID: runID, SessionID: sessionID, Seq: *seq,
-		EventType: string(eventType), AgentName: agentName,
-		ToolCallID: stream.EventToolCallID(payload), PayloadJSON: raw,
-	})
-}
-
-func marshalRuntimeEvent(eventName string, payload any) (airuntime.EventType, string, error) {
-	eventType, raw, err := stream.MarshalProjectedEvent(eventName, payload)
-	if err != nil || eventType != "" || eventName != "delegation_node" {
-		return eventType, raw, err
-	}
-	data, _ := payload.(map[string]any)
-	node := &airuntime.DelegationNodePayload{
-		DelegationID: strings.TrimSpace(stream.StringValue(data, "delegation_id")),
-		AgentName:    strings.TrimSpace(stream.StringValue(data, "agent_name")),
-		Intent:       strings.TrimSpace(stream.StringValue(data, "intent")),
-		Status:       strings.TrimSpace(stream.StringValue(data, "status")),
-		Title:        strings.TrimSpace(stream.StringValue(data, "title")),
-		Summary:      strings.TrimSpace(stream.StringValue(data, "summary")),
-		RiskLevel:    strings.TrimSpace(stream.StringValue(data, "risk_level")),
-	}
-	raw, err = airuntime.MarshalEventPayload(airuntime.EventTypeDelegationNode, node)
-	return airuntime.EventTypeDelegationNode, raw, err
-}
-
-// ConsumeProjectedEvents 消费投影事件并持久化。
-func ConsumeProjectedEvents(ctx context.Context, l *Logic, runID, sessionID string, seq *int, events []airuntime.PublicStreamEvent, emit EventEmitter) (stream.RunUpdate, error) {
-	update := stream.AccumulateProjectedEvents(events, nil)
-	state, current, err := loadIncrementalProjectionState(ctx, l, runID)
-	if err != nil {
-		return update, err
-	}
-	for _, projected := range events {
-		if err := persistApprovalResumeTarget(ctx, l, projected); err != nil {
-			return update, err
-		}
-		eid, err := AppendRunEventWithID(ctx, l, runID, sessionID, seq, projected.Event, projected.Data)
-		if err != nil {
-			return update, err
-		}
-		state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
-			ID:   eid,
-			Type: projected.Event,
-			Text: projectionEventText(projected),
-			Data: projected.Data,
-		})
-		emit(projected.Event, withEventID(projected.Data, eid))
-	}
-	if err := persistIncrementalProjection(ctx, l, sessionID, state, current); err != nil {
-		return update, err
-	}
-	return update, nil
-}
-
-func persistApprovalResumeTarget(ctx context.Context, l *Logic, event airuntime.PublicStreamEvent) error {
-	if l == nil || l.SvcCtx == nil || l.SvcCtx.DB == nil || event.Event != "tool_approval" {
-		return nil
-	}
-	data, _ := event.Data.(map[string]any)
-	if data == nil {
-		return nil
-	}
-	approvalID := strings.TrimSpace(stream.StringValue(data, "approval_id"))
-	targetID := strings.TrimSpace(stream.StringValue(data, "target_id"))
-	if approvalID == "" || targetID == "" {
-		return nil
-	}
-	return aidaoapproval.NewAIApprovalTaskDAO(l.SvcCtx.DB).UpdateResumeTarget(ctx, approvalID, targetID)
-}
-
-func assistantStatusFromRunStatus(status string) string {
-	switch status {
-	case "failed_runtime":
-		return "error"
-	case "waiting_approval", "running", "delegating", "waiting_subagent", "resuming", "resume_failed_retryable":
-		return "streaming"
-	default:
-		return "done"
-	}
-}
-
-func withEventID(payload any, eventID string) any {
-	if strings.TrimSpace(eventID) == "" {
-		return payload
-	}
-	data, ok := payload.(map[string]any)
-	if !ok {
-		return payload
-	}
-	cp := make(map[string]any, len(data)+1)
-	for k, v := range data {
-		cp[k] = v
-	}
-	cp["event_id"] = eventID
-	return cp
-}
-
-func projectionEventText(event airuntime.PublicStreamEvent) string {
-	if event.Event != "delta" {
-		return ""
-	}
-	data, _ := event.Data.(map[string]any)
-	if data == nil {
-		return ""
-	}
-	content, _ := data["content"].(string)
-	return content
-}
-
-func persistTerminalProjectionEvent(ctx context.Context, l *Logic, runID, sessionID, eventID string, event airuntime.PublicStreamEvent) error {
-	state, current, err := loadIncrementalProjectionState(ctx, l, runID)
-	if err != nil {
-		return err
-	}
-	state = projectionruntime.ApplyEvent(state, projectionruntime.Event{
-		ID:   eventID,
-		Type: event.Event,
-		Text: projectionEventText(event),
-		Data: event.Data,
-	})
-	return persistIncrementalProjection(ctx, l, sessionID, state, current)
 }

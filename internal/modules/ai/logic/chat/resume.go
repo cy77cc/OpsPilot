@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 	aicheckpoint "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/checkpoint"
 	aidao "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/run"
@@ -121,7 +121,7 @@ func ResumeApprovedTask(ctx context.Context, l *Logic, task *ai.AIApprovalTask, 
 			return nil, fmt.Errorf("persist waiting approval state: %w", err)
 		}
 		if err := PersistRunEnhancementsBestEffort(ctx, l, shell.Run.ID, shell.SessionID, runStatus.Status, result.SummaryText); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("persist run enhancements best effort (resume): %v", err)
+			logger.L().Infof("persist run enhancements best effort (resume): %v", []any{err})
 		}
 		return nil, nil
 	}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -109,6 +110,8 @@ type Logic struct {
 	AIRouter           adk.ResumableAgent
 	MigrationFlags     event.ApprovalEventMigrationFlags
 	chatLogic          *chat.Logic
+	initOnce           sync.Once
+	mu                 sync.RWMutex
 }
 
 // Chat 执行一次 AI 对话（委托给 chat 子包）。
@@ -118,10 +121,13 @@ func (l *Logic) Chat(ctx context.Context, input ChatInput, emit chat.EventEmitte
 }
 
 func (l *Logic) ensureChatLogic() {
-	if l.chatLogic == nil && l.svcCtx != nil && l.svcCtx.DB != nil {
-		cl := chat.New(l.svcCtx)
-		l.chatLogic = cl
-	}
+	l.initOnce.Do(func() {
+		if l.svcCtx != nil && l.svcCtx.DB != nil {
+			l.chatLogic = chat.New(l.svcCtx)
+		}
+	})
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.chatLogic != nil {
 		// Keep chat sub-logic dependencies in sync when tests assign AIRouter after construction.
 		l.chatLogic.AIRouter = l.AIRouter

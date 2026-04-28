@@ -60,7 +60,7 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     gap: 6px;
   `,
-  stepMarkdown: css`
+  markdownBase: css`
     width: 100%;
     max-width: 100%;
     line-height: 1.65;
@@ -96,6 +96,13 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
       font-size: 16px;
     }
 
+    blockquote {
+      padding-left: 12px;
+      border-left: 3px solid ${token.colorBorder};
+      color: ${token.colorTextSecondary};
+    }
+  `,
+  stepMarkdown: css`
     p {
       margin: 0 0 0.85em;
     }
@@ -112,9 +119,6 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
 
     blockquote {
       margin: 0 0 0.85em;
-      padding-left: 12px;
-      border-left: 3px solid ${token.colorBorder};
-      color: ${token.colorTextSecondary};
     }
   `,
   completedStepsCollapse: css`
@@ -251,41 +255,6 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
     font-weight: 600;
   `,
   markdown: css`
-    width: 100%;
-    max-width: 100%;
-    line-height: 1.65;
-    word-break: break-word;
-
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6 {
-      margin: 1.1em 0 0.45em;
-      color: ${token.colorText};
-      font-weight: 700;
-      line-height: 1.3;
-    }
-
-    h1 {
-      font-size: 28px;
-    }
-
-    h2 {
-      font-size: 22px;
-    }
-
-    h3 {
-      font-size: 18px;
-    }
-
-    h4,
-    h5,
-    h6 {
-      font-size: 16px;
-    }
-
     p {
       margin: 0 0 0.9em;
     }
@@ -302,9 +271,6 @@ const useAssistantReplyStyles = createStyles(({ token, css }) => ({
 
     blockquote {
       margin: 0 0 0.9em;
-      padding: 0 0 0 12px;
-      border-left: 3px solid ${token.colorBorder};
-      color: ${token.colorTextSecondary};
     }
 
     pre {
@@ -520,11 +486,11 @@ function MarkdownViewportContent({
   }
 
   if (!isVisible) {
-    return <div ref={viewportRef} className={styles.markdown} aria-hidden="true" />;
+    return <div ref={viewportRef} className={`${styles.markdownBase} ${styles.markdown}`} aria-hidden="true" />;
   }
 
   return (
-    <div ref={viewportRef} className={styles.markdown}>
+    <div ref={viewportRef} className={`${styles.markdownBase} ${styles.markdown}`}>
       <XMarkdown
         content={normalizedContent}
         components={markdownComponents}
@@ -649,7 +615,7 @@ function StepContentRenderer({
     const flowClassName = hasBlockContent ? styles.blockToolFlow : styles.inlineToolFlow;
 
     return (
-      <div className={hasOnlyTools ? styles.inlineToolFallback : styles.stepMarkdown}>
+      <div className={hasOnlyTools ? styles.inlineToolFallback : `${styles.markdownBase} ${styles.stepMarkdown}`}>
         <FlowWrapper className={flowClassName}>{elements}</FlowWrapper>
       </div>
     );
@@ -658,7 +624,7 @@ function StepContentRenderer({
   // 向后兼容：使用 content 字段 + activities 追加在末尾
   if (step.content || activities.length > 0) {
     return (
-      <div className={styles.stepMarkdown}>
+      <div className={`${styles.markdownBase} ${styles.stepMarkdown}`}>
         {step.content && (
           <MarkdownViewportContent
             content={step.content}

@@ -19,13 +19,11 @@ import (
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	projectmodel "github.com/cy77cc/OpsPilot/internal/modules/project/model"
-	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
 func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
-	svcCtx, _ := runtimectx.ServicesAs[*svc.ServiceContext](ctx)
-	return svcCtx
+	return toolutil.ServiceContextFromRuntime(ctx)
 }
 
 // =============================================================================
@@ -406,8 +404,8 @@ func ServiceCatalogList(ctx context.Context) tool.InvokableTool {
 			}
 			query := svcCtx.DB.Model(&projectmodel.Service{})
 			if kw := strings.TrimSpace(input.Keyword); kw != "" {
-				pattern := "%" + kw + "%"
-				query = query.Where("name LIKE ? OR owner LIKE ?", pattern, pattern)
+				pattern := "%" + toolutil.EscapeLikePattern(kw) + "%"
+				query = query.Where("name LIKE ? ESCAPE '\\' OR owner LIKE ? ESCAPE '\\'", pattern, pattern)
 			}
 			switch input.CategoryID {
 			case 1:

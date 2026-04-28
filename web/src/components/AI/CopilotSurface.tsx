@@ -6,25 +6,20 @@ import {
   PaperClipOutlined,
   CloseOutlined,
   VerticalAlignBottomOutlined,
-  ReloadOutlined,
-  CopyOutlined,
-  LikeOutlined,
-  DislikeOutlined,
-  LoadingOutlined,
 } from '@ant-design/icons';
 import { Bubble, Conversations, Prompts, Sender, Welcome } from '@ant-design/x';
 import type { BubbleListProps, ConversationItemType, PromptsItemType } from '@ant-design/x';
 import { useXChat, useXConversations } from '@ant-design/x-sdk';
-import { App, Button, Drawer, Popover, Space, Tag, Tooltip, Typography } from 'antd';
-import { useLocation } from 'react-router-dom';
+import { App, Button, Drawer, Popover, Space, Tag, Typography } from 'antd';
 import { aiApi } from '../../api/modules/ai';
 import { AssistantReply } from './AssistantReply';
+import { MessageActionBar } from './MessageActionBar';
 import {
   hydrateAssistantHistoryFromProjection,
   resetHistoryProjectionCache,
 } from './historyProjection';
 import { PlatformChatProvider } from './providers';
-import type { AssistantReplyRuntime, ChatRequest, ConversationSummary, SceneContext, XChatMessage } from './types';
+import type { AssistantReplyRuntime, ChatRequest, ConversationSummary, XChatMessage } from './types';
 import type { AIMessage } from '../../features/ai/api/shared';
 import type { AISession } from '../../features/ai/api/shared';
 
@@ -41,6 +36,7 @@ interface XChatItem {
 }
 import { useCopilotSessionReducer } from './hooks/useCopilotSessionReducer';
 import { useCopilotStream } from './hooks/useCopilotStream';
+import { useSceneResolver } from './hooks/useSceneResolver';
 import {
   buildHistoricalPendingRuntime,
   mapHistoryMessageStatus,
@@ -65,62 +61,6 @@ function toBubbleStatus(status?: string): BubbleStatus | undefined {
     default:
       return undefined;
   }
-}
-
-function resolveScene(pathname: string): { scene: string; context: SceneContext } {
-  const normalized = pathname || '/';
-  const segments = normalized.split('/').filter(Boolean);
-
-  if (normalized.startsWith('/resources/hosts') || normalized.startsWith('/hosts')) {
-    return {
-      scene: 'host',
-      context: {
-        route: normalized,
-        resourceType: 'host',
-        resourceId: segments[segments.length - 1],
-      },
-    };
-  }
-
-  if (normalized.startsWith('/k8s-legacy')) {
-    return {
-      scene: 'k8s',
-      context: {
-        route: normalized,
-        resourceType: 'k8s',
-      },
-    };
-  }
-
-  if (normalized.startsWith('/resources/clusters') || normalized.startsWith('/k8s')) {
-    return {
-      scene: 'cluster',
-      context: {
-        route: normalized,
-        resourceType: 'cluster',
-        resourceId: segments[segments.length - 1],
-      },
-    };
-  }
-
-  if (normalized.startsWith('/delivery/services')) {
-    return {
-      scene: 'service',
-      context: {
-        route: normalized,
-        resourceType: 'service',
-        resourceId: segments[1],
-      },
-    };
-  }
-
-  return {
-    scene: 'ai',
-    context: {
-      route: normalized,
-      resourceType: 'page',
-    },
-  };
 }
 
 function toConversationItems(items: ConversationSummary[]): ConversationItemType[] {
@@ -226,11 +166,7 @@ export async function copyAssistantReplyToClipboard(
 export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
   const { styles } = useCopilotStyles();
   const { message: messageApi } = App.useApp();
-  const location = useLocation();
-  const { scene, context } = React.useMemo(
-    () => resolveScene(location.pathname),
-    [location.pathname],
-  );
+  const { scene, context } = useSceneResolver();
   const {
     state: {
       attachedFiles,
@@ -361,100 +297,20 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
       assistant: (item) => ({
         placement: 'start',
         variant: 'borderless',
-        footer: (_content: string, info) => {
-          const isStreaming = info.status === 'loading' || info.status === 'updating';
-
-          if (isStreaming) {
-            return (
-              <Space size={6} style={{ color: 'rgba(17, 24, 39, 0.62)' }}>
-                <LoadingOutlined spin />
-                <Text type="secondary">正在生成...</Text>
-              </Space>
-            );
-          }
-
-          return (
-            <div style={{ display: 'flex', gap: 2 }}>
-              <Tooltip title="复制">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CopyOutlined />}
-                  onClick={async () => {
-                    const msg = (item as XChatItem).extraInfo?.message;
-                    try {
-                      await copyAssistantReplyToClipboard(
-                        msg?.content || '',
-                        (item as XChatItem).extraInfo?.runtime,
-                      );
-                      messageApi.success('内容已复制');
-                    } catch {
-                      messageApi.error('复制失败');
-                    }
-                  }}
-                />
-              </Tooltip>
-              <Tooltip title="赞同">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LikeOutlined />}
-                  onClick={async () => {
-                    const messageId = (item as XChatItem).extraInfo?.messageId;
-                    if (!messageId) {return;}
-                    try {
-                      await aiApi.submitMessageFeedback(messageId, 'like');
-                      messageApi.success('感谢您的反馈！');
-                    } catch {
-                      messageApi.error('提交反馈失败');
-                    }
-                  }}
-                />
-              </Tooltip>
-              <Tooltip title="踩">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<DislikeOutlined />}
-                  onClick={async () => {
-                    const messageId = (item as XChatItem).extraInfo?.messageId;
-                    if (!messageId) {return;}
-                    try {
-                      await aiApi.submitMessageFeedback(messageId, 'dislike');
-                      messageApi.success('感谢您的反馈！');
-                    } catch {
-                      messageApi.error('提交反馈失败');
-                    }
-                  }}
-                />
-              </Tooltip>
-              <Tooltip title="重新生成">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<ReloadOutlined />}
-                  onClick={() => {
-                    // Find the last user message before this assistant message
-                    const currentIndex = renderedMessages.findIndex((m) => m.renderKey === item.key);
-                    if (currentIndex === -1) {return;}
-
-                    let lastUserPrompt = '';
-                    for (let i = currentIndex - 1; i >= 0; i -= 1) {
-                      if (renderedMessages[i].message.role === 'user') {
-                        lastUserPrompt = renderedMessages[i].message.content || '';
-                        break;
-                      }
-                    }
-
-                    if (lastUserPrompt) {
-                      void onRequest(lastUserPrompt);
-                    }
-                  }}
-                />
-              </Tooltip>
-            </div>
-          );
-        },
+        footer: (_content: string, info) => (
+          <MessageActionBar
+            status={info.status}
+            messageId={(item as XChatItem).extraInfo?.messageId}
+            message={(item as XChatItem).extraInfo?.message}
+            runtime={(item as XChatItem).extraInfo?.runtime}
+            renderedMessages={renderedMessages}
+            currentKey={item.key}
+            onRequest={onRequest}
+            onSuccess={(msg) => messageApi.success(msg)}
+            onError={(msg) => messageApi.error(msg)}
+            copyAssistantReplyToClipboard={copyAssistantReplyToClipboard}
+          />
+        ),
         styles: {
           root: {
             paddingInline: 0,
@@ -585,6 +441,10 @@ export default function CopilotSurface({ open, onClose }: CopilotSurfaceProps) {
     async (rawMessage?: string) => {
       const message = (rawMessage ?? inputValue).trim();
       if (!message) {
+        return;
+      }
+      const MAX_MESSAGE_LENGTH = 32768;
+      if (message.length > MAX_MESSAGE_LENGTH) {
         return;
       }
 

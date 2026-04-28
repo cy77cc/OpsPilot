@@ -10,13 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	clustermodel "github.com/cy77cc/OpsPilot/internal/modules/cluster/model"
 	deploymentmodel "github.com/cy77cc/OpsPilot/internal/modules/deployment/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
@@ -71,15 +71,6 @@ type K8sEventsQueryInput struct {
 	Limit     int    `json:"limit,omitempty" jsonschema_description:"max events,default=50"`
 }
 
-// K8sPodLogsInput Pod 日志查询输入。
-type K8sPodLogsInput struct {
-	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
-	Namespace string `json:"namespace,omitempty" jsonschema_description:"kubernetes namespace,default=default"`
-	Pod       string `json:"pod" jsonschema_description:"required,pod name"`
-	Container string `json:"container,omitempty" jsonschema_description:"container name"`
-	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
-}
-
 // K8sLogsInput 日志查询输入。
 type K8sLogsInput struct {
 	ClusterID int    `json:"cluster_id,omitempty" jsonschema_description:"cluster id in database"`
@@ -88,6 +79,204 @@ type K8sLogsInput struct {
 	Container string `json:"container,omitempty" jsonschema_description:"container name"`
 	TailLines int    `json:"tail_lines,omitempty" jsonschema_description:"tail lines,default=200"`
 }
+
+// K8sPodLogsInput 是 K8sLogsInput 的别名，保持向后兼容。
+type K8sPodLogsInput = K8sLogsInput
+
+// =============================================================================
+// 输出类型定义
+// =============================================================================
+
+// K8sQueryOutput 资源查询输出。
+type K8sQueryOutput struct {
+	Items []map[string]any `json:"items"`
+}
+
+// K8sListResourcesOutput 是 K8sQueryOutput 的别名，保持向后兼容。
+type K8sListResourcesOutput = K8sQueryOutput
+
+// K8sEventsOutput 事件查询输出。
+type K8sEventsOutput struct {
+	Items []map[string]any `json:"items"`
+}
+
+// K8sGetEventsOutput 是 K8sEventsOutput 的别名，保持向后兼容。
+type K8sGetEventsOutput = K8sEventsOutput
+
+// K8sLogsOutput 日志查询输出。
+type K8sLogsOutput struct {
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Container string `json:"container"`
+	Logs      string `json:"logs"`
+}
+
+// K8sGetPodLogsOutput Pod 日志查询输出。
+type K8sGetPodLogsOutput struct {
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Logs      string `json:"logs"`
+}
+
+// =============================================================================
+// 共享内部实现
+// =============================================================================
+
+// listK8sResources 是资源列表/查询的共享实现。
+// name 和 label 非空时对结果进行过滤。
+func listK8sResources(ctx context.Context, cli *kubernetes.Clientset, ns, resource, name, label string, limit int) ([]map[string]any, error) {
+	listOpts := metav1.ListOptions{}
+	if label != "" {
+		listOpts.LabelSelector = label
+	}
+
+	switch resource {
+	case "pods":
+		list, err := cli.CoreV1().Pods(ns).List(ctx, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, p := range list.Items {
+			if name != "" && p.Name != name {
+				continue
+			}
+			out = append(out, map[string]any{
+				"name":      p.Name,
+				"namespace": p.Namespace,
+				"phase":     p.Status.Phase,
+				"node":      p.Spec.NodeName,
+				"labels":    p.Labels,
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+	case "services":
+		list, err := cli.CoreV1().Services(ns).List(ctx, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, s := range list.Items {
+			if name != "" && s.Name != name {
+				continue
+			}
+			out = append(out, map[string]any{
+				"name":       s.Name,
+				"namespace":  s.Namespace,
+				"type":       s.Spec.Type,
+				"cluster_ip": s.Spec.ClusterIP,
+				"labels":     s.Labels,
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+	case "deployments":
+		list, err := cli.AppsV1().Deployments(ns).List(ctx, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, d := range list.Items {
+			if name != "" && d.Name != name {
+				continue
+			}
+			out = append(out, map[string]any{
+				"name":      d.Name,
+				"namespace": d.Namespace,
+				"ready":     d.Status.ReadyReplicas,
+				"replicas":  d.Status.Replicas,
+				"updated":   d.Status.UpdatedReplicas,
+				"labels":    d.Labels,
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+	case "nodes":
+		list, err := cli.CoreV1().Nodes().List(ctx, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, n := range list.Items {
+			if name != "" && n.Name != name {
+				continue
+			}
+			out = append(out, map[string]any{
+				"name":   n.Name,
+				"labels": n.Labels,
+			})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unsupported resource type: %s", resource)
+	}
+}
+
+// listK8sEvents 是事件查询的共享实现。
+// kind 和 name 非空时按涉及对象进行过滤。
+func listK8sEvents(ctx context.Context, cli *kubernetes.Clientset, ns, kind, name string, limit int) ([]map[string]any, error) {
+	list, err := cli.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(list.Items))
+	for _, e := range list.Items {
+		if kind != "" && !strings.EqualFold(e.InvolvedObject.Kind, kind) {
+			continue
+		}
+		if name != "" && e.InvolvedObject.Name != name {
+			continue
+		}
+		out = append(out, map[string]any{
+			"type":      e.Type,
+			"reason":    e.Reason,
+			"message":   e.Message,
+			"namespace": e.Namespace,
+			"kind":      e.InvolvedObject.Kind,
+			"name":      e.InvolvedObject.Name,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// getPodLogs 是 Pod 日志获取的共享实现。
+func getPodLogs(ctx context.Context, cli *kubernetes.Clientset, ns, pod, container string, tailLines int64) (namespace, containerName, logs string, err error) {
+	ns = strings.TrimSpace(ns)
+	if ns == "" {
+		ns = "default"
+	}
+	pod = strings.TrimSpace(pod)
+	if pod == "" {
+		return "", "", "", fmt.Errorf("pod is required")
+	}
+	if tailLines <= 0 {
+		tailLines = 200
+	}
+	containerName = strings.TrimSpace(container)
+	opt := &corev1.PodLogOptions{Container: containerName, TailLines: &tailLines}
+	raw, err := cli.CoreV1().Pods(ns).GetLogs(pod, opt).DoRaw(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	return ns, containerName, string(raw), nil
+}
+
+// =============================================================================
+// 工具创建函数（薄包装层）
+// =============================================================================
 
 // NewKubernetesTools 创建所有 Kubernetes 工具。
 //
@@ -159,10 +348,6 @@ func CatalogMetadataList() []CatalogMetadata {
 	}
 }
 
-type K8sQueryOutput struct {
-	Items []map[string]any `json:"items"`
-}
-
 func K8sQuery(ctx context.Context) tool.InvokableTool {
 	t, err := einoutils.InferOptionableTool(
 		"k8s_query",
@@ -193,114 +378,21 @@ func K8sQuery(ctx context.Context) tool.InvokableTool {
 			if limit <= 0 {
 				limit = 50
 			}
-			name := strings.TrimSpace(input.Name)
-			label := strings.TrimSpace(input.Label)
-			resource := strings.ToLower(strings.TrimSpace(input.Resource))
-			listOpts := metav1.ListOptions{}
-			if label != "" {
-				listOpts.LabelSelector = label
+			items, err := listK8sResources(ctx, cli, ns,
+				strings.ToLower(strings.TrimSpace(input.Resource)),
+				strings.TrimSpace(input.Name),
+				strings.TrimSpace(input.Label),
+				limit)
+			if err != nil {
+				return nil, err
 			}
-
-			switch resource {
-			case "pods":
-				list, err := cli.CoreV1().Pods(ns).List(ctx, listOpts)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for _, p := range list.Items {
-					if name != "" && p.Name != name {
-						continue
-					}
-					out = append(out, map[string]any{
-						"name":      p.Name,
-						"namespace": p.Namespace,
-						"phase":     p.Status.Phase,
-						"node":      p.Spec.NodeName,
-						"labels":    p.Labels,
-					})
-					if len(out) >= limit {
-						break
-					}
-				}
-				return &K8sQueryOutput{Items: out}, nil
-			case "services":
-				list, err := cli.CoreV1().Services(ns).List(ctx, listOpts)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for _, s := range list.Items {
-					if name != "" && s.Name != name {
-						continue
-					}
-					out = append(out, map[string]any{
-						"name":       s.Name,
-						"namespace":  s.Namespace,
-						"type":       s.Spec.Type,
-						"cluster_ip": s.Spec.ClusterIP,
-						"labels":     s.Labels,
-					})
-					if len(out) >= limit {
-						break
-					}
-				}
-				return &K8sQueryOutput{Items: out}, nil
-			case "deployments":
-				list, err := cli.AppsV1().Deployments(ns).List(ctx, listOpts)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for _, d := range list.Items {
-					if name != "" && d.Name != name {
-						continue
-					}
-					out = append(out, map[string]any{
-						"name":      d.Name,
-						"namespace": d.Namespace,
-						"ready":     d.Status.ReadyReplicas,
-						"replicas":  d.Status.Replicas,
-						"updated":   d.Status.UpdatedReplicas,
-						"labels":    d.Labels,
-					})
-					if len(out) >= limit {
-						break
-					}
-				}
-				return &K8sQueryOutput{Items: out}, nil
-			case "nodes":
-				list, err := cli.CoreV1().Nodes().List(ctx, listOpts)
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for _, n := range list.Items {
-					if name != "" && n.Name != name {
-						continue
-					}
-					out = append(out, map[string]any{
-						"name":   n.Name,
-						"labels": n.Labels,
-					})
-					if len(out) >= limit {
-						break
-					}
-				}
-				return &K8sQueryOutput{Items: out}, nil
-			default:
-				return nil, fmt.Errorf("unsupported resource type: %s", resource)
-			}
+			return &K8sQueryOutput{Items: items}, nil
 		},
 	)
 	if err != nil {
 		return toolutil.UnavailableInvokableTool("k8s_query", err)
 	}
 	return t
-}
-
-type K8sListResourcesOutput struct {
-	Items []map[string]any `json:"items"`
 }
 
 func K8sListResources(ctx context.Context) tool.InvokableTool {
@@ -329,77 +421,24 @@ func K8sListResources(ctx context.Context) tool.InvokableTool {
 			if ns == "" {
 				ns = corev1.NamespaceAll
 			}
-			resource := strings.ToLower(strings.TrimSpace(input.Resource))
 			limit := input.Limit
 			if limit <= 0 {
 				limit = 50
 			}
-			switch resource {
-			case "pods":
-				list, err := cli.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for i, p := range list.Items {
-					if i >= limit {
-						break
-					}
-					out = append(out, map[string]any{"name": p.Name, "namespace": p.Namespace, "phase": p.Status.Phase})
-				}
-				return &K8sListResourcesOutput{Items: out}, nil
-			case "services":
-				list, err := cli.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for i, s := range list.Items {
-					if i >= limit {
-						break
-					}
-					out = append(out, map[string]any{"name": s.Name, "namespace": s.Namespace, "type": s.Spec.Type})
-				}
-				return &K8sListResourcesOutput{Items: out}, nil
-			case "deployments":
-				list, err := cli.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for i, d := range list.Items {
-					if i >= limit {
-						break
-					}
-					out = append(out, map[string]any{"name": d.Name, "namespace": d.Namespace, "ready": d.Status.ReadyReplicas, "replicas": d.Status.Replicas})
-				}
-				return &K8sListResourcesOutput{Items: out}, nil
-			case "nodes":
-				list, err := cli.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-				if err != nil {
-					return nil, err
-				}
-				out := make([]map[string]any, 0, len(list.Items))
-				for i, n := range list.Items {
-					if i >= limit {
-						break
-					}
-					out = append(out, map[string]any{"name": n.Name, "labels": n.Labels})
-				}
-				return &K8sListResourcesOutput{Items: out}, nil
-			default:
-				return nil, fmt.Errorf("unsupported resource type: %s", resource)
+			items, err := listK8sResources(ctx, cli, ns,
+				strings.ToLower(strings.TrimSpace(input.Resource)),
+				"", "",
+				limit)
+			if err != nil {
+				return nil, err
 			}
+			return &K8sListResourcesOutput{Items: items}, nil
 		},
 	)
 	if err != nil {
 		return toolutil.UnavailableInvokableTool("k8s_list_resources", err)
 	}
 	return t
-}
-
-type K8sEventsOutput struct {
-	Items []map[string]any `json:"items"`
 }
 
 func K8sEvents(ctx context.Context) tool.InvokableTool {
@@ -423,43 +462,20 @@ func K8sEvents(ctx context.Context) tool.InvokableTool {
 			if limit <= 0 {
 				limit = 50
 			}
-			kind := strings.TrimSpace(input.Kind)
-			name := strings.TrimSpace(input.Name)
-			list, err := cli.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+			items, err := listK8sEvents(ctx, cli, ns,
+				strings.TrimSpace(input.Kind),
+				strings.TrimSpace(input.Name),
+				limit)
 			if err != nil {
 				return nil, err
 			}
-			out := make([]map[string]any, 0, len(list.Items))
-			for _, e := range list.Items {
-				if kind != "" && !strings.EqualFold(e.InvolvedObject.Kind, kind) {
-					continue
-				}
-				if name != "" && e.InvolvedObject.Name != name {
-					continue
-				}
-				out = append(out, map[string]any{
-					"type":      e.Type,
-					"reason":    e.Reason,
-					"message":   e.Message,
-					"namespace": e.Namespace,
-					"kind":      e.InvolvedObject.Kind,
-					"name":      e.InvolvedObject.Name,
-				})
-				if len(out) >= limit {
-					break
-				}
-			}
-			return &K8sEventsOutput{Items: out}, nil
+			return &K8sEventsOutput{Items: items}, nil
 		},
 	)
 	if err != nil {
 		return toolutil.UnavailableInvokableTool("k8s_events", err)
 	}
 	return t
-}
-
-type K8sGetEventsOutput struct {
-	Items []map[string]any `json:"items"`
 }
 
 func K8sGetEvents(ctx context.Context) tool.InvokableTool {
@@ -483,31 +499,17 @@ func K8sGetEvents(ctx context.Context) tool.InvokableTool {
 			if limit <= 0 {
 				limit = 50
 			}
-			list, err := cli.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+			items, err := listK8sEvents(ctx, cli, ns, "", "", limit)
 			if err != nil {
 				return nil, err
 			}
-			out := make([]map[string]any, 0, len(list.Items))
-			for i, e := range list.Items {
-				if i >= limit {
-					break
-				}
-				out = append(out, map[string]any{"type": e.Type, "reason": e.Reason, "message": e.Message})
-			}
-			return &K8sGetEventsOutput{Items: out}, nil
+			return &K8sGetEventsOutput{Items: items}, nil
 		},
 	)
 	if err != nil {
 		return toolutil.UnavailableInvokableTool("k8s_get_events", err)
 	}
 	return t
-}
-
-type K8sLogsOutput struct {
-	Namespace string `json:"namespace"`
-	Pod       string `json:"pod"`
-	Container string `json:"container"`
-	Logs      string `json:"logs"`
 }
 
 func K8sLogs(ctx context.Context) tool.InvokableTool {
@@ -523,28 +525,15 @@ func K8sLogs(ctx context.Context) tool.InvokableTool {
 			if err != nil {
 				return nil, err
 			}
-			ns := strings.TrimSpace(input.Namespace)
-			if ns == "" {
-				ns = "default"
-			}
-			pod := strings.TrimSpace(input.Pod)
-			if pod == "" {
-				return nil, fmt.Errorf("pod is required")
-			}
-			tailLines := int64(input.TailLines)
-			if tailLines <= 0 {
-				tailLines = 200
-			}
-			opt := &corev1.PodLogOptions{Container: strings.TrimSpace(input.Container), TailLines: &tailLines}
-			raw, err := cli.CoreV1().Pods(ns).GetLogs(pod, opt).DoRaw(ctx)
+			ns, container, logs, err := getPodLogs(ctx, cli, input.Namespace, input.Pod, input.Container, int64(input.TailLines))
 			if err != nil {
 				return nil, err
 			}
 			return &K8sLogsOutput{
 				Namespace: ns,
-				Pod:       pod,
-				Container: strings.TrimSpace(input.Container),
-				Logs:      string(raw),
+				Pod:       strings.TrimSpace(input.Pod),
+				Container: container,
+				Logs:      logs,
 			}, nil
 		},
 	)
@@ -552,12 +541,6 @@ func K8sLogs(ctx context.Context) tool.InvokableTool {
 		return toolutil.UnavailableInvokableTool("k8s_logs", err)
 	}
 	return t
-}
-
-type K8sGetPodLogsOutput struct {
-	Namespace string `json:"namespace"`
-	Pod       string `json:"pod"`
-	Logs      string `json:"logs"`
 }
 
 func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
@@ -573,27 +556,14 @@ func K8sGetPodLogs(ctx context.Context) tool.InvokableTool {
 			if err != nil {
 				return nil, err
 			}
-			ns := strings.TrimSpace(input.Namespace)
-			if ns == "" {
-				ns = "default"
-			}
-			pod := strings.TrimSpace(input.Pod)
-			if pod == "" {
-				return nil, fmt.Errorf("pod is required")
-			}
-			tailLines := int64(input.TailLines)
-			if tailLines <= 0 {
-				tailLines = 200
-			}
-			opt := &corev1.PodLogOptions{Container: strings.TrimSpace(input.Container), TailLines: &tailLines}
-			raw, err := cli.CoreV1().Pods(ns).GetLogs(pod, opt).DoRaw(ctx)
+			ns, _, logs, err := getPodLogs(ctx, cli, input.Namespace, input.Pod, input.Container, int64(input.TailLines))
 			if err != nil {
 				return nil, err
 			}
 			return &K8sGetPodLogsOutput{
 				Namespace: ns,
-				Pod:       pod,
-				Logs:      string(raw),
+				Pod:       strings.TrimSpace(input.Pod),
+				Logs:      logs,
 			}, nil
 		},
 	)

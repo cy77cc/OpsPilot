@@ -487,6 +487,28 @@ function buildUnknownStreamEvent(eventType: string, payload: unknown, eventId?: 
   };
 }
 
+const EVENT_HANDLERS: Record<string, (h: A2UIStreamHandlers, p: Record<string, unknown>) => void> = {
+  'meta': (h, p) => h.onMeta?.(p as A2UIMetaEvent),
+  'agent_handoff': (h, p) => h.onAgentHandoff?.(p as A2UIAgentHandoffEvent),
+  'plan': (h, p) => h.onPlan?.(p as A2UIPlanEvent),
+  'replan': (h, p) => h.onReplan?.(p as A2UIReplanEvent),
+  'delta': (h, p) => h.onDelta?.(p as A2UIDeltaEvent),
+  'tool_call': (h, p) => h.onToolCall?.(p as A2UIToolCallEvent),
+  'tool_approval': (h, p) => h.onToolApproval?.(p as A2UIToolApprovalEvent),
+  'tool_result': (h, p) => h.onToolResult?.(p as A2UIToolResultEvent),
+  'delegation_node': (h, p) => h.onDelegationNode?.(p as A2UIDelegationNodeEvent),
+  'ops.plan.updated': (h, p) => h.onOpsPlanUpdated?.(p as A2UIOpsPlanUpdatedEvent),
+  'ops_plan_updated': (h, p) => h.onOpsPlanUpdated?.(p as A2UIOpsPlanUpdatedEvent),
+  'ai.run.resuming': (h, p) => h.onRunResuming?.(p as A2UIRunResumingEvent),
+  'ai.run.resumed': (h, p) => h.onRunResumed?.(p as A2UIRunResumedEvent),
+  'ai.run.resume_failed': (h, p) => h.onRunResumeFailed?.(p as A2UIRunResumeFailedEvent),
+  'ai.run.completed': (h, p) => h.onRunCompleted?.(p as A2UIRunCompletedEvent),
+  'run_state': (h, p) => h.onRunState?.(p as A2UIRunStateEvent),
+  'ai.approval.expired': (h, p) => h.onApprovalExpired?.(p as A2UIApprovalExpiredEvent),
+  'done': (h, p) => h.onDone?.(p as A2UIDoneEvent),
+  'error': (h, p) => h.onError?.(normalizeErrorEvent(p)),
+};
+
 export function dispatchAIStreamEvent(segment: string, handlers: A2UIStreamHandlers): void {
   if (!segment.trim()) {return;}
   const lines = segment.split('\n');
@@ -503,25 +525,12 @@ export function dispatchAIStreamEvent(segment: string, handlers: A2UIStreamHandl
   if (data) {
     try { payload = JSON.parse(data); } catch { return; }
   }
-  if (eventType === 'meta') {handlers.onMeta?.(payload as A2UIMetaEvent);}
-  else if (eventType === 'agent_handoff') {handlers.onAgentHandoff?.(payload as A2UIAgentHandoffEvent);}
-  else if (eventType === 'plan') {handlers.onPlan?.(payload as A2UIPlanEvent);}
-  else if (eventType === 'replan') {handlers.onReplan?.(payload as A2UIReplanEvent);}
-  else if (eventType === 'delta') {handlers.onDelta?.(payload as A2UIDeltaEvent);}
-  else if (eventType === 'tool_call') {handlers.onToolCall?.(payload as A2UIToolCallEvent);}
-  else if (eventType === 'tool_approval') {handlers.onToolApproval?.(payload as A2UIToolApprovalEvent);}
-  else if (eventType === 'tool_result') {handlers.onToolResult?.(payload as A2UIToolResultEvent);}
-  else if (eventType === 'delegation_node') {handlers.onDelegationNode?.(payload as A2UIDelegationNodeEvent);}
-  else if (eventType === 'ops.plan.updated' || eventType === 'ops_plan_updated') {handlers.onOpsPlanUpdated?.(payload as A2UIOpsPlanUpdatedEvent);}
-  else if (eventType === 'ai.run.resuming') {handlers.onRunResuming?.(payload as A2UIRunResumingEvent);}
-  else if (eventType === 'ai.run.resumed') {handlers.onRunResumed?.(payload as A2UIRunResumedEvent);}
-  else if (eventType === 'ai.run.resume_failed') {handlers.onRunResumeFailed?.(payload as A2UIRunResumeFailedEvent);}
-  else if (eventType === 'ai.run.completed') {handlers.onRunCompleted?.(payload as A2UIRunCompletedEvent);}
-  else if (eventType === 'run_state') {handlers.onRunState?.(payload as A2UIRunStateEvent);}
-  else if (eventType === 'ai.approval.expired') {handlers.onApprovalExpired?.(payload as A2UIApprovalExpiredEvent);}
-  else if (eventType === 'done') {handlers.onDone?.(payload as A2UIDoneEvent);}
-  else if (eventType === 'error') {handlers.onError?.(normalizeErrorEvent(payload));}
-  else {handlers.onUnknownEvent?.(buildUnknownStreamEvent(eventType, payload, eventId || undefined));}
+  const handler = EVENT_HANDLERS[eventType];
+  if (handler) {
+    handler(handlers, payload);
+  } else {
+    handlers.onUnknownEvent?.(buildUnknownStreamEvent(eventType, payload, eventId || undefined));
+  }
 }
 
 export async function consumeAIStream(response: Response, handlers: A2UIStreamHandlers): Promise<void> {

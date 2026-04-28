@@ -78,6 +78,27 @@ func (d *AIRunEventDAO) FindByEventID(ctx context.Context, runID, eventID string
 	return &event, nil
 }
 
+// GetLatestEventID 获取运行的最新事件 ID。
+//
+// 参数:
+//   - ctx: 上下文
+//   - runID: 运行 ID
+//
+// 返回: 最新事件 ID 或空串（无事件时）
+func (d *AIRunEventDAO) GetLatestEventID(ctx context.Context, runID string) (string, error) {
+	var event model.AIRunEvent
+	err := d.db.WithContext(ctx).
+		Where("run_id = ?", runID).
+		Order("seq DESC, id DESC").
+		Limit(1).
+		Select("id").
+		First(&event).Error
+	if err != nil {
+		return "", err
+	}
+	return event.ID, nil
+}
+
 // ListAfterEventID 列出指定事件之后的所有事件。
 //
 // 用于实现 SSE 流式恢复：客户端断线重连后，从上次收到的事件 ID 继续。
