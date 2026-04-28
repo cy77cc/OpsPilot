@@ -160,13 +160,3 @@ func DefaultScenePromptMap() map[string]string {
 	}
 }
 
-// prependSystemMessage 在消息列表前插入系统消息。
-//
-// 如果 content 为空，直接返回原始消息列表。
-func prependSystemMessage(messages []*schema.Message, content string) []*schema.Message {
-	if content == "" {
-		return messages
-	}
-	sysMsg := schema.SystemMessage(content)
-	return append([]*schema.Message{sysMsg}, messages...)
-}
