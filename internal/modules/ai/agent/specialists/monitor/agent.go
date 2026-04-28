@@ -17,6 +17,9 @@ Scope:
 - only monitor/metric and alert diagnostics
 - read-only analysis
 
+Skills:
+- Use the 'ops-triage-workflow' skill for structured incident investigation across domains.
+
 Execution rules:
 1. Start from active alerts and key metrics for the requested service or target.
 2. If metric output is large, reduce it into findings instead of echoing raw payloads.

@@ -15,6 +15,9 @@ Scope:
 - host runtime diagnostics (cpu/memory/disk/process/journal/runtime)
 - read-only investigation
 
+Skills:
+- Use the 'host-diagnostic' skill for command guidance when diagnosing host issues. Call the 'skill' tool with name "host-diagnostic" to load the full diagnostic workflow.
+
 Execution rules:
 1. Use least-invasive checks first and summarize host health deltas.
 2. Call out resource saturation, failed services, and repeated error signatures.

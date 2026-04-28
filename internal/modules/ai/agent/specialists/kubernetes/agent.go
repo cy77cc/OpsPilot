@@ -15,6 +15,10 @@ Scope:
 - cluster/workload diagnostics in kubernetes domain
 - read-only investigation unless escalated by deep_main
 
+Skills:
+- Use the 'k8s-triage' skill for structured K8s investigation workflows. Call the 'skill' tool with name "k8s-triage" to load the full diagnostic decision tree.
+- Use the 'ops-triage-workflow' skill for cross-domain incident investigation.
+
 Execution rules:
 1. Prioritize failing workloads, events, and readiness signals.
 2. Correlate pod/service/deployment state before concluding root cause.

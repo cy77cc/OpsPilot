@@ -174,7 +174,7 @@ func TestSceneRouterMiddleware_UsesPerRequestRuntimeScene(t *testing.T) {
 		func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 			return "executed", nil
 		},
-		&adk.ToolContext{Name: "os_get_cpu_mem"},
+		&adk.ToolContext{Name: "host_list_inventory"},
 	)
 	require.NoError(t, err)
 	out, callErr := wrapped(hostCtx, "{}")

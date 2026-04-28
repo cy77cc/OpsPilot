@@ -3,14 +3,18 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/summarization"
 	adkdeep "github.com/cloudwego/eino/adk/prebuilt/deep"
+	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/middleware"
+	agentSkill "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/skill"
 	agenttodo "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/todo"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools"
 	aiclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
@@ -77,22 +81,31 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 		return nil, fmt.Errorf("build summarization middleware: %w", err)
 	}
 
+	skillHandler, err := buildSkillMiddleware(ctx)
+	if err != nil {
+		// Log warning but don't fail agent creation
+		// Skills are optional enhancements
+	}
+
 	subAgents, err := buildDeepSubAgents(ctx, registry)
 	if err != nil {
 		return nil, err
 	}
 
+	handlers := append([]adk.ChatModelAgentMiddleware{summaryMiddleware}, mainHandlers...)
+	if skillHandler != nil {
+		handlers = append([]adk.ChatModelAgentMiddleware{skillHandler}, handlers...)
+	}
+	handlers = append(handlers, todoMiddleware)
+
 	return adkdeep.New(ctx, &adkdeep.Config{
-		Name:                   "deep_main",
-		Description:            "OpsPilot deep orchestrator for governed operations and specialist delegation.",
-		ChatModel:              chatModel,
-		// Instruction:            buildDeepInstruction(normalizedScene),
-		SubAgents:              subAgents,
-		ToolsConfig:            adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: sceneTools}},
-		// WithoutWriteTodos:      true,
-		// WithoutGeneralSubAgent: true,
-		Handlers:               append([]adk.ChatModelAgentMiddleware{summaryMiddleware}, append(mainHandlers, todoMiddleware)...),
-		MaxIteration:           32,
+		Name:         "deep_main",
+		Description:  "OpsPilot deep orchestrator for governed operations and specialist delegation.",
+		ChatModel:    chatModel,
+		SubAgents:    subAgents,
+		ToolsConfig:  adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: sceneTools}},
+		Handlers:     handlers,
+		MaxIteration: 32,
 	})
 }
 
@@ -120,6 +133,12 @@ func createNamedSceneAgent(
 	if err != nil {
 		return nil, fmt.Errorf("build agent handlers: %w", err)
 	}
+
+	skillHandler, err := buildSkillMiddleware(ctx)
+	if err != nil {
+		// Log warning but don't fail agent creation
+	}
+
 	summaryMiddleware, err := summarization.New(ctx, &summarization.Config{
 		Model:   chatModel,
 		Trigger: &summarization.TriggerCondition{ContextTokens: 24000},
@@ -142,13 +161,18 @@ func createNamedSceneAgent(
 		agentDescription = fmt.Sprintf("%s operations specialist", strings.TrimSpace(scene))
 	}
 
+	specHandlers := append([]adk.ChatModelAgentMiddleware{summaryMiddleware}, handlers...)
+	if skillHandler != nil {
+		specHandlers = append([]adk.ChatModelAgentMiddleware{skillHandler}, specHandlers...)
+	}
+
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        agentName,
 		Description: agentDescription,
 		Instruction: strings.TrimSpace(instruction),
 		Model:       chatModel,
 		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: sceneTools}},
-		Handlers:    append([]adk.ChatModelAgentMiddleware{summaryMiddleware}, handlers...),
+		Handlers:    specHandlers,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create chat model agent: %w", err)
@@ -200,20 +224,16 @@ Rules:
 	return subAgents, nil
 }
 
-func buildDeepInstruction(scene string) string {
-	trimmedScene := strings.TrimSpace(scene)
-	if trimmedScene == "" {
-		trimmedScene = defaultScene
+// buildSkillMiddleware creates the skill middleware with a filesystem backend.
+// Returns nil on error (skills are optional enhancements).
+func buildSkillMiddleware(ctx context.Context) (adk.ChatModelAgentMiddleware, error) {
+	_, filename, _, _ := runtime.Caller(0)
+	skillsDir := filepath.Join(filepath.Dir(filepath.Dir(filename)), "skills")
+
+	backend, err := agentSkill.New(skillsDir)
+	if err != nil {
+		return nil, fmt.Errorf("create skill backend: %w", err)
 	}
-	return fmt.Sprintf(`You are the Deep main agent for OpsPilot.
 
-Current scene hint: %s.
-
-Execution policy:
-1. Default to solving directly with the current toolset.
-2. Use task sub-agents only when needed for context isolation, parallel research, or specialist tool selection.
-3. Sub-agents are read-only and must return compact summaries.
-4. Any write, mutation, or governed action must be performed by you through approval-aware tools.
-5. Keep user-facing output concise, structured, and actionable.
-`, trimmedScene)
+	return skill.NewMiddleware(ctx, &skill.Config{Backend: backend})
 }

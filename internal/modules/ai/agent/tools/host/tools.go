@@ -1,24 +1,23 @@
 // Package host 提供主机运维相关的工具实现。
 //
 // 本文件实现主机操作工具集，包括：
-//   - SSH 命令执行（只读和批量）
-//   - 主机清单查询
-//   - 系统诊断（CPU、内存、磁盘、网络、进程）
-//   - 日志和容器运行时查询
+//   - SSH 命令执行（host_exec，需审批）
+//   - 主机清单查询（host_list_inventory）
+//
+// 注意：os_* 诊断工具已移除，agent 应通过 host-diagnostic skill + host_exec 进行诊断。
 package host
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
@@ -53,77 +52,24 @@ type HostInventoryInput struct {
 	Limit   int    `json:"limit,omitempty" jsonschema_description:"max hosts,default=50"`
 }
 
-// OSCPUMemInput CPU/内存诊断输入。
-type OSCPUMemInput struct {
-	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-}
-
-// OSDiskInput 磁盘诊断输入。
-type OSDiskInput struct {
-	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-}
-
-// OSNetInput 网络诊断输入。
-type OSNetInput struct {
-	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-}
-
-// OSProcessTopInput 进程排行输入。
-type OSProcessTopInput struct {
-	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-	Limit  int    `json:"limit,omitempty" jsonschema_description:"top process count,default=10"`
-}
-
-// OSJournalInput 日志查询输入。
-type OSJournalInput struct {
-	Target  string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-	Service string `json:"service" jsonschema_description:"required,systemd service unit"`
-	Lines   int    `json:"lines,omitempty" jsonschema_description:"log lines,default=200"`
-}
-
-// OSContainerRuntimeInput 容器运行时查询输入。
-type OSContainerRuntimeInput struct {
-	Target string `json:"target,omitempty" jsonschema_description:"target host id/ip/hostname,default=localhost"`
-}
-
-// serviceUnitRegexp 服务单元名称正则表达式，用于验证输入安全性。
-var serviceUnitRegexp = regexp.MustCompile(`^[a-zA-Z0-9_.@-]+$`)
-
 // =============================================================================
 // 工具入口
 // =============================================================================
 
 // NewHostTools 创建主机工具集。
-//
-// 返回主机工具列表，包括：
-//   - 主机命令执行（host_exec）
-//   - 主机清单查询（host_list_inventory）
-//   - 系统诊断：CPU/内存、磁盘、网络、进程、日志、容器运行时
 func NewHostTools(ctx context.Context) []tool.InvokableTool {
-	result := make([]tool.InvokableTool, 0, len(NewHostReadonlyTools(ctx))+1)
-	result = append(result, NewHostReadonlyTools(ctx)...)
-	result = append(result, HostExec(ctx))
-	return result
+	return []tool.InvokableTool{
+		HostListInventory(ctx),
+		HostExec(ctx),
+	}
 }
 
 // NewHostReadonlyTools 创建主机只读工具子集。
 //
-// 返回只读工具列表，包括：
-//   - 主机命令执行（host_exec）
-//     注意：不包含 host_exec；delegated specialist 必须保持只读
-//   - 主机清单查询（host_list_inventory）
-//   - 系统诊断：CPU/内存、磁盘、网络、进程、日志、容器运行时
-//
-// 这些工具不修改任何状态，可安全用于诊断场景。
+// 注意：delegated specialist 必须保持只读，仅包含清单查询。
 func NewHostReadonlyTools(ctx context.Context) []tool.InvokableTool {
 	return []tool.InvokableTool{
 		HostListInventory(ctx),
-		OSGetCPUMem(ctx),
-		OSGetDiskFS(ctx),
-		OSGetNetStat(ctx),
-		OSGetProcessTop(ctx),
-		OSGetJournalTail(ctx),
-		OSGetContainerRuntime(ctx),
 	}
 }
 
@@ -143,12 +89,6 @@ func CatalogMetadataList() []CatalogMetadata {
 	return []CatalogMetadata{
 		{ToolName: "host_exec", Domain: "host", Capability: "command_execution", RiskLevel: "high", OutputMode: "inline", Description: "execute a command on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
 		{ToolName: "host_list_inventory", Domain: "host", Capability: "listing", RiskLevel: "low", OutputMode: "inline", Description: "list hosts in inventory", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_cpu_mem", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect cpu and memory on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_disk_fs", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect disks and filesystems on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_net_stat", Domain: "host", Capability: "metrics", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect network state on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_process_top", Domain: "host", Capability: "listing", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "inspect top processes on a host", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_journal_tail", Domain: "host", Capability: "logs", RiskLevel: "medium", OutputMode: "summary_plus_artifact", Description: "tail systemd journal logs", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
-		{ToolName: "os_get_container_runtime", Domain: "host", Capability: "query", RiskLevel: "low", OutputMode: "summary_plus_artifact", Description: "inspect host container runtime", DirectlyCallable: false, AccessPath: "specialist_or_runtime_dispatch"},
 	}
 }
 
@@ -351,215 +291,11 @@ func HostListInventory(ctx context.Context) tool.InvokableTool {
 	return t
 }
 
-type OSGetCPUMemOutput struct {
-	Loadavg string `json:"loadavg"`
-	Meminfo string `json:"meminfo"`
-	Uptime  string `json:"uptime"`
-}
-
-func OSGetCPUMem(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_cpu_mem",
-		"Get CPU, memory and load average information from a target host. Returns loadavg from /proc/loadavg, meminfo from /proc/meminfo, and uptime output. Target can be host ID, IP address, hostname, or 'localhost' (default) for local execution. Example: {\"target\":\"10.0.0.5\"}.",
-		func(ctx context.Context, input *OSCPUMemInput, opts ...tool.Option) (*OSGetCPUMemOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			loadavg, _, _ := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/loadavg"}, "cat /proc/loadavg")
-			mem, _, err := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/meminfo"}, "cat /proc/meminfo")
-			if err != nil {
-				return nil, err
-			}
-			uptime, _, _ := runOnTarget(ctx, svcCtx, target, "uptime", nil, "uptime")
-			return &OSGetCPUMemOutput{
-				Loadavg: loadavg,
-				Meminfo: mem,
-				Uptime:  uptime,
-			}, nil
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_cpu_mem", err)
-	}
-	return t
-}
-
-type OSGetDiskFSOutput struct {
-	Filesystem string `json:"filesystem"`
-}
-
-func OSGetDiskFS(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_disk_fs",
-		"Get disk and filesystem usage information using 'df -h' command. Shows mounted filesystems, total size, used space, available space, and mount points. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"web-server-01\"}.",
-		func(ctx context.Context, input *OSDiskInput, opts ...tool.Option) (*OSGetDiskFSOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			out, _, err := runOnTarget(ctx, svcCtx, target, "df", []string{"-h"}, "df -h")
-			if err != nil {
-				return nil, err
-			}
-			return &OSGetDiskFSOutput{Filesystem: out}, nil
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_disk_fs", err)
-	}
-	return t
-}
-
-type OSGetNetStatOutput struct {
-	NetDev         string `json:"net_dev"`
-	ListeningPorts string `json:"listening_ports"`
-}
-
-func OSGetNetStat(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_net_stat",
-		"Get network statistics including network device traffic from /proc/net/dev and listening TCP ports using 'ss -ltn'. Shows bytes sent/received per interface and all listening ports. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"192.168.1.10\"}.",
-		func(ctx context.Context, input *OSNetInput, opts ...tool.Option) (*OSGetNetStatOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			dev, _, err := runOnTarget(ctx, svcCtx, target, "cat", []string{"/proc/net/dev"}, "cat /proc/net/dev")
-			if err != nil {
-				return nil, err
-			}
-			listen, _, _ := runOnTarget(ctx, svcCtx, target, "ss", []string{"-ltn"}, "ss -ltn")
-			return &OSGetNetStatOutput{
-				NetDev:         dev,
-				ListeningPorts: listen,
-			}, nil
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_net_stat", err)
-	}
-	return t
-}
-
-type OSGetProcessTopOutput struct {
-	TopProcesses string `json:"top_processes"`
-	Limit        int    `json:"limit"`
-}
-
-func OSGetProcessTop(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_process_top",
-		"Get top processes sorted by CPU usage using 'ps aux --sort=-%cpu'. Returns the most CPU-intensive processes. Limit parameter controls how many processes to show (default 10, max 50). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"localhost\",\"limit\":20}.",
-		func(ctx context.Context, input *OSProcessTopInput, opts ...tool.Option) (*OSGetProcessTopOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			limit := input.Limit
-			if limit <= 0 {
-				limit = 10
-			}
-			if limit > 50 {
-				limit = 50
-			}
-			cmd := fmt.Sprintf("ps aux --sort=-%%cpu | head -n %d", limit+1)
-			out, _, err := runOnTarget(ctx, svcCtx, target, "ps", []string{"aux", "--sort=-%cpu"}, cmd)
-			if err != nil {
-				return nil, err
-			}
-			return &OSGetProcessTopOutput{
-				TopProcesses: out,
-				Limit:        limit,
-			}, nil
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_process_top", err)
-	}
-	return t
-}
-
-type OSGetJournalTailOutput struct {
-	Service string `json:"service"`
-	Lines   int    `json:"lines"`
-	Logs    string `json:"logs"`
-}
-
-func OSGetJournalTail(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_journal_tail",
-		"Get systemd journal logs for a specific service using 'journalctl -u <service> -n <lines>'. Service name is required. Lines parameter controls how many log lines to retrieve (default 200, max 500). Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"10.0.0.1\",\"service\":\"nginx\",\"lines\":100}.",
-		func(ctx context.Context, input *OSJournalInput, opts ...tool.Option) (*OSGetJournalTailOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			service := strings.TrimSpace(input.Service)
-			if service == "" {
-				return nil, fmt.Errorf("service is required")
-			}
-			if !serviceUnitRegexp.MatchString(service) {
-				return nil, fmt.Errorf("invalid service name")
-			}
-			lines := input.Lines
-			if lines <= 0 {
-				lines = 200
-			}
-			if lines > 500 {
-				lines = 500
-			}
-			localArgs := []string{"-u", service, "-n", strconv.Itoa(lines), "--no-pager"}
-			remoteCmd := fmt.Sprintf("journalctl -u %s -n %d --no-pager", service, lines)
-			out, _, err := runOnTarget(ctx, svcCtx, target, "journalctl", localArgs, remoteCmd)
-			if err != nil {
-				return nil, err
-			}
-			return &OSGetJournalTailOutput{
-				Service: service,
-				Lines:   lines,
-				Logs:    out,
-			}, nil
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_journal_tail", err)
-	}
-	return t
-}
-
-type OSGetContainerRuntimeOutput struct {
-	Runtime    string `json:"runtime"`
-	Containers string `json:"containers"`
-}
-
-func OSGetContainerRuntime(ctx context.Context) tool.InvokableTool {
-	svcCtx := serviceContextFromRuntime(ctx)
-	t, err := einoutils.InferOptionableTool(
-		"os_get_container_runtime",
-		"Get container runtime information and running containers. Detects Docker or containerd. For Docker, runs 'docker ps' to show container ID, image, and status. For containerd, runs 'ctr -n k8s.io containers list'. Target can be host ID, IP address, hostname, or 'localhost' (default). Example: {\"target\":\"node-01\"}.",
-		func(ctx context.Context, input *OSContainerRuntimeInput, opts ...tool.Option) (*OSGetContainerRuntimeOutput, error) {
-			target := strings.TrimSpace(input.Target)
-			out, _, err := runOnTarget(ctx, svcCtx, target, "docker", []string{"ps", "--format", "{{.ID}} {{.Image}} {{.Status}}"}, "docker ps --format '{{.ID}} {{.Image}} {{.Status}}'")
-			if err == nil {
-				return &OSGetContainerRuntimeOutput{
-					Runtime:    "docker",
-					Containers: out,
-				}, nil
-			}
-			out2, _, err2 := runOnTarget(ctx, svcCtx, target, "ctr", []string{"-n", "k8s.io", "containers", "list"}, "ctr -n k8s.io containers list")
-			if err2 == nil {
-				return &OSGetContainerRuntimeOutput{
-					Runtime:    "containerd",
-					Containers: out2,
-				}, nil
-			}
-			return nil, fmt.Errorf("docker/containerd unavailable: %v / %v", err, err2)
-		},
-	)
-	if err != nil {
-		return toolutil.UnavailableInvokableTool("os_get_container_runtime", err)
-	}
-	return t
-}
-
 // =============================================================================
 // 辅助函数
 // =============================================================================
 
 // executeHostCommand 在指定主机上执行命令。
-//
-// 通过 SSH 连接到目标主机并执行命令，支持密钥和密码认证。
 func executeHostCommand(svcCtx *svc.ServiceContext, node *hostmodel.Node, command string) (string, error) {
 	privateKey, passphrase, err := loadNodePrivateKey(svcCtx, node)
 	if err != nil {
@@ -578,8 +314,6 @@ func executeHostCommand(svcCtx *svc.ServiceContext, node *hostmodel.Node, comman
 }
 
 // loadNodePrivateKey 加载节点的 SSH 私钥。
-//
-// 从数据库加载私钥，如果加密则先解密。
 func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *hostmodel.Node) (string, string, error) {
 	if svcCtx.DB == nil || node == nil || node.SSHKeyID == nil {
 		return "", "", nil
@@ -600,33 +334,7 @@ func loadNodePrivateKey(svcCtx *svc.ServiceContext, node *hostmodel.Node) (strin
 	return decrypted, pp, nil
 }
 
-// loadHostNodesMap 批量加载主机节点并构建映射。
-//
-// 返回节点映射和缺失的 ID 列表。
-func loadHostNodesMap(svcCtx *svc.ServiceContext, hostIDs []uint64) (map[uint64]*hostmodel.Node, []uint64, error) {
-	if svcCtx.DB == nil {
-		return nil, nil, fmt.Errorf("db unavailable")
-	}
-	var nodes []hostmodel.Node
-	if err := svcCtx.DB.Where("id IN ?", hostIDs).Find(&nodes).Error; err != nil {
-		return nil, nil, err
-	}
-	byID := make(map[uint64]*hostmodel.Node, len(nodes))
-	for i := range nodes {
-		byID[uint64(nodes[i].ID)] = &nodes[i]
-	}
-	missing := make([]uint64, 0)
-	for _, id := range hostIDs {
-		if _, ok := byID[id]; !ok {
-			missing = append(missing, id)
-		}
-	}
-	return byID, missing, nil
-}
-
 // parseHostLabels 解析主机标签字符串。
-//
-// 支持 JSON 数组和逗号分隔两种格式。
 func parseHostLabels(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -654,19 +362,7 @@ func parseHostLabels(raw string) []string {
 	return out
 }
 
-// isReadonlyHostCommand 检查命令是否为安全的只读命令。
-func isReadonlyHostCommand(cmd string) bool {
-	switch strings.TrimSpace(cmd) {
-	case "hostname", "uptime", "df -h", "free -m", "ps aux --sort=-%cpu":
-		return true
-	default:
-		return false
-	}
-}
-
 // detectNodeAuthType 检测节点的认证类型。
-//
-// 返回 "key"（密钥认证）、"password"（密码认证）或 "unknown"。
 func detectNodeAuthType(node *hostmodel.Node) string {
 	if node == nil {
 		return "unknown"

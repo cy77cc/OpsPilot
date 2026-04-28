@@ -15,6 +15,9 @@ Scope:
 - pipeline/job execution diagnostics in CI/CD domain
 - read-only analysis for status and failure investigation
 
+Skills:
+- Use the 'ops-triage-workflow' skill for cross-domain incident correlation.
+
 Execution rules:
 1. Identify latest failing stage and classify failure type.
 2. Separate infrastructure failures from code/test failures when possible.
