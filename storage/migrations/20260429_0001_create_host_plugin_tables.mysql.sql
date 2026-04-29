@@ -1,0 +1,97 @@
+-- +migrate Up
+CREATE TABLE host_plugins (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  plugin_key VARCHAR(64) NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  category VARCHAR(64) NOT NULL,
+  description TEXT NOT NULL,
+  default_version VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_host_plugins_plugin_key UNIQUE (plugin_key)
+);
+
+CREATE TABLE host_plugin_versions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  plugin_id BIGINT NOT NULL,
+  version VARCHAR(64) NOT NULL,
+  arch VARCHAR(32) NOT NULL,
+  package_path VARCHAR(255) NOT NULL,
+  install_entry VARCHAR(128) NOT NULL,
+  upgrade_entry VARCHAR(128) NOT NULL,
+  uninstall_entry VARCHAR(128) NOT NULL,
+  checksum VARCHAR(128) NOT NULL,
+  capabilities_json JSON NOT NULL,
+  config_schema_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_host_plugin_version_arch UNIQUE (plugin_id, version, arch),
+  CONSTRAINT fk_host_plugin_versions_plugin FOREIGN KEY (plugin_id) REFERENCES host_plugins (id) ON DELETE CASCADE
+);
+
+CREATE TABLE host_plugin_instances (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  host_id BIGINT NOT NULL,
+  plugin_id BIGINT NOT NULL,
+  desired_version VARCHAR(64) NOT NULL,
+  installed_version VARCHAR(64) NOT NULL DEFAULT '',
+  install_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  runtime_status VARCHAR(32) NOT NULL DEFAULT 'pending_online',
+  health_status VARCHAR(32) NOT NULL DEFAULT 'unknown',
+  agent_id VARCHAR(128) NOT NULL DEFAULT '',
+  last_seen_at TIMESTAMP NULL,
+  capabilities_json JSON NOT NULL,
+  last_error TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_host_plugin_instance UNIQUE (host_id, plugin_id),
+  CONSTRAINT fk_host_plugin_instances_host FOREIGN KEY (host_id) REFERENCES nodes (id) ON DELETE CASCADE,
+  CONSTRAINT fk_host_plugin_instances_plugin FOREIGN KEY (plugin_id) REFERENCES host_plugins (id) ON DELETE CASCADE
+);
+
+CREATE TABLE host_plugin_config_revisions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  instance_id BIGINT NOT NULL,
+  version VARCHAR(64) NOT NULL,
+  config_yaml TEXT NOT NULL,
+  checksum VARCHAR(128) NOT NULL,
+  delivery_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  created_by BIGINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_config_revisions_instance FOREIGN KEY (instance_id) REFERENCES host_plugin_instances (id) ON DELETE CASCADE
+);
+
+CREATE TABLE host_plugin_tasks (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  instance_id BIGINT NOT NULL,
+  operation VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  requested_by BIGINT NOT NULL DEFAULT 0,
+  started_at TIMESTAMP NULL,
+  finished_at TIMESTAMP NULL,
+  error_message TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_tasks_instance FOREIGN KEY (instance_id) REFERENCES host_plugin_instances (id) ON DELETE CASCADE
+);
+
+CREATE TABLE host_plugin_task_logs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  task_id BIGINT NOT NULL,
+  stream VARCHAR(16) NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_task_logs_task FOREIGN KEY (task_id) REFERENCES host_plugin_tasks (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_host_plugin_config_revisions_instance_id ON host_plugin_config_revisions (instance_id);
+CREATE INDEX idx_host_plugin_tasks_instance_id ON host_plugin_tasks (instance_id);
+CREATE INDEX idx_host_plugin_tasks_status ON host_plugin_tasks (status);
+CREATE INDEX idx_host_plugin_task_logs_task_id ON host_plugin_task_logs (task_id);
+
+-- +migrate Down
+DROP TABLE IF EXISTS host_plugin_task_logs;
+DROP TABLE IF EXISTS host_plugin_tasks;
+DROP TABLE IF EXISTS host_plugin_config_revisions;
+DROP TABLE IF EXISTS host_plugin_instances;
+DROP TABLE IF EXISTS host_plugin_versions;
+DROP TABLE IF EXISTS host_plugins;

@@ -51,7 +51,7 @@ func Migrate(db *gorm.DB, direction Direction, steps int) error {
 		return err
 	}
 
-	files, err := loadMigrationFiles("storage/migrations")
+	files, err := loadMigrationFiles("storage/migrations", db.Dialector.Name())
 	if err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func Status(db *gorm.DB) ([]StatusItem, error) {
 		return nil, err
 	}
 
-	files, err := loadMigrationFiles("storage/migrations")
+	files, err := loadMigrationFiles("storage/migrations", db.Dialector.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func appliedMigrations(db *gorm.DB) (map[string]bool, error) {
 	return out, nil
 }
 
-func loadMigrationFiles(dir string) ([]migrationFile, error) {
+func loadMigrationFiles(dir, dialect string) ([]migrationFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -201,6 +201,9 @@ func loadMigrationFiles(dir string) ([]migrationFile, error) {
 	files := make([]migrationFile, 0)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		if !migrationAppliesToDialect(entry.Name(), dialect) {
 			continue
 		}
 		version, ok := parseVersion(entry.Name())
@@ -215,8 +218,38 @@ func loadMigrationFiles(dir string) ([]migrationFile, error) {
 		files = append(files, migrationFile{Version: version, Name: entry.Name(), Path: fullPath, UpSQL: upSQL, DownSQL: downSQL})
 	}
 
-	sort.Slice(files, func(i, j int) bool { return files[i].Version < files[j].Version })
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].Version == files[j].Version {
+			return files[i].Name < files[j].Name
+		}
+		return files[i].Version < files[j].Version
+	})
+	if err := validateUniqueVersions(files); err != nil {
+		return nil, err
+	}
 	return files, nil
+}
+
+func migrationAppliesToDialect(name, dialect string) bool {
+	base := strings.TrimSuffix(name, ".sql")
+	for _, knownDialect := range []string{"postgres", "mysql", "sqlite"} {
+		suffix := "." + knownDialect
+		if strings.HasSuffix(base, suffix) {
+			return dialect == knownDialect
+		}
+	}
+	return true
+}
+
+func validateUniqueVersions(files []migrationFile) error {
+	seen := make(map[string]string, len(files))
+	for _, mf := range files {
+		if existing, ok := seen[mf.Version]; ok {
+			return fmt.Errorf("duplicate migration version %s for selected dialect: %s and %s", mf.Version, existing, mf.Name)
+		}
+		seen[mf.Version] = mf.Name
+	}
+	return nil
 }
 
 func parseVersion(name string) (string, bool) {

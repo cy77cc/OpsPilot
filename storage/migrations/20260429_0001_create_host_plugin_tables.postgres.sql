@@ -25,6 +25,7 @@ CREATE TABLE host_plugin_versions (
   capabilities_json JSONB NOT NULL,
   config_schema_json JSONB NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_versions_plugin FOREIGN KEY (plugin_id) REFERENCES host_plugins (id) ON DELETE CASCADE,
   CONSTRAINT uk_host_plugin_version_arch UNIQUE (plugin_id, version, arch)
 );
 
@@ -43,6 +44,8 @@ CREATE TABLE host_plugin_instances (
   last_error TEXT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_instances_host FOREIGN KEY (host_id) REFERENCES nodes (id) ON DELETE CASCADE,
+  CONSTRAINT fk_host_plugin_instances_plugin FOREIGN KEY (plugin_id) REFERENCES host_plugins (id) ON DELETE CASCADE,
   CONSTRAINT uk_host_plugin_instance UNIQUE (host_id, plugin_id)
 );
 
@@ -54,7 +57,8 @@ CREATE TABLE host_plugin_config_revisions (
   checksum VARCHAR(128) NOT NULL,
   delivery_status VARCHAR(32) NOT NULL DEFAULT 'pending',
   created_by BIGINT NOT NULL DEFAULT 0,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_config_revisions_instance FOREIGN KEY (instance_id) REFERENCES host_plugin_instances (id) ON DELETE CASCADE
 );
 
 CREATE TABLE host_plugin_tasks (
@@ -66,7 +70,8 @@ CREATE TABLE host_plugin_tasks (
   started_at TIMESTAMP NULL,
   finished_at TIMESTAMP NULL,
   error_message TEXT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_tasks_instance FOREIGN KEY (instance_id) REFERENCES host_plugin_instances (id) ON DELETE CASCADE
 );
 
 CREATE TABLE host_plugin_task_logs (
@@ -74,7 +79,8 @@ CREATE TABLE host_plugin_task_logs (
   task_id BIGINT NOT NULL,
   stream VARCHAR(16) NOT NULL,
   content TEXT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_host_plugin_task_logs_task FOREIGN KEY (task_id) REFERENCES host_plugin_tasks (id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_host_plugin_config_revisions_instance_id ON host_plugin_config_revisions (instance_id);
