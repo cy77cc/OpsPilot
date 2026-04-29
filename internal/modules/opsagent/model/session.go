@@ -104,3 +104,19 @@ func (r *SessionRegistry) GetByHostID(hostID uint64) (*Session, bool) {
 	session, ok := r.byHostID[hostID]
 	return session, ok
 }
+
+func (r *SessionRegistry) AgentIDByStream(stream any) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for agentID, session := range r.byAgent {
+		if session != nil && session.Stream == stream {
+			return agentID, true
+		}
+	}
+	return "", false
+}

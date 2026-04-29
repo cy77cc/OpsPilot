@@ -1,11 +1,14 @@
 package logic
 
 import (
+	"errors"
 	"time"
 
 	opsagentmodel "github.com/cy77cc/OpsPilot/internal/modules/opsagent/model"
 	pb "github.com/cy77cc/OpsPilot/proto"
 )
+
+type SessionHandle = opsagentmodel.Session
 
 type SessionRegistry struct {
 	inner *opsagentmodel.SessionRegistry
@@ -60,4 +63,15 @@ func (r *SessionRegistry) GetByHostID(hostID uint64) (*opsagentmodel.Session, bo
 		return nil, false
 	}
 	return r.inner.GetByHostID(hostID)
+}
+
+func (r *SessionRegistry) AgentIDByStream(stream pb.AgentService_ConnectServer) (string, error) {
+	if r == nil || r.inner == nil {
+		return "", errors.New("opsagent session registry is unavailable")
+	}
+	agentID, ok := r.inner.AgentIDByStream(stream)
+	if !ok {
+		return "", errors.New("opsagent session not found for stream")
+	}
+	return agentID, nil
 }

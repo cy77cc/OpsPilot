@@ -113,16 +113,137 @@ func (s *Server) bindRegistration(ctx context.Context, reg *pb.AgentRegistration
 
 func (s *Server) consumeMessages(_ context.Context, _ *hostpluginmodel.HostPluginInstance, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) error {
 	for {
-		_, err := stream.Recv()
+		msg, err := stream.Recv()
 		switch {
 		case err == nil:
-			continue
+			if handleErr := s.handleAgentMessage(stream.Context(), stream, msg); handleErr != nil {
+				return handleErr
+			}
 		case errors.Is(err, io.EOF):
 			return nil
 		default:
 			return err
 		}
 	}
+}
+
+func (s *Server) handleAgentMessage(ctx context.Context, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage], msg *pb.AgentMessage) error {
+	if msg == nil {
+		return nil
+	}
+	switch payload := msg.GetPayload().(type) {
+	case *pb.AgentMessage_Heartbeat:
+		return s.handleHeartbeat(ctx, payload.Heartbeat)
+	case *pb.AgentMessage_Metrics:
+		return s.handleMetrics(ctx, stream, payload.Metrics)
+	case *pb.AgentMessage_Ack:
+		return s.handleAck(ctx, payload.Ack)
+	default:
+		return nil
+	}
+}
+
+func (s *Server) handleHeartbeat(ctx context.Context, hb *pb.Heartbeat) error {
+	if hb == nil {
+		return nil
+	}
+	db := s.db()
+	if db == nil {
+		return status.Error(codes.FailedPrecondition, "opsagent service context requires db")
+	}
+	agentID := strings.TrimSpace(hb.GetAgentId())
+	if agentID == "" {
+		return status.Error(codes.InvalidArgument, "heartbeat agent_id is required")
+	}
+	now := time.Now()
+	if hb.GetTimestampMs() > 0 {
+		now = time.UnixMilli(hb.GetTimestampMs())
+	}
+	updates := map[string]any{
+		"runtime_status": "online",
+		"health_status":  "healthy",
+		"last_seen_at":   &now,
+	}
+	return db.WithContext(ctx).
+		Model(&hostpluginmodel.HostPluginInstance{}).
+		Where("agent_id = ?", agentID).
+		Updates(updates).Error
+}
+
+func (s *Server) handleMetrics(ctx context.Context, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage], batch *pb.MetricBatch) error {
+	if batch == nil {
+		return nil
+	}
+	instance, err := s.lookupInstanceByStream(ctx, stream)
+	if err != nil {
+		return err
+	}
+	return s.persistMetricBatch(ctx, instance, batch)
+}
+
+func (s *Server) handleAck(ctx context.Context, ack *pb.Ack) error {
+	if ack == nil {
+		return nil
+	}
+	db := s.db()
+	if db == nil {
+		return status.Error(codes.FailedPrecondition, "opsagent service context requires db")
+	}
+	refID := strings.TrimSpace(ack.GetRefId())
+	if !strings.HasPrefix(refID, "config_revision:") {
+		return nil
+	}
+	revisionID := strings.TrimPrefix(refID, "config_revision:")
+	statusValue := "failed"
+	if ack.GetSuccess() {
+		statusValue = "delivered"
+	}
+	return db.WithContext(ctx).
+		Model(&hostpluginmodel.HostPluginConfigRevision{}).
+		Where("id = ?", revisionID).
+		Update("delivery_status", statusValue).Error
+}
+
+func (s *Server) sendConfigUpdate(ctx context.Context, session *SessionHandle, revision hostpluginmodel.HostPluginConfigRevision) error {
+	if session == nil || session.Stream == nil {
+		return status.Error(codes.FailedPrecondition, "opsagent session stream unavailable")
+	}
+	stream, ok := session.Stream.(interface {
+		Send(*pb.PlatformMessage) error
+	})
+	if !ok {
+		return status.Error(codes.FailedPrecondition, "opsagent session stream does not support platform messages")
+	}
+	version, _ := parseRevisionVersion(revision.Version)
+	return stream.Send(&pb.PlatformMessage{
+		Payload: &pb.PlatformMessage_ConfigUpdate{
+			ConfigUpdate: &pb.ConfigUpdate{
+				ConfigYaml: []byte(revision.ConfigYAML),
+				Version:    version,
+			},
+		},
+	})
+}
+
+func (s *Server) lookupInstanceByStream(ctx context.Context, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) (*hostpluginmodel.HostPluginInstance, error) {
+	db := s.db()
+	if db == nil {
+		return nil, status.Error(codes.FailedPrecondition, "opsagent service context requires db")
+	}
+	peerAgentID, err := s.registry.AgentIDByStream(stream)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+	var instance hostpluginmodel.HostPluginInstance
+	if err := db.WithContext(ctx).
+		Where("agent_id = ?", peerAgentID).
+		First(&instance).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, "opsagent instance not found")
+		}
+		return nil, status.Errorf(codes.Internal, "load opsagent instance: %v", err)
+	}
+	return &instance, nil
 }
 
 func StartGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
