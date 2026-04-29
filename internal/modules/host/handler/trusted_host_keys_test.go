@@ -20,7 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	usermodel "github.com/cy77cc/OpsPilot/internal/modules/user/model"
@@ -292,12 +294,16 @@ func TestHealthCheck_ReturnsHostKeyTrustPayload(t *testing.T) {
 	defer shutdown()
 
 	seedHost(t, db, hostID, host, port)
+	cipher, err := utils.EncryptText(pass, config.CFG.Security.EncryptionKey)
+	if err != nil {
+		t.Fatalf("encrypt ssh password: %v", err)
+	}
 	if err := db.WithContext(context.Background()).
 		Model(&hostmodel.Node{}).
 		Where("id = ?", hostmodel.NodeID(hostID)).
 		Updates(map[string]any{
 			"ssh_user":     user,
-			"ssh_password": pass,
+			"ssh_password": cipher,
 		}).Error; err != nil {
 		t.Fatalf("seed host credentials: %v", err)
 	}
@@ -374,6 +380,12 @@ func newTrustedHostKeyHandlerTestDeps(t *testing.T) (*gorm.DB, *hostlogic.HostSe
 	if err := db.Create(user).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
+
+	oldKey := config.CFG.Security.EncryptionKey
+	config.CFG.Security.EncryptionKey = "trusted-host-key-handler-test-encryption-key"
+	t.Cleanup(func() {
+		config.CFG.Security.EncryptionKey = oldKey
+	})
 
 	svcCtx := &svc.ServiceContext{DB: db}
 	return db, hostlogic.NewHostService(svcCtx)

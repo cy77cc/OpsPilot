@@ -2,12 +2,15 @@
 package handler
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
+	hostpluginlogic "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/logic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -73,6 +76,28 @@ func (h *Handler) Create(c *gin.Context) {
 			httpx.Fail(c, xcode.ParamError, msg)
 		}
 		return
+	}
+	if len(req.PluginInstalls) > 0 {
+		pluginSvc := hostpluginlogic.NewService(h.svcCtx)
+		instanceIDs, listErr := pluginSvc.ListInstanceIDsByHost(c.Request.Context(), uint64(node.ID))
+		if listErr != nil {
+			logger.L().Warn("list host plugin instances failed",
+				logger.Error(listErr),
+				logger.Int("host_id", int(node.ID)),
+			)
+		} else if len(instanceIDs) > 0 {
+			go func(createdInstanceIDs []uint64) {
+				for _, instanceID := range createdInstanceIDs {
+					if err := pluginSvc.RunInstallTask(context.Background(), instanceID); err != nil {
+						logger.L().Error("host plugin install failed",
+							logger.Error(err),
+							logger.Int("host_id", int(node.ID)),
+							logger.Int("instance_id", int(instanceID)),
+						)
+					}
+				}
+			}(append([]uint64(nil), instanceIDs...))
+		}
 	}
 	httpx.OK(c, node)
 }
