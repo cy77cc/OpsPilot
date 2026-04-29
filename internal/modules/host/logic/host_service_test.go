@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,9 +20,26 @@ func TestCreateWithProbe_CreatesHostAndPluginInstance(t *testing.T) {
 	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
 		t.Fatalf("auto migrate hostplugin tables: %v", err)
 	}
+	const probeToken = "host-plugin-probe-token"
+	if err := db.Create(&model.HostProbeSession{
+		TokenHash:      hashToken(probeToken),
+		Name:           "host-a",
+		IP:             "10.0.0.8",
+		Port:           22,
+		AuthType:       "password",
+		Username:       "root",
+		PasswordCipher: "",
+		Reachable:      true,
+		FactsJSON:      `{"arch":"amd64"}`,
+		WarningsJSON:   `[]`,
+		ExpiresAt:      time.Now().Add(5 * time.Minute),
+		CreatedBy:      1,
+	}).Error; err != nil {
+		t.Fatalf("seed probe session: %v", err)
+	}
 	req := CreateReq{
-		Name: "host-a",
-		IP:   "10.0.0.8",
+		ProbeToken: probeToken,
+		Name:       "host-a",
 		PluginInstalls: []PluginInstallReq{{
 			PluginKey: "opsagent",
 			Version:   "nodeagentx-dc57fbc-dirty",
@@ -37,6 +55,28 @@ func TestCreateWithProbe_CreatesHostAndPluginInstance(t *testing.T) {
 	db.Table("host_plugin_instances").Where("host_id > 0").Count(&count)
 	if count != 1 {
 		t.Fatalf("expected one plugin instance, got %d", count)
+	}
+}
+
+func TestCreateWithProbe_LegacyRejectsPluginInstallsWithoutProbe(t *testing.T) {
+	svc, db := newHostLogicTestService(t)
+	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
+		t.Fatalf("auto migrate hostplugin tables: %v", err)
+	}
+
+	_, err := svc.CreateWithProbe(context.Background(), 1, true, CreateReq{
+		Name: "legacy-host",
+		IP:   "10.0.0.9",
+		PluginInstalls: []PluginInstallReq{{
+			PluginKey: "opsagent",
+			Version:   "nodeagentx-dc57fbc-dirty",
+		}},
+	})
+	if err == nil {
+		t.Fatalf("expected legacy host creation with plugin installs to fail")
+	}
+	if !strings.Contains(err.Error(), "plugin_installs requires probe-based host creation") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

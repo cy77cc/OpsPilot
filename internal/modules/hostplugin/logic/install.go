@@ -16,10 +16,13 @@ import (
 )
 
 var (
-	newHostPluginSSHClient  = sshclient.NewSSHClient
-	runHostPluginSSHCommand = sshclient.RunCommand
-	newHostPluginSFTPClient = sshclient.NewSFTPClient
-	uploadHostPluginFile    = sshclient.UploadFile
+	newHostPluginSSHClient       = sshclient.NewSSHClient
+	runHostPluginSSHCommand      = sshclient.RunCommand
+	newHostPluginSFTPClient      = sshclient.NewSFTPClient
+	uploadHostPluginFile         = sshclient.UploadFile
+	executeHostPluginInstallPlan = func(ctx context.Context, s *Service, host *hostmodel.Node, task *hostpluginmodel.HostPluginTask, plan installPlan) error {
+		return s.runInstallPlan(ctx, host, task, plan)
+	}
 )
 
 type installPlan struct {
@@ -46,22 +49,23 @@ func (s *Service) ResolveVersionForHost(ctx context.Context, pluginKey, version,
 	return &row, nil
 }
 
-func (s *Service) RunInstallTask(ctx context.Context, instanceID uint64) (err error) {
-	instance, host, version, err := s.loadInstallContext(ctx, instanceID)
+func (s *Service) RunInstallTask(ctx context.Context, taskID uint64) (err error) {
+	task, err := s.startTask(ctx, taskID)
 	if err != nil {
 		return err
 	}
-
-	task, err := s.startTask(ctx, instance.ID, "install")
-	if err != nil {
-		return err
-	}
+	installedVersion := ""
 	defer func() {
-		s.finishTask(ctx, task, instance.ID, version.Version, err)
+		s.finishTask(ctx, task, installedVersion, err)
 	}()
 
+	instance, host, version, err := s.loadInstallContext(ctx, task.InstanceID)
+	if err != nil {
+		return err
+	}
+	installedVersion = version.Version
 	plan := s.buildInstallPlan(instance, version)
-	return s.runInstallPlan(ctx, host, task, plan)
+	return executeHostPluginInstallPlan(ctx, s, host, task, plan)
 }
 
 func (s *Service) loadInstallContext(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginInstance, *hostmodel.Node, *hostpluginmodel.HostPluginVersion, error) {

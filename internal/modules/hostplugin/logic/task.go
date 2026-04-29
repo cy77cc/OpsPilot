@@ -10,6 +10,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	installStatusPending   = "pending"
+	installStatusRunning   = "running"
+	installStatusSucceeded = "succeeded"
+	installStatusFailed    = "failed"
+)
+
 func (s *Service) ListInstanceIDsByHost(ctx context.Context, hostID uint64) ([]uint64, error) {
 	db := s.db()
 	if db == nil {
@@ -25,19 +32,17 @@ func (s *Service) ListInstanceIDsByHost(ctx context.Context, hostID uint64) ([]u
 	return ids, err
 }
 
-func (s *Service) startTask(ctx context.Context, instanceID uint64, operation string) (*hostpluginmodel.HostPluginTask, error) {
+func (s *Service) EnqueueInstallTask(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginTask, error) {
 	db := s.db()
 	if db == nil {
 		return nil, errors.New("hostplugin service: db is required")
 	}
 
-	now := time.Now().UTC()
 	task := &hostpluginmodel.HostPluginTask{
 		InstanceID:   instanceID,
-		Operation:    strings.TrimSpace(operation),
-		Status:       "running",
+		Operation:    "install",
+		Status:       installStatusPending,
 		RequestedBy:  0,
-		StartedAt:    &now,
 		ErrorMessage: "",
 	}
 
@@ -48,18 +53,57 @@ func (s *Service) startTask(ctx context.Context, instanceID uint64, operation st
 		return tx.Model(&hostpluginmodel.HostPluginInstance{}).
 			Where("id = ?", instanceID).
 			Updates(map[string]any{
-				"install_status": "installing",
+				"install_status": installStatusPending,
 				"last_error":     "",
 			}).Error
 	})
 	if err != nil {
 		return nil, err
 	}
-
 	return task, nil
 }
 
-func (s *Service) finishTask(ctx context.Context, task *hostpluginmodel.HostPluginTask, instanceID uint64, installedVersion string, runErr error) {
+func (s *Service) startTask(ctx context.Context, taskID uint64) (*hostpluginmodel.HostPluginTask, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var task hostpluginmodel.HostPluginTask
+	now := time.Now().UTC()
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&task, taskID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&hostpluginmodel.HostPluginTask{}).
+			Where("id = ?", taskID).
+			Updates(map[string]any{
+				"status":        installStatusRunning,
+				"started_at":    &now,
+				"error_message": "",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&hostpluginmodel.HostPluginInstance{}).
+			Where("id = ?", task.InstanceID).
+			Updates(map[string]any{
+				"install_status": installStatusRunning,
+				"last_error":     "",
+			}).Error; err != nil {
+			return err
+		}
+		task.Status = installStatusRunning
+		task.StartedAt = &now
+		task.ErrorMessage = ""
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (s *Service) finishTask(ctx context.Context, task *hostpluginmodel.HostPluginTask, installedVersion string, runErr error) {
 	db := s.db()
 	if db == nil || task == nil {
 		return
@@ -73,13 +117,13 @@ func (s *Service) finishTask(ctx context.Context, task *hostpluginmodel.HostPlug
 		"updated_at": now,
 	}
 	if runErr != nil {
-		task.Status = "failed"
+		task.Status = installStatusFailed
 		task.ErrorMessage = strings.TrimSpace(runErr.Error())
-		instanceUpdates["install_status"] = "failed"
+		instanceUpdates["install_status"] = installStatusFailed
 		instanceUpdates["last_error"] = strings.TrimSpace(runErr.Error())
 	} else {
-		task.Status = "success"
-		instanceUpdates["install_status"] = "installed"
+		task.Status = installStatusSucceeded
+		instanceUpdates["install_status"] = installStatusSucceeded
 		instanceUpdates["installed_version"] = strings.TrimSpace(installedVersion)
 		instanceUpdates["last_error"] = ""
 	}
@@ -93,7 +137,7 @@ func (s *Service) finishTask(ctx context.Context, task *hostpluginmodel.HostPlug
 		}).Error
 
 	_ = db.WithContext(ctx).Model(&hostpluginmodel.HostPluginInstance{}).
-		Where("id = ?", instanceID).
+		Where("id = ?", task.InstanceID).
 		Updates(instanceUpdates).Error
 }
 

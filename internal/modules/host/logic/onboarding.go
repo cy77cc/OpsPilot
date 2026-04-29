@@ -169,6 +169,9 @@ func (s *HostService) createFromLegacyReq(ctx context.Context, req CreateReq) (*
 	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.IP) == "" {
 		return nil, errors.New("name and ip are required")
 	}
+	if len(req.PluginInstalls) > 0 {
+		return nil, errors.New("plugin_installs requires probe-based host creation")
+	}
 	if req.CredentialTemplateID != nil && *req.CredentialTemplateID > 0 {
 		probeReq := ProbeReq{
 			Name:                 req.Name,
