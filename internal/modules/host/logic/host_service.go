@@ -116,27 +116,34 @@ type ProbeResp struct {
 	ExpiresAt  time.Time         `json:"expires_at"`           // 令牌过期时间
 }
 
+// PluginInstallReq describes a plugin install intent captured during host creation.
+type PluginInstallReq struct {
+	PluginKey string `json:"plugin_key"` // 插件标识
+	Version   string `json:"version"`    // 期望安装版本
+}
+
 // CreateReq 创建主机请求参数。
 type CreateReq struct {
-	ProbeToken           string   `json:"probe_token"`            // 探测令牌
-	Name                 string   `json:"name"`                   // 主机名称
-	IP                   string   `json:"ip"`                     // IP 地址
-	Port                 int      `json:"port"`                   // SSH 端口
-	AuthType             string   `json:"auth_type"`              // 认证类型
-	Username             string   `json:"username"`               // SSH 用户名
-	Password             string   `json:"password"`               // SSH 密码
-	SSHKeyID             *uint64  `json:"ssh_key_id"`             // SSH 密钥 ID
-	CredentialTemplateID *uint64  `json:"credential_template_id"` // 认证预设 ID
-	Description          string   `json:"description"`            // 描述
-	Labels               []string `json:"labels"`                 // 标签列表
-	Role                 string   `json:"role"`                   // 角色
-	ClusterID            uint     `json:"cluster_id"`             // 集群 ID
-	Source               string   `json:"source"`                 // 来源
-	Provider             string   `json:"provider"`               // 云厂商
-	ProviderID           string   `json:"provider_instance_id"`   // 云实例 ID
-	ParentHostID         *uint64  `json:"parent_host_id"`         // 父主机 ID（虚拟化场景）
-	Force                bool     `json:"force"`                  // 强制创建（忽略探测失败）
-	Status               string   `json:"status"`                 // 初始状态
+	ProbeToken           string             `json:"probe_token"`            // 探测令牌
+	Name                 string             `json:"name"`                   // 主机名称
+	PluginInstalls       []PluginInstallReq `json:"plugin_installs"`        // 待安装插件
+	IP                   string             `json:"ip"`                     // IP 地址
+	Port                 int                `json:"port"`                   // SSH 端口
+	AuthType             string             `json:"auth_type"`              // 认证类型
+	Username             string             `json:"username"`               // SSH 用户名
+	Password             string             `json:"password"`               // SSH 密码
+	SSHKeyID             *uint64            `json:"ssh_key_id"`             // SSH 密钥 ID
+	CredentialTemplateID *uint64            `json:"credential_template_id"` // 认证预设 ID
+	Description          string             `json:"description"`            // 描述
+	Labels               []string           `json:"labels"`                 // 标签列表
+	Role                 string             `json:"role"`                   // 角色
+	ClusterID            uint               `json:"cluster_id"`             // 集群 ID
+	Source               string             `json:"source"`                 // 来源
+	Provider             string             `json:"provider"`               // 云厂商
+	ProviderID           string             `json:"provider_instance_id"`   // 云实例 ID
+	ParentHostID         *uint64            `json:"parent_host_id"`         // 父主机 ID（虚拟化场景）
+	Force                bool               `json:"force"`                  // 强制创建（忽略探测失败）
+	Status               string             `json:"status"`                 // 初始状态
 }
 
 // UpdateCredentialsReq 更新凭证请求参数。

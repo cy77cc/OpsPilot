@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { scopeStore } from '../../app/scope/scopeStore';
+import apiService from '../api';
 import { hostApi } from './hosts';
 
 describe('hostApi.downloadFile', () => {
@@ -37,5 +38,34 @@ describe('hostApi.downloadFile', () => {
     expect(
       (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].headers
     ).not.toHaveProperty('Authorization');
+  });
+});
+
+describe('hostApi.createHost', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('maps plugin installs to snake_case request fields', async () => {
+    const postSpy = vi.spyOn(apiService, 'post').mockResolvedValue({
+      success: true,
+      data: {} as any,
+    });
+
+    await hostApi.createHost({
+      name: 'host-a',
+      ip: '10.0.0.8',
+      pluginInstalls: [{
+        pluginKey: 'opsagent',
+        version: 'nodeagentx-dc57fbc-dirty',
+      }],
+    });
+
+    expect(postSpy).toHaveBeenCalledWith('/hosts', expect.objectContaining({
+      plugin_installs: [{
+        plugin_key: 'opsagent',
+        version: 'nodeagentx-dc57fbc-dirty',
+      }],
+    }));
   });
 });

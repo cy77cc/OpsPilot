@@ -578,3 +578,15 @@ export interface ErrorResponse {
     suggestion?: string;
   } | null;
 }
+
+export interface HostPluginInstallInput {
+  pluginKey: string;
+  version: string;
+}
+
+export interface HostPluginCatalogItem {
+  pluginKey: string;
+  name: string;
+  defaultVersion: string;
+  status: string;
+}

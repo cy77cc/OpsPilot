@@ -1,6 +1,7 @@
 import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
 import { buildContextualFetchInit } from '../requestContext';
+import type { HostPluginCatalogItem, HostPluginInstallInput } from '../../types/host';
 
 export interface Host {
   id: string;
@@ -54,6 +55,7 @@ export interface HostCreateParams {
   probeToken?: string;
   name: string;
   ip: string;
+  pluginInstalls?: HostPluginInstallInput[];
   status?: string;
   tags?: string[];
   region?: string;
@@ -289,6 +291,13 @@ export interface CreateCredentialTemplateParams {
   sshKeyId?: number;
   description?: string;
 }
+
+const mapHostPluginCatalogItem = (item: any): HostPluginCatalogItem => ({
+  pluginKey: String(item?.plugin_key || item?.pluginKey || '').trim(),
+  name: String(item?.name || '').trim(),
+  defaultVersion: String(item?.default_version || item?.defaultVersion || '').trim(),
+  status: String(item?.status || '').trim(),
+});
 
 const parseLabels = (labels: any): string[] => {
   if (Array.isArray(labels)) {
@@ -597,6 +606,10 @@ export const hostApi = {
     return apiService.post('/hosts', {
       probe_token: data.probeToken,
       name: data.name,
+      plugin_installs: (data.pluginInstalls || []).map((item) => ({
+        plugin_key: item.pluginKey,
+        version: item.version,
+      })),
       ip: data.ip,
       status: data.status || 'offline',
       username: data.username || 'root',
@@ -615,6 +628,15 @@ export const hostApi = {
       force: !!data.force,
       description: data.description || `${data.region || ''} ${(data.tags || []).join(',')}`.trim(),
     });
+  },
+
+  async listHostPluginCatalog(): Promise<ApiResponse<HostPluginCatalogItem[]>> {
+    const response = await apiService.get<any>('/host-plugins/catalog');
+    const rows = Array.isArray(response.data) ? response.data : (response.data?.list || []);
+    return {
+      ...response,
+      data: rows.map(mapHostPluginCatalogItem),
+    };
   },
 
   async probeHost(data: HostProbeParams): Promise<ApiResponse<HostProbeResult>> {

@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"strings"
 
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
@@ -49,9 +50,53 @@ func (s *Service) ListCatalog(ctx context.Context) ([]hostpluginmodel.HostPlugin
 	return plugins, err
 }
 
+func (s *Service) CreatePendingInstance(ctx context.Context, tx *gorm.DB, hostID uint64, pluginKey, version string, _ uint64) error {
+	if tx == nil {
+		return errors.New("hostplugin service: tx is required")
+	}
+
+	pluginKey = strings.TrimSpace(pluginKey)
+	if pluginKey == "" {
+		return errors.New("hostplugin service: plugin key is required")
+	}
+
+	seed, ok := findDefaultCatalogPlugin(pluginKey)
+	if !ok {
+		return errors.New("hostplugin service: unknown plugin key")
+	}
+
+	plugin := seed
+	if err := tx.WithContext(ctx).Where("plugin_key = ?", pluginKey).FirstOrCreate(&plugin).Error; err != nil {
+		return err
+	}
+
+	desiredVersion := strings.TrimSpace(version)
+	if desiredVersion == "" {
+		desiredVersion = plugin.DefaultVersion
+	}
+
+	instance := hostpluginmodel.HostPluginInstance{
+		HostID:           hostID,
+		PluginID:         plugin.ID,
+		DesiredVersion:   desiredVersion,
+		CapabilitiesJSON: "[]",
+		LastError:        "",
+	}
+	return tx.WithContext(ctx).Create(&instance).Error
+}
+
 func (s *Service) db() *gorm.DB {
 	if s == nil || s.svcCtx == nil || s.svcCtx.DB == nil {
 		return nil
 	}
 	return s.svcCtx.DB
+}
+
+func findDefaultCatalogPlugin(pluginKey string) (hostpluginmodel.HostPlugin, bool) {
+	for _, item := range defaultCatalog {
+		if item.PluginKey == pluginKey {
+			return item, true
+		}
+	}
+	return hostpluginmodel.HostPlugin{}, false
 }

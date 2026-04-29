@@ -20,6 +20,7 @@ import { ArrowLeftOutlined, CheckCircleOutlined, CloudUploadOutlined } from '@an
 import { Link, useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
 import type { CredentialTemplate, HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
+import type { HostPluginCatalogItem } from '../../types/host';
 import { useAuth } from '../../components/Auth/AuthContext';
 import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
 import HostKeyTrustModal from '../../components/Hosts/HostKeyTrustModal';
@@ -42,6 +43,8 @@ interface StepThreeForm {
   role?: string;
   clusterId?: number;
   force?: boolean;
+  installOpsAgent: 'none' | 'opsagent';
+  opsagentVersion?: string;
 }
 
 const HostOnboardingPage: React.FC = () => {
@@ -53,8 +56,10 @@ const HostOnboardingPage: React.FC = () => {
   const [stepOneValues, setStepOneValues] = useState<StepOneForm | null>(null);
   const [sshKeys, setSshKeys] = useState<SSHKeyItem[]>([]);
   const [credentialTemplates, setCredentialTemplates] = useState<CredentialTemplate[]>([]);
+  const [pluginCatalog, setPluginCatalog] = useState<HostPluginCatalogItem[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [pluginCatalogLoading, setPluginCatalogLoading] = useState(false);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [keyCreating, setKeyCreating] = useState(false);
   const [form] = Form.useForm<StepOneForm & StepThreeForm>();
@@ -94,10 +99,23 @@ const HostOnboardingPage: React.FC = () => {
     }
   }, []);
 
+  const loadPluginCatalog = useCallback(async () => {
+    setPluginCatalogLoading(true);
+    try {
+      const res = await Api.hosts.listHostPluginCatalog();
+      setPluginCatalog(res.data || []);
+    } catch {
+      setPluginCatalog([]);
+    } finally {
+      setPluginCatalogLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSSHKeys();
     void loadCredentialTemplates();
-  }, [loadCredentialTemplates, loadSSHKeys]);
+    void loadPluginCatalog();
+  }, [loadCredentialTemplates, loadPluginCatalog, loadSSHKeys]);
 
   const quickCreateKey = async () => {
     const values = await keyForm.validateFields();
@@ -161,7 +179,7 @@ const HostOnboardingPage: React.FC = () => {
   };
 
   const confirmCreate = async () => {
-    const values = await form.validateFields(['description', 'labels', 'role', 'clusterId', 'force']);
+    const values = await form.validateFields(['description', 'labels', 'role', 'clusterId', 'force', 'installOpsAgent', 'opsagentVersion']);
     if (!stepOneValues || !probeResult?.probeToken) {
       message.error('probe_token 不存在，请重新探测');
       return;
@@ -184,6 +202,12 @@ const HostOnboardingPage: React.FC = () => {
         clusterId: values.clusterId,
         tags: (values.labels || '').split(',').map((item) => item.trim()).filter(Boolean),
         force: !!values.force,
+        pluginInstalls: values.installOpsAgent === 'opsagent' && values.opsagentVersion
+          ? [{
+              pluginKey: 'opsagent',
+              version: values.opsagentVersion,
+            }]
+          : [],
       });
       message.success('主机接入成功');
       navigate('/hosts');
@@ -228,6 +252,7 @@ const HostOnboardingPage: React.FC = () => {
             username: 'root',
             authType: 'password',
             force: false,
+            installOpsAgent: 'none',
           }}
         >
           {currentStep === 0 && (
@@ -380,6 +405,29 @@ const HostOnboardingPage: React.FC = () => {
                   </Radio.Group>
                 </Form.Item>
               )}
+              <GuidedFormItem name="installOpsAgent" label="主机插件">
+                <Radio.Group>
+                  <Radio value="none">暂不安装</Radio>
+                  <Radio value="opsagent">安装 OpsAgent</Radio>
+                </Radio.Group>
+              </GuidedFormItem>
+              <Form.Item noStyle shouldUpdate={(prev, next) => prev.installOpsAgent !== next.installOpsAgent}>
+                {({ getFieldValue }) => getFieldValue('installOpsAgent') === 'opsagent' ? (
+                  <GuidedFormItem
+                    name="opsagentVersion"
+                    label="OpsAgent 版本"
+                    rules={[{ required: true, message: '请选择 OpsAgent 版本' }]}
+                  >
+                    <Select
+                      loading={pluginCatalogLoading}
+                      placeholder="选择要安装的 OpsAgent 版本"
+                      options={pluginCatalog
+                        .filter((item) => item.pluginKey === 'opsagent' && item.defaultVersion)
+                        .map((item) => ({ label: item.defaultVersion, value: item.defaultVersion }))}
+                    />
+                  </GuidedFormItem>
+                ) : null}
+              </Form.Item>
             </>
           )}
 

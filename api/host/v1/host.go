@@ -38,28 +38,34 @@ type ProbeResp struct {
 	ExpiresAt  time.Time  `json:"expires_at"`
 }
 
+type PluginInstallReq struct {
+	PluginKey string `json:"plugin_key"`
+	Version   string `json:"version"`
+}
+
 // CreateReq is the request body for creating a new host (POST /hosts).
 // A valid ProbeToken obtained from the Probe endpoint is required.
 type CreateReq struct {
-	ProbeToken           string   `json:"probe_token"`
-	Name                 string   `json:"name"`
-	IP                   string   `json:"ip"`
-	Port                 int      `json:"port"`
-	AuthType             string   `json:"auth_type"`
-	Username             string   `json:"username"`
-	Password             string   `json:"password"`
-	SSHKeyID             *uint64  `json:"ssh_key_id"`
-	CredentialTemplateID *uint64  `json:"credential_template_id"`
-	Description          string   `json:"description"`
-	Labels               []string `json:"labels"`
-	Role                 string   `json:"role"`
-	ClusterID            uint     `json:"cluster_id"`
-	Source               string   `json:"source"`
-	Provider             string   `json:"provider"`
-	ProviderID           string   `json:"provider_instance_id"`
-	ParentHostID         *uint64  `json:"parent_host_id"`
-	Force                bool     `json:"force"`
-	Status               string   `json:"status"`
+	ProbeToken           string             `json:"probe_token"`
+	Name                 string             `json:"name"`
+	PluginInstalls       []PluginInstallReq `json:"plugin_installs"`
+	IP                   string             `json:"ip"`
+	Port                 int                `json:"port"`
+	AuthType             string             `json:"auth_type"`
+	Username             string             `json:"username"`
+	Password             string             `json:"password"`
+	SSHKeyID             *uint64            `json:"ssh_key_id"`
+	CredentialTemplateID *uint64            `json:"credential_template_id"`
+	Description          string             `json:"description"`
+	Labels               []string           `json:"labels"`
+	Role                 string             `json:"role"`
+	ClusterID            uint               `json:"cluster_id"`
+	Source               string             `json:"source"`
+	Provider             string             `json:"provider"`
+	ProviderID           string             `json:"provider_instance_id"`
+	ParentHostID         *uint64            `json:"parent_host_id"`
+	Force                bool               `json:"force"`
+	Status               string             `json:"status"`
 }
 
 // UpdateCredentialsReq is the request body for updating SSH credentials of an existing host
@@ -361,13 +367,13 @@ type AlarmHistoryItem struct {
 
 // AuditLogItem represents an operation log record for a host.
 type AuditLogItem struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	Content   string    `json:"content"`
-	Operator  string    `json:"operator"`
-	Time      time.Time `json:"time"`
-	Status    string    `json:"status"` // success, failed
-	SourceIP  string    `json:"source_ip"`
+	ID       string    `json:"id"`
+	Type     string    `json:"type"`
+	Content  string    `json:"content"`
+	Operator string    `json:"operator"`
+	Time     time.Time `json:"time"`
+	Status   string    `json:"status"` // success, failed
+	SourceIP string    `json:"source_ip"`
 }
 
 // RouteItem represents a routing table entry.
@@ -379,4 +385,3 @@ type RouteItem struct {
 	Interface   string `json:"iface"`
 	Metric      int    `json:"metric,omitempty"`
 }
-

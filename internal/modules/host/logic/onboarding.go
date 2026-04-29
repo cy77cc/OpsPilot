@@ -9,6 +9,7 @@ import (
 	"time"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	hostpluginlogic "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/logic"
 	"gorm.io/gorm"
 )
 
@@ -80,6 +81,11 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 	if err := s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(node).Error; err != nil {
 			return err
+		}
+		for _, item := range req.PluginInstalls {
+			if err := hostpluginlogic.NewService(s.svcCtx).CreatePendingInstance(ctx, tx, uint64(node.ID), item.PluginKey, item.Version, userID); err != nil {
+				return err
+			}
 		}
 		return reassignOnboardingTrustedHostKeys(tx, uint64(node.ID), userID, probe.IP, probe.Port)
 	}); err != nil {
@@ -215,7 +221,17 @@ func (s *HostService) createFromLegacyReq(ctx context.Context, req CreateReq) (*
 	if req.ParentHostID != nil {
 		node.ParentHostID = nodeIDPtr(*req.ParentHostID)
 	}
-	if err := s.svcCtx.DB.WithContext(ctx).Create(node).Error; err != nil {
+	if err := s.svcCtx.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(node).Error; err != nil {
+			return err
+		}
+		for _, item := range req.PluginInstalls {
+			if err := hostpluginlogic.NewService(s.svcCtx).CreatePendingInstance(ctx, tx, uint64(node.ID), item.PluginKey, item.Version, 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return node, nil

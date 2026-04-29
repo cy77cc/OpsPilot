@@ -10,8 +10,35 @@ import (
 	"time"
 
 	model "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"gorm.io/gorm"
 )
+
+func TestCreateWithProbe_CreatesHostAndPluginInstance(t *testing.T) {
+	svc, db := newHostLogicTestService(t)
+	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
+		t.Fatalf("auto migrate hostplugin tables: %v", err)
+	}
+	req := CreateReq{
+		Name: "host-a",
+		IP:   "10.0.0.8",
+		PluginInstalls: []PluginInstallReq{{
+			PluginKey: "opsagent",
+			Version:   "nodeagentx-dc57fbc-dirty",
+		}},
+	}
+
+	_, err := svc.CreateWithProbe(context.Background(), 1, true, req)
+	if err != nil {
+		t.Fatalf("create host with plugin: %v", err)
+	}
+
+	var count int64
+	db.Table("host_plugin_instances").Where("host_id > 0").Count(&count)
+	if count != 1 {
+		t.Fatalf("expected one plugin instance, got %d", count)
+	}
+}
 
 func TestConsumeProbe_ConcurrentOnlyOneSucceeds(t *testing.T) {
 	hostSvc, db := newHostLogicTestService(t)
@@ -109,13 +136,13 @@ func TestConsumeProbe_ConcurrentOnlyOneSucceeds(t *testing.T) {
 
 func TestFixCreateMultipleManualHosts(t *testing.T) {
 	s, db := newHostLogicTestService(t)
-    // 模拟迁移逻辑
-    if err := db.Exec("DROP INDEX IF EXISTS idx_provider_instance").Error; err != nil {
-        t.Fatal(err)
-    }
-    if err := db.Exec(`CREATE UNIQUE INDEX idx_provider_instance ON nodes(provider, provider_instance_id) WHERE provider IS NOT NULL AND provider != ''`).Error; err != nil {
-        t.Fatal(err)
-    }
+	// 模拟迁移逻辑
+	if err := db.Exec("DROP INDEX IF EXISTS idx_provider_instance").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX idx_provider_instance ON nodes(provider, provider_instance_id) WHERE provider IS NOT NULL AND provider != ''`).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := context.Background()
 
@@ -145,29 +172,29 @@ func TestFixCreateMultipleManualHosts(t *testing.T) {
 		t.Fatalf("Failed to create second manual host: %v", err)
 	}
 
-    // 3. 验证云主机依然有约束
-    provider := "aliyun"
-    insID := "i-12345"
-    node1 := &model.Node{
-        Name: "Cloud1",
-        IP: "1.1.1.1",
-        Provider: &provider,
-        ProviderID: &insID,
-        Status: "online",
-    }
-    if err := db.Create(node1).Error; err != nil {
-        t.Fatal(err)
-    }
+	// 3. 验证云主机依然有约束
+	provider := "aliyun"
+	insID := "i-12345"
+	node1 := &model.Node{
+		Name:       "Cloud1",
+		IP:         "1.1.1.1",
+		Provider:   &provider,
+		ProviderID: &insID,
+		Status:     "online",
+	}
+	if err := db.Create(node1).Error; err != nil {
+		t.Fatal(err)
+	}
 
-    node2 := &model.Node{
-        Name: "Cloud2",
-        IP: "1.1.1.2",
-        Provider: &provider,
-        ProviderID: &insID,
-        Status: "online",
-    }
-    err = db.Create(node2).Error
-    if err == nil {
-        t.Fatal("Expected unique constraint violation for duplicate cloud hosts")
-    }
+	node2 := &model.Node{
+		Name:       "Cloud2",
+		IP:         "1.1.1.2",
+		Provider:   &provider,
+		ProviderID: &insID,
+		Status:     "online",
+	}
+	err = db.Create(node2).Error
+	if err == nil {
+		t.Fatal("Expected unique constraint violation for duplicate cloud hosts")
+	}
 }
