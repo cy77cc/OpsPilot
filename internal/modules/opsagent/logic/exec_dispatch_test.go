@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
@@ -40,5 +41,15 @@ func TestDispatcherExecuteCommand_UsesSessionAndResultChannels(t *testing.T) {
 	}
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d", result.ExitCode)
+	}
+}
+
+func TestDispatcherExecuteCommand_ReturnsErrorWhenSessionMissing(t *testing.T) {
+	dispatcher := &Dispatcher{svcCtx: &svc.ServiceContext{}, registry: NewSessionRegistry()}
+	instance := &hostpluginmodel.HostPluginInstance{HostID: 404}
+
+	_, err := dispatcher.ExecuteCommand(context.Background(), instance, "uptime")
+	if err == nil || !strings.Contains(err.Error(), "session not found") {
+		t.Fatalf("expected missing session error, got %v", err)
 	}
 }

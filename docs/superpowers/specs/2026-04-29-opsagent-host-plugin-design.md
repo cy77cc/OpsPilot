@@ -538,3 +538,11 @@ This cost is intentional. The alternative would optimize for the first plugin an
 - Existing untracked `docs/platform-integration-guide.md` and `proto/agent.proto` are treated as source inputs for this design, not as implementation targets in the spec itself.
 - The platform should generate Go bindings from the checked-in `proto` source at implementation time and keep protocol ownership explicit.
 - The first implementation may expose `opsagent`-specific UI labels while keeping backend entities plugin-generic.
+
+## Implementation Status Notes
+
+- The platform now uses generated Go bindings from `proto/agent.proto` rather than a local shim protocol.
+- Host onboarding persists plugin intent, plugin instances, and initial install tasks before returning success.
+- Host plugin installation runs through SSH/SFTP orchestration with durable queued task recovery in the current single-process worker model.
+- Host detail API and UI expose plugin instance lifecycle and runtime state.
+- AI host execution now requires an online `opsagent` plugin session instead of falling back to SSH.
