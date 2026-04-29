@@ -17,7 +17,7 @@ import (
 
 func TestCreateWithProbe_CreatesHostAndPluginInstance(t *testing.T) {
 	svc, db := newHostLogicTestService(t)
-	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
+	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}, &hostpluginmodel.HostPluginTask{}); err != nil {
 		t.Fatalf("auto migrate hostplugin tables: %v", err)
 	}
 	const probeToken = "host-plugin-probe-token"
@@ -55,6 +55,18 @@ func TestCreateWithProbe_CreatesHostAndPluginInstance(t *testing.T) {
 	db.Table("host_plugin_instances").Where("host_id > 0").Count(&count)
 	if count != 1 {
 		t.Fatalf("expected one plugin instance, got %d", count)
+	}
+	db.Table("host_plugin_tasks").Count(&count)
+	if count != 1 {
+		t.Fatalf("expected one install task row, got %d", count)
+	}
+
+	var task hostpluginmodel.HostPluginTask
+	if err := db.First(&task).Error; err != nil {
+		t.Fatalf("load install task: %v", err)
+	}
+	if task.Status != "pending" {
+		t.Fatalf("expected install task to persist as pending, got %s", task.Status)
 	}
 }
 

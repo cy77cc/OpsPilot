@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
@@ -273,8 +274,17 @@ func TestStartTask_RejectsAlreadyClaimedTask(t *testing.T) {
 	if _, err := svc.startTask(context.Background(), task.ID); err != nil {
 		t.Fatalf("first claim should succeed: %v", err)
 	}
-	if _, err := svc.startTask(context.Background(), task.ID); !errors.Is(err, errInstallTaskNotPending) {
-		t.Fatalf("expected errInstallTaskNotPending on duplicate claim, got %v", err)
+	if _, err := svc.startTask(context.Background(), task.ID); !errors.Is(err, ErrInstallTaskNotPending) {
+		t.Fatalf("expected ErrInstallTaskNotPending on duplicate claim, got %v", err)
+	}
+}
+
+func TestIsIgnorableInstallKickoffError(t *testing.T) {
+	if !IsIgnorableInstallKickoffError(ErrInstallTaskNotPending) {
+		t.Fatalf("expected ErrInstallTaskNotPending to be ignorable")
+	}
+	if IsIgnorableInstallKickoffError(errors.New("different")) {
+		t.Fatalf("unexpected ignorable classification")
 	}
 }
 
@@ -376,5 +386,66 @@ func TestRunPendingInstallTasksOnce_ClaimsQueuedTask(t *testing.T) {
 	}
 	if storedTask.Status != "failed" {
 		t.Fatalf("expected failed task status after runner error, got %s", storedTask.Status)
+	}
+}
+
+func TestRunPendingInstallTasksOnce_RecoversStaleRunningTask(t *testing.T) {
+	svc, db := newHostPluginServiceAndDBForTest(t)
+	instanceID := seedInstallInstanceForTest(t, db, "amd64", "nodeagentx-dc57fbc-dirty")
+	task, err := svc.EnqueueInstallTask(context.Background(), instanceID)
+	if err != nil {
+		t.Fatalf("enqueue install task: %v", err)
+	}
+	task, err = svc.startTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("start task: %v", err)
+	}
+
+	staleStartedAt := time.Now().UTC().Add(-staleInstallTaskTimeout - time.Minute)
+	if err := db.Model(&hostpluginmodel.HostPluginTask{}).
+		Where("id = ?", task.ID).
+		Updates(map[string]any{
+			"status":     installStatusRunning,
+			"started_at": &staleStartedAt,
+		}).Error; err != nil {
+		t.Fatalf("age task: %v", err)
+	}
+	if err := db.Model(&hostpluginmodel.HostPluginInstance{}).
+		Where("id = ?", instanceID).
+		Update("install_status", installStatusRunning).Error; err != nil {
+		t.Fatalf("age instance: %v", err)
+	}
+
+	originalExecutor := executeHostPluginInstallPlan
+	defer func() { executeHostPluginInstallPlan = originalExecutor }()
+	executeHostPluginInstallPlan = func(ctx context.Context, s *Service, host *hostmodel.Node, task *hostpluginmodel.HostPluginTask, plan installPlan) error {
+		return errors.New("recovered runner stop")
+	}
+
+	claimed, err := svc.RunPendingInstallTasksOnce(context.Background())
+	if !claimed {
+		t.Fatalf("expected stale running task to be recovered and claimed")
+	}
+	if err == nil || !strings.Contains(err.Error(), "recovered runner stop") {
+		t.Fatalf("expected recovered runner stop error, got %v", err)
+	}
+
+	var storedTask hostpluginmodel.HostPluginTask
+	if err := db.First(&storedTask, task.ID).Error; err != nil {
+		t.Fatalf("load task: %v", err)
+	}
+	if storedTask.Status != installStatusFailed {
+		t.Fatalf("expected failed task after retry attempt, got %s", storedTask.Status)
+	}
+	if storedTask.StartedAt == nil {
+		t.Fatalf("expected recovered task to be restarted")
+	}
+
+	var storedInstance hostpluginmodel.HostPluginInstance
+	if err := db.First(&storedInstance, instanceID).Error; err != nil {
+		t.Fatalf("load instance: %v", err)
+	}
+	if storedInstance.InstallStatus != installStatusFailed {
+		t.Fatalf("expected instance failed after recovered retry, got %s", storedInstance.InstallStatus)
 	}
 }

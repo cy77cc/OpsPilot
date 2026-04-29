@@ -79,24 +79,18 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	if len(req.PluginInstalls) > 0 {
 		pluginSvc := hostpluginlogic.NewService(h.svcCtx)
-		instanceIDs, listErr := pluginSvc.ListInstanceIDsByHost(c.Request.Context(), uint64(node.ID))
+		taskIDs, listErr := pluginSvc.ListTaskIDsByHost(c.Request.Context(), uint64(node.ID))
 		if listErr != nil {
 			httpx.Fail(c, xcode.ServerError, listErr.Error())
 			return
-		}
-		taskIDs := make([]uint64, 0, len(instanceIDs))
-		for _, instanceID := range instanceIDs {
-			task, enqueueErr := pluginSvc.EnqueueInstallTask(c.Request.Context(), instanceID)
-			if enqueueErr != nil {
-				httpx.Fail(c, xcode.ServerError, enqueueErr.Error())
-				return
-			}
-			taskIDs = append(taskIDs, task.ID)
 		}
 		if len(taskIDs) > 0 {
 			go func(createdTaskIDs []uint64) {
 				for _, taskID := range createdTaskIDs {
 					if err := pluginSvc.RunInstallTask(context.Background(), taskID); err != nil {
+						if hostpluginlogic.IsIgnorableInstallKickoffError(err) {
+							continue
+						}
 						logger.L().Error("host plugin install failed",
 							logger.Error(err),
 							logger.Int("host_id", int(node.ID)),

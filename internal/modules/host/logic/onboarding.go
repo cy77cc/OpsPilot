@@ -83,7 +83,7 @@ func (s *HostService) CreateWithProbe(ctx context.Context, userID uint64, isAdmi
 			return err
 		}
 		for _, item := range req.PluginInstalls {
-			if err := hostpluginlogic.NewService(s.svcCtx).CreatePendingInstance(ctx, tx, uint64(node.ID), item.PluginKey, item.Version, userID); err != nil {
+			if _, err := hostpluginlogic.NewService(s.svcCtx).CreatePendingInstanceWithTask(ctx, tx, uint64(node.ID), item.PluginKey, item.Version, userID); err != nil {
 				return err
 			}
 		}

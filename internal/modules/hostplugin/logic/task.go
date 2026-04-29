@@ -18,7 +18,11 @@ const (
 	installStatusFailed    = "failed"
 )
 
-var errInstallTaskNotPending = errors.New("hostplugin service: install task is not pending")
+var ErrInstallTaskNotPending = errors.New("hostplugin service: install task is not pending")
+
+func IsIgnorableInstallKickoffError(err error) bool {
+	return errors.Is(err, ErrInstallTaskNotPending)
+}
 
 func (s *Service) ListInstanceIDsByHost(ctx context.Context, hostID uint64) ([]uint64, error) {
 	db := s.db()
@@ -32,6 +36,22 @@ func (s *Service) ListInstanceIDsByHost(ctx context.Context, hostID uint64) ([]u
 		Where("host_id = ?", hostID).
 		Order("id ASC").
 		Pluck("id", &ids).Error
+	return ids, err
+}
+
+func (s *Service) ListTaskIDsByHost(ctx context.Context, hostID uint64) ([]uint64, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var ids []uint64
+	err := db.WithContext(ctx).
+		Model(&hostpluginmodel.HostPluginTask{}).
+		Joins("JOIN host_plugin_instances ON host_plugin_instances.id = host_plugin_tasks.instance_id").
+		Where("host_plugin_instances.host_id = ? AND host_plugin_tasks.operation = ?", hostID, "install").
+		Order("host_plugin_tasks.id ASC").
+		Pluck("host_plugin_tasks.id", &ids).Error
 	return ids, err
 }
 
@@ -93,7 +113,7 @@ func (s *Service) startTask(ctx context.Context, taskID uint64) (*hostpluginmode
 			if err := tx.First(&current, taskID).Error; err != nil {
 				return err
 			}
-			return fmt.Errorf("%w: status=%s", errInstallTaskNotPending, current.Status)
+			return fmt.Errorf("%w: status=%s", ErrInstallTaskNotPending, current.Status)
 		}
 		if err := tx.Model(&hostpluginmodel.HostPluginInstance{}).
 			Where("id = ?", task.InstanceID).

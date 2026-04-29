@@ -51,23 +51,28 @@ func (s *Service) ListCatalog(ctx context.Context) ([]hostpluginmodel.HostPlugin
 }
 
 func (s *Service) CreatePendingInstance(ctx context.Context, tx *gorm.DB, hostID uint64, pluginKey, version string, _ uint64) error {
+	_, err := s.CreatePendingInstanceWithTask(ctx, tx, hostID, pluginKey, version, 0)
+	return err
+}
+
+func (s *Service) CreatePendingInstanceWithTask(ctx context.Context, tx *gorm.DB, hostID uint64, pluginKey, version string, _ uint64) (uint64, error) {
 	if tx == nil {
-		return errors.New("hostplugin service: tx is required")
+		return 0, errors.New("hostplugin service: tx is required")
 	}
 
 	pluginKey = strings.TrimSpace(pluginKey)
 	if pluginKey == "" {
-		return errors.New("hostplugin service: plugin key is required")
+		return 0, errors.New("hostplugin service: plugin key is required")
 	}
 
 	seed, ok := findDefaultCatalogPlugin(pluginKey)
 	if !ok {
-		return errors.New("hostplugin service: unknown plugin key")
+		return 0, errors.New("hostplugin service: unknown plugin key")
 	}
 
 	plugin := seed
 	if err := tx.WithContext(ctx).Where("plugin_key = ?", pluginKey).FirstOrCreate(&plugin).Error; err != nil {
-		return err
+		return 0, err
 	}
 
 	desiredVersion := strings.TrimSpace(version)
@@ -82,7 +87,22 @@ func (s *Service) CreatePendingInstance(ctx context.Context, tx *gorm.DB, hostID
 		CapabilitiesJSON: "[]",
 		LastError:        "",
 	}
-	return tx.WithContext(ctx).Create(&instance).Error
+	if err := tx.WithContext(ctx).Create(&instance).Error; err != nil {
+		return 0, err
+	}
+
+	task := hostpluginmodel.HostPluginTask{
+		InstanceID:   instance.ID,
+		Operation:    "install",
+		Status:       installStatusPending,
+		RequestedBy:  0,
+		ErrorMessage: "",
+	}
+	if err := tx.WithContext(ctx).Create(&task).Error; err != nil {
+		return 0, err
+	}
+
+	return task.ID, nil
 }
 
 func (s *Service) db() *gorm.DB {
