@@ -1,14 +1,18 @@
 package logic
 
 import (
+	"context"
 	"testing"
 
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
+	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func TestHostPluginModels_AutoMigratePersistsAndDefaults(t *testing.T) {
+func openHostPluginTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -25,6 +29,12 @@ func TestHostPluginModels_AutoMigratePersistsAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auto migrate hostplugin models: %v", err)
 	}
+
+	return db
+}
+
+func TestHostPluginModels_AutoMigratePersistsAndDefaults(t *testing.T) {
+	db := openHostPluginTestDB(t)
 
 	if !db.Migrator().HasTable(&hostpluginmodel.HostPluginInstance{}) {
 		t.Fatalf("expected host_plugin_instances table")
@@ -76,5 +86,21 @@ func TestHostPluginModels_AutoMigratePersistsAndDefaults(t *testing.T) {
 	if storedInstance.HealthStatus != "unknown" {
 		t.Fatalf("expected default health status unknown, got %q", storedInstance.HealthStatus)
 	}
+}
 
+func TestEnsureDefaultCatalogSeedsOpsAgent(t *testing.T) {
+	db := openHostPluginTestDB(t)
+	svc := NewService(&svc.ServiceContext{DB: db})
+
+	if err := svc.EnsureDefaultCatalog(context.Background()); err != nil {
+		t.Fatalf("seed catalog: %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&hostpluginmodel.HostPlugin{}).Where("plugin_key = ?", "opsagent").Count(&count).Error; err != nil {
+		t.Fatalf("count plugin: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected opsagent catalog entry, got %d", count)
+	}
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
 	aiapi "github.com/cy77cc/OpsPilot/internal/modules/ai/api"
 	aicommand "github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
-	aichatservice "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	aiassist "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/assist"
+	aichatservice "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/chat"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/infra/workers"
 	aihttp "github.com/cy77cc/OpsPilot/internal/modules/ai/interfaces/http"
 	ailogic "github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
@@ -23,6 +23,7 @@ import (
 	dashboardapi "github.com/cy77cc/OpsPilot/internal/modules/dashboard/api"
 	deploymentapi "github.com/cy77cc/OpsPilot/internal/modules/deployment/api"
 	hostapi "github.com/cy77cc/OpsPilot/internal/modules/host/api"
+	hostpluginapi "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/api"
 	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
 	llmproviderapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	llmproviderclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
@@ -93,6 +94,7 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 	cicdapi.RegisterCICDHandlers(v1, appCtx)
 	automationapi.RegisterAutomationHandlers(v1, appCtx)
 	hostapi.RegisterHostHandlers(v1, appCtx)
+	hostpluginapi.RegisterHostPluginHandlers(v1, appCtx)
 	clusterapi.RegisterClusterHandlers(v1, appCtx)
 	deploymentapi.RegisterDeploymentHandlers(v1, appCtx)
 	monitoringapi.RegisterMonitoringHandlers(v1, appCtx)

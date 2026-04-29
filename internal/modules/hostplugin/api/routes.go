@@ -1,0 +1,18 @@
+package hostplugin
+
+import (
+	"github.com/cy77cc/OpsPilot/internal/core/middleware"
+	"github.com/cy77cc/OpsPilot/internal/modules/hostplugin/handler"
+	"github.com/cy77cc/OpsPilot/internal/svc"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterHostPluginHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
+	h := handler.NewHandler(svcCtx)
+	g := v1.Group("/host-plugins", middleware.JWTAuth())
+	g.GET("/catalog", h.ListCatalog)
+	g.GET("/hosts/:id/instances", h.ListHostInstances)
+	g.POST("/instances/:instance_id/actions", h.RunInstanceAction)
+	g.GET("/tasks/:task_id", h.GetTask)
+	g.GET("/tasks/:task_id/logs", h.ListTaskLogs)
+}
