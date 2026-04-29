@@ -136,6 +136,12 @@ func (s *Server) handleAgentMessage(ctx context.Context, stream grpc.BidiStreami
 		return s.handleHeartbeat(ctx, payload.Heartbeat)
 	case *pb.AgentMessage_Metrics:
 		return s.handleMetrics(ctx, stream, payload.Metrics)
+	case *pb.AgentMessage_ExecOutput:
+		handleExecOutput(payload.ExecOutput)
+		return nil
+	case *pb.AgentMessage_ExecResult:
+		handleExecResult(payload.ExecResult)
+		return nil
 	case *pb.AgentMessage_Ack:
 		return s.handleAck(ctx, payload.Ack)
 	default:

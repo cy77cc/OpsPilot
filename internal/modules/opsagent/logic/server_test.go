@@ -343,6 +343,7 @@ type fakeAgentServiceConnectServer struct {
 	ctx      context.Context
 	cancelFn context.CancelFunc
 	messages []*pb.AgentMessage
+	sent     chan *pb.PlatformMessage
 }
 
 func newFakeAgentServiceConnectServer(t *testing.T, messages ...*pb.AgentMessage) *fakeAgentServiceConnectServer {
@@ -353,6 +354,7 @@ func newFakeAgentServiceConnectServer(t *testing.T, messages ...*pb.AgentMessage
 		ctx:      ctx,
 		cancelFn: cancel,
 		messages: messages,
+		sent:     make(chan *pb.PlatformMessage, 8),
 	}
 }
 
@@ -373,6 +375,9 @@ func (f *fakeAgentServiceConnectServer) Recv() (*pb.AgentMessage, error) {
 	return msg, nil
 }
 
-func (f *fakeAgentServiceConnectServer) Send(*pb.PlatformMessage) error { return nil }
+func (f *fakeAgentServiceConnectServer) Send(msg *pb.PlatformMessage) error {
+	f.sent <- msg
+	return nil
+}
 
 func (f *fakeAgentServiceConnectServer) cancel() { f.cancelFn() }

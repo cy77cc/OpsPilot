@@ -6,7 +6,12 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
+	"github.com/cy77cc/OpsPilot/internal/svc"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestHostExec_RejectsWhenCommandAndScriptBothProvided(t *testing.T) {
@@ -76,6 +81,17 @@ func TestLegacyHostExec_UsesPolicyEngine(t *testing.T) {
 	}
 }
 
+func TestHostExec_DeniesWhenPluginIsMissing(t *testing.T) {
+	svcCtx := &svc.ServiceContext{DB: openHostToolDBWithoutPlugin(t)}
+	ctx := runtimectx.WithServices(context.Background(), svcCtx)
+	hostExec := HostExec(ctx)
+
+	_, err := hostExec.InvokableRun(ctx, `{"target":"10.0.0.8","command":"uptime"}`)
+	if err == nil || !strings.Contains(err.Error(), "plugin required") {
+		t.Fatalf("expected plugin required error, got %v", err)
+	}
+}
+
 func TestCatalogMetadataList_ContainsHostExecAndNoLegacyNames(t *testing.T) {
 	metadata := CatalogMetadataList()
 	names := make([]string, 0, len(metadata))
@@ -112,4 +128,29 @@ func containsTool(names []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func openHostToolDBWithoutPlugin(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&hostmodel.Node{}, &hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
+		t.Fatalf("migrate host tool tables: %v", err)
+	}
+	node := hostmodel.Node{
+		ID:      hostmodel.NodeID(1),
+		Name:    "host-a",
+		IP:      "10.0.0.8",
+		Port:    22,
+		SSHUser: "root",
+		Status:  "online",
+		Source:  "manual_ssh",
+	}
+	if err := db.Create(&node).Error; err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+	return db
 }

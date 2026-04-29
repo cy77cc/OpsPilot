@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -48,6 +49,45 @@ func (s *Service) ListCatalog(ctx context.Context) ([]hostpluginmodel.HostPlugin
 	var plugins []hostpluginmodel.HostPlugin
 	err := db.WithContext(ctx).Order("id ASC").Find(&plugins).Error
 	return plugins, err
+}
+
+func (s *Service) RequireOnlineCapability(ctx context.Context, hostID uint64, capability string) (*hostpluginmodel.HostPluginInstance, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var instance hostpluginmodel.HostPluginInstance
+	err := db.WithContext(ctx).
+		Table("host_plugin_instances AS hpi").
+		Select("hpi.*").
+		Joins("JOIN host_plugins hp ON hp.id = hpi.plugin_id").
+		Where("hp.plugin_key = ?", "opsagent").
+		Where("hpi.host_id = ?", hostID).
+		Where("hpi.install_status = ?", "succeeded").
+		Where("hpi.runtime_status = ?", "online").
+		First(&instance).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("online opsagent plugin instance not found")
+		}
+		return nil, err
+	}
+
+	if strings.TrimSpace(capability) == "" {
+		return &instance, nil
+	}
+
+	var capabilities []string
+	if strings.TrimSpace(instance.CapabilitiesJSON) != "" {
+		_ = json.Unmarshal([]byte(instance.CapabilitiesJSON), &capabilities)
+	}
+	for _, item := range capabilities {
+		if item == capability {
+			return &instance, nil
+		}
+	}
+	return nil, errors.New("required plugin capability is unavailable")
 }
 
 func (s *Service) CreatePendingInstance(ctx context.Context, tx *gorm.DB, hostID uint64, pluginKey, version string, _ uint64) error {

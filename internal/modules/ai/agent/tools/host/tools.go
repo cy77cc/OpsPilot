@@ -13,17 +13,18 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	einoutils "github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	common "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/approval"
 	hostpolicy "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/shared/hostpolicy"
+	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/tools/toolutil"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	hostpluginlogic "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/logic"
+	opsagentlogic "github.com/cy77cc/OpsPilot/internal/modules/opsagent/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -126,7 +127,10 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 			if target == "" {
 				target = strconv.Itoa(hostID)
 			}
-			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec", target, execText)
+			if script != "" {
+				return runPolicyAwareExecScriptByTarget(ctx, svcCtx, "host_exec", target, script)
+			}
+			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec", target, cmd)
 		},
 	)
 	if err != nil {
@@ -154,69 +158,71 @@ func runPolicyAwareExecByTarget(ctx context.Context, svcCtx *svc.ServiceContext,
 
 	node, err := resolveNodeByTarget(svcCtx, target)
 	if err != nil {
-		return &HostExecOutput{
-			HostID:         0,
-			Command:        cmd,
-			Stdout:         "",
-			Stderr:         err.Error(),
-			ExitCode:       1,
-			Status:         "completed",
-			PolicyDecision: string(decision.DecisionType),
-			PolicyReasons:  decision.ReasonCodes,
-			Violations:     decision.Violations,
-		}, nil
+		return nil, err
 	}
 	if node == nil {
-		if violations := toolutil.ValidateCommandSafety(cmd); len(violations) > 0 {
-			return nil, fmt.Errorf("command blocked: %s", strings.Join(violations, "; "))
-		}
-		out, runErr := runLocalCommand(ctx, 6*time.Second, "sh", []string{"-c", cmd}...)
-		if runErr != nil {
-			return &HostExecOutput{
-				HostID:         0,
-				Command:        cmd,
-				Stdout:         out,
-				Stderr:         runErr.Error(),
-				ExitCode:       1,
-				Status:         "completed",
-				PolicyDecision: string(decision.DecisionType),
-				PolicyReasons:  decision.ReasonCodes,
-				Violations:     decision.Violations,
-			}, nil
-		}
-		return &HostExecOutput{
-			HostID:         0,
-			Command:        cmd,
-			Stdout:         out,
-			Stderr:         "",
-			ExitCode:       0,
-			Status:         "completed",
-			PolicyDecision: string(decision.DecisionType),
-			PolicyReasons:  decision.ReasonCodes,
-			Violations:     decision.Violations,
-		}, nil
+		return nil, fmt.Errorf("plugin required: localhost execution is not supported for host_exec")
 	}
 
-	out, runErr := executeHostCommand(svcCtx, node, cmd)
-	if runErr != nil {
-		return &HostExecOutput{
-			HostID:         int(node.ID),
-			Command:        cmd,
-			Stdout:         out,
-			Stderr:         runErr.Error(),
-			ExitCode:       1,
-			Status:         "completed",
-			PolicyDecision: string(decision.DecisionType),
-			PolicyReasons:  decision.ReasonCodes,
-			Violations:     decision.Violations,
-		}, nil
+	instance, err := hostpluginlogic.NewService(svcCtx).RequireOnlineCapability(ctx, uint64(node.ID), "exec.shell")
+	if err != nil {
+		return nil, fmt.Errorf("plugin required: %w", err)
+	}
+	result, err := opsagentlogic.NewDispatcher(svcCtx).ExecuteCommand(ctx, instance, cmd)
+	if err != nil {
+		return nil, err
 	}
 	return &HostExecOutput{
 		HostID:         int(node.ID),
 		Command:        cmd,
-		Stdout:         out,
-		Stderr:         "",
-		ExitCode:       0,
+		Stdout:         result.Stdout,
+		Stderr:         result.Stderr,
+		ExitCode:       result.ExitCode,
+		Status:         "completed",
+		PolicyDecision: string(decision.DecisionType),
+		PolicyReasons:  decision.ReasonCodes,
+		Violations:     decision.Violations,
+	}, nil
+}
+
+func runPolicyAwareExecScriptByTarget(ctx context.Context, svcCtx *svc.ServiceContext, toolName, target, script string) (*HostExecOutput, error) {
+	engine := hostpolicy.NewHostCommandPolicyEngine(hostpolicy.DefaultReadonlyAllowlist())
+	decision := engine.Evaluate(hostpolicy.PolicyInput{
+		ToolName:   toolName,
+		CommandRaw: script,
+		Target:     strings.TrimSpace(target),
+	})
+	if decision.DecisionType != hostpolicy.DecisionAllowReadonlyExecute && !approvedHostResume(ctx) {
+		return nil, fmt.Errorf(
+			"approval required: decision=%s reasons=%v violations=%v",
+			decision.DecisionType,
+			decision.ReasonCodes,
+			decision.Violations,
+		)
+	}
+
+	node, err := resolveNodeByTarget(svcCtx, target)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return nil, fmt.Errorf("plugin required: localhost execution is not supported for host_exec")
+	}
+
+	instance, err := hostpluginlogic.NewService(svcCtx).RequireOnlineCapability(ctx, uint64(node.ID), "exec.script.shell")
+	if err != nil {
+		return nil, fmt.Errorf("plugin required: %w", err)
+	}
+	result, err := opsagentlogic.NewDispatcher(svcCtx).ExecuteScript(ctx, instance, "sh", script)
+	if err != nil {
+		return nil, err
+	}
+	return &HostExecOutput{
+		HostID:         int(node.ID),
+		Command:        script,
+		Stdout:         result.Stdout,
+		Stderr:         result.Stderr,
+		ExitCode:       result.ExitCode,
 		Status:         "completed",
 		PolicyDecision: string(decision.DecisionType),
 		PolicyReasons:  decision.ReasonCodes,
