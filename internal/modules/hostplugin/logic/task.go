@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ const (
 	installStatusSucceeded = "succeeded"
 	installStatusFailed    = "failed"
 )
+
+var errInstallTaskNotPending = errors.New("hostplugin service: install task is not pending")
 
 func (s *Service) ListInstanceIDsByHost(ctx context.Context, hostID uint64) ([]uint64, error) {
 	db := s.db()
@@ -75,14 +78,22 @@ func (s *Service) startTask(ctx context.Context, taskID uint64) (*hostpluginmode
 		if err := tx.First(&task, taskID).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&hostpluginmodel.HostPluginTask{}).
-			Where("id = ?", taskID).
+		result := tx.Model(&hostpluginmodel.HostPluginTask{}).
+			Where("id = ? AND status = ?", taskID, installStatusPending).
 			Updates(map[string]any{
 				"status":        installStatusRunning,
 				"started_at":    &now,
 				"error_message": "",
-			}).Error; err != nil {
-			return err
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			var current hostpluginmodel.HostPluginTask
+			if err := tx.First(&current, taskID).Error; err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: status=%s", errInstallTaskNotPending, current.Status)
 		}
 		if err := tx.Model(&hostpluginmodel.HostPluginInstance{}).
 			Where("id = ?", task.InstanceID).

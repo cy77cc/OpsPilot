@@ -38,10 +38,11 @@ func (s *Service) ResolveVersionForHost(ctx context.Context, pluginKey, version,
 		return nil, errors.New("hostplugin service: db is required")
 	}
 
+	normalizedArch := normalizeHostArch(arch)
 	var row hostpluginmodel.HostPluginVersion
 	err := db.WithContext(ctx).
 		Joins("JOIN host_plugins ON host_plugins.id = host_plugin_versions.plugin_id").
-		Where("host_plugins.plugin_key = ? AND host_plugin_versions.version = ? AND host_plugin_versions.arch = ?", pluginKey, version, arch).
+		Where("host_plugins.plugin_key = ? AND host_plugin_versions.version = ? AND host_plugin_versions.arch = ?", pluginKey, version, normalizedArch).
 		First(&row).Error
 	if err != nil {
 		return nil, err
@@ -306,4 +307,15 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func normalizeHostArch(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "x86_64", "amd64":
+		return "amd64"
+	case "aarch64", "arm64":
+		return "arm64"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }

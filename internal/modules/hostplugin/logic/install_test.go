@@ -94,6 +94,30 @@ func TestResolvePackageForHost_SelectsByArchitecture(t *testing.T) {
 	}
 }
 
+func TestResolvePackageForHost_NormalizesArchitectureAliases(t *testing.T) {
+	svc := newHostPluginServiceForTest(t)
+
+	cases := []struct {
+		arch        string
+		wantPackage string
+	}{
+		{arch: "x86_64", wantPackage: "linux-amd64.tar.gz"},
+		{arch: "amd64", wantPackage: "linux-amd64.tar.gz"},
+		{arch: "aarch64", wantPackage: "linux-arm64.tar.gz"},
+		{arch: "arm64", wantPackage: "linux-arm64.tar.gz"},
+	}
+
+	for _, tc := range cases {
+		version, err := svc.ResolveVersionForHost(context.Background(), "opsagent", "nodeagentx-dc57fbc-dirty", tc.arch)
+		if err != nil {
+			t.Fatalf("resolve package for arch %s: %v", tc.arch, err)
+		}
+		if !strings.Contains(version.PackagePath, tc.wantPackage) {
+			t.Fatalf("expected %s for arch %s, got %s", tc.wantPackage, tc.arch, version.PackagePath)
+		}
+	}
+}
+
 func TestBuildInstallPlan_UsesRemoteTarballPath(t *testing.T) {
 	svc := newHostPluginServiceForTest(t)
 	instance := &hostpluginmodel.HostPluginInstance{ID: 42}
@@ -238,6 +262,22 @@ func TestTaskStatusTransitions_UseContractValues(t *testing.T) {
 	}
 }
 
+func TestStartTask_RejectsAlreadyClaimedTask(t *testing.T) {
+	svc, db := newHostPluginServiceAndDBForTest(t)
+	instanceID := seedInstallInstanceForTest(t, db, "amd64", "nodeagentx-dc57fbc-dirty")
+
+	task, err := svc.EnqueueInstallTask(context.Background(), instanceID)
+	if err != nil {
+		t.Fatalf("enqueue install task: %v", err)
+	}
+	if _, err := svc.startTask(context.Background(), task.ID); err != nil {
+		t.Fatalf("first claim should succeed: %v", err)
+	}
+	if _, err := svc.startTask(context.Background(), task.ID); !errors.Is(err, errInstallTaskNotPending) {
+		t.Fatalf("expected errInstallTaskNotPending on duplicate claim, got %v", err)
+	}
+}
+
 func seedInstallInstanceForTest(t *testing.T, db *gorm.DB, arch, desiredVersion string) uint64 {
 	t.Helper()
 
@@ -305,5 +345,36 @@ func TestRunInstallTask_CallsExecutorAfterQueueClaim(t *testing.T) {
 
 	if err := svc.RunInstallTask(context.Background(), task.ID); err == nil {
 		t.Fatalf("expected executor stop error")
+	}
+}
+
+func TestRunPendingInstallTasksOnce_ClaimsQueuedTask(t *testing.T) {
+	svc, db := newHostPluginServiceAndDBForTest(t)
+	instanceID := seedInstallInstanceForTest(t, db, "x86_64", "nodeagentx-dc57fbc-dirty")
+	task, err := svc.EnqueueInstallTask(context.Background(), instanceID)
+	if err != nil {
+		t.Fatalf("enqueue install task: %v", err)
+	}
+
+	originalExecutor := executeHostPluginInstallPlan
+	defer func() { executeHostPluginInstallPlan = originalExecutor }()
+	executeHostPluginInstallPlan = func(ctx context.Context, s *Service, host *hostmodel.Node, task *hostpluginmodel.HostPluginTask, plan installPlan) error {
+		return errors.New("runner stop")
+	}
+
+	claimed, err := svc.RunPendingInstallTasksOnce(context.Background())
+	if !claimed {
+		t.Fatalf("expected runner to claim pending task")
+	}
+	if err == nil || !strings.Contains(err.Error(), "runner stop") {
+		t.Fatalf("expected runner stop error, got %v", err)
+	}
+
+	var storedTask hostpluginmodel.HostPluginTask
+	if err := db.First(&storedTask, task.ID).Error; err != nil {
+		t.Fatalf("load task: %v", err)
+	}
+	if storedTask.Status != "failed" {
+		t.Fatalf("expected failed task status after runner error, got %s", storedTask.Status)
 	}
 }

@@ -24,6 +24,7 @@ import (
 	deploymentapi "github.com/cy77cc/OpsPilot/internal/modules/deployment/api"
 	hostapi "github.com/cy77cc/OpsPilot/internal/modules/host/api"
 	hostpluginapi "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/api"
+	hostpluginlogic "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/logic"
 	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
 	llmproviderapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	llmproviderclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
@@ -84,6 +85,10 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 		} else {
 			log.Printf("bootstrap: ai-alert-heal-worker disabled: no executor configured")
 		}
+		hostPluginService := hostpluginlogic.NewService(appCtx)
+		_ = workers.NewRunner(func(runCtx context.Context) {
+			runUntilIdle(runCtx, "host-plugin-install-worker", hostPluginService.RunPendingInstallTasksOnce)
+		}, aiBackgroundWorkerTick).Start(ctx)
 	}
 	aiapi.RegisterAIWebhookHandlers(v1, appCtx)
 	registerAIRoutes(v1, appCtx)
