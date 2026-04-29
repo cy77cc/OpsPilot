@@ -16,6 +16,14 @@ const mockHost = {
   osVersion: '22.04',
   lastActive: new Date().toISOString(),
   createdAt: new Date().toISOString(),
+  pluginInstances: [{
+    pluginKey: 'opsagent',
+    installedVersion: 'nodeagentx-dc57fbc-dirty',
+    installStatus: 'succeeded',
+    runtimeStatus: 'online',
+    healthStatus: 'healthy',
+    lastSeenAt: new Date().toISOString(),
+  }],
 };
 
 const mockApi = vi.hoisted(() => ({
@@ -92,6 +100,7 @@ describe('HostDetailPage New Design', () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getAllByText('概览').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('插件').length).toBeGreaterThan(0);
       expect(screen.getAllByText('监控').length).toBeGreaterThan(0);
       expect(screen.getAllByText('进程').length).toBeGreaterThan(0);
       expect(screen.getAllByText('服务').length).toBeGreaterThan(0);

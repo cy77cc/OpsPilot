@@ -69,3 +69,32 @@ describe('hostApi.createHost', () => {
     }));
   });
 });
+
+describe('hostApi.getHostDetail', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('maps plugin instances from host detail', async () => {
+    vi.spyOn(apiService, 'get').mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        name: 'host-a',
+        ip: '10.0.0.8',
+        status: 'online',
+        plugin_instances: [{
+          plugin_key: 'opsagent',
+          installed_version: 'nodeagentx-dc57fbc-dirty',
+          install_status: 'succeeded',
+          runtime_status: 'online',
+          health_status: 'healthy',
+        }],
+      } as any,
+    });
+
+    const res = await hostApi.getHostDetail('1');
+    expect(res.data.pluginInstances?.[0].pluginKey).toBe('opsagent');
+    expect(res.data.pluginInstances?.[0].runtimeStatus).toBe('online');
+  });
+});

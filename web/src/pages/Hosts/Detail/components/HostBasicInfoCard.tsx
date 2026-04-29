@@ -47,6 +47,9 @@ const HostBasicInfoCard: React.FC<HostBasicInfoCardProps> = ({ host, loading }) 
         <Descriptions.Item label="最后上线">
           {host?.lastActive ? new Date(host.lastActive).toLocaleString() : '-'}
         </Descriptions.Item>
+        <Descriptions.Item label="插件数">
+          {(host?.pluginInstances || []).length}
+        </Descriptions.Item>
         <Descriptions.Item label="创建时间">
           {host?.createdAt ? new Date(host.createdAt).toLocaleString() : '-'}
         </Descriptions.Item>

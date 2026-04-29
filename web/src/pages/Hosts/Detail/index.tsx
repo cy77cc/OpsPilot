@@ -27,6 +27,7 @@ import { GuidedFormItem } from '../../../components/FormGuidance';
 import HostDetailHeader from './components/HostDetailHeader';
 import HostDetailTabs from './components/HostDetailTabs';
 import OverviewTab from './tabs/OverviewTab';
+import PluginTab from './tabs/PluginTab';
 import MonitorTab from './tabs/MonitorTab';
 import ProcessTab from './tabs/ProcessTab';
 import ServiceTab from './tabs/ServiceTab';
@@ -259,6 +260,7 @@ const HostDetailPage: React.FC = () => {
         onTabChange={(key) => setSearchParams({ tab: key })}
       />
     ),
+    plugins: <PluginTab host={host} />,
     monitor: <MonitorTab hostId={id} />,
     process: <ProcessTab hostId={id} />,
     service: <ServiceTab hostId={id} />,

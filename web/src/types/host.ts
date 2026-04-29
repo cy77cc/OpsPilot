@@ -590,3 +590,12 @@ export interface HostPluginCatalogItem {
   defaultVersion: string;
   status: string;
 }
+
+export interface HostPluginInstance {
+  pluginKey: string;
+  installedVersion: string;
+  installStatus: string;
+  runtimeStatus: string;
+  healthStatus: string;
+  lastSeenAt?: string;
+}

@@ -17,6 +17,7 @@ const HostDetailTabs: React.FC<HostDetailTabsProps> = ({
 }) => {
   const items: TabsProps['items'] = [
     { key: 'overview', label: '概览' },
+    { key: 'plugins', label: '插件' },
     { key: 'monitor', label: '监控' },
     { key: 'process', label: '进程' },
     { key: 'service', label: '服务' },

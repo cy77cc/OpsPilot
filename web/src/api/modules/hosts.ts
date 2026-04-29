@@ -1,7 +1,7 @@
 import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
 import { buildContextualFetchInit } from '../requestContext';
-import type { HostPluginCatalogItem, HostPluginInstallInput } from '../../types/host';
+import type { HostPluginCatalogItem, HostPluginInstallInput, HostPluginInstance } from '../../types/host';
 
 export interface Host {
   id: string;
@@ -38,6 +38,7 @@ export interface Host {
   maintenanceBy?: number;
   maintenanceStartedAt?: string;
   maintenanceUntil?: string;
+  pluginInstances?: HostPluginInstance[];
 }
 
 export interface HostListParams {
@@ -297,6 +298,15 @@ const mapHostPluginCatalogItem = (item: any): HostPluginCatalogItem => ({
   name: String(item?.name || '').trim(),
   defaultVersion: String(item?.default_version || item?.defaultVersion || '').trim(),
   status: String(item?.status || '').trim(),
+});
+
+const mapHostPluginInstance = (item: any): HostPluginInstance => ({
+  pluginKey: String(item?.plugin_key || item?.pluginKey || '').trim(),
+  installedVersion: String(item?.installed_version || item?.installedVersion || '').trim(),
+  installStatus: String(item?.install_status || item?.installStatus || '').trim(),
+  runtimeStatus: String(item?.runtime_status || item?.runtimeStatus || '').trim(),
+  healthStatus: String(item?.health_status || item?.healthStatus || '').trim(),
+  lastSeenAt: item?.last_seen_at || item?.lastSeenAt || undefined,
 });
 
 const parseLabels = (labels: any): string[] => {
@@ -598,6 +608,7 @@ export const hostApi = {
         maintenanceBy: Number(item.maintenance_by || 0),
         maintenanceStartedAt: item.maintenance_started_at || undefined,
         maintenanceUntil: item.maintenance_until || undefined,
+        pluginInstances: Array.isArray(item.plugin_instances) ? item.plugin_instances.map(mapHostPluginInstance) : [],
       },
     };
   },

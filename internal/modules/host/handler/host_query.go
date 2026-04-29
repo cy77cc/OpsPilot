@@ -10,6 +10,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx/xcode"
 	hostlogic "github.com/cy77cc/OpsPilot/internal/modules/host/logic"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
+	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -60,7 +61,50 @@ func (h *Handler) Get(c *gin.Context) {
 		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
-	httpx.OK(c, node)
+	var instances []hostpluginmodel.HostPluginInstance
+	if h.svcCtx.DB.Migrator().HasTable(&hostpluginmodel.HostPluginInstance{}) {
+		if err := h.svcCtx.DB.WithContext(c.Request.Context()).
+			Where("host_id = ?", id).
+			Order("id ASC").
+			Find(&instances).Error; err != nil {
+			httpx.Fail(c, xcode.ServerError, err.Error())
+			return
+		}
+	}
+	httpx.OK(c, gin.H{
+		"id":                     node.ID,
+		"name":                   node.Name,
+		"hostname":               node.Hostname,
+		"labels":                 node.Labels,
+		"description":            node.Description,
+		"ip":                     node.IP,
+		"port":                   node.Port,
+		"ssh_user":               node.SSHUser,
+		"ssh_key_id":             node.SSHKeyID,
+		"os":                     node.OS,
+		"arch":                   node.Arch,
+		"kernel":                 node.Kernel,
+		"cpu_cores":              node.CpuCores,
+		"memory_mb":              node.MemoryMB,
+		"disk_gb":                node.DiskGB,
+		"status":                 node.Status,
+		"role":                   node.Role,
+		"cluster_id":             node.ClusterID,
+		"source":                 node.Source,
+		"provider":               node.Provider,
+		"provider_instance_id":   node.ProviderID,
+		"region":                 node.Region,
+		"parent_host_id":         node.ParentHostID,
+		"health_state":           node.HealthState,
+		"maintenance_reason":     node.MaintenanceReason,
+		"maintenance_by":         node.MaintenanceBy,
+		"maintenance_started_at": node.MaintenanceStartedAt,
+		"maintenance_until":      node.MaintenanceUntil,
+		"last_check_at":          node.LastCheckAt,
+		"created_at":             node.CreatedAt,
+		"updated_at":             node.UpdatedAt,
+		"plugin_instances":       instances,
+	})
 }
 
 // Facts 获取主机系统信息。
