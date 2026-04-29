@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	sshclient "github.com/cy77cc/OpsPilot/internal/client/ssh"
@@ -11,7 +12,22 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
+	golangssh "golang.org/x/crypto/ssh"
 )
+
+var (
+	newHostPluginSSHClient  = sshclient.NewSSHClient
+	runHostPluginSSHCommand = sshclient.RunCommand
+	newHostPluginSFTPClient = sshclient.NewSFTPClient
+	uploadHostPluginFile    = sshclient.UploadFile
+)
+
+type installPlan struct {
+	workDir           string
+	localPackagePath  string
+	remotePackagePath string
+	commands          []string
+}
 
 func (s *Service) ResolveVersionForHost(ctx context.Context, pluginKey, version, arch string) (*hostpluginmodel.HostPluginVersion, error) {
 	db := s.db()
@@ -44,13 +60,8 @@ func (s *Service) RunInstallTask(ctx context.Context, instanceID uint64) (err er
 		s.finishTask(ctx, task, instance.ID, version.Version, err)
 	}()
 
-	workDir := fmt.Sprintf("/tmp/opspilot/plugins/%d", instance.ID)
-	cmds := []string{
-		fmt.Sprintf("mkdir -p %s", shellQuote(workDir)),
-		fmt.Sprintf("tar xzf %s -C %s", shellQuote(strings.TrimSpace(version.PackagePath)), shellQuote(workDir)),
-		s.renderInstallCommand(instance, version),
-	}
-	return s.runSSHCommands(ctx, host, task, cmds)
+	plan := s.buildInstallPlan(instance, version)
+	return s.runInstallPlan(ctx, host, task, plan)
 }
 
 func (s *Service) loadInstallContext(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginInstance, *hostmodel.Node, *hostpluginmodel.HostPluginVersion, error) {
@@ -95,7 +106,107 @@ func (s *Service) renderInstallCommand(instance *hostpluginmodel.HostPluginInsta
 	return fmt.Sprintf("cd %s && chmod +x %s && %s", shellQuote(workDir), quotedEntry, quotedEntry)
 }
 
+func (s *Service) buildInstallPlan(instance *hostpluginmodel.HostPluginInstance, version *hostpluginmodel.HostPluginVersion) installPlan {
+	workDir := fmt.Sprintf("/tmp/opspilot/plugins/%d", instance.ID)
+	localPackagePath := strings.TrimSpace(version.PackagePath)
+	remotePackagePath := filepath.ToSlash(filepath.Join(workDir, filepath.Base(localPackagePath)))
+	return installPlan{
+		workDir:           workDir,
+		localPackagePath:  localPackagePath,
+		remotePackagePath: remotePackagePath,
+		commands: []string{
+			fmt.Sprintf("tar xzf %s -C %s", shellQuote(remotePackagePath), shellQuote(workDir)),
+			s.renderInstallCommand(instance, version),
+		},
+	}
+}
+
+func (s *Service) runInstallPlan(ctx context.Context, host *hostmodel.Node, task *hostpluginmodel.HostPluginTask, plan installPlan) error {
+	if host == nil {
+		return errors.New("hostplugin service: host is required")
+	}
+	if strings.TrimSpace(plan.localPackagePath) == "" {
+		return errors.New("hostplugin service: package path is required")
+	}
+
+	privateKey, passphrase, err := s.loadNodePrivateKey(ctx, host)
+	if err != nil {
+		return err
+	}
+
+	password, err := s.resolveNodeSSHPassword(host)
+	if err != nil {
+		return err
+	}
+	password = strings.TrimSpace(password)
+	if strings.TrimSpace(privateKey) != "" {
+		password = ""
+	}
+
+	cli, err := newHostPluginSSHClient(host.SSHUser, password, host.IP, host.Port, privateKey, passphrase)
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+
+	if err := s.runLoggedSSHCommand(ctx, cli, task.ID, fmt.Sprintf("mkdir -p %s", shellQuote(plan.workDir))); err != nil {
+		return err
+	}
+	if err := s.uploadInstallPackage(ctx, cli, task.ID, plan.localPackagePath, plan.remotePackagePath); err != nil {
+		return err
+	}
+	for _, cmd := range plan.commands {
+		if err := s.runLoggedSSHCommand(ctx, cli, task.ID, cmd); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) runLoggedSSHCommand(ctx context.Context, cli *golangssh.Client, taskID uint64, cmd string) error {
+	if logErr := s.appendTaskLog(ctx, taskID, "stdout", "$ "+cmd); logErr != nil {
+		return logErr
+	}
+
+	out, runErr := runHostPluginSSHCommand(cli, cmd)
+	if strings.TrimSpace(out) != "" {
+		if logErr := s.appendTaskLog(ctx, taskID, "stdout", out); logErr != nil {
+			return logErr
+		}
+	}
+	if runErr != nil {
+		_ = s.appendTaskLog(ctx, taskID, "stderr", runErr.Error())
+		return fmt.Errorf("run install command %q: %w", cmd, runErr)
+	}
+	return nil
+}
+
+func (s *Service) uploadInstallPackage(ctx context.Context, cli *golangssh.Client, taskID uint64, localPath, remotePath string) error {
+	if logErr := s.appendTaskLog(ctx, taskID, "stdout", fmt.Sprintf("upload %s -> %s", localPath, remotePath)); logErr != nil {
+		return logErr
+	}
+
+	sftpClient, err := newHostPluginSFTPClient(cli)
+	if err != nil {
+		_ = s.appendTaskLog(ctx, taskID, "stderr", err.Error())
+		return err
+	}
+	defer sftpClient.Close()
+
+	if err := uploadHostPluginFile(sftpClient, localPath, remotePath); err != nil {
+		_ = s.appendTaskLog(ctx, taskID, "stderr", err.Error())
+		return fmt.Errorf("upload install package to %s: %w", remotePath, err)
+	}
+	return nil
+}
+
 func (s *Service) runSSHCommands(ctx context.Context, host *hostmodel.Node, task *hostpluginmodel.HostPluginTask, cmds []string) error {
+	plan := installPlan{
+		workDir:  "",
+		commands: cmds,
+	}
+
 	if host == nil {
 		return errors.New("hostplugin service: host is required")
 	}
@@ -114,18 +225,18 @@ func (s *Service) runSSHCommands(ctx context.Context, host *hostmodel.Node, task
 		password = ""
 	}
 
-	cli, err := sshclient.NewSSHClient(host.SSHUser, password, host.IP, host.Port, privateKey, passphrase)
+	cli, err := newHostPluginSSHClient(host.SSHUser, password, host.IP, host.Port, privateKey, passphrase)
 	if err != nil {
 		return err
 	}
 	defer cli.Close()
 
-	for _, cmd := range cmds {
+	for _, cmd := range plan.commands {
 		if logErr := s.appendTaskLog(ctx, task.ID, "stdout", "$ "+cmd); logErr != nil {
 			return logErr
 		}
 
-		out, runErr := sshclient.RunCommand(cli, cmd)
+		out, runErr := runHostPluginSSHCommand(cli, cmd)
 		if strings.TrimSpace(out) != "" {
 			if logErr := s.appendTaskLog(ctx, task.ID, "stdout", out); logErr != nil {
 				return logErr

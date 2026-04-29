@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -84,5 +85,35 @@ func TestResolvePackageForHost_SelectsByArchitecture(t *testing.T) {
 	}
 	if !strings.Contains(version.PackagePath, "linux-amd64.tar.gz") {
 		t.Fatalf("expected amd64 package path, got %s", version.PackagePath)
+	}
+}
+
+func TestBuildInstallPlan_UsesRemoteTarballPath(t *testing.T) {
+	svc := newHostPluginServiceForTest(t)
+	instance := &hostpluginmodel.HostPluginInstance{ID: 42}
+	version := &hostpluginmodel.HostPluginVersion{
+		PackagePath:  "/controller/releases/nodeagentx-linux-amd64.tar.gz",
+		InstallEntry: "install.sh",
+	}
+
+	plan := svc.buildInstallPlan(instance, version)
+
+	if plan.remotePackagePath != "/tmp/opspilot/plugins/42/nodeagentx-linux-amd64.tar.gz" {
+		t.Fatalf("unexpected remote package path: %s", plan.remotePackagePath)
+	}
+	if got := filepath.Base(plan.localPackagePath); got != "nodeagentx-linux-amd64.tar.gz" {
+		t.Fatalf("expected local package basename to be preserved, got %s", got)
+	}
+	if len(plan.commands) != 2 {
+		t.Fatalf("expected 2 post-upload commands, got %d", len(plan.commands))
+	}
+	if strings.Contains(plan.commands[0], "/controller/releases/nodeagentx-linux-amd64.tar.gz") {
+		t.Fatalf("untar command should not reference controller-local path: %s", plan.commands[0])
+	}
+	if !strings.Contains(plan.commands[0], plan.remotePackagePath) {
+		t.Fatalf("untar command should reference remote package path: %s", plan.commands[0])
+	}
+	if !strings.Contains(plan.commands[1], "cd '/tmp/opspilot/plugins/42'") {
+		t.Fatalf("install command should run inside remote work dir: %s", plan.commands[1])
 	}
 }
