@@ -48,14 +48,6 @@ DROP TABLE IF EXISTS postgres_only_table;
 
 func TestRunMigrations_SQLiteAppliesSharedAndDialectSpecificFiles(t *testing.T) {
 	tempRoot := t.TempDir()
-	writeMigrationFixture(t, tempRoot, "20260428_0001_create_nodes.sql", `
--- +migrate Up
-CREATE TABLE nodes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT
-);
--- +migrate Down
-DROP TABLE IF EXISTS nodes;
-`)
 	copyMigrationFixture(t, tempRoot, filepath.Join("..", "..", "..", "..", "storage", "migrations", "20260429_0001_create_host_plugin_tables.sqlite.sql"))
 	writeMigrationFixture(t, tempRoot, "20260429_0002_create_runner_shared_table.sql", `
 -- +migrate Up
@@ -108,8 +100,8 @@ DROP TABLE IF EXISTS should_never_exist;
 	if err != nil {
 		t.Fatalf("status after sqlite migrations: %v", err)
 	}
-	if len(items) != 3 {
-		t.Fatalf("expected 3 visible sqlite status items, got %d", len(items))
+	if len(items) != 2 {
+		t.Fatalf("expected 2 visible sqlite status items, got %d", len(items))
 	}
 	for _, item := range items {
 		if !item.Applied {

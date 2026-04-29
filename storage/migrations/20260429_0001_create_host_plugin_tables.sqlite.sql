@@ -43,7 +43,6 @@ CREATE TABLE host_plugin_instances (
   last_error TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_host_plugin_instances_host FOREIGN KEY (host_id) REFERENCES nodes (id) ON DELETE CASCADE,
   CONSTRAINT fk_host_plugin_instances_plugin FOREIGN KEY (plugin_id) REFERENCES host_plugins (id) ON DELETE CASCADE,
   CONSTRAINT uk_host_plugin_instance UNIQUE (host_id, plugin_id)
 );
