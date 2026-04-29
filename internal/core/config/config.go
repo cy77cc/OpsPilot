@@ -18,6 +18,7 @@ import (
 type Config struct {
 	App          App          `mapstructure:"app"`          // 应用基本配置
 	Server       Server       `mapstructure:"server"`       // HTTP 服务器配置
+	OpsAgent     OpsAgent     `mapstructure:"opsagent"`     // OpsAgent gRPC 运行时配置
 	Log          Log          `mapstructure:"log"`          // 日志配置
 	MySQL        MySQL        `mapstructure:"mysql"`        // MySQL 数据库配置
 	Postgres     Postgres     `mapstructure:"postgres"`     // PostgreSQL 数据库配置
@@ -56,6 +57,14 @@ type Server struct {
 	IdleTimeout    time.Duration `mapstructure:"idle_timeout"`     // 空闲超时
 	MaxHeaderBytes string        `mapstructure:"max_header_bytes"` // 最大请求头字节数
 	Salt           string        `mapstructure:"salt"`             // 密码加密盐值
+}
+
+// OpsAgent 包含 OpsAgent gRPC 服务配置。
+type OpsAgent struct {
+	Enable   bool   `mapstructure:"enable"`   // 是否启用 OpsAgent gRPC 服务
+	Host     string `mapstructure:"host"`     // gRPC 监听主机
+	Port     int    `mapstructure:"port"`     // gRPC 监听端口
+	Insecure bool   `mapstructure:"insecure"` // 是否允许非 TLS 连接
 }
 
 // Log 包含日志配置。
@@ -313,6 +322,14 @@ func ValidateConfig(cfg Config) error {
 
 	if cfg.Redis.Enable && strings.TrimSpace(cfg.Redis.Addr) == "" {
 		return fmt.Errorf("validate config: redis.addr is required when redis.enable=true")
+	}
+	if cfg.OpsAgent.Enable {
+		if strings.TrimSpace(cfg.OpsAgent.Host) == "" {
+			return fmt.Errorf("validate config: opsagent.host is required when opsagent.enable=true")
+		}
+		if cfg.OpsAgent.Port <= 0 || cfg.OpsAgent.Port > 65535 {
+			return fmt.Errorf("validate config: opsagent.port must be in range 1-65535 when opsagent.enable=true")
+		}
 	}
 
 	return nil

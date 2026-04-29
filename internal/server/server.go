@@ -13,6 +13,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	opsagentlogic "github.com/cy77cc/OpsPilot/internal/modules/opsagent/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
 
@@ -109,6 +110,14 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 	}
 	srv.Handler = NewRouter(ctx, svcCtx)
 
+	if config.CFG.OpsAgent.Enable {
+		go func() {
+			if err := startOpsAgentGRPCServer(ctx, svcCtx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.L().Error("opsagent grpc server failed", logger.Error(err))
+			}
+		}()
+	}
+
 	go func() {
 		<-ctx.Done()
 
@@ -127,4 +136,8 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		serveErr <- err
 	}
+}
+
+func startOpsAgentGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
+	return opsagentlogic.StartGRPCServer(ctx, svcCtx)
 }

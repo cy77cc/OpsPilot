@@ -12,6 +12,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/cache"
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
+	opsagentmodel "github.com/cy77cc/OpsPilot/internal/modules/opsagent/model"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -19,13 +20,14 @@ import (
 
 // ServiceContext 封装应用程序运行时依赖。
 type ServiceContext struct {
-	DB             *gorm.DB                    // GORM 数据库实例
-	Rdb            redis.UniversalClient       // Redis 客户端
-	Cache          *expirable.LRU[string, any] // 本地缓存 (LRU)
-	CacheFacade    *cache.Facade               // L1-first 缓存门面
-	CasbinEnforcer *casbin.Enforcer            // Casbin 权限执行器
-	Prometheus     prominfra.Client            // Prometheus HTTP API 客户端
-	MetricsPusher  *prominfra.MetricsPusher    // Prometheus 指标推送器
+	DB               *gorm.DB                       // GORM 数据库实例
+	Rdb              redis.UniversalClient          // Redis 客户端
+	Cache            *expirable.LRU[string, any]    // 本地缓存 (LRU)
+	CacheFacade      *cache.Facade                  // L1-first 缓存门面
+	CasbinEnforcer   *casbin.Enforcer               // Casbin 权限执行器
+	Prometheus       prominfra.Client               // Prometheus HTTP API 客户端
+	MetricsPusher    *prominfra.MetricsPusher       // Prometheus 指标推送器
+	OpsAgentRegistry *opsagentmodel.SessionRegistry // OpsAgent 在线会话注册表
 }
 
 // NewServiceContext 创建服务上下文，并向上返回初始化错误。
@@ -50,12 +52,13 @@ func NewServiceContext(ctx context.Context) (*ServiceContext, error) {
 	l1 := expirable.NewLRU[string, any](5_000, nil, 24*time.Hour)
 
 	return &ServiceContext{
-		DB:             db,
-		Rdb:            rdb,
-		Cache:          l1,
-		CacheFacade:    cache.NewFacade(expirable.NewLRU[string, string](5_000, nil, 24*time.Hour), cache.NewRedisL2(rdb)),
-		CasbinEnforcer: newCasbinEnforcer(db),
-		Prometheus:     initPrometheusClient(),
-		MetricsPusher:  initMetricsPusher(),
+		DB:               db,
+		Rdb:              rdb,
+		Cache:            l1,
+		CacheFacade:      cache.NewFacade(expirable.NewLRU[string, string](5_000, nil, 24*time.Hour), cache.NewRedisL2(rdb)),
+		CasbinEnforcer:   newCasbinEnforcer(db),
+		Prometheus:       initPrometheusClient(),
+		MetricsPusher:    initMetricsPusher(),
+		OpsAgentRegistry: opsagentmodel.NewSessionRegistry(),
 	}, nil
 }
