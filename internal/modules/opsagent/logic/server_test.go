@@ -3,11 +3,17 @@ package logic
 import (
 	"context"
 	"io"
+	"net"
 	"testing"
 	"time"
 
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	pb "github.com/cy77cc/OpsPilot/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -20,10 +26,10 @@ func TestConnect_RegistrationMarksInstanceOnline(t *testing.T) {
 
 	stream := newFakeAgentServiceConnectServer(
 		t,
-		&AgentMessage{
-			Payload: &AgentMessageRegistration{
-				Registration: &AgentRegistration{
-					AgentID: "agent-host-1",
+		&pb.AgentMessage{
+			Payload: &pb.AgentMessage_Registration{
+				Registration: &pb.AgentRegistration{
+					AgentId: "agent-host-1",
 					Token:   "token-1",
 				},
 			},
@@ -31,9 +37,7 @@ func TestConnect_RegistrationMarksInstanceOnline(t *testing.T) {
 	)
 
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- server.Connect(stream)
-	}()
+	go func() { errCh <- server.Connect(stream) }()
 
 	var instance hostpluginmodel.HostPluginInstance
 	deadline := time.Now().Add(2 * time.Second)
@@ -53,7 +57,6 @@ func TestConnect_RegistrationMarksInstanceOnline(t *testing.T) {
 	if session.HostID != instance.HostID {
 		t.Fatalf("expected session host id %d, got %d", instance.HostID, session.HostID)
 	}
-
 	if instance.RuntimeStatus != "online" {
 		t.Fatalf("expected runtime_status online, got %q", instance.RuntimeStatus)
 	}
@@ -62,9 +65,85 @@ func TestConnect_RegistrationMarksInstanceOnline(t *testing.T) {
 	}
 
 	stream.cancel()
-
 	if err := <-errCh; err != nil {
 		t.Fatalf("connect: %v", err)
+	}
+}
+
+func TestConnect_BufconnRegistrationMarksInstanceOnline(t *testing.T) {
+	db := openOpsAgentTestDB(t)
+	svcCtx := &svc.ServiceContext{DB: db}
+	registry := NewSessionRegistry()
+	server := NewServer(svcCtx, registry)
+
+	listener := bufconn.Listen(1024 * 1024)
+	grpcServer := grpc.NewServer()
+	pb.RegisterAgentServiceServer(grpcServer, server)
+	defer grpcServer.Stop()
+
+	go func() {
+		_ = grpcServer.Serve(listener)
+	}()
+
+	conn, err := grpc.NewClient(
+		"passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("grpc new client: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewAgentServiceClient(conn)
+	stream, err := client.Connect(context.Background())
+	if err != nil {
+		t.Fatalf("connect client stream: %v", err)
+	}
+	if err := stream.Send(&pb.AgentMessage{
+		Payload: &pb.AgentMessage_Registration{
+			Registration: &pb.AgentRegistration{
+				AgentId: "agent-host-1",
+				Token:   "token-1",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("send registration: %v", err)
+	}
+	if err := stream.CloseSend(); err != nil {
+		t.Fatalf("close send: %v", err)
+	}
+
+	var instance hostpluginmodel.HostPluginInstance
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := db.Where("agent_id = ?", "agent-host-1").First(&instance).Error; err == nil &&
+			instance.RuntimeStatus == "online" &&
+			instance.LastSeenAt != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected runtime_status online after bufconn registration")
+}
+
+func TestSessionRegistry_DeleteByAgentStreamDoesNotDeleteNewerSession(t *testing.T) {
+	registry := NewSessionRegistry()
+	streamA := newFakeAgentServiceConnectServer(t)
+	streamB := newFakeAgentServiceConnectServer(t)
+
+	registry.Put(101, "agent-host-1", streamA)
+	registry.Put(101, "agent-host-1", streamB)
+	registry.DeleteByAgentStream("agent-host-1", streamA)
+
+	session, ok := registry.GetByAgent("agent-host-1")
+	if !ok {
+		t.Fatal("expected newer session to remain registered")
+	}
+	if session.Stream != streamB {
+		t.Fatal("expected newer stream to remain after stale cleanup")
 	}
 }
 
@@ -76,10 +155,7 @@ func openOpsAgentTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(
-		&hostpluginmodel.HostPlugin{},
-		&hostpluginmodel.HostPluginInstance{},
-	); err != nil {
+	if err := db.AutoMigrate(&hostpluginmodel.HostPlugin{}, &hostpluginmodel.HostPluginInstance{}); err != nil {
 		t.Fatalf("auto migrate opsagent tables: %v", err)
 	}
 
@@ -116,10 +192,10 @@ type fakeAgentServiceConnectServer struct {
 	t        *testing.T
 	ctx      context.Context
 	cancelFn context.CancelFunc
-	messages []*AgentMessage
+	messages []*pb.AgentMessage
 }
 
-func newFakeAgentServiceConnectServer(t *testing.T, messages ...*AgentMessage) *fakeAgentServiceConnectServer {
+func newFakeAgentServiceConnectServer(t *testing.T, messages ...*pb.AgentMessage) *fakeAgentServiceConnectServer {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	return &fakeAgentServiceConnectServer{
@@ -130,11 +206,14 @@ func newFakeAgentServiceConnectServer(t *testing.T, messages ...*AgentMessage) *
 	}
 }
 
-func (f *fakeAgentServiceConnectServer) Context() context.Context {
-	return f.ctx
-}
+func (f *fakeAgentServiceConnectServer) SetHeader(metadata.MD) error  { return nil }
+func (f *fakeAgentServiceConnectServer) SendHeader(metadata.MD) error { return nil }
+func (f *fakeAgentServiceConnectServer) SetTrailer(metadata.MD)       {}
+func (f *fakeAgentServiceConnectServer) Context() context.Context     { return f.ctx }
+func (f *fakeAgentServiceConnectServer) SendMsg(any) error            { return nil }
+func (f *fakeAgentServiceConnectServer) RecvMsg(any) error            { return nil }
 
-func (f *fakeAgentServiceConnectServer) Recv() (*AgentMessage, error) {
+func (f *fakeAgentServiceConnectServer) Recv() (*pb.AgentMessage, error) {
 	if len(f.messages) == 0 {
 		<-f.ctx.Done()
 		return nil, io.EOF
@@ -144,10 +223,6 @@ func (f *fakeAgentServiceConnectServer) Recv() (*AgentMessage, error) {
 	return msg, nil
 }
 
-func (f *fakeAgentServiceConnectServer) Send(*PlatformMessage) error {
-	return nil
-}
+func (f *fakeAgentServiceConnectServer) Send(*pb.PlatformMessage) error { return nil }
 
-func (f *fakeAgentServiceConnectServer) cancel() {
-	f.cancelFn()
-}
+func (f *fakeAgentServiceConnectServer) cancel() { f.cancelFn() }

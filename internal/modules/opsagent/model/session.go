@@ -62,6 +62,25 @@ func (r *SessionRegistry) DeleteByAgent(agentID string) {
 	delete(r.byHostID, session.HostID)
 }
 
+func (r *SessionRegistry) DeleteByAgentStream(agentID string, stream any) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	session, ok := r.byAgent[agentID]
+	if !ok {
+		return
+	}
+	if session.Stream != stream {
+		return
+	}
+	delete(r.byAgent, agentID)
+	delete(r.byHostID, session.HostID)
+}
+
 func (r *SessionRegistry) GetByAgent(agentID string) (*Session, bool) {
 	if r == nil {
 		return nil, false

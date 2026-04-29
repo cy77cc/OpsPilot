@@ -14,62 +14,15 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
+	pb "github.com/cy77cc/OpsPilot/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
 
-type AgentServiceConnectServer interface {
-	Context() context.Context
-	Recv() (*AgentMessage, error)
-	Send(*PlatformMessage) error
-}
-
-type AgentMessage struct {
-	Payload isAgentMessagePayload
-}
-
-type isAgentMessagePayload interface {
-	isAgentMessagePayload()
-}
-
-type AgentMessageRegistration struct {
-	Registration *AgentRegistration
-}
-
-func (*AgentMessageRegistration) isAgentMessagePayload() {}
-
-func (m *AgentMessage) GetRegistration() *AgentRegistration {
-	if m == nil {
-		return nil
-	}
-	payload, ok := m.Payload.(*AgentMessageRegistration)
-	if !ok {
-		return nil
-	}
-	return payload.Registration
-}
-
-type PlatformMessage struct {
-	Payload any
-}
-
-type AgentRegistration struct {
-	AgentID      string
-	Token        string
-	AgentInfo    *AgentInfo
-	Capabilities []string
-}
-
-type AgentInfo struct {
-	Hostname string
-	OS       string
-	Arch     string
-	Version  string
-}
-
 type Server struct {
+	pb.UnimplementedAgentServiceServer
 	svcCtx   *svc.ServiceContext
 	registry *SessionRegistry
 }
@@ -81,7 +34,7 @@ func NewServer(svcCtx *svc.ServiceContext, registry *SessionRegistry) *Server {
 	return &Server{svcCtx: svcCtx, registry: registry}
 }
 
-func (s *Server) Connect(stream AgentServiceConnectServer) error {
+func (s *Server) Connect(stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) error {
 	msg, err := stream.Recv()
 	if err != nil {
 		return err
@@ -91,29 +44,30 @@ func (s *Server) Connect(stream AgentServiceConnectServer) error {
 	if reg == nil {
 		return status.Error(codes.InvalidArgument, "first message must be registration")
 	}
+	agentID := strings.TrimSpace(reg.GetAgentId())
 
 	instance, err := s.bindRegistration(stream.Context(), reg)
 	if err != nil {
 		return err
 	}
 
-	s.registry.Put(instance.HostID, reg.AgentID, stream)
-	defer s.registry.DeleteByAgent(reg.AgentID)
+	s.registry.Put(instance.HostID, agentID, stream)
+	defer s.registry.DeleteByAgentStream(agentID, stream)
 
 	return s.consumeMessages(stream.Context(), instance, stream)
 }
 
-func (s *Server) bindRegistration(ctx context.Context, reg *AgentRegistration) (*hostpluginmodel.HostPluginInstance, error) {
+func (s *Server) bindRegistration(ctx context.Context, reg *pb.AgentRegistration) (*hostpluginmodel.HostPluginInstance, error) {
 	db := s.db()
 	if db == nil {
 		return nil, status.Error(codes.FailedPrecondition, "opsagent service context requires db")
 	}
 
-	agentID := strings.TrimSpace(reg.AgentID)
+	agentID := strings.TrimSpace(reg.GetAgentId())
 	if agentID == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_id is required")
 	}
-	if strings.TrimSpace(reg.Token) == "" {
+	if strings.TrimSpace(reg.GetToken()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "token is required")
 	}
 
@@ -138,7 +92,7 @@ func (s *Server) bindRegistration(ctx context.Context, reg *AgentRegistration) (
 		"runtime_status": "online",
 		"last_seen_at":   &now,
 	}
-	if capabilities, err := json.Marshal(reg.Capabilities); err == nil && len(reg.Capabilities) > 0 {
+	if capabilities, marshalErr := json.Marshal(reg.GetCapabilities()); marshalErr == nil && len(reg.GetCapabilities()) > 0 {
 		updates["capabilities_json"] = string(capabilities)
 	}
 
@@ -154,11 +108,10 @@ func (s *Server) bindRegistration(ctx context.Context, reg *AgentRegistration) (
 	if encoded, ok := updates["capabilities_json"].(string); ok {
 		instance.CapabilitiesJSON = encoded
 	}
-
 	return &instance, nil
 }
 
-func (s *Server) consumeMessages(_ context.Context, _ *hostpluginmodel.HostPluginInstance, stream AgentServiceConnectServer) error {
+func (s *Server) consumeMessages(_ context.Context, _ *hostpluginmodel.HostPluginInstance, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) error {
 	for {
 		_, err := stream.Recv()
 		switch {
@@ -181,8 +134,7 @@ func StartGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
 	defer listener.Close()
 
 	grpcServer := grpc.NewServer()
-	server := NewServer(svcCtx, WrapSessionRegistry(svcCtx.OpsAgentRegistry))
-	registerAgentService(grpcServer, server)
+	pb.RegisterAgentServiceServer(grpcServer, NewServer(svcCtx, WrapSessionRegistry(svcCtx.OpsAgentRegistry)))
 
 	go func() {
 		<-ctx.Done()
@@ -191,7 +143,6 @@ func StartGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
 			grpcServer.GracefulStop()
 			close(done)
 		}()
-
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
@@ -208,25 +159,4 @@ func (s *Server) db() *gorm.DB {
 		return nil
 	}
 	return s.svcCtx.DB
-}
-
-func registerAgentService(grpcServer *grpc.Server, srv *Server) {
-	type agentServiceServer interface {
-		Connect(AgentServiceConnectServer) error
-	}
-
-	grpcServer.RegisterService(&grpc.ServiceDesc{
-		ServiceName: "opsagent.AgentService",
-		HandlerType: (*agentServiceServer)(nil),
-		Streams: []grpc.StreamDesc{{
-			StreamName:    "Connect",
-			Handler:       unsupportedConnectStreamHandler,
-			ServerStreams: true,
-			ClientStreams: true,
-		}},
-	}, srv)
-}
-
-func unsupportedConnectStreamHandler(any, grpc.ServerStream) error {
-	return status.Error(codes.Unimplemented, "generated opsagent protobuf bindings are not available in this build")
 }

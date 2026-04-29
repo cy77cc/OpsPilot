@@ -96,19 +96,19 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 		Addr: fmt.Sprintf("%s:%d", config.CFG.Server.Host, config.CFG.Server.Port),
 	}
 
-	listener, err := net.Listen("tcp", srv.Addr)
-	if err != nil {
-		serveErr <- err
-		return
-	}
-	defer listener.Close()
-
 	svcCtx, err := newServiceContext(ctx)
 	if err != nil {
 		serveErr <- err
 		return
 	}
 	srv.Handler = NewRouter(ctx, svcCtx)
+
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		serveErr <- err
+		return
+	}
+	defer listener.Close()
 
 	if config.CFG.OpsAgent.Enable {
 		go func() {

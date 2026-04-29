@@ -4,6 +4,7 @@ import (
 	"time"
 
 	opsagentmodel "github.com/cy77cc/OpsPilot/internal/modules/opsagent/model"
+	pb "github.com/cy77cc/OpsPilot/proto"
 )
 
 type SessionRegistry struct {
@@ -21,7 +22,7 @@ func WrapSessionRegistry(inner *opsagentmodel.SessionRegistry) *SessionRegistry 
 	return &SessionRegistry{inner: inner}
 }
 
-func (r *SessionRegistry) Put(hostID uint64, agentID string, stream AgentServiceConnectServer) *opsagentmodel.Session {
+func (r *SessionRegistry) Put(hostID uint64, agentID string, stream pb.AgentService_ConnectServer) *opsagentmodel.Session {
 	if r == nil || r.inner == nil {
 		return nil
 	}
@@ -38,6 +39,13 @@ func (r *SessionRegistry) DeleteByAgent(agentID string) {
 		return
 	}
 	r.inner.DeleteByAgent(agentID)
+}
+
+func (r *SessionRegistry) DeleteByAgentStream(agentID string, stream pb.AgentService_ConnectServer) {
+	if r == nil || r.inner == nil {
+		return
+	}
+	r.inner.DeleteByAgentStream(agentID, stream)
 }
 
 func (r *SessionRegistry) GetByAgent(agentID string) (*opsagentmodel.Session, bool) {
