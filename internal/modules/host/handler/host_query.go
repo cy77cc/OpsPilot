@@ -61,14 +61,37 @@ func (h *Handler) Get(c *gin.Context) {
 		httpx.Fail(c, xcode.NotFound, "host not found")
 		return
 	}
-	var instances []hostpluginmodel.HostPluginInstance
+	var instances []gin.H
 	if h.svcCtx.DB.Migrator().HasTable(&hostpluginmodel.HostPluginInstance{}) {
+		rows := make([]struct {
+			hostpluginmodel.HostPluginInstance
+			PluginKey string `gorm:"column:plugin_key"`
+		}, 0)
 		if err := h.svcCtx.DB.WithContext(c.Request.Context()).
-			Where("host_id = ?", id).
-			Order("id ASC").
-			Find(&instances).Error; err != nil {
+			Table("host_plugin_instances AS hpi").
+			Select("hpi.*, hp.plugin_key").
+			Joins("JOIN host_plugins hp ON hp.id = hpi.plugin_id").
+			Where("hpi.host_id = ?", id).
+			Order("hpi.id ASC").
+			Scan(&rows).Error; err != nil {
 			httpx.Fail(c, xcode.ServerError, err.Error())
 			return
+		}
+		for _, row := range rows {
+			instances = append(instances, gin.H{
+				"id":                row.ID,
+				"plugin_id":         row.PluginID,
+				"plugin_key":        row.PluginKey,
+				"desired_version":   row.DesiredVersion,
+				"installed_version": row.InstalledVersion,
+				"install_status":    row.InstallStatus,
+				"runtime_status":    row.RuntimeStatus,
+				"health_status":     row.HealthStatus,
+				"agent_id":          row.AgentID,
+				"last_seen_at":      row.LastSeenAt,
+				"capabilities_json": row.CapabilitiesJSON,
+				"last_error":        row.LastError,
+			})
 		}
 	}
 	httpx.OK(c, gin.H{

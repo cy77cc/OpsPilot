@@ -2,8 +2,10 @@ package logic
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
@@ -130,6 +132,25 @@ func (s *Service) CreatePendingInstanceWithTask(ctx context.Context, tx *gorm.DB
 	if err := tx.WithContext(ctx).Create(&instance).Error; err != nil {
 		return 0, err
 	}
+	instance.AgentID = buildOpsAgentID(hostID, instance.ID)
+	if err := tx.WithContext(ctx).Model(&hostpluginmodel.HostPluginInstance{}).
+		Where("id = ?", instance.ID).
+		Update("agent_id", instance.AgentID).Error; err != nil {
+		return 0, err
+	}
+
+	configYAML := renderOpsAgentConfig(instance.AgentID)
+	revision := hostpluginmodel.HostPluginConfigRevision{
+		InstanceID:     instance.ID,
+		Version:        "1",
+		ConfigYAML:     configYAML,
+		Checksum:       sha256Hex(configYAML),
+		DeliveryStatus: "pending",
+		CreatedBy:      0,
+	}
+	if err := tx.WithContext(ctx).Create(&revision).Error; err != nil {
+		return 0, err
+	}
 
 	task := hostpluginmodel.HostPluginTask{
 		InstanceID:   instance.ID,
@@ -159,4 +180,24 @@ func findDefaultCatalogPlugin(pluginKey string) (hostpluginmodel.HostPlugin, boo
 		}
 	}
 	return hostpluginmodel.HostPlugin{}, false
+}
+
+func buildOpsAgentID(hostID, instanceID uint64) string {
+	return fmt.Sprintf("opsagent-host-%d-instance-%d", hostID, instanceID)
+}
+
+func renderOpsAgentConfig(agentID string) string {
+	return fmt.Sprintf(`agent:
+  id: "%s"
+  name: "%s"
+  interval_seconds: 10
+
+grpc:
+  enroll_token: "%s"
+`, agentID, agentID, agentID)
+}
+
+func sha256Hex(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", sum[:])
 }

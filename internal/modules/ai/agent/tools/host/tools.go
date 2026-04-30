@@ -38,10 +38,11 @@ func serviceContextFromRuntime(ctx context.Context) *svc.ServiceContext {
 
 // HostExecInput 主机命令执行输入。
 type HostExecInput struct {
-	HostID  int    `json:"host_id" jsonschema_description:"optional host id"`
-	Target  string `json:"target,omitempty" jsonschema_description:"optional target host id/ip/hostname"`
-	Command string `json:"command,omitempty" jsonschema_description:"optional,readonly command"`
-	Script  string `json:"script,omitempty" jsonschema_description:"optional,script command"`
+	HostID      int    `json:"host_id" jsonschema_description:"optional host id"`
+	Target      string `json:"target,omitempty" jsonschema_description:"optional target host id/ip/hostname"`
+	Command     string `json:"command,omitempty" jsonschema_description:"optional,readonly command"`
+	Script      string `json:"script,omitempty" jsonschema_description:"optional,script command"`
+	Interpreter string `json:"interpreter,omitempty" jsonschema_description:"optional script interpreter, e.g. sh or python"`
 }
 
 // HostInventoryInput 主机清单查询输入。
@@ -114,6 +115,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 			target := strings.TrimSpace(input.Target)
 			cmd := strings.TrimSpace(input.Command)
 			script := strings.TrimSpace(input.Script)
+			interpreter := strings.TrimSpace(input.Interpreter)
 			if hostID <= 0 && target == "" {
 				return nil, fmt.Errorf("host_id or target is required")
 			}
@@ -128,7 +130,7 @@ func HostExec(ctx context.Context) tool.InvokableTool {
 				target = strconv.Itoa(hostID)
 			}
 			if script != "" {
-				return runPolicyAwareExecScriptByTarget(ctx, svcCtx, "host_exec", target, script)
+				return runPolicyAwareExecScriptByTarget(ctx, svcCtx, "host_exec", target, interpreter, script)
 			}
 			return runPolicyAwareExecByTarget(ctx, svcCtx, "host_exec", target, cmd)
 		},
@@ -185,7 +187,7 @@ func runPolicyAwareExecByTarget(ctx context.Context, svcCtx *svc.ServiceContext,
 	}, nil
 }
 
-func runPolicyAwareExecScriptByTarget(ctx context.Context, svcCtx *svc.ServiceContext, toolName, target, script string) (*HostExecOutput, error) {
+func runPolicyAwareExecScriptByTarget(ctx context.Context, svcCtx *svc.ServiceContext, toolName, target, interpreter, script string) (*HostExecOutput, error) {
 	engine := hostpolicy.NewHostCommandPolicyEngine(hostpolicy.DefaultReadonlyAllowlist())
 	decision := engine.Evaluate(hostpolicy.PolicyInput{
 		ToolName:   toolName,
@@ -209,11 +211,18 @@ func runPolicyAwareExecScriptByTarget(ctx context.Context, svcCtx *svc.ServiceCo
 		return nil, fmt.Errorf("plugin required: localhost execution is not supported for host_exec")
 	}
 
-	instance, err := hostpluginlogic.NewService(svcCtx).RequireOnlineCapability(ctx, uint64(node.ID), "exec.script.shell")
+	capability := "exec.script.shell"
+	dispatchInterpreter := "sh"
+	switch strings.ToLower(strings.TrimSpace(interpreter)) {
+	case "python", "python3":
+		capability = "exec.script.python"
+		dispatchInterpreter = "python3"
+	}
+	instance, err := hostpluginlogic.NewService(svcCtx).RequireOnlineCapability(ctx, uint64(node.ID), capability)
 	if err != nil {
 		return nil, fmt.Errorf("plugin required: %w", err)
 	}
-	result, err := opsagentlogic.NewDispatcher(svcCtx).ExecuteScript(ctx, instance, "sh", script)
+	result, err := opsagentlogic.NewDispatcher(svcCtx).ExecuteScript(ctx, instance, dispatchInterpreter, script)
 	if err != nil {
 		return nil, err
 	}

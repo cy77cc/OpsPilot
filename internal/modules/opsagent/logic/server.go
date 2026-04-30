@@ -54,6 +54,12 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[pb.AgentMessage, pb.Pla
 	s.registry.Put(instance.HostID, agentID, stream)
 	defer s.registry.DeleteByAgentStream(agentID, stream)
 
+	if revision, revErr := s.lookupPendingConfigRevision(stream.Context(), instance.ID); revErr == nil && revision != nil {
+		if sendErr := s.sendConfigUpdate(stream.Context(), s.registry.MustGetByAgent(agentID), *revision); sendErr != nil {
+			return sendErr
+		}
+	}
+
 	return s.consumeMessages(stream.Context(), instance, stream)
 }
 
@@ -229,6 +235,25 @@ func (s *Server) sendConfigUpdate(ctx context.Context, session *SessionHandle, r
 			},
 		},
 	})
+}
+
+func (s *Server) lookupPendingConfigRevision(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginConfigRevision, error) {
+	db := s.db()
+	if db == nil {
+		return nil, status.Error(codes.FailedPrecondition, "opsagent service context requires db")
+	}
+	var revision hostpluginmodel.HostPluginConfigRevision
+	err := db.WithContext(ctx).
+		Where("instance_id = ? AND delivery_status = ?", instanceID, "pending").
+		Order("id DESC").
+		First(&revision).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &revision, nil
 }
 
 func (s *Server) lookupInstanceByStream(ctx context.Context, stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) (*hostpluginmodel.HostPluginInstance, error) {

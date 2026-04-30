@@ -65,6 +65,11 @@ func (r *SessionRegistry) GetByHostID(hostID uint64) (*opsagentmodel.Session, bo
 	return r.inner.GetByHostID(hostID)
 }
 
+func (r *SessionRegistry) MustGetByAgent(agentID string) *opsagentmodel.Session {
+	session, _ := r.GetByAgent(agentID)
+	return session
+}
+
 func (r *SessionRegistry) AgentIDByStream(stream pb.AgentService_ConnectServer) (string, error) {
 	if r == nil || r.inner == nil {
 		return "", errors.New("opsagent session registry is unavailable")

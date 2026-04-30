@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +30,8 @@ type installPlan struct {
 	workDir           string
 	localPackagePath  string
 	remotePackagePath string
+	localConfigPath   string
+	remoteConfigPath  string
 	commands          []string
 }
 
@@ -60,42 +63,50 @@ func (s *Service) RunInstallTask(ctx context.Context, taskID uint64) (err error)
 		s.finishTask(ctx, task, installedVersion, err)
 	}()
 
-	instance, host, version, err := s.loadInstallContext(ctx, task.InstanceID)
+	instance, host, version, revision, err := s.loadInstallContext(ctx, task.InstanceID)
 	if err != nil {
 		return err
 	}
 	installedVersion = version.Version
-	plan := s.buildInstallPlan(instance, version)
+	plan := s.buildInstallPlan(instance, version, revision)
 	return executeHostPluginInstallPlan(ctx, s, host, task, plan)
 }
 
-func (s *Service) loadInstallContext(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginInstance, *hostmodel.Node, *hostpluginmodel.HostPluginVersion, error) {
+func (s *Service) loadInstallContext(ctx context.Context, instanceID uint64) (*hostpluginmodel.HostPluginInstance, *hostmodel.Node, *hostpluginmodel.HostPluginVersion, *hostpluginmodel.HostPluginConfigRevision, error) {
 	db := s.db()
 	if db == nil {
-		return nil, nil, nil, errors.New("hostplugin service: db is required")
+		return nil, nil, nil, nil, errors.New("hostplugin service: db is required")
 	}
 
 	var instance hostpluginmodel.HostPluginInstance
 	if err := db.WithContext(ctx).First(&instance, instanceID).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var plugin hostpluginmodel.HostPlugin
 	if err := db.WithContext(ctx).First(&plugin, instance.PluginID).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var host hostmodel.Node
 	if err := db.WithContext(ctx).First(&host, instance.HostID).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	version, err := s.ResolveVersionForHost(ctx, plugin.PluginKey, instance.DesiredVersion, strings.TrimSpace(host.Arch))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
-	return &instance, &host, version, nil
+	var revision hostpluginmodel.HostPluginConfigRevision
+	if err := db.WithContext(ctx).
+		Where("instance_id = ?", instance.ID).
+		Order("id DESC").
+		First(&revision).Error; err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	return &instance, &host, version, &revision, nil
 }
 
 func (s *Service) renderInstallCommand(instance *hostpluginmodel.HostPluginInstance, version *hostpluginmodel.HostPluginVersion) string {
@@ -111,18 +122,29 @@ func (s *Service) renderInstallCommand(instance *hostpluginmodel.HostPluginInsta
 	return fmt.Sprintf("cd %s && chmod +x %s && %s", shellQuote(workDir), quotedEntry, quotedEntry)
 }
 
-func (s *Service) buildInstallPlan(instance *hostpluginmodel.HostPluginInstance, version *hostpluginmodel.HostPluginVersion) installPlan {
+func (s *Service) buildInstallPlan(instance *hostpluginmodel.HostPluginInstance, version *hostpluginmodel.HostPluginVersion, revision *hostpluginmodel.HostPluginConfigRevision) installPlan {
 	workDir := fmt.Sprintf("/tmp/opspilot/plugins/%d", instance.ID)
 	localPackagePath := strings.TrimSpace(version.PackagePath)
 	remotePackagePath := filepath.ToSlash(filepath.Join(workDir, filepath.Base(localPackagePath)))
+	localConfigPath := ""
+	remoteConfigPath := filepath.ToSlash(filepath.Join(workDir, "config.generated.yaml"))
+	if revision != nil && strings.TrimSpace(revision.ConfigYAML) != "" {
+		localConfigPath = writeTempConfig(revision.ConfigYAML)
+	}
+	commands := []string{
+		fmt.Sprintf("tar xzf %s -C %s", shellQuote(remotePackagePath), shellQuote(workDir)),
+	}
+	if localConfigPath != "" {
+		commands = append(commands, fmt.Sprintf("cp %s %s", shellQuote(remoteConfigPath), shellQuote(filepath.ToSlash(filepath.Join(workDir, "config.yaml")))))
+	}
+	commands = append(commands, s.renderInstallCommand(instance, version))
 	return installPlan{
 		workDir:           workDir,
 		localPackagePath:  localPackagePath,
 		remotePackagePath: remotePackagePath,
-		commands: []string{
-			fmt.Sprintf("tar xzf %s -C %s", shellQuote(remotePackagePath), shellQuote(workDir)),
-			s.renderInstallCommand(instance, version),
-		},
+		localConfigPath:   localConfigPath,
+		remoteConfigPath:  remoteConfigPath,
+		commands:          commands,
 	}
 }
 
@@ -159,6 +181,12 @@ func (s *Service) runInstallPlan(ctx context.Context, host *hostmodel.Node, task
 	}
 	if err := s.uploadInstallPackage(ctx, cli, task.ID, plan.localPackagePath, plan.remotePackagePath); err != nil {
 		return err
+	}
+	if strings.TrimSpace(plan.localConfigPath) != "" {
+		defer os.Remove(plan.localConfigPath)
+		if err := s.uploadInstallPackage(ctx, cli, task.ID, plan.localConfigPath, plan.remoteConfigPath); err != nil {
+			return err
+		}
 	}
 	for _, cmd := range plan.commands {
 		if err := s.runLoggedSSHCommand(ctx, cli, task.ID, cmd); err != nil {
@@ -318,4 +346,16 @@ func normalizeHostArch(raw string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(raw))
 	}
+}
+
+func writeTempConfig(content string) string {
+	file, err := os.CreateTemp("", "opsagent-config-*.yaml")
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	if _, err := file.WriteString(content); err != nil {
+		return ""
+	}
+	return file.Name()
 }
