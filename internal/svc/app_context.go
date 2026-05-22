@@ -13,6 +13,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/core/storage"
 	prominfra "github.com/cy77cc/OpsPilot/internal/infra/prometheus"
 	opsagentmodel "github.com/cy77cc/OpsPilot/internal/modules/opsagent/model"
+	"github.com/cy77cc/OpsPilot/internal/pki/opsagent"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -28,6 +29,7 @@ type ServiceContext struct {
 	Prometheus       prominfra.Client               // Prometheus HTTP API 客户端
 	MetricsPusher    *prominfra.MetricsPusher       // Prometheus 指标推送器
 	OpsAgentRegistry *opsagentmodel.SessionRegistry // OpsAgent 在线会话注册表
+	CAManager        *opsagent.Manager              // OpsAgent CA 管理器 (mTLS)
 }
 
 // NewServiceContext 创建服务上下文，并向上返回初始化错误。
