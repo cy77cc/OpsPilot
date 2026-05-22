@@ -1,7 +1,7 @@
 import apiService from '../api';
 import type { ApiResponse, PaginatedResponse } from '../api';
 import { buildContextualFetchInit } from '../requestContext';
-import type { HostPluginCatalogItem, HostPluginInstallInput, HostPluginInstance } from '../../types/host';
+import type { HostPluginCatalogItem, HostPluginInstallInput, HostPluginInstance, HostPluginPackage, HostPluginTask, HostPluginTaskLog } from '../../types/host';
 
 export interface Host {
   id: string;
@@ -1176,5 +1176,82 @@ export const hostApi = {
 
   async getHostAlarms(id: string): Promise<ApiResponse<any[]>> {
     return apiService.get(`/hosts/${id}/alarms`);
+  },
+
+  async installPlugin(hostId: string, pluginKey: string, version: string): Promise<ApiResponse<{ task_id: number }>> {
+    return apiService.post(`/hosts/${hostId}/plugins/install`, {
+      plugin_key: pluginKey,
+      version: version,
+    });
+  },
+
+  async uninstallPlugin(hostId: string, instanceId: string): Promise<ApiResponse<{ task_id: number }>> {
+    return apiService.post(`/hosts/${hostId}/plugins/uninstall`, {
+      instance_id: Number(instanceId),
+    });
+  },
+
+  async listPluginPackages(): Promise<ApiResponse<HostPluginPackage[]>> {
+    const res = await apiService.get<any>('/host-plugins/packages');
+    const rows = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+    return {
+      ...res,
+      data: rows.map((x: any) => ({
+        id: String(x.id),
+        pluginKey: String(x.plugin_key || x.pluginKey || ''),
+        version: String(x.version || ''),
+        arch: String(x.arch || ''),
+        filename: String(x.filename || ''),
+        storagePath: String(x.storage_path || x.storagePath || ''),
+        checksum: String(x.checksum || ''),
+        sizeBytes: Number(x.size_bytes || x.sizeBytes || 0),
+        uploadedBy: Number(x.uploaded_by || x.uploadedBy || 0),
+        createdAt: x.created_at || x.createdAt || '',
+      })),
+    };
+  },
+
+  async uploadPluginPackage(formData: FormData): Promise<ApiResponse<any>> {
+    return apiService.post('/host-plugins/packages/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  async deletePluginPackage(id: string): Promise<ApiResponse<void>> {
+    return apiService.delete(`/host-plugins/packages/${id}`);
+  },
+
+  async getPluginTask(taskId: string): Promise<ApiResponse<HostPluginTask>> {
+    const res = await apiService.get<any>(`/host-plugins/tasks/${taskId}`);
+    const d = res.data || {};
+    return {
+      ...res,
+      data: {
+        id: String(d.id),
+        instanceId: String(d.instance_id || d.instanceId || ''),
+        operation: String(d.operation || ''),
+        status: String(d.status || ''),
+        requestedBy: Number(d.requested_by || d.requestedBy || 0),
+        startedAt: d.started_at || d.startedAt || undefined,
+        finishedAt: d.finished_at || d.finishedAt || undefined,
+        errorMessage: String(d.error_message || d.errorMessage || ''),
+        createdAt: d.created_at || d.createdAt || '',
+      },
+    };
+  },
+
+  async getPluginTaskLogs(taskId: string): Promise<ApiResponse<HostPluginTaskLog[]>> {
+    const res = await apiService.get<any>(`/host-plugins/tasks/${taskId}/logs`);
+    const rows = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+    return {
+      ...res,
+      data: rows.map((x: any) => ({
+        id: String(x.id),
+        taskId: String(x.task_id || x.taskId || ''),
+        stream: String(x.stream || ''),
+        content: String(x.content || ''),
+        createdAt: x.created_at || x.createdAt || '',
+      })),
+    };
   },
 };

@@ -599,3 +599,36 @@ export interface HostPluginInstance {
   healthStatus: string;
   lastSeenAt?: string;
 }
+
+export interface HostPluginPackage {
+  id: string;
+  pluginKey: string;
+  version: string;
+  arch: string;
+  filename: string;
+  storagePath: string;
+  checksum: string;
+  sizeBytes: number;
+  uploadedBy: number;
+  createdAt: string;
+}
+
+export interface HostPluginTask {
+  id: string;
+  instanceId: string;
+  operation: string;
+  status: string;
+  requestedBy: number;
+  startedAt?: string;
+  finishedAt?: string;
+  errorMessage: string;
+  createdAt: string;
+}
+
+export interface HostPluginTaskLog {
+  id: string;
+  taskId: string;
+  stream: string;
+  content: string;
+  createdAt: string;
+}
