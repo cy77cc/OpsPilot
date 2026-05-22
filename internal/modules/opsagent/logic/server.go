@@ -2,11 +2,14 @@ package logic
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 	pb "github.com/cy77cc/OpsPilot/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
@@ -277,6 +281,43 @@ func (s *Server) lookupInstanceByStream(ctx context.Context, stream grpc.BidiStr
 	return &instance, nil
 }
 
+// buildServerCredentials creates gRPC server TLS credentials from config.
+func buildServerCredentials(tlsCfg config.OpsAgentTLS) (credentials.TransportCredentials, error) {
+	certPEM, err := os.ReadFile(tlsCfg.ServerCert)
+	if err != nil {
+		return nil, fmt.Errorf("read server cert: %w", err)
+	}
+	keyPEM, err := os.ReadFile(tlsCfg.ServerKey)
+	if err != nil {
+		return nil, fmt.Errorf("read server key: %w", err)
+	}
+
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("load server keypair: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if tlsCfg.CACert != "" {
+		caPEM, err := os.ReadFile(tlsCfg.CACert)
+		if err != nil {
+			return nil, fmt.Errorf("read CA cert: %w", err)
+		}
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(caPEM) {
+			return nil, errors.New("failed to parse CA cert")
+		}
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		tlsConfig.ClientCAs = certPool
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
 func StartGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
 	addr := fmt.Sprintf("%s:%d", config.CFG.OpsAgent.Host, config.CFG.OpsAgent.Port)
 	listener, err := net.Listen("tcp", addr)
@@ -285,7 +326,17 @@ func StartGRPCServer(ctx context.Context, svcCtx *svc.ServiceContext) error {
 	}
 	defer listener.Close()
 
-	grpcServer := grpc.NewServer()
+	var opts []grpc.ServerOption
+
+	if config.CFG.OpsAgent.TLS.Enabled {
+		creds, err := buildServerCredentials(config.CFG.OpsAgent.TLS)
+		if err != nil {
+			return fmt.Errorf("opsagent grpc: build TLS: %w", err)
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterAgentServiceServer(grpcServer, NewServer(svcCtx, WrapSessionRegistry(svcCtx.OpsAgentRegistry)))
 
 	go func() {

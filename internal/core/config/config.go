@@ -61,10 +61,19 @@ type Server struct {
 
 // OpsAgent 包含 OpsAgent gRPC 服务配置。
 type OpsAgent struct {
-	Enable   bool   `mapstructure:"enable"`   // 是否启用 OpsAgent gRPC 服务
-	Host     string `mapstructure:"host"`     // gRPC 监听主机
-	Port     int    `mapstructure:"port"`     // gRPC 监听端口
-	Insecure bool   `mapstructure:"insecure"` // 是否允许非 TLS 连接
+	Enable   bool        `mapstructure:"enable"`   // 是否启用 OpsAgent gRPC 服务
+	Host     string      `mapstructure:"host"`     // gRPC 监听主机
+	Port     int         `mapstructure:"port"`     // gRPC 监听端口
+	Insecure bool        `mapstructure:"insecure"` // 是否允许非 TLS 连接
+	TLS      OpsAgentTLS `mapstructure:"tls"`      // TLS 配置
+}
+
+// OpsAgentTLS 包含 OpsAgent gRPC TLS 配置。
+type OpsAgentTLS struct {
+	Enabled    bool   `mapstructure:"enabled"`     // 是否启用 TLS
+	ServerCert string `mapstructure:"server_cert"` // 服务端证书路径
+	ServerKey  string `mapstructure:"server_key"`  // 服务端私钥路径
+	CACert     string `mapstructure:"ca_cert"`     // CA 证书路径
 }
 
 // Log 包含日志配置。
