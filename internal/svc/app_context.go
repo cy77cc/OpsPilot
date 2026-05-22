@@ -62,5 +62,6 @@ func NewServiceContext(ctx context.Context) (*ServiceContext, error) {
 		Prometheus:       initPrometheusClient(),
 		MetricsPusher:    initMetricsPusher(),
 		OpsAgentRegistry: opsagentmodel.NewSessionRegistry(),
+		CAManager:        opsagent.NewManager(opsagent.NewDBStore(db)),
 	}, nil
 }
