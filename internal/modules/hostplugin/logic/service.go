@@ -13,6 +13,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
+	hostmodel "github.com/cy77cc/OpsPilot/internal/modules/host/model"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"gorm.io/gorm"
@@ -395,4 +396,81 @@ func generateRandomToken(length int) (string, error) {
 		b[i] = charset[b[i]%byte(len(charset))]
 	}
 	return string(b), nil
+}
+
+// ListInstancesByHost returns all plugin instances for a host.
+func (s *Service) ListInstancesByHost(ctx context.Context, hostID uint64) ([]hostpluginmodel.HostPluginInstance, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var instances []hostpluginmodel.HostPluginInstance
+	err := db.WithContext(ctx).Where("host_id = ?", hostID).Order("id ASC").Find(&instances).Error
+	return instances, err
+}
+
+// GetTask returns a task by ID.
+func (s *Service) GetTask(ctx context.Context, taskID uint64) (*hostpluginmodel.HostPluginTask, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var task hostpluginmodel.HostPluginTask
+	if err := db.WithContext(ctx).First(&task, taskID).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+// ListTaskLogs returns all logs for a task.
+func (s *Service) ListTaskLogs(ctx context.Context, taskID uint64) ([]hostpluginmodel.HostPluginTaskLog, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var logs []hostpluginmodel.HostPluginTaskLog
+	err := db.WithContext(ctx).Where("task_id = ?", taskID).Order("id ASC").Find(&logs).Error
+	return logs, err
+}
+
+// GetHost returns a host by ID (thin wrapper for handler use).
+func (s *Service) GetHost(ctx context.Context, hostID uint64) (*hostmodel.Node, error) {
+	db := s.db()
+	if db == nil {
+		return nil, errors.New("hostplugin service: db is required")
+	}
+
+	var host hostmodel.Node
+	if err := db.WithContext(ctx).First(&host, hostID).Error; err != nil {
+		return nil, err
+	}
+	return &host, nil
+}
+
+// HostPluginPackageInput is the input for creating a package.
+type HostPluginPackageInput struct {
+	PluginKey   string
+	Version     string
+	Arch        string
+	Filename    string
+	StoragePath string
+	Checksum    string
+	SizeBytes   int64
+}
+
+// CreatePackageFromInput creates a package from input.
+func (s *Service) CreatePackageFromInput(ctx context.Context, input *HostPluginPackageInput) error {
+	pkg := &hostpluginmodel.HostPluginPackage{
+		PluginKey:   input.PluginKey,
+		Version:     input.Version,
+		Arch:        input.Arch,
+		Filename:    input.Filename,
+		StoragePath: input.StoragePath,
+		Checksum:    input.Checksum,
+		SizeBytes:   input.SizeBytes,
+	}
+	return s.CreatePackage(ctx, pkg)
 }
