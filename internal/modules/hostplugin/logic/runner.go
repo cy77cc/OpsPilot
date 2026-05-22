@@ -83,3 +83,26 @@ func (s *Service) recoverStaleRunningInstallTask(ctx context.Context, timeout ti
 	}
 	return true, nil
 }
+
+// RunPendingUninstallTasksOnce claims and runs one pending uninstall task.
+func (s *Service) RunPendingUninstallTasksOnce(ctx context.Context) (bool, error) {
+	db := s.db()
+	if db == nil {
+		return false, errors.New("hostplugin service: db is required")
+	}
+
+	var task hostpluginmodel.HostPluginTask
+	err := db.WithContext(ctx).
+		Where("operation = ? AND status = ?", "uninstall", installStatusPending).
+		Order("id ASC").
+		First(&task).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	runErr := s.RunUninstallTask(ctx, task.ID)
+	return true, runErr
+}
