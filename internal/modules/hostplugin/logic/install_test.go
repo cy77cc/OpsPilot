@@ -127,7 +127,7 @@ func TestBuildInstallPlan_UsesRemoteTarballPath(t *testing.T) {
 		InstallEntry: "install.sh",
 	}
 
-	plan := svc.buildInstallPlan(instance, version)
+	plan := svc.buildInstallPlan(instance, version, nil)
 
 	if plan.remotePackagePath != "/tmp/opspilot/plugins/42/nodeagentx-linux-amd64.tar.gz" {
 		t.Fatalf("unexpected remote package path: %s", plan.remotePackagePath)
