@@ -9,9 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	gateway "github.com/cy77cc/OpsPilot/internal/modules/gateway/logic"
+	gatewaymodel "github.com/cy77cc/OpsPilot/internal/modules/gateway/model"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	pb "github.com/cy77cc/OpsPilot/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 type DispatchResult struct {
@@ -49,6 +52,16 @@ func NewDispatcher(svcCtx *svc.ServiceContext) *Dispatcher {
 }
 
 func (d *Dispatcher) ExecuteCommand(ctx context.Context, instance *hostpluginmodel.HostPluginInstance, command string) (*DispatchResult, error) {
+	// Check if this host routes through a gateway
+	if d.svcCtx != nil && d.svcCtx.RouteTable != nil {
+		if rt, ok := d.svcCtx.RouteTable.(*gateway.RouteTable); ok {
+			route := rt.Get(instance.HostID)
+			if route != nil && !route.Direct {
+				return d.executeViaGateway(ctx, instance, command, route)
+			}
+		}
+	}
+
 	session, taskID, waiter, err := d.prepareDispatch(instance)
 	if err != nil {
 		return nil, err
@@ -89,6 +102,74 @@ func (d *Dispatcher) ExecuteScript(ctx context.Context, instance *hostpluginmode
 		},
 	}
 	if err := sessionSend(session, msg); err != nil {
+		return nil, err
+	}
+	return waitForDispatchResult(ctx, waiter)
+}
+
+func (d *Dispatcher) executeViaGateway(ctx context.Context, instance *hostpluginmodel.HostPluginInstance, command string, route *gatewaymodel.HostRoute) (*DispatchResult, error) {
+	if route.Mode == "tunnel" {
+		// Tunnel mode: forward through tunnel manager
+		if tm, ok := d.svcCtx.TunnelManager.(*gateway.TunnelManager); ok {
+			stream, ok := tm.GetStream(route.TunnelID)
+			if !ok {
+				return nil, fmt.Errorf("tunnel %s stream not found", route.TunnelID)
+			}
+
+			taskID := fmt.Sprintf("opsagent-dispatch-%d", dispatchSeqID.Add(1))
+			waiter := &execWaiter{resultCh: make(chan *pb.ExecResult, 1)}
+			execWaiters.Store(taskID, waiter)
+			defer execWaiters.Delete(taskID)
+
+			innerMsg := &pb.PlatformMessage{
+				Payload: &pb.PlatformMessage_ExecCommand{
+					ExecCommand: &pb.ExecuteCommand{
+						TaskId:         taskID,
+						Command:        "sh",
+						Args:           []string{"-c", command},
+						TimeoutSeconds: resolveTimeoutSeconds(ctx, 30),
+					},
+				},
+			}
+			payload, _ := proto.Marshal(innerMsg)
+
+			tunnelMsg := &pb.PlatformMessage{
+				Payload: &pb.PlatformMessage_TunnelData{
+					TunnelData: &pb.TunnelData{
+						TunnelId: route.TunnelID,
+						Payload:  payload,
+					},
+				},
+			}
+			if err := stream.Send(tunnelMsg); err != nil {
+				return nil, fmt.Errorf("send via tunnel: %w", err)
+			}
+			return waitForDispatchResult(ctx, waiter)
+		}
+		return nil, fmt.Errorf("tunnel manager unavailable")
+	}
+
+	// Proxy mode: send ProxyCommandRequest via gateway session
+	gatewaySession, ok := d.registry.GetByHostID(route.GatewayID)
+	if !ok || gatewaySession == nil {
+		return nil, fmt.Errorf("gateway session not found for host %d", route.GatewayID)
+	}
+
+	taskID := fmt.Sprintf("proxy-%d-%s", instance.HostID, command)
+	waiter := &execWaiter{resultCh: make(chan *pb.ExecResult, 1)}
+	execWaiters.Store(taskID, waiter)
+	defer execWaiters.Delete(taskID)
+
+	proxyMsg := &pb.PlatformMessage{
+		Payload: &pb.PlatformMessage_ProxyCommand{
+			ProxyCommand: &pb.ProxyCommandRequest{
+				HostId:         fmt.Sprintf("%d", instance.HostID),
+				Command:        command,
+				TimeoutSeconds: resolveTimeoutSeconds(ctx, 30),
+			},
+		},
+	}
+	if err := sessionSend(gatewaySession, proxyMsg); err != nil {
 		return nil, err
 	}
 	return waitForDispatchResult(ctx, waiter)
