@@ -36,17 +36,20 @@ export const authApi = {
 
   async getMe(): Promise<ApiResponse<AuthUser>> {
     const res = await apiService.get<Record<string, unknown>>('/auth/me');
-    const data = (res.data || {}) as Partial<AuthUser> & Record<string, unknown>;
+    const raw = (res.data || {}) as Record<string, unknown>;
+    // Backend authPublicResp wraps user inside a "user" field:
+    // { user: { id, username, ... }, roles: [...], permissions: [...] }
+    const userObj = (raw.user && typeof raw.user === 'object' ? raw.user : raw) as Partial<AuthUser> & Record<string, unknown>;
     return {
       ...res,
       data: {
-        id: Number(data.id || 0),
-        username: String(data.username || ''),
-        name: String(data.name || data.username || ''),
-        email: String(data.email || ''),
-        status: String(data.status || 'active'),
-        roles: Array.isArray(data.roles) ? data.roles.map((role) => String(role)) : [],
-        permissions: Array.isArray(data.permissions) ? data.permissions.map((permission) => String(permission)) : [],
+        id: Number(userObj.id || 0),
+        username: String(userObj.username || ''),
+        name: String(userObj.name || userObj.username || ''),
+        email: String(userObj.email || ''),
+        status: String(userObj.status || 'active'),
+        roles: Array.isArray(userObj.roles) ? userObj.roles.map((role) => String(role)) : [],
+        permissions: Array.isArray(userObj.permissions) ? userObj.permissions.map((permission) => String(permission)) : [],
       },
     };
   },

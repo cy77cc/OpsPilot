@@ -49,14 +49,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 
   const handleSessionExpired = useCallback(() => {
-    sessionStore.clearSession();
-
     const currentPath = window.location.pathname + window.location.search;
-    if (currentPath && !currentPath.includes('/login')) {
-      sessionStorage.setItem('redirectAfterLogin', currentPath);
-    }
 
-    window.location.href = '/login';
+    if (!currentPath.includes('/login')) {
+      sessionStorage.setItem('redirectAfterLogin', currentPath);
+      sessionStore.clearSession();
+      window.location.href = '/login';
+    } else {
+      // Already on login page — just clear session state, no reload needed
+      sessionStore.clearSession();
+    }
   }, []);
 
   useEffect(() => {
