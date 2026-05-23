@@ -39,6 +39,9 @@ export interface Host {
   maintenanceStartedAt?: string;
   maintenanceUntil?: string;
   pluginInstances?: HostPluginInstance[];
+  jumpHostId?: number;
+  gatewayMode?: 'tunnel' | 'proxy' | 'auto';
+  jumpHostName?: string;
 }
 
 export interface HostListParams {
@@ -74,6 +77,8 @@ export interface HostCreateParams {
   provider?: string;
   providerInstanceId?: string;
   parentHostId?: number;
+  jumpHostId?: number;
+  gatewayMode?: 'tunnel' | 'proxy' | 'auto';
 }
 
 export interface HostUpdateParams {
@@ -431,6 +436,15 @@ export interface CredentialStats {
   recentUpdateBy: string;
 }
 
+export interface GatewayHostInfo {
+  id: number;
+  name: string;
+  hostname: string;
+  ip: string;
+  activeTunnels: number;
+  maxTunnels: number;
+}
+
 export const hostApi = {
   async getHostList(params?: HostListParams): Promise<ApiResponse<PaginatedResponse<Host>>> {
     const response = await apiService.get<Host[]>('/hosts', {
@@ -479,6 +493,9 @@ export const hostApi = {
       createdAt: item.created_at ?? item.createdAt,
       lastActive: item.updated_at ?? item.lastActive,
       lastHeartbeatAt: item.last_heartbeat_at || item.lastHeartbeatAt || undefined,
+      jumpHostId: item.jump_host_id ?? item.jumpHostId ?? undefined,
+      gatewayMode: item.gateway_mode ?? item.gatewayMode ?? undefined,
+      jumpHostName: item.jump_host_name ?? item.jumpHostName ?? undefined,
     }));
     return {
       ...response,
@@ -609,6 +626,9 @@ export const hostApi = {
         maintenanceStartedAt: item.maintenance_started_at || undefined,
         maintenanceUntil: item.maintenance_until || undefined,
         pluginInstances: Array.isArray(item.plugin_instances) ? item.plugin_instances.map(mapHostPluginInstance) : [],
+        jumpHostId: item.jump_host_id ?? item.jumpHostId ?? undefined,
+        gatewayMode: item.gateway_mode ?? item.gatewayMode ?? undefined,
+        jumpHostName: item.jump_host_name ?? item.jumpHostName ?? undefined,
       },
     };
   },
@@ -636,6 +656,8 @@ export const hostApi = {
       provider: data.provider || '',
       provider_instance_id: data.providerInstanceId || '',
       parent_host_id: data.parentHostId || undefined,
+      jump_host_id: data.jumpHostId || undefined,
+      gateway_mode: data.gatewayMode || undefined,
       force: !!data.force,
       description: data.description || `${data.region || ''} ${(data.tags || []).join(',')}`.trim(),
     });
@@ -1253,5 +1275,10 @@ export const hostApi = {
         createdAt: x.created_at || x.createdAt || '',
       })),
     };
+  },
+
+  getGatewayHosts: async (): Promise<GatewayHostInfo[]> => {
+    const res = await apiService.get<{ data: GatewayHostInfo[] }>('/hosts/gateways');
+    return (res as any).data ?? [];
   },
 };
