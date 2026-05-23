@@ -46,6 +46,8 @@ type Node struct {
 	ProviderID           *string    `gorm:"column:provider_instance_id;type:varchar(128);uniqueIndex:idx_provider_instance,where:provider IS NOT NULL AND provider != ''" json:"provider_instance_id"` // 云厂商实例 ID
 	Region               string     `gorm:"column:region;type:varchar(64)" json:"region"`                                                                                                              // 区域
 	ParentHostID         *NodeID    `gorm:"column:parent_host_id" json:"parent_host_id"`                                                                                                               // 父主机 ID (虚拟机场景)
+	JumpHostID           *NodeID    `gorm:"column:jump_host_id;index" json:"jump_host_id,omitempty"`                                                                                                   // 跳板机 Node ID，nil 表示直连
+	GatewayMode          string     `gorm:"column:gateway_mode;size:16" json:"gateway_mode,omitempty"`                                                                                                // 连接模式: tunnel/proxy/auto
 	HealthState          string     `gorm:"column:health_state;type:varchar(32);default:unknown" json:"health_state"`                                                                                  // 健康状态: healthy/unhealthy/unknown
 	MaintenanceReason    string     `gorm:"column:maintenance_reason;type:varchar(512)" json:"maintenance_reason"`                                                                                     // 维护原因
 	MaintenanceBy        uint64     `gorm:"column:maintenance_by;default:0" json:"maintenance_by"`                                                                                                     // 维护操作人 ID
