@@ -315,6 +315,16 @@ const HostDetailPage: React.FC = () => {
           <Descriptions.Item label="更新时间">{host?.lastActive ? new Date(host.lastActive).toLocaleString() : '-'}</Descriptions.Item>
           <Descriptions.Item label="标签" span={2}>{(host?.tags || []).join(', ') || '-'}</Descriptions.Item>
           <Descriptions.Item label="描述" span={2}>{host?.description || '-'}</Descriptions.Item>
+          {host?.jumpHostId && (
+            <>
+              <Descriptions.Item label="跳板机">{host.jumpHostName || host.jumpHostId}</Descriptions.Item>
+              <Descriptions.Item label="连接模式">
+                <Tag color="blue">
+                  {host.gatewayMode === 'tunnel' ? '隧道模式' : host.gatewayMode === 'proxy' ? '代理模式' : '自动检测'}
+                </Tag>
+              </Descriptions.Item>
+            </>
+          )}
         </Descriptions>
 
         <div className="mt-4" />
