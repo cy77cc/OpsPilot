@@ -12,6 +12,7 @@ package host
 import (
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
 	"github.com/cy77cc/OpsPilot/internal/core/middleware"
+	gatewayhandler "github.com/cy77cc/OpsPilot/internal/modules/gateway/handler"
 	"github.com/cy77cc/OpsPilot/internal/modules/host/handler"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,9 @@ func RegisterHostHandlers(v1 *gin.RouterGroup, svcCtx *svc.ServiceContext) {
 		g.POST("/virtualization/kvm/hosts/:id/preview", h.KVMPreview)
 		g.POST("/virtualization/kvm/hosts/:id/provision", h.KVMProvision)
 		g.GET("/virtualization/tasks/:task_id", h.GetVirtualizationTask)
+
+		// 跳板机列表
+		g.GET("/gateways", gatewayhandler.NewGatewayHandler(svcCtx).ListGateways)
 
 		// 主机 CRUD
 		g.GET("", h.List)
