@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	gatewaylogic "github.com/cy77cc/OpsPilot/internal/modules/gateway/logic"
 	opsagentlogic "github.com/cy77cc/OpsPilot/internal/modules/opsagent/logic"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 )
@@ -101,6 +103,15 @@ func startServer(ctx context.Context, started chan struct{}, serveErr chan error
 		serveErr <- err
 		return
 	}
+
+	// Initialize gateway components and inject into ServiceContext
+	rt := gatewaylogic.NewRouteTable(svcCtx.DB)
+	if err := rt.LoadFromDB(); err != nil {
+		log.Printf("warning: load host routes: %v", err)
+	}
+	svcCtx.RouteTable = rt
+	svcCtx.TunnelManager = gatewaylogic.NewTunnelManager()
+
 	srv.Handler = NewRouter(ctx, svcCtx)
 
 	listener, err := net.Listen("tcp", srv.Addr)
