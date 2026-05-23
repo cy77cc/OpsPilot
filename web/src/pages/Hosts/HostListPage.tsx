@@ -15,6 +15,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { MenuProps, TableProps } from 'antd';
@@ -669,6 +670,22 @@ const HostListPage: React.FC = () => {
         </Button>
       ),
     },
+    {
+      title: '连接方式',
+      dataIndex: 'jumpHostId',
+      key: 'connection',
+      width: 120,
+      render: (_: unknown, record: HostTableRow) => {
+        if (!record.raw.jumpHostId) {
+          return <Tag color="green">直连</Tag>;
+        }
+        return (
+          <Tooltip title={`跳板机: ${record.raw.jumpHostName || record.raw.jumpHostId}`}>
+            <Tag color="blue">通过网关</Tag>
+          </Tooltip>
+        );
+      },
+    },
     { title: 'IP 地址', dataIndex: 'ip', width: 125 },
     {
       title: '接入来源',
@@ -1073,7 +1090,7 @@ const HostListPage: React.FC = () => {
                 }}
                 rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
                 pagination={false}
-                scroll={{ x: 1650, y: tableScrollY }}
+                scroll={{ x: 1770, y: tableScrollY }}
                 size="small"
                 style={{ height: '100%' }}
                 className="[&_.ant-table-thead>tr>th]:!bg-[#f6f8fb] [&_.ant-table-thead>tr>th]:!text-[#6b7280] [&_.ant-table-thead>tr>th]:!text-[13px] [&_.ant-table-thead>tr>th]:!overflow-hidden [&_.ant-table-tbody>tr>td]:!text-[13px] [&_.ant-table-tbody>tr>td]:!py-[10px] [&_.ant-table-tbody>tr>td]:!overflow-hidden [&_.ant-table-body]:!scrollbar-thin [&_.ant-table-content]:!scrollbar-thin [&_.ant-table-body::-webkit-scrollbar]:!w-1.5 [&_.ant-table-body::-webkit-scrollbar]:!h-1.5 [&_.ant-table-content::-webkit-scrollbar]:!w-1.5 [&_.ant-table-content::-webkit-scrollbar]:!h-1.5"
