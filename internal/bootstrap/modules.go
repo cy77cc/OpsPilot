@@ -28,6 +28,7 @@ import (
 	jobsapi "github.com/cy77cc/OpsPilot/internal/modules/jobs/api"
 	llmproviderapi "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/api"
 	llmproviderclient "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/client"
+	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 	monitoringapi "github.com/cy77cc/OpsPilot/internal/modules/monitoring/api"
 	notificationapi "github.com/cy77cc/OpsPilot/internal/modules/notification/api"
 	projectapi "github.com/cy77cc/OpsPilot/internal/modules/project/api"
@@ -37,6 +38,7 @@ import (
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	"github.com/cy77cc/OpsPilot/internal/websocket"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const aiBackgroundWorkerTick = 2 * time.Second
@@ -64,6 +66,14 @@ func RegisterModules(ctx context.Context, appCtx *svc.ServiceContext, engine *gi
 	v1 := engine.Group("/api/v1")
 	userapi.RegisterUserHandlers(v1, appCtx)
 	if appCtx != nil && appCtx.DB != nil {
+		// 注册 DB 提取器，让 GetDefaultChatModel 能从 context 获取数据库连接。
+		// 优先从 runtimectx 获取 ServiceContext 中的 DB，回退到启动时的 appCtx.DB。
+		llmproviderclient.SetDBExtractor(func(ctx context.Context) *gorm.DB {
+			if svcCtx, ok := runtimectx.ServicesAs[*svc.ServiceContext](ctx); ok && svcCtx != nil {
+				return svcCtx.DB
+			}
+			return appCtx.DB
+		})
 		llmproviderclient.InitCacheWatcher(appCtx.Rdb, appCtx.DB)
 		ai := ailogic.NewAILogic(appCtx)
 		approvalWorker := ailogic.NewApprovalWorker(ai)

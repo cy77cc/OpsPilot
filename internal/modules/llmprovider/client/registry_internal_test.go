@@ -173,21 +173,43 @@ func TestGetDefaultChatModel_UsesRuntimeContextDBWhenNil(t *testing.T) {
 }
 
 func TestGetDefaultChatModel_FallsBackToConfigModel(t *testing.T) {
+	chatmodel.ResetRegistryForTest()
+
 	cfg := config.CFG.LLM
 	config.CFG.LLM = config.LLM{
 		Enable:   true,
-		Provider: "ollama",
+		Provider: "test-fallback",
 		BaseURL:  "http://127.0.0.1:11434",
 		Model:    "llama3.2",
 	}
 	t.Cleanup(func() { config.CFG.LLM = cfg })
 
+	var calls int
+	chatmodel.Register("test-fallback", &capturingFactory{
+		fn: func(_ context.Context, provider *llmmodel.AILLMProvider, _ chatmodel.ChatModelConfig) (model.ToolCallingChatModel, error) {
+			calls++
+			if provider.Provider != "test-fallback" {
+				t.Fatalf("expected provider test-fallback, got %q", provider.Provider)
+			}
+			if provider.Model != "llama3.2" {
+				t.Fatalf("expected model llama3.2, got %q", provider.Model)
+			}
+			if provider.BaseURL != "http://127.0.0.1:11434" {
+				t.Fatalf("expected base_url http://127.0.0.1:11434, got %q", provider.BaseURL)
+			}
+			return nil, nil
+		},
+	})
+
 	got, err := chatmodel.GetDefaultChatModel(context.Background(), nil, chatmodel.ChatModelConfig{Timeout: 2 * time.Second})
 	if err != nil {
 		t.Fatalf("expected config fallback to succeed, got error: %v", err)
 	}
-	if got == nil {
-		t.Fatal("expected config fallback to return a chat model")
+	if got != nil {
+		t.Fatal("expected nil chat model from capturing factory")
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
 	}
 }
 

@@ -9,20 +9,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	arkmodel "github.com/cloudwego/eino-ext/components/model/ark"
-	"github.com/cloudwego/eino-ext/components/model/claude"
-	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	qwenmodel "github.com/cloudwego/eino-ext/components/model/qwen"
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cy77cc/OpsPilot/internal/constants"
 	"github.com/cy77cc/OpsPilot/internal/core/config"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/core/utils"
 	llmdao "github.com/cy77cc/OpsPilot/internal/modules/llmprovider/dao"
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 	"github.com/redis/go-redis/v9"
-	arkruntime "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"golang.org/x/sync/semaphore"
 	"gorm.io/gorm"
 )
@@ -133,17 +128,12 @@ func checkProviderHealth(ctx context.Context, p *model.AILLMProvider) error {
 	return err
 }
 
-// NewChatModel 根据配置创建聊天模型实例。
-func NewChatModel(ctx context.Context, opts ChatModelConfig) (einomodel.ToolCallingChatModel, error) {
-	return newConfiguredChatModel(ctx, opts)
-}
-
 // GetDefaultChatModel 获取默认模型并创建聊天模型实例。
 //
 // 回退优先级：
 //  1. 数据库 is_default = true 的启用模型
 //  2. 数据库 ID 最小的启用模型
-//  3. config.yaml 中的配置
+//  3. config.yaml 中的配置（通过统一 factory 路径）
 func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig) (einomodel.ToolCallingChatModel, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -160,108 +150,66 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 		// 按照 is_default, sort_order 排序获取所有启用的供应商
 		providers, err := dao.ListEnabled(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("list enabled llm providers: %w", err)
-		}
-
-		// 找到第一个健康的（或者还未检测过健康的）
-		var provider *model.AILLMProvider
-		for i := range providers {
-			p := &providers[i]
-			isHealthy, ok := healthMap.Load(p.ID)
-			if !ok || isHealthy.(bool) {
-				provider = p
-				break
-			}
-		}
-
-		// 如果都挂了，由于目前没法完全确信 healthMap，还是尝试用第一个（默认的）作为保底
-		if provider == nil && len(providers) > 0 {
-			log.Printf("llmprovider: all providers appear unhealthy, falling back to %s (%s)", providers[0].Name, providers[0].Model)
-			provider = &providers[0]
-		}
-
-		if provider != nil {
-			cacheKey := fmt.Sprintf("%d:%d:%d:%d:%t:%f", provider.ID, provider.ConfigVersion, provider.APIKeyVersion, opts.Timeout.Milliseconds(), opts.Thinking, opts.Temp)
-			if val, ok := modelCache.Load(cacheKey); ok {
-				return val.(einomodel.ToolCallingChatModel), nil
+			logger.L().Warn("list enabled llm providers failed, falling back to config.yaml",
+				logger.Error(err))
+		} else {
+			// 找到第一个健康的（或者还未检测过健康的）
+			var provider *model.AILLMProvider
+			for i := range providers {
+				p := &providers[i]
+				isHealthy, ok := healthMap.Load(p.ID)
+				if !ok || isHealthy.(bool) {
+					provider = p
+					break
+				}
 			}
 
-			providerForUse, decErr := decryptProviderAPIKey(provider)
-			if decErr != nil {
-				return nil, fmt.Errorf("decrypt llm provider api key: %w", decErr)
+			// 如果都挂了，由于目前没法完全确信 healthMap，还是尝试用第一个（默认的）作为保底
+			if provider == nil && len(providers) > 0 {
+				logger.L().Warn("all llm providers appear unhealthy, falling back to first provider",
+					logger.String("name", providers[0].Name),
+					logger.String("model", providers[0].Model))
+				provider = &providers[0]
 			}
-			m, err := NewChatModelFromProvider(ctx, providerForUse, opts)
-			if err == nil {
-				modelCache.Store(cacheKey, m)
+
+			if provider != nil {
+				logger.L().Debug("using database llm provider",
+					logger.String("name", provider.Name),
+					logger.String("provider", provider.Provider),
+					logger.String("model", provider.Model))
+
+				cacheKey := fmt.Sprintf("%d:%d:%d:%d:%t:%f", provider.ID, provider.ConfigVersion, provider.APIKeyVersion, opts.Timeout.Milliseconds(), opts.Thinking, opts.Temp)
+				if val, ok := modelCache.Load(cacheKey); ok {
+					return val.(einomodel.ToolCallingChatModel), nil
+				}
+
+				providerForUse, decErr := decryptProviderAPIKey(provider)
+				if decErr != nil {
+					return nil, fmt.Errorf("decrypt llm provider api key: %w", decErr)
+				}
+				m, err := NewChatModelFromProvider(ctx, providerForUse, opts)
+				if err == nil {
+					modelCache.Store(cacheKey, m)
+				}
+				return m, err
 			}
-			return m, err
 		}
+	} else {
+		logger.L().Warn("no database connection for llm provider lookup, falling back to config.yaml")
 	}
 
-	return newConfiguredChatModel(ctx, opts)
-}
+	// 回退：使用 config.yaml 配置，通过统一 factory 路径创建模型
+	logger.L().Info("using config.yaml llm provider as fallback",
+		logger.String("provider", config.CFG.LLM.Provider),
+		logger.String("model", config.CFG.LLM.Model))
 
-func newConfiguredChatModel(ctx context.Context, opts ChatModelConfig) (einomodel.ToolCallingChatModel, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if !config.CFG.LLM.Enable {
-		return nil, fmt.Errorf("llm disabled")
-	}
-
-	switch strings.TrimSpace(strings.ToLower(config.CFG.LLM.Provider)) {
-	case "ollama":
-		return ollamamodel.NewChatModel(ctx, &ollamamodel.ChatModelConfig{
-			BaseURL: config.CFG.LLM.BaseURL,
-			Model:   config.CFG.LLM.Model,
-			Timeout: opts.Timeout,
-		})
-	case "qwen":
-		thinking := opts.Thinking
-		temp := opts.Temp
-		return qwenmodel.NewChatModel(ctx, &qwenmodel.ChatModelConfig{
-			APIKey:         config.CFG.LLM.APIKey,
-			BaseURL:        config.CFG.LLM.BaseURL,
-			Model:          config.CFG.LLM.Model,
-			Temperature:    &temp,
-			Timeout:        opts.Timeout,
-			EnableThinking: &thinking,
-		})
-	case "ark":
-		temp := opts.Temp
-		return arkmodel.NewChatModel(ctx, &arkmodel.ChatModelConfig{
-			APIKey:      config.CFG.LLM.APIKey,
-			BaseURL:     config.CFG.LLM.BaseURL,
-			Model:       config.CFG.LLM.Model,
-			Temperature: &temp,
-			Timeout:     &opts.Timeout,
-			Thinking: &arkruntime.Thinking{
-				Type: arkruntime.ThinkingTypeDisabled,
-			},
-		})
-	case "openai", "deepseek", "moonshot", "zhipu", "google":
-		temp := opts.Temp
-		return openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			APIKey:      config.CFG.LLM.APIKey,
-			BaseURL:     config.CFG.LLM.BaseURL,
-			Model:       config.CFG.LLM.Model,
-			Temperature: &temp,
-			Timeout:     opts.Timeout,
-		})
-	case "minimax":
-		temp := opts.Temp
-		return claude.NewChatModel(ctx, &claude.Config{
-			APIKey:      config.CFG.LLM.APIKey,
-			BaseURL:     &config.CFG.LLM.BaseURL,
-			Model:       config.CFG.LLM.Model,
-			Temperature: &temp,
-			Thinking: &claude.Thinking{
-				Enable: false,
-			},
-		})
-	default:
-		return nil, fmt.Errorf("unsupported llm provider %q", config.CFG.LLM.Provider)
-	}
+	return NewChatModelFromProvider(ctx, &model.AILLMProvider{
+		Provider:    strings.TrimSpace(strings.ToLower(config.CFG.LLM.Provider)),
+		Model:       config.CFG.LLM.Model,
+		BaseURL:     config.CFG.LLM.BaseURL,
+		APIKey:      config.CFG.LLM.APIKey,
+		Temperature: config.CFG.LLM.Temperature,
+	}, opts)
 }
 
 func decryptProviderAPIKey(provider *model.AILLMProvider) (*model.AILLMProvider, error) {
