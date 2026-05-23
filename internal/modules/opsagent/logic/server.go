@@ -15,6 +15,7 @@ import (
 
 	"github.com/cy77cc/OpsPilot/internal/core/config"
 	"github.com/cy77cc/OpsPilot/internal/core/logger"
+	gateway "github.com/cy77cc/OpsPilot/internal/modules/gateway/logic"
 	hostpluginmodel "github.com/cy77cc/OpsPilot/internal/modules/hostplugin/model"
 	"github.com/cy77cc/OpsPilot/internal/svc"
 	pb "github.com/cy77cc/OpsPilot/proto"
@@ -27,15 +28,36 @@ import (
 
 type Server struct {
 	pb.UnimplementedAgentServiceServer
-	svcCtx   *svc.ServiceContext
-	registry *SessionRegistry
+	svcCtx         *svc.ServiceContext
+	registry       *SessionRegistry
+	gatewayHandler *gateway.MessageHandler
 }
 
 func NewServer(svcCtx *svc.ServiceContext, registry *SessionRegistry) *Server {
 	if registry == nil {
 		registry = NewSessionRegistry()
 	}
-	return &Server{svcCtx: svcCtx, registry: registry}
+	s := &Server{svcCtx: svcCtx, registry: registry}
+
+	// Initialize gateway handler if route table and tunnel manager are available
+	if svcCtx.RouteTable != nil && svcCtx.TunnelManager != nil {
+		if tm, ok := svcCtx.TunnelManager.(*gateway.TunnelManager); ok {
+			if rt, ok := svcCtx.RouteTable.(*gateway.RouteTable); ok {
+				s.gatewayHandler = gateway.NewMessageHandler(
+					svcCtx,
+					tm,
+					rt,
+					func(_ string, result *pb.ExecResult) {
+						handleExecResult(result)
+					},
+					func(output *pb.ExecOutput) {
+						handleExecOutput(output)
+					},
+				)
+			}
+		}
+	}
+	return s
 }
 
 func (s *Server) Connect(stream grpc.BidiStreamingServer[pb.AgentMessage, pb.PlatformMessage]) error {
@@ -154,6 +176,36 @@ func (s *Server) handleAgentMessage(ctx context.Context, stream grpc.BidiStreami
 		return nil
 	case *pb.AgentMessage_Ack:
 		return s.handleAck(ctx, payload.Ack)
+	case *pb.AgentMessage_TunnelOpen:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleTunnelOpen(ctx, payload.TunnelOpen)
+		}
+		return nil
+	case *pb.AgentMessage_TunnelData:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleTunnelData(ctx, payload.TunnelData)
+		}
+		return nil
+	case *pb.AgentMessage_TunnelClose:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleTunnelClose(ctx, payload.TunnelClose)
+		}
+		return nil
+	case *pb.AgentMessage_ProxyRegister:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleProxyRegister(ctx, payload.ProxyRegister)
+		}
+		return nil
+	case *pb.AgentMessage_ProxyResponse:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleProxyResponse(payload.ProxyResponse)
+		}
+		return nil
+	case *pb.AgentMessage_ProxyMetrics:
+		if s.gatewayHandler != nil {
+			return s.gatewayHandler.HandleProxyMetrics(ctx, payload.ProxyMetrics)
+		}
+		return nil
 	default:
 		return nil
 	}

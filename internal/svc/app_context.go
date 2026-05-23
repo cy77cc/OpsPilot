@@ -30,6 +30,8 @@ type ServiceContext struct {
 	MetricsPusher    *prominfra.MetricsPusher       // Prometheus 指标推送器
 	OpsAgentRegistry *opsagentmodel.SessionRegistry // OpsAgent 在线会话注册表
 	CAManager        *opsagent.Manager              // OpsAgent CA 管理器 (mTLS)
+	TunnelManager    any                            // gateway TunnelManager (避免循环依赖，运行时断言)
+	RouteTable       any                            // gateway RouteTable (避免循环依赖，运行时断言)
 }
 
 // NewServiceContext 创建服务上下文，并向上返回初始化错误。
