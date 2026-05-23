@@ -19,7 +19,7 @@ import {
 import { ArrowLeftOutlined, CheckCircleOutlined, CloudUploadOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { Api } from '../../api';
-import type { CredentialTemplate, HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
+import type { CredentialTemplate, GatewayHostInfo, HostProbeResult, SSHKeyItem } from '../../api/modules/hosts';
 import type { HostPluginCatalogItem } from '../../types/host';
 import { useAuth } from '../../components/Auth/AuthContext';
 import { parseHostKeyTrustError, useHostKeyTrust } from '../../hooks/useHostKeyTrust';
@@ -45,6 +45,8 @@ interface StepThreeForm {
   force?: boolean;
   installOpsAgent: 'none' | 'opsagent';
   opsagentVersion?: string;
+  jumpHostId?: number;
+  gatewayMode?: 'tunnel' | 'proxy' | 'auto';
 }
 
 const HostOnboardingPage: React.FC = () => {
@@ -60,6 +62,8 @@ const HostOnboardingPage: React.FC = () => {
   const [keysLoading, setKeysLoading] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [pluginCatalogLoading, setPluginCatalogLoading] = useState(false);
+  const [gatewayHosts, setGatewayHosts] = useState<GatewayHostInfo[]>([]);
+  const [gatewayHostsLoading, setGatewayHostsLoading] = useState(false);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [keyCreating, setKeyCreating] = useState(false);
   const [form] = Form.useForm<StepOneForm & StepThreeForm>();
@@ -116,6 +120,14 @@ const HostOnboardingPage: React.FC = () => {
     void loadCredentialTemplates();
     void loadPluginCatalog();
   }, [loadCredentialTemplates, loadPluginCatalog, loadSSHKeys]);
+
+  useEffect(() => {
+    setGatewayHostsLoading(true);
+    Api.hosts.getGatewayHosts()
+      .then(setGatewayHosts)
+      .catch(() => {})
+      .finally(() => setGatewayHostsLoading(false));
+  }, []);
 
   const quickCreateKey = async () => {
     const values = await keyForm.validateFields();
@@ -179,7 +191,7 @@ const HostOnboardingPage: React.FC = () => {
   };
 
   const confirmCreate = async () => {
-    const values = await form.validateFields(['description', 'labels', 'role', 'clusterId', 'force', 'installOpsAgent', 'opsagentVersion']);
+    const values = await form.validateFields(['description', 'labels', 'role', 'clusterId', 'force', 'installOpsAgent', 'opsagentVersion', 'jumpHostId', 'gatewayMode']);
     if (!stepOneValues || !probeResult?.probeToken) {
       message.error('probe_token 不存在，请重新探测');
       return;
@@ -208,6 +220,8 @@ const HostOnboardingPage: React.FC = () => {
               version: values.opsagentVersion,
             }]
           : [],
+        jumpHostId: values.jumpHostId || undefined,
+        gatewayMode: values.gatewayMode || undefined,
       });
       message.success('主机接入成功');
       navigate('/hosts');
@@ -425,6 +439,36 @@ const HostOnboardingPage: React.FC = () => {
                         .filter((item) => item.pluginKey === 'opsagent' && item.defaultVersion)
                         .map((item) => ({ label: item.defaultVersion, value: item.defaultVersion }))}
                     />
+                  </GuidedFormItem>
+                ) : null}
+              </Form.Item>
+              <GuidedFormItem
+                name="jumpHostId"
+                label="跳板机"
+                guidance="选择一个跳板机来管理无法直连的内网主机。留空表示直连。"
+              >
+                <Select
+                  allowClear
+                  placeholder="选择跳板机（可选）"
+                  loading={gatewayHostsLoading}
+                  options={gatewayHosts.map(g => ({
+                    label: `${g.name} (${g.ip})`,
+                    value: g.id,
+                  }))}
+                />
+              </GuidedFormItem>
+              <Form.Item noStyle shouldUpdate={(prev, next) => prev.jumpHostId !== next.jumpHostId}>
+                {({ getFieldValue }) => getFieldValue('jumpHostId') ? (
+                  <GuidedFormItem
+                    name="gatewayMode"
+                    label="连接模式"
+                    guidance="隧道模式：目标主机有 Agent，通过跳板机转发 gRPC 流量。代理模式：目标主机无 Agent，跳板机通过 SSH 代为执行。"
+                  >
+                    <Radio.Group>
+                      <Radio value="tunnel">隧道模式</Radio>
+                      <Radio value="proxy">代理模式</Radio>
+                      <Radio value="auto">自动检测</Radio>
+                    </Radio.Group>
                   </GuidedFormItem>
                 ) : null}
               </Form.Item>
