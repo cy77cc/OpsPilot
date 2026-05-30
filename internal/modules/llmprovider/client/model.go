@@ -124,7 +124,20 @@ func checkProviderHealth(ctx context.Context, p *model.AILLMProvider) error {
 	if err != nil {
 		return err
 	}
+	logger.L().Info("[AI-DEBUG] Health check: sending ping to LLM",
+		logger.String("provider", p.Provider),
+		logger.String("model", p.Model))
 	_, err = m.Generate(ctx, []*schema.Message{schema.UserMessage("ping")})
+	if err != nil {
+		logger.L().Warn("[AI-DEBUG] Health check: ping failed",
+			logger.String("provider", p.Provider),
+			logger.String("model", p.Model),
+			logger.Error(err))
+	} else {
+		logger.L().Info("[AI-DEBUG] Health check: ping succeeded",
+			logger.String("provider", p.Provider),
+			logger.String("model", p.Model))
+	}
 	return err
 }
 
@@ -138,6 +151,10 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	logger.L().Info("[AI-DEBUG] GetDefaultChatModel called",
+		logger.String("llm_enable", fmt.Sprintf("%v", config.CFG.LLM.Enable)),
+		logger.String("db_nil", fmt.Sprintf("%v", db == nil)),
+		logger.String("db_extractor_set", fmt.Sprintf("%v", dbExtractor.Load() != nil)))
 	if !config.CFG.LLM.Enable {
 		return nil, fmt.Errorf("llm disabled")
 	}
@@ -145,6 +162,8 @@ func GetDefaultChatModel(ctx context.Context, db *gorm.DB, opts ChatModelConfig)
 	if db == nil {
 		db = dbFromRuntimeContext(ctx)
 	}
+	logger.L().Info("[AI-DEBUG] GetDefaultChatModel after db resolution",
+		logger.String("db_nil", fmt.Sprintf("%v", db == nil)))
 	if db != nil {
 		dao := llmdao.NewLLMProviderDAO(db)
 		// 按照 is_default, sort_order 排序获取所有启用的供应商
@@ -233,6 +252,7 @@ func decryptProviderAPIKey(provider *model.AILLMProvider) (*model.AILLMProvider,
 
 // CheckModelHealth 检查模型健康状态。
 func CheckModelHealth(ctx context.Context, db *gorm.DB) error {
+	logger.L().Info("[AI-DEBUG] CheckModelHealth: checking default model health at startup")
 	m, err := GetDefaultChatModel(ctx, db, ChatModelConfig{
 		Timeout:  10 * time.Second,
 		Thinking: false,

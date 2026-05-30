@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	einomodel "github.com/cloudwego/eino/components/model"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/modules/llmprovider/model"
 )
 
@@ -65,7 +66,13 @@ func NewChatModelFromProvider(ctx context.Context, provider *model.AILLMProvider
 
 	factory, ok := GetFactory(provider.Provider)
 	if !ok {
+		logger.L().Error("[AI-DEBUG] NewChatModelFromProvider: unsupported provider",
+			logger.String("provider", provider.Provider),
+			logger.String("model", provider.Model))
 		return nil, fmt.Errorf("unsupported llm provider %q", provider.Provider)
 	}
+	logger.L().Info("[AI-DEBUG] NewChatModelFromProvider: creating model",
+		logger.String("provider", provider.Provider),
+		logger.String("model", provider.Model))
 	return factory.Create(ctx, provider, opts)
 }

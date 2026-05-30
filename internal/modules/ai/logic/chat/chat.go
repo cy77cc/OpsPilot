@@ -472,6 +472,9 @@ type EventEmitter func(event string, data any)
 
 // Chat 执行一次 AI 对话，通过 SSE 流式返回结果。
 func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) error {
+	logger.L().Info("[AI-DEBUG] Chat() entered",
+		logger.String("runDAO_nil", fmt.Sprintf("%v", l.RunDAO == nil)),
+		logger.String("aiRouter_nil", fmt.Sprintf("%v", l.AIRouter == nil)))
 	if l.RunDAO == nil || l.AIRouter == nil {
 		emit("error", map[string]any{"message": stream.SanitizeUserFacingError(fmt.Errorf("AI service not initialized"))})
 		return nil
@@ -518,9 +521,20 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: l.AIRouter, EnableStreaming: true, CheckPointStore: l.CheckpointStore})
 	agentInput := buildSessionAgentInput(ctx, l, shell, input)
+	logger.L().Info("[AI-DEBUG] Chat() starting",
+		logger.String("run_id", shell.Run.ID),
+		logger.String("session_id", shell.SessionID),
+		logger.Int("message_len", len(input.Message)),
+		logger.Int("agent_input_msgs", len(agentInput)),
+		logger.String("checkpoint_store_nil", fmt.Sprintf("%v", l.CheckpointStore == nil)))
 	iterator := runner.Run(ctx, agentInput, adk.WithCheckPointID(shell.Run.ID))
+	logger.L().Info("[AI-DEBUG] Chat() iterator created",
+		logger.String("run_id", shell.Run.ID),
+		logger.String("iterator_nil", fmt.Sprintf("%v", iterator == nil)))
 	projector := airuntime.NewStreamProjector()
 	delegationState := &delegationStreamState{}
+	logger.L().Info("[AI-DEBUG] Chat() about to call ProcessAgentIterator",
+		logger.String("run_id", shell.Run.ID))
 	result, err := stream.ProcessAgentIterator(ctx, stream.IteratorProcessInput{
 		Iterator:  iterator,
 		Projector: projector,
@@ -536,6 +550,14 @@ func Chat(ctx context.Context, l *Logic, input ChatInput, emit EventEmitter) err
 			}
 		},
 	})
+	logger.L().Info("[AI-DEBUG] Chat() iterator done",
+		logger.String("run_id", shell.Run.ID),
+		logger.Error(err),
+		logger.String("fatalErr", fmt.Sprintf("%v", result.FatalErr)),
+		logger.String("hasToolErrors", fmt.Sprintf("%v", result.HasToolErrors)),
+		logger.String("interrupted", fmt.Sprintf("%v", result.Interrupted)),
+		logger.Int("summaryLen", len(result.SummaryText)),
+		logger.Int("snapshotLen", len(result.AssistantSnapshot)))
 	if err != nil {
 		return err
 	}

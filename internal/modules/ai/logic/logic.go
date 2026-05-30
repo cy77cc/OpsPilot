@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/agent/orchestrator"
 	aidaoapproval "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/approval"
 	aidaochat "github.com/cy77cc/OpsPilot/internal/modules/ai/dao/chat"
@@ -60,6 +61,9 @@ func NewAILogic(svcCtx *svc.ServiceContext) *Logic {
 	var aiRouter adk.ResumableAgent
 	if r, err := newOpsPilotAgent(runtimectx.WithServices(context.Background(), svcCtx)); err == nil {
 		aiRouter = r
+		logger.L().Info("[AI-DEBUG] NewAILogic: agent created successfully")
+	} else {
+		logger.L().Error("[AI-DEBUG] NewAILogic: agent creation FAILED", logger.Error(err))
 	}
 	return New(Deps{
 		ServiceContext:     svcCtx,
@@ -130,6 +134,9 @@ func (l *Logic) ensureChatLogic() {
 	defer l.mu.Unlock()
 	if l.chatLogic != nil {
 		// Keep chat sub-logic dependencies in sync when tests assign AIRouter after construction.
+		logger.L().Info("[AI-DEBUG] ensureChatLogic: syncing AIRouter",
+			logger.String("parent_nil", fmt.Sprintf("%v", l.AIRouter == nil)),
+			logger.String("chatLogic_nil", fmt.Sprintf("%v", l.chatLogic.AIRouter == nil)))
 		l.chatLogic.AIRouter = l.AIRouter
 		l.chatLogic.CheckpointStore = l.CheckpointStore
 	}

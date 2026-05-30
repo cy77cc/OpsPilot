@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	aiv1 "github.com/cy77cc/OpsPilot/api/ai/v1"
 	"github.com/cy77cc/OpsPilot/internal/core/httpx"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/app/command"
 	ssehandler "github.com/cy77cc/OpsPilot/internal/modules/ai/handler/sse"
 	"github.com/cy77cc/OpsPilot/internal/modules/ai/logic"
@@ -60,7 +62,14 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		return
 	}
 
-	err := h.commandHandler.Handle(c.Request.Context(), &command.ChatRequest{
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
+	defer cancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		logger.L().Info("[AI-DEBUG] HandleChat: context timeout set",
+			logger.String("deadline", deadline.Format(time.RFC3339)),
+			logger.String("timeout", "2m"))
+	}
+	err := h.commandHandler.Handle(ctx, &command.ChatRequest{
 		SessionID:       req.SessionID,
 		ClientRequestID: req.ClientRequestID,
 		LastEventID:     lastEventID,

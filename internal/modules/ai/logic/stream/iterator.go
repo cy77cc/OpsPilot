@@ -5,10 +5,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	stdlog "log"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	airuntime "github.com/cy77cc/OpsPilot/internal/modules/ai/agent/runtime"
 )
 
@@ -53,11 +57,27 @@ type IteratorProcessInput struct {
 // ProcessAgentIterator 处理 Agent 异步迭代器事件流。
 func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (IteratorProcessResult, error) {
 	result := IteratorProcessResult{}
+	logger.L().Info("[AI-DEBUG] ProcessAgentIterator ENTERED",
+		logger.String("iterator_nil", fmt.Sprintf("%v", input.Iterator == nil)),
+		logger.String("ctx_nil", fmt.Sprintf("%v", ctx == nil)))
 	if input.Iterator == nil {
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: iterator is nil, returning early")
 		return result, nil
 	}
 	if ctx == nil {
 		return result, fmt.Errorf("context is required")
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: context has deadline",
+			logger.String("deadline", deadline.Format(time.RFC3339)))
+		// Independent timer to diagnose if context deadline fires
+		time.AfterFunc(time.Until(deadline), func() {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: TIMER FIRED at deadline",
+				logger.String("ctx_err", fmt.Sprintf("%v", ctx.Err())),
+				logger.String("deadline", deadline.Format(time.RFC3339)))
+		})
+	} else {
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: context has NO deadline")
 	}
 	if input.Projector == nil {
 		input.Projector = airuntime.NewStreamProjector()
@@ -106,18 +126,91 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 		return nil
 	}
 
+	// Quick timer to verify timers work in this goroutine context
+	time.AfterFunc(10*time.Second, func() {
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: 10s TIMER FIRED",
+			logger.String("ctx_err", fmt.Sprintf("%v", ctx.Err())))
+	})
+
+	iterationCount := 0
 	for {
 		if ctx.Err() != nil {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: ctx cancelled",
+				logger.Error(ctx.Err()),
+				logger.Int("iteration", iterationCount))
 			result.FatalErr = ctx.Err()
 			break
 		}
 		if persisted := input.Projector.GetPersistedState(); persisted != nil && !persisted.CanFinalizeDone() {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: CanFinalizeDone=false, interrupted",
+				logger.Int("iteration", iterationCount))
 			result.Interrupted = true
 			break
 		}
-		event, ok := input.Iterator.Next()
-		if !ok {
+		// Use goroutine + select to allow context cancellation while waiting for Next().
+		// AsyncIterator.Next() blocks on an unbounded channel that doesn't respect context.
+		type nextResult struct {
+			event *adk.AgentEvent
+			ok    bool
+		}
+		nextCh := make(chan nextResult, 1)
+		go func() {
+			e, ok := input.Iterator.Next()
+			nextCh <- nextResult{event: e, ok: ok}
+		}()
+		var event *adk.AgentEvent
+		var ok bool
+		select {
+		case nr := <-nextCh:
+			fmt.Fprintf(os.Stderr, "[AI-DEBUG] ProcessAgentIterator: nextCh returned, ok=%v, iteration=%d\n", nr.ok, iterationCount)
+			event = nr.event
+			ok = nr.ok
+		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "[AI-DEBUG] ProcessAgentIterator: ctx.Done FIRED, err=%v, iteration=%d\n", ctx.Err(), iterationCount)
+			stdlog.Printf("[AI-DEBUG] ProcessAgentIterator: ctx.Done FIRED, err=%v, iteration=%d", ctx.Err(), iterationCount)
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: ctx cancelled while waiting for Next()",
+				logger.Error(ctx.Err()),
+				logger.Int("iteration", iterationCount))
+			result.FatalErr = ctx.Err()
+		}
+		if result.FatalErr != nil {
 			break
+		}
+		iterationCount++
+		if !ok {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: iterator exhausted",
+				logger.Int("iteration", iterationCount))
+			break
+		}
+		hasOutput := event.Output != nil
+		hasAction := event.Action != nil
+		var eventErr string
+		if event.Err != nil {
+			eventErr = event.Err.Error()
+		}
+		// Deep inspection of event output
+		if hasOutput && event.Output.MessageOutput != nil {
+			mo := event.Output.MessageOutput
+			contentLen := len(mo.Message.Content)
+			toolCallCount := len(mo.Message.ToolCalls)
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: event received",
+				logger.Int("iteration", iterationCount),
+				logger.String("agentName", event.AgentName),
+				logger.String("err", eventErr),
+				logger.String("hasOutput", "true"),
+				logger.String("hasAction", fmt.Sprintf("%v", hasAction)),
+				logger.String("role", string(mo.Role)),
+				logger.Int("contentLen", contentLen),
+				logger.Int("toolCallCount", toolCallCount),
+				logger.String("isStreaming", fmt.Sprintf("%v", mo.IsStreaming)),
+				logger.String("streamNil", fmt.Sprintf("%v", mo.MessageStream == nil)))
+		} else {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: event received",
+				logger.Int("iteration", iterationCount),
+				logger.String("agentName", event.AgentName),
+				logger.String("err", eventErr),
+				logger.String("hasOutput", fmt.Sprintf("%v", hasOutput)),
+				logger.String("hasAction", fmt.Sprintf("%v", hasAction)))
 		}
 		if interruptEvent, ok := RecoverableInterruptEventFromEvent(event); ok {
 			projected := input.Projector.Consume(interruptEvent)
@@ -153,6 +246,10 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 			result.HasToolErrors = true
 		}
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.IsStreaming && event.Output.MessageOutput.MessageStream != nil {
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: taking STREAMING path",
+				logger.Int("iteration", iterationCount),
+				logger.String("agentName", event.AgentName))
+			chunkCount := 0
 			for {
 				msg, err := event.Output.MessageOutput.MessageStream.Recv()
 				if err == io.EOF {
@@ -191,6 +288,13 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 				if msg == nil {
 					continue
 				}
+				chunkCount++
+				logger.L().Info("[AI-DEBUG] ProcessAgentIterator: stream chunk",
+					logger.Int("iteration", iterationCount),
+					logger.Int("chunk", chunkCount),
+					logger.String("role", string(msg.Role)),
+					logger.Int("contentLen", len(msg.Content)),
+					logger.Int("toolCalls", len(msg.ToolCalls)))
 				chunkEvent := adk.EventFromMessage(msg, nil, msg.Role, msg.ToolName)
 				chunkEvent.AgentName = event.AgentName
 				projected := input.Projector.Consume(chunkEvent)
@@ -202,12 +306,21 @@ func ProcessAgentIterator(ctx context.Context, input IteratorProcessInput) (Iter
 					assistantSnapshot.WriteString(msg.Content)
 				}
 			}
+			logger.L().Info("[AI-DEBUG] ProcessAgentIterator: streaming path complete",
+				logger.Int("iteration", iterationCount),
+				logger.Int("totalChunks", chunkCount))
 			if result.CircuitBroken {
 				break
 			}
 			continue
 		}
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: taking DEFAULT path (non-streaming)",
+			logger.Int("iteration", iterationCount),
+			logger.String("agentName", event.AgentName))
 		projected := input.Projector.Consume(event)
+		logger.L().Info("[AI-DEBUG] ProcessAgentIterator: projector.Consume returned",
+			logger.Int("iteration", iterationCount),
+			logger.Int("projectedCount", len(projected)))
 		toolFailures.recordProjectedEvents(projected)
 		if err := processProjected(IteratorConsumeEvent, projected); err != nil {
 			return result, err

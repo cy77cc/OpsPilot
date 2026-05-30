@@ -51,12 +51,20 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 		normalizedScene = defaultScene
 	}
 
+	logger.L().Info("[AI-DEBUG] createDeepAgent: starting",
+		logger.String("scene", normalizedScene))
+
 	chatModel, err := aiclient.GetDefaultChatModel(ctx, nil, aiclient.ChatModelConfig{})
 	if err != nil {
+		logger.L().Error("[AI-DEBUG] createDeepAgent: GetDefaultChatModel FAILED",
+			logger.Error(err))
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
+	logger.L().Info("[AI-DEBUG] createDeepAgent: model created successfully")
 
 	sceneTools := tools.BuildToolsForSceneWithMode(ctx, normalizedScene, false)
+	logger.L().Info("[AI-DEBUG] createDeepAgent: tools built",
+		logger.Int("tool_count", len(sceneTools)))
 	if len(sceneTools) == 0 {
 		return nil, fmt.Errorf("no tools available for scene: %s", normalizedScene)
 	}
@@ -100,7 +108,12 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 	}
 	handlers = append(handlers, todoMiddleware)
 
-	return adkdeep.New(ctx, &adkdeep.Config{
+	logger.L().Info("[AI-DEBUG] createDeepAgent: calling adkdeep.New",
+		logger.Int("sub_agents", len(subAgents)),
+		logger.Int("handlers", len(handlers)),
+		logger.Int("tools", len(sceneTools)))
+
+	agent, err := adkdeep.New(ctx, &adkdeep.Config{
 		Name:         "deep_main",
 		Description:  "OpsPilot deep orchestrator for governed operations and specialist delegation.",
 		ChatModel:    chatModel,
@@ -109,6 +122,12 @@ func createDeepAgent(ctx context.Context, registry *Registry, scene string) (adk
 		Handlers:     handlers,
 		MaxIteration: 32,
 	})
+	if err != nil {
+		logger.L().Error("[AI-DEBUG] createDeepAgent: adkdeep.New FAILED", logger.Error(err))
+	} else {
+		logger.L().Info("[AI-DEBUG] createDeepAgent: adkdeep.New succeeded")
+	}
+	return agent, err
 }
 
 func createNamedSceneAgent(

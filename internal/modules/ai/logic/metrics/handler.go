@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/cy77cc/OpsPilot/internal/core/logger"
 	aimodel "github.com/cy77cc/OpsPilot/internal/modules/ai/model"
 	"github.com/cy77cc/OpsPilot/internal/runtimectx"
 )
@@ -47,6 +48,11 @@ func NewMetricsHandler(db *gorm.DB) *MetricsHandler {
 
 // OnStartFn 记录 AI 交互的开始。
 func (h *MetricsHandler) OnStartFn(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
+	meta := runtimectx.AIMetadataFrom(ctx)
+	logger.L().Info("[AI-DEBUG] MetricsHandler.OnStart: LLM call starting",
+		logger.String("run_id", meta.RunID),
+		logger.String("session_id", meta.SessionID),
+		logger.String("scene", meta.Scene))
 	return context.WithValue(ctx, startTimeKey{}, time.Now())
 }
 
