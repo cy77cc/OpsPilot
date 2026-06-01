@@ -48,6 +48,11 @@ func RunBootstrapMigrations() error {
 		return fmt.Errorf("migrate llm config failed: %w", err)
 	}
 
+	// 初始化系统基础数据（角色、权限、管理员、AI 场景配置等）
+	if err := RunSeedData(db); err != nil {
+		return fmt.Errorf("run seed data failed: %w", err)
+	}
+
 	return nil
 }
 

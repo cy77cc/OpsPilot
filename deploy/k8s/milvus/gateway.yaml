@@ -1,0 +1,63 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: milvus-gateway
+  namespace: milvus
+  labels:
+    app.kubernetes.io/part-of: opspilot
+spec:
+  gatewayClassName: cilium  # 根据实际集群的 GatewayClass 修改
+  listeners:
+    - name: milvus-grpc
+      protocol: HTTP
+      port: 80
+      hostname: "milvus-api.cy77cc.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: attu
+      protocol: HTTP
+      port: 80
+      hostname: "attu.cy77cc.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+# Milvus gRPC 通过 Gateway API 暴露
+# 注意: Gateway API v1 的 gRPCRoute 支持有限，
+# 如果需要原生 gRPC 路由，建议使用 LoadBalancer 或 NodePort 直接暴露 19530 端口
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: milvus-grpc-route
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: milvus
+    app.kubernetes.io/part-of: opspilot
+  annotations:
+    note: "Milvus gRPC 通过 HTTP/2 传输，部分 Gateway 实现可自动处理"
+spec:
+  parentRefs:
+    - name: milvus-gateway
+      sectionName: milvus-grpc
+  rules:
+    - backendRefs:
+        - name: milvus
+          port: 19530
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: attu-route
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: attu
+    app.kubernetes.io/part-of: opspilot
+spec:
+  parentRefs:
+    - name: milvus-gateway
+      sectionName: attu
+  rules:
+    - backendRefs:
+        - name: attu
+          port: 3000

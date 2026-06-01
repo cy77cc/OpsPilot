@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Monitoring (Prometheus + Alertmanager)
+  - monitoring/namespace.yaml
+  - monitoring/prometheus-config.yaml
+  - monitoring/alertmanager-config.yaml
+  - monitoring/prometheus-deployment.yaml
+  - monitoring/alertmanager-deployment.yaml
+  - monitoring/gateway.yaml
+
+  # Milvus (etcd + minio + milvus + attu)
+  - milvus/namespace.yaml
+  - milvus/etcd.yaml
+  - milvus/minio.yaml
+  - milvus/milvus.yaml
+  - milvus/gateway.yaml
+
+commonLabels:
+  managed-by: opspilot

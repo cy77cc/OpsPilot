@@ -1,0 +1,58 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: monitoring-gateway
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: opspilot
+spec:
+  gatewayClassName: cilium  # 根据实际集群的 GatewayClass 修改
+  listeners:
+    - name: prometheus
+      protocol: HTTP
+      port: 80
+      hostname: "prometheus.cy77cc.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: alertmanager
+      protocol: HTTP
+      port: 80
+      hostname: "alertmanager.cy77cc.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus-route
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: opspilot
+spec:
+  parentRefs:
+    - name: monitoring-gateway
+      sectionName: prometheus
+  rules:
+    - backendRefs:
+        - name: prometheus
+          port: 9090
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: alertmanager-route
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: opspilot
+spec:
+  parentRefs:
+    - name: monitoring-gateway
+      sectionName: alertmanager
+  rules:
+    - backendRefs:
+        - name: alertmanager
+          port: 9093

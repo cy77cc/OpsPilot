@@ -23,7 +23,7 @@ type UserID int64
 //   - 0: 禁用
 type User struct {
 	ID            UserID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`                                                  // 用户 ID
-	Username      string `gorm:"column:username;type:varchar(64);not null;unique" json:"username" validate:"required|minLen:7"` // 用户名 (唯一，最少7字符)
+	Username      string `gorm:"column:username;type:varchar(64);not null;unique" json:"username" validate:"required|minLen:4` // 用户名 (唯一，最少7字符)
 	PasswordHash  string `gorm:"column:password_hash;type:varchar(255);not null" json:"password_hash"`                          // 密码哈希 (bcrypt)
 	Email         string `gorm:"column:email;type:varchar(128);not null;default:''" json:"email" validate:"email"`              // 邮箱地址
 	Phone         string `gorm:"column:phone;type:varchar(32);not null;default:''" json:"phone" validate:"phone"`               // 手机号码

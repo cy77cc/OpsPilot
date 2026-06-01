@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus-standalone
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: milvus
+    app.kubernetes.io/part-of: milvus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: milvus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: milvus
+    spec:
+      containers:
+        - name: milvus
+          image: milvusdb/milvus:v2.6.11
+          command:
+            - milvus
+            - run
+            - standalone
+          env:
+            - name: ETCD_ENDPOINTS
+              value: "etcd:2379"
+            - name: MINIO_ADDRESS
+              value: "minio:9000"
+            - name: MQ_TYPE
+              value: "woodpecker"
+          ports:
+            - name: grpc
+              containerPort: 19530
+              protocol: TCP
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/milvus
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: milvus-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: milvus-data
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: milvus
+    app.kubernetes.io/part-of: milvus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: milvus
+    app.kubernetes.io/part-of: milvus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: milvus
+  ports:
+    - name: grpc
+      port: 19530
+      targetPort: grpc
+      protocol: TCP
+    - name: metrics
+      port: 9091
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attu
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: attu
+    app.kubernetes.io/part-of: milvus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: attu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: attu
+    spec:
+      containers:
+        - name: attu
+          image: zilliz/attu:v2.6
+          env:
+            - name: MILVUS_URL
+              value: "milvus:19530"
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: attu
+  namespace: milvus
+  labels:
+    app.kubernetes.io/name: attu
+    app.kubernetes.io/part-of: milvus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: attu
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
